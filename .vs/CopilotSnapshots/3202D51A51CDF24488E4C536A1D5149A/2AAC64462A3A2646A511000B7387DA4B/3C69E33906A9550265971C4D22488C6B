@@ -1,0 +1,1244 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Drawing;
+using System.Linq;
+using System.Reflection;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
+using GLSense.Utilities;
+
+namespace GLSense.Controls
+{
+    [TemplatePart(Name = "PART_TextBox", Type = typeof(TextBox))]
+    [TemplatePart(Name = "PART_Popup", Type = typeof(Popup))]
+    [TemplatePart(Name = "PART_ListBox", Type = typeof(ListBox))]
+    public class SuggestAppendComboBox : Control
+    {
+        private const string _IsSelectedPropName = "IsSelected";
+
+        private TextBox _textBox;
+        private Popup _popup;
+        private ListBox _listBox;
+        private ICollectionView _view;
+        private bool _isInternalUpdate;
+        private readonly DispatcherTimer _debounceTimer;
+        private string _pendingUserInput = string.Empty;
+        private Key _lastKey = Key.None;
+        private TextBlock _toolTipTextBlock;
+
+        // cached reflection props for performance
+        private PropertyInfo _displayProp;
+        private PropertyInfo _isSelectedProp;
+        private IEnumerable _attachedItemsSource;
+        private Button _clearButton;
+
+        public static readonly DependencyProperty ComboClearProperty =
+        DependencyProperty.Register(nameof(ComboClear), typeof(bool), typeof(SuggestAppendComboBox),
+        new PropertyMetadata(false, OnComboClearChanged));
+
+        public bool ComboClear
+        {
+            get => (bool)GetValue(ComboClearProperty);
+            set => SetValue(ComboClearProperty, value);
+        }
+
+        private static void OnComboClearChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is SuggestAppendComboBox combo)
+            {
+                combo.UpdateClearButtonVisibility();
+            }
+        }
+        private void UpdateClearButtonVisibility()
+        {
+            if (_clearButton == null) return;
+
+            _clearButton.Visibility = ComboClear ? Visibility.Visible : Visibility.Collapsed;
+        }
+        public int DebounceIntervalMs
+        {
+            get => (int)GetValue(DebounceIntervalMsProperty);
+            set => SetValue(DebounceIntervalMsProperty, value);
+        }
+        public static readonly DependencyProperty DebounceIntervalMsProperty =
+            DependencyProperty.Register(nameof(DebounceIntervalMs), typeof(int), typeof(SuggestAppendComboBox),
+                new PropertyMetadata(50, (d, e) =>
+                {
+                    if (d is SuggestAppendComboBox c)
+                        c._debounceTimer.Interval = TimeSpan.FromMilliseconds((int)e.NewValue);
+                }));
+
+
+        public double ArrowWidth { get => (double)GetValue(ArrowWidthProperty); set => SetValue(ArrowWidthProperty, value); }
+        public static readonly DependencyProperty ArrowWidthProperty =
+            DependencyProperty.Register(nameof(ArrowWidth), typeof(double), typeof(SuggestAppendComboBox), new PropertyMetadata(10.0));
+
+        public double ArrowHeight { get => (double)GetValue(ArrowHeightProperty); set => SetValue(ArrowHeightProperty, value); }
+        public static readonly DependencyProperty ArrowHeightProperty =
+            DependencyProperty.Register(nameof(ArrowHeight), typeof(double), typeof(SuggestAppendComboBox), new PropertyMetadata(8.0));
+
+        public System.Windows.Media.Brush ArrowBrush { get => (System.Windows.Media.Brush)GetValue(ArrowBrushProperty); set => SetValue(ArrowBrushProperty, value); }
+        public static readonly DependencyProperty ArrowBrushProperty =
+             DependencyProperty.Register(nameof(ArrowBrush), typeof(System.Windows.Media.Brush), typeof(SuggestAppendComboBox),
+                 new PropertyMetadata(System.Windows.Media.Brushes.SteelBlue));
+
+        // 🟩 MultiSelect property
+        public static readonly DependencyProperty IsMultiSelectProperty =
+            DependencyProperty.Register(nameof(IsMultiSelect), typeof(bool), typeof(SuggestAppendComboBox),
+                new PropertyMetadata(false, (d, e) => ((SuggestAppendComboBox)d).UpdateListBoxTemplate()));
+
+        public bool IsMultiSelect
+        {
+            get => (bool)GetValue(IsMultiSelectProperty);
+            set => SetValue(IsMultiSelectProperty, value);
+        }
+
+        private void UpdateListBoxTemplate()
+        {
+            if (_listBox == null) return;
+
+
+            if (IsMultiSelect)
+            {
+                var key = new ComponentResourceKey(typeof(SuggestAppendComboBox), "SuggestMultiSelectItemTemplate");
+
+                if (TryFindResource(key) is not DataTemplate template)
+                {
+                    var factory = new FrameworkElementFactory(typeof(StackPanel));
+                    factory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+
+                    var chk = new FrameworkElementFactory(typeof(CheckBox));
+                    chk.SetBinding(CheckBox.IsCheckedProperty, new Binding(_IsSelectedPropName) { Mode = BindingMode.TwoWay });
+                    if (!string.IsNullOrEmpty(DisplayMemberPath))
+                        chk.SetBinding(CheckBox.ContentProperty, new Binding(DisplayMemberPath));
+                    else
+                        chk.SetBinding(CheckBox.ContentProperty, new Binding("."));
+
+                    factory.AppendChild(chk);
+
+                    template = new DataTemplate { VisualTree = factory };
+                }
+
+                _listBox.ItemTemplate = template;
+                _listBox.SelectionMode = SelectionMode.Multiple;
+            }
+            else
+            {
+                _listBox.ClearValue(ItemsControl.ItemTemplateProperty);
+                _listBox.SelectionMode = SelectionMode.Single;
+            }
+
+        }
+
+        public string Text
+        {
+            get => (string)GetValue(TextProperty);
+            set => SetValue(TextProperty, value);
+        }
+        public static readonly DependencyProperty TextProperty =
+            DependencyProperty.Register(nameof(Text), typeof(string), typeof(SuggestAppendComboBox),
+                new FrameworkPropertyMetadata(string.Empty, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnTextPropertyChanged));
+
+        private static void OnTextPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var c = (SuggestAppendComboBox)d;
+            c.UpdateTextBoxFromProperty((string)e.NewValue);
+            c.UpdateToolTipText();
+        }
+
+        private void UpdateTextBoxFromProperty(string newValue)
+        {
+            if (_textBox == null) return;
+            try
+            {
+                _isInternalUpdate = true;
+                _textBox.Text = newValue ?? string.Empty;
+                _textBox.Select(_textBox.Text.Length, 0);
+            }
+            finally { _isInternalUpdate = false; }
+        }
+
+        public event Action<object> SelectionCommitted;
+        public event Action<string> InvalidSelection;
+
+        static SuggestAppendComboBox()
+        {
+            DefaultStyleKeyProperty.OverrideMetadata(typeof(SuggestAppendComboBox),
+                new FrameworkPropertyMetadata(typeof(SuggestAppendComboBox)));
+        }
+
+        public SuggestAppendComboBox()
+        {
+            _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            _debounceTimer.Tick += (s, e) => { _debounceTimer.Stop(); ApplyFilterAndSuggest(_pendingUserInput); };
+
+            SelectedItems = new ObservableCollection<object>();
+        }
+
+        #region ItemsSource / DisplayMemberPath / SelectedItem
+        public IEnumerable ItemsSource
+        {
+            get => (IEnumerable)GetValue(ItemsSourceProperty);
+            set => SetValue(ItemsSourceProperty, value);
+        }
+        public static readonly DependencyProperty ItemsSourceProperty =
+            DependencyProperty.Register(nameof(ItemsSource), typeof(IEnumerable), typeof(SuggestAppendComboBox),
+                new PropertyMetadata(null, (d, e) =>
+                {
+                    var c = (SuggestAppendComboBox)d;
+                    c._view = e.NewValue != null ? CollectionViewSource.GetDefaultView(e.NewValue) : null;
+                    // Attach listeners to the underlying items so that external changes
+                    // to item properties (e.g. IsSelected) are reflected in the control
+                    // even when the popup/listbox has not been opened.
+                    try
+                    {
+                        c.DetachListenersFromItemsSource(e.OldValue as IEnumerable);
+                        c.AttachListenersToItemsSource(e.NewValue as IEnumerable);
+                        // Update the displayed text from the new items immediately
+                        c.UpdateDisplayedTextFromEnumerable(e.NewValue as IEnumerable);
+                    }
+                    catch { /* swallow - defensive for template timing */ }
+                }));
+
+        public string DisplayMemberPath
+        {
+            get => (string)GetValue(DisplayMemberPathProperty);
+            set => SetValue(DisplayMemberPathProperty, value);
+        }
+        public static readonly DependencyProperty DisplayMemberPathProperty =
+            DependencyProperty.Register(nameof(DisplayMemberPath), typeof(string), typeof(SuggestAppendComboBox),
+                new PropertyMetadata(string.Empty));
+
+        public object SelectedItem
+        {
+            get => GetValue(SelectedItemProperty);
+            set => SetValue(SelectedItemProperty, value);
+        }
+        public static readonly DependencyProperty SelectedItemProperty =
+            DependencyProperty.Register(nameof(SelectedItem), typeof(object), typeof(SuggestAppendComboBox),
+                        new PropertyMetadata(null, (d, e) =>
+                        {
+                            var c = (SuggestAppendComboBox)d;
+                            c.UpdateTextFromSelectedItem();
+                            c.UpdateToolTipText();
+                        }));
+
+        public ObservableCollection<object> SelectedItems
+        {
+            get => (ObservableCollection<object>)GetValue(SelectedItemsProperty);
+            set => SetValue(SelectedItemsProperty, value);
+        }
+
+        public static readonly DependencyProperty SelectedItemsProperty =
+            DependencyProperty.Register(
+                nameof(SelectedItems),
+                typeof(ObservableCollection<object>),
+                typeof(SuggestAppendComboBox),
+                new PropertyMetadata(null));
+        #endregion
+        private void ApplySelectedItemToListBox()
+        {
+            if (IsMultiSelect || _listBox == null || SelectedItem == null) return;
+
+            _listBox.SelectedItem = SelectedItem;
+            _listBox.ScrollIntoView(SelectedItem);
+        }
+        private void UpdateTextFromSelectedItem()
+        {
+            if (IsMultiSelect)
+            {
+                if (SelectedItem == null && _textBox != null)
+                {
+                    try
+                    {
+                        _isInternalUpdate = true;
+                        _textBox.Text = string.Empty;
+                    }
+                    finally
+                    {
+                        _isInternalUpdate = false;
+                    }
+
+                    UpdateToolTipText();
+                }
+
+                return;
+            }
+
+            if (_textBox == null) return;
+
+            string newText = "";
+
+            if (SelectedItem != null)
+            {
+                if (!string.IsNullOrWhiteSpace(DisplayMemberPath))
+                {
+                    var prop = SelectedItem.GetType().GetProperty(DisplayMemberPath);
+                    if (prop != null)
+                        newText = prop.GetValue(SelectedItem)?.ToString() ?? "";
+                    else
+                        newText = SelectedItem.ToString();
+                }
+                else
+                {
+                    newText = SelectedItem.ToString();
+                }
+            }
+
+            _isInternalUpdate = true;
+            _textBox.Text = newText;
+            _isInternalUpdate = false;
+        }
+
+        private System.Windows.Point _mouseDownPos;
+        private bool _isMouseDragging = false;
+
+        public override void OnApplyTemplate()
+        {
+            base.OnApplyTemplate();
+
+            FindAndStoreTemplateParts();
+            SetupClearButton();
+            SetupTextBox();
+            SetupListBox();
+            SetupDropDownButton();
+            SetupPopup();
+            InitializeCollectionView();
+            FindToolTipTextBlock();
+
+            // Make sure any pre-set Text value is pushed into the template parts
+            // (important when the control is initially collapsed and templated later).
+            UpdateTextBoxFromProperty(Text);
+            UpdateToolTipText();
+
+            // ensure ESC closes popup even if focus is elsewhere inside the control
+            RemoveHandler(Keyboard.PreviewKeyDownEvent, new KeyEventHandler(OnControlPreviewKeyDown));
+            AddHandler(Keyboard.PreviewKeyDownEvent, new KeyEventHandler(OnControlPreviewKeyDown), true);
+        }
+
+        private void FindAndStoreTemplateParts()
+        {
+            _clearButton = GetTemplateChild("PART_ClearButton") as Button;
+            _textBox = GetTemplateChild("PART_TextBox") as TextBox;
+            _popup = GetTemplateChild("PART_Popup") as Popup;
+            _listBox = GetTemplateChild("PART_ListBox") as ListBox;
+        }
+
+        private void FindToolTipTextBlock()
+        {
+            if (_textBox != null && _textBox.ToolTip is ToolTip toolTip && toolTip.Content is StackPanel stackPanel)
+            {
+                foreach (var child in stackPanel.Children)
+                {
+                    if (child is TextBlock textBlock && textBlock.Name == "toolTipTextBlock")
+                    {
+                        _toolTipTextBlock = textBlock;
+                        UpdateToolTipText();
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void SetupClearButton()
+        {
+            if (_clearButton == null) return;
+
+            UpdateClearButtonVisibility();
+            _clearButton.Click += OnClearButtonClick;
+        }
+
+        private void SetupTextBox()
+        {
+            if (_textBox == null) return;
+
+            _textBox.TextChanged -= OnTextChanged;
+            _textBox.PreviewKeyDown -= OnPreviewKeyDown;
+            _textBox.LostFocus -= OnTextBoxLostFocus;
+
+            _textBox.TextChanged += OnTextChanged;
+            _textBox.PreviewKeyDown += OnPreviewKeyDown;
+            _textBox.LostFocus += OnTextBoxLostFocus;
+        }
+
+        private void SetupListBox()
+        {
+            if (_listBox == null) return;
+
+            SetupMouseDragScrollDetection();
+            SetupSelectionBehavior();
+            SetupDisplayMemberPathForSingleSelect();
+            _listBox.PreviewKeyDown += OnListBoxPreviewKeyDown;
+        }
+
+        private void SetupMouseDragScrollDetection()
+        {
+            _listBox.PreviewMouseDown += (s, e) =>
+            {
+                _mouseDownPos = e.GetPosition(_listBox);
+                _isMouseDragging = false;
+            };
+
+            _listBox.PreviewMouseMove += (s, e) =>
+            {
+                if (_isMouseDragging) return;
+
+                var currentPos = e.GetPosition(_listBox);
+                if (Math.Abs(currentPos.Y - _mouseDownPos.Y) > 4)
+                {
+                    _isMouseDragging = true;
+                }
+            };
+
+            _listBox.PreviewMouseUp += (s, e) =>
+            {
+                if (_isMouseDragging)
+                {
+                    e.Handled = true;
+                    _isMouseDragging = false;
+                }
+            };
+        }
+
+        private void SetupSelectionBehavior()
+        {
+            _listBox.PreviewMouseUp += (s, e) =>
+            {
+                if (_isMouseDragging) return;
+
+                if (IsMultiSelect)
+                {
+                    e.Handled = false;
+                }
+                else
+                {
+                    CommitSelectionFromList();
+                    e.Handled = true;
+                }
+            };
+        }
+
+        private void SetupDisplayMemberPathForSingleSelect()
+        {
+            if (!IsMultiSelect)
+            {
+                _listBox.DisplayMemberPath = DisplayMemberPath;
+            }
+        }
+
+        private void SetupDropDownButton()
+        {
+            if (GetTemplateChild("PART_DropDownButton") is not Button dropDownButton)
+                return;
+
+            dropDownButton.Click += (s, e) =>
+            {
+                if (_popup == null) return;
+
+                bool shouldOpen = ShouldOpenPopup();
+
+                if (shouldOpen)
+                {
+                    OpenPopup();
+                }
+                else
+                {
+                    _popup.IsOpen = false;
+                    VisualStateManager.GoToState(this, "PopupClosed", true);
+                }
+            };
+        }
+
+        private bool ShouldOpenPopup()
+        {
+            if (GetTemplateChild("ArrowRotate") is RotateTransform arrowRotate)
+            {
+                return Math.Abs(arrowRotate.Angle - 0) < 0.001;
+            }
+
+            return _popup?.IsOpen != true;
+        }
+
+        private void SetupPopup()
+        {
+            if (_popup == null) return;
+
+            _popup.StaysOpen = false;
+            _popup.Opened += (s, e) =>
+            {
+                VisualStateManager.GoToState(this, "PopupOpen", true);
+                if (GetTemplateChild("ArrowRotate") is RotateTransform arrow)
+                {
+                    arrow.Angle = 180;
+                }
+            };
+
+            _popup.Closed += Popup_Closed;
+        }
+
+        private void OnControlPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape && _popup is { IsOpen: true })
+            {
+                _popup.IsOpen = false;
+                e.Handled = true;
+            }
+        }
+
+        private void InitializeCollectionView()
+        {
+            if (ItemsSource != null)
+            {
+                _view = CollectionViewSource.GetDefaultView(ItemsSource);
+            }
+        }
+
+        private void UpdateToolTipText()
+        {
+            if (_toolTipTextBlock == null) return;
+
+            if (string.IsNullOrEmpty(_textBox?.Text))
+            {
+                _toolTipTextBlock.Text = "No selection";
+            }
+            else if (IsMultiSelect)
+            {
+                var items = _textBox.Text.Split(';')
+                    .Select(s => s.Trim())
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .ToList();
+
+                if (items.Count == 0)
+                {
+                    _toolTipTextBlock.Text = "No selection";
+                }
+                else if (items.Count == 1)
+                {
+                    _toolTipTextBlock.Text = items[0];
+                }
+                else
+                {
+                    _toolTipTextBlock.Text = $"{items.Count} items selected";
+                }
+            }
+            else
+            {
+                _toolTipTextBlock.Text = _textBox.Text;
+            }
+        }
+
+        private void OnClearButtonClick(object sender, RoutedEventArgs e)
+        {
+            _textBox?.Clear();
+
+            SelectedItem = null;
+            UpdateToolTipText();
+
+            if (IsMultiSelect && _listBox?.ItemsSource != null)
+            {
+                foreach (var item in _listBox.ItemsSource.Cast<object>())
+                {
+                    _isSelectedProp?.SetValue(item, false);
+                }
+                UpdateDisplayedText();
+            }
+        }
+        private void OpenPopup()
+        {
+            if (_popup == null) return;
+
+            PrepareView();
+            PopulateListBox();
+            _textBox?.Focus();
+            _popup.IsOpen = true;
+            VisualStateManager.GoToState(this, "PopupOpen", true);
+
+            CacheItemReflectionProperties();
+            RestoreMultiSelectionIfNeeded();
+            SubscribeToItemPropertyChangesIfMultiSelect();
+
+            if (!IsMultiSelect)
+                ApplySelectedItemToListBox();
+
+        }
+        private void PrepareView()
+        {
+            if (_view == null) return;
+
+            _view.Filter = null;
+            _view.Refresh();
+        }
+
+        private void PopulateListBox()
+        {
+            if (_listBox == null) return;
+
+            UpdateListBoxTemplate();
+            _listBox.ItemsSource = _view?.Cast<object>().ToList();
+            AttachItemListeners();
+        }
+
+        private void CacheItemReflectionProperties()
+        {
+            if (_listBox?.ItemsSource is not IEnumerable<object> items)
+                return;
+
+            var firstItem = items.FirstOrDefault();
+            if (firstItem == null) return;
+
+            var itemType = firstItem.GetType();
+
+            _displayProp = !string.IsNullOrEmpty(DisplayMemberPath)
+                ? itemType.GetProperty(DisplayMemberPath)
+                : null;
+
+            _isSelectedProp = itemType.GetProperty(_IsSelectedPropName);
+        }
+
+        private void RestoreMultiSelectionIfNeeded()
+        {
+            if (!IsMultiSelect || _listBox?.ItemsSource == null)
+                return;
+
+            var selectedTexts = _textBox.Text
+                .Split(';', (char)StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in _listBox.ItemsSource)
+            {
+                var displayText = GetItemDisplayText(item);
+                bool shouldBeSelected = selectedTexts.Contains(displayText);
+
+                _isSelectedProp?.SetValue(item, shouldBeSelected);
+            }
+        }
+
+        private string GetItemDisplayText(object item)
+        {
+            if (item == null) return string.Empty;
+
+            var text = _displayProp?.GetValue(item)?.ToString();
+            return string.IsNullOrEmpty(text) ? item.ToString() ?? string.Empty : text;
+        }
+
+        private void SubscribeToItemPropertyChangesIfMultiSelect()
+        {
+            if (!IsMultiSelect || _listBox?.ItemsSource == null)
+                return;
+
+            foreach (var item in _listBox.ItemsSource.Cast<object>())
+            {
+                if (item is INotifyPropertyChanged npc)
+                {
+                    npc.PropertyChanged -= OnItemPropertyChanged;
+                    npc.PropertyChanged += OnItemPropertyChanged;
+                }
+            }
+        }
+        private void AttachItemListeners()
+        {
+            if (_listBox?.ItemsSource == null)
+                return;
+
+            foreach (var item in _listBox.ItemsSource)
+            {
+                if (item is INotifyPropertyChanged npc)
+                {
+                    npc.PropertyChanged -= OnItemPropertyChanged;
+                    npc.PropertyChanged += OnItemPropertyChanged;
+                }
+            }
+        }
+
+        private void AttachListenersToItemsSource(IEnumerable items)
+        {
+            if (items == null) return;
+
+            _attachedItemsSource = items;
+
+            foreach (var item in items)
+            {
+                if (item is INotifyPropertyChanged npc)
+                {
+                    npc.PropertyChanged -= OnItemPropertyChanged;
+                    npc.PropertyChanged += OnItemPropertyChanged;
+                }
+            }
+            CacheItemReflectionPropertiesFromEnumerable(items);
+        }
+
+        private void DetachListenersFromItemsSource(IEnumerable items)
+        {
+            if (items == null) return;
+            foreach (var item in items)
+            {
+                if (item is INotifyPropertyChanged npc)
+                {
+                    try { npc.PropertyChanged -= OnItemPropertyChanged; } catch { /* Ignore exceptions during detachment */ }
+                }
+            }
+            _attachedItemsSource = null;
+        }
+
+        private void CacheItemReflectionPropertiesFromEnumerable(IEnumerable items)
+        {
+            var first = items.Cast<object>().FirstOrDefault();
+            if (first == null) return;
+            var itemType = first.GetType();
+            _displayProp = !string.IsNullOrEmpty(DisplayMemberPath) ? itemType.GetProperty(DisplayMemberPath) : null;
+            _isSelectedProp = itemType.GetProperty(_IsSelectedPropName);
+        }
+
+        private void UpdateDisplayedTextFromEnumerable(IEnumerable items)
+        {
+            if (!IsMultiSelect || items == null || _isSelectedProp == null) return;
+
+            var selectedNames = items.Cast<object>()
+                .Where(i => (bool?)_isSelectedProp.GetValue(i) == true)
+                .Select(i => _displayProp?.GetValue(i)?.ToString() ?? i.ToString())
+                .Where(s => !string.IsNullOrEmpty(s))
+                .ToList();
+
+            if (_textBox == null) return;
+
+            try
+            {
+                _isInternalUpdate = true;
+                _textBox.Text = string.Join(";", selectedNames);
+                _textBox.Select(_textBox.Text.Length, 0);
+            }
+            finally
+            {
+                _isInternalUpdate = false;
+            }
+
+            UpdateToolTipText();
+        }
+        private void UpdateDisplayedText()
+        {
+            if (_listBox?.ItemsSource == null || _textBox == null)
+                return;
+
+            var selectedNames = _listBox.ItemsSource
+                .Cast<object>()
+                .Where(i => (bool?)_isSelectedProp?.GetValue(i) == true)
+                .Select(i => _displayProp?.GetValue(i)?.ToString())
+                .Where(s => !string.IsNullOrEmpty(s))
+                .ToList();
+
+            try
+            {
+                _isInternalUpdate = true;
+                _textBox.Text = string.Join(";", selectedNames);
+                _textBox.Select(_textBox.Text.Length, 0);
+            }
+            finally
+            {
+                _isInternalUpdate = false;
+            }
+
+            UpdateToolTipText();
+        }
+        private void OnItemPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (!string.Equals(e.PropertyName, _IsSelectedPropName, StringComparison.Ordinal))
+                return;
+
+            if (_isSelectedProp == null || sender == null)
+                return;
+
+            if (!_isSelectedProp.DeclaringType.IsInstanceOfType(sender))
+                return;
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (!IsMultiSelect || _listBox?.ItemsSource == null)
+                    return;
+
+                UpdateDisplayedText();
+            }, DispatcherPriority.Background);
+
+        }
+
+        private void Popup_Closed(object sender, EventArgs e)
+        {
+            VisualStateManager.GoToState(this, "PopupClosed", true);
+            if (GetTemplateChild("ArrowRotate") is RotateTransform arrowRotate)
+            {
+                arrowRotate.Angle = 0;
+            }
+
+            if (!IsMultiSelect || _listBox?.ItemsSource == null) return;
+
+            var selectedNames = _listBox.ItemsSource
+                .Cast<object>()
+                .Where(i => (bool?)_isSelectedProp?.GetValue(i) == true)
+                .Select(i => _displayProp?.GetValue(i)?.ToString())
+                .Where(s => !string.IsNullOrEmpty(s))
+                .ToList();
+
+            try
+            {
+                _isInternalUpdate = true;
+                _textBox.Text = string.Join(";", selectedNames);
+            }
+            finally { _isInternalUpdate = false; }
+
+            UpdateToolTipText();
+
+            if (IsMultiSelect && _listBox?.ItemsSource != null)
+            {
+                foreach (var item in _listBox.ItemsSource.Cast<object>())
+                {
+                    if (item is INotifyPropertyChanged npc)
+                        npc.PropertyChanged -= OnItemPropertyChanged;
+                }
+            }
+        }
+
+        private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            _lastKey = e.Key;
+
+            if (e.Key is Key.Back or Key.Delete)
+            {
+                e.Handled = false;
+                return;
+            }
+
+            switch (e.Key)
+            {
+                case Key.Enter:
+                    HandleEnterKey(e);
+                    break;
+
+                case Key.Tab:
+                    HandleTabKey();
+                    break;
+
+                case Key.Escape:
+                    HandleEscapeKey();
+                    break;
+
+                case Key.Down:
+                case Key.Up:
+                    HandleArrowKeys(e);
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        private void HandleEnterKey(KeyEventArgs e)
+        {
+            _debounceTimer.Stop();
+            CommitSelectionFromTextOrList();
+            e.Handled = true;
+        }
+
+        private void HandleTabKey()
+        {
+            _debounceTimer.Stop();
+
+            if (string.IsNullOrWhiteSpace(_textBox?.Text))
+            {
+                SelectedItem = null;
+                return;
+            }
+
+            CommitSelectionFromTextOrList();
+        }
+
+        private void HandleEscapeKey()
+        {
+            _debounceTimer.Stop();
+            if (_popup is { IsOpen: true })
+            {
+                _popup.IsOpen = false;
+            }
+        }
+
+        private void HandleArrowKeys(KeyEventArgs e)
+        {
+            if (_popup is not { IsOpen: true } || _listBox == null)
+                return;
+
+            e.Handled = true;
+
+            _listBox.Focus();
+
+            if (_listBox.Items.Count == 0)
+                return;
+
+            if (_listBox.SelectedIndex < 0)
+            {
+                _listBox.SelectedIndex = e.Key == Key.Down ? 0 : _listBox.Items.Count - 1;
+            }
+
+            if (_listBox.ItemContainerGenerator.ContainerFromIndex(_listBox.SelectedIndex) is ListBoxItem item)
+            {
+                item.Focus();
+            }
+        }
+
+        private void OnListBoxPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                CommitSelectionFromList();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape)
+            {
+                _textBox?.Focus();
+                _popup.IsOpen = false;
+                e.Handled = true;
+            }
+        }
+
+        private void OnTextBoxLostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_listBox != null && _listBox.IsKeyboardFocusWithin) return;
+
+            _debounceTimer.Stop();
+            ValidateInputImmediate();
+        }
+
+        private void OnTextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_isInternalUpdate) return;
+
+            if (_textBox == null) return;
+
+            SetCurrentValue(TextProperty, _textBox.Text);
+            UpdateToolTipText();
+
+            var text = _textBox.Text ?? string.Empty;
+            int selStart = _textBox.SelectionStart;
+            int selLen = _textBox.SelectionLength;
+
+            string userInput;
+            if (selLen > 0 && selStart <= text.Length)
+                userInput = text.Substring(0, selStart);
+            else
+                userInput = text;
+
+
+            _pendingUserInput = userInput;
+            _debounceTimer.Stop();
+            _debounceTimer.Interval = TimeSpan.FromMilliseconds(DebounceIntervalMs);
+            _debounceTimer.Start();
+
+            // If the user cleared the text (via Backspace/Delete) we need to immediately
+            // clear multi-select item flags and notify selection change so dependent
+            // controls (e.g., refedit) can update their enabled state without waiting
+            // for lost-focus.
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                try
+                {
+                    var items = _attachedItemsSource ?? ItemsSource ?? (_listBox?.ItemsSource as IEnumerable);
+                    if (IsMultiSelect && items != null)
+                    {
+                        if (_isSelectedProp == null)
+                            CacheItemReflectionPropertiesFromEnumerable(items);
+
+                        foreach (var item in items)
+                        {
+                            if (_isSelectedProp != null)
+                            {
+                                try { _isSelectedProp.SetValue(item, false); } catch { }
+                            }
+                        }
+
+                        try { SelectedItems?.Clear(); } catch { }
+                        SelectedItem = null;
+                        UpdateDisplayedTextFromEnumerable(items);
+                        SelectionCommitted?.Invoke(new List<object>());
+                    }
+                    else if (!IsMultiSelect)
+                    {
+                        SelectedItem = null;
+                        UpdateToolTipText();
+                    }
+                }
+                catch { }
+            }
+        }
+
+        private void DebounceTimer_Tick(object sender, EventArgs e)
+        {
+            _debounceTimer.Stop();
+            ApplyFilterAndSuggest(_pendingUserInput);
+        }
+
+        private void ApplyFilterAndSuggest(string userInput)
+        {
+            if (_view == null || _textBox == null || _listBox == null || _popup == null)
+                return;
+
+            if (string.IsNullOrEmpty(userInput))
+            {
+                _view.Filter = null;
+                _view.Refresh();
+                _listBox.ItemsSource = null;
+                _popup.IsOpen = false;
+                return;
+            }
+
+            _view.Filter = (obj) =>
+            {
+                var txt = GetDisplayText(obj);
+                return txt.StartsWith(userInput, StringComparison.OrdinalIgnoreCase);
+            };
+            _view.Refresh();
+
+            var matches = _view.Cast<object>().ToList();
+
+            if (matches.Count == 0)
+            {
+                _listBox.ItemsSource = null;
+                _popup.IsOpen = false;
+                return;
+            }
+
+            _listBox.ItemsSource = matches;
+            _popup.IsOpen = true;
+
+            if (_lastKey != Key.Back && _lastKey != Key.Delete)
+            {
+                string first = GetDisplayText(matches[0]);
+                if (!string.IsNullOrEmpty(first) && first.Length > userInput.Length)
+                {
+                    int appendSelStart = userInput.Length;
+
+                    try
+                    {
+                        _isInternalUpdate = true;
+                        _textBox.Text = first;
+                        _textBox.Select(appendSelStart, first.Length - appendSelStart);
+                    }
+                    finally
+                    {
+                        _isInternalUpdate = false;
+                    }
+                }
+            }
+        }
+
+        private void CommitSelectionFromList()
+        {
+            if (IsMultiSelect)
+            {
+                if (_listBox == null) return;
+
+                var selectedItems = _listBox.Items
+                    .Cast<object>()
+                    .Where(x =>
+                    {
+                        var prop = x.GetType().GetProperty(_IsSelectedPropName);
+                        return prop != null && prop.GetValue(x) is bool b && b;
+                    })
+                    .ToList();
+
+                SelectedItem = selectedItems;
+
+                var multitxt = string.Join(";",
+                    selectedItems.Select(i => GetDisplayText(i)));
+
+                try
+                {
+                    _isInternalUpdate = true;
+                    _textBox.Text = multitxt;
+                    _textBox.Select(_textBox.Text.Length, 0);
+                }
+                finally { _isInternalUpdate = false; }
+
+                UpdateToolTipText();
+                SelectionCommitted?.Invoke(selectedItems);
+                return;
+            }
+
+            if (_listBox == null || _listBox.SelectedItem == null)
+            {
+                if (_listBox != null && _listBox.Items.Count > 0)
+                    _listBox.SelectedIndex = 0;
+                else
+                    return;
+            }
+
+            var sel = _listBox.SelectedItem;
+            SelectedItem = sel;
+
+            var txt = GetDisplayText(sel ?? SelectedItem ?? string.Empty);
+
+            try
+            {
+                _isInternalUpdate = true;
+                _textBox.Text = txt;
+                _textBox.Select(_textBox.Text.Length, 0);
+            }
+            finally
+            {
+                _isInternalUpdate = false;
+            }
+
+            UpdateToolTipText();
+            _popup.IsOpen = false;
+            SelectionCommitted?.Invoke(sel);
+        }
+
+        private void CommitSelectionFromTextOrList()
+        {
+            if (_listBox != null && (
+                    (!IsMultiSelect && _listBox.SelectedItem != null) ||
+                    IsMultiSelect))
+            {
+                CommitSelectionFromList();
+                return;
+            }
+
+            if (_view != null)
+            {
+                var first = _view.Cast<object>().FirstOrDefault();
+                if (first != null)
+                {
+                    SelectedItem = first;
+                    var txt = GetDisplayText(first);
+                    try
+                    {
+                        _isInternalUpdate = true;
+                        _textBox.Text = txt;
+                        _textBox.Select(_textBox.Text.Length, 0);
+                    }
+                    finally
+                    {
+                        _isInternalUpdate = false;
+                    }
+
+                    UpdateToolTipText();
+                    _popup.IsOpen = false;
+                    SelectionCommitted?.Invoke(first);
+                    return;
+                }
+            }
+
+            var current = _textBox?.Text?.Trim() ?? string.Empty;
+            if (!string.IsNullOrEmpty(current))
+            {
+                InvalidSelection?.Invoke(current);
+                try
+                {
+                    _isInternalUpdate = true;
+                    _textBox.Text = string.Empty;
+                }
+                finally
+                {
+                    _isInternalUpdate = false;
+                }
+
+                UpdateToolTipText();
+            }
+        }
+        private void ValidateInputImmediate()
+        {
+            if (_textBox == null) return;
+
+            string text = _textBox.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(text))
+            {
+                SelectedItem = null;
+                UpdateToolTipText();
+
+                // If the user cleared the textbox manually (Delete/Backspace), ensure multi-select
+                // item flags are cleared as well so dependent refedit controls become enabled.
+                try
+                {
+                    var items = _attachedItemsSource ?? ItemsSource ?? _listBox?.ItemsSource as IEnumerable;
+                    if (IsMultiSelect && items != null)
+                    {
+                        // Ensure we have reflection info
+                        if (_isSelectedProp == null)
+                            CacheItemReflectionPropertiesFromEnumerable(items);
+
+                        foreach (var item in items)
+                        {
+                            if (_isSelectedProp != null)
+                            {
+                                try { _isSelectedProp.SetValue(item, false); } catch { }
+                            }
+                        }
+
+                        // Clear SelectedItems collection if present
+                        try { SelectedItems?.Clear(); } catch { }
+
+                        // Update visual text
+                        UpdateDisplayedTextFromEnumerable(items);
+                    }
+                }
+                catch { }
+
+                return;
+            }
+
+            var match = ItemsSource?.Cast<object>()
+                .FirstOrDefault(x => string.Equals(GetDisplayText(x), text, StringComparison.OrdinalIgnoreCase));
+
+            if (match == null)
+            {
+                SelectedItem = null;
+                try
+                {
+                    _isInternalUpdate = true;
+                    _textBox.Text = string.Empty;
+                }
+                finally
+                {
+                    _isInternalUpdate = false;
+                }
+
+                UpdateToolTipText();
+                InvalidSelection?.Invoke(text);
+            }
+            else
+            {
+                SelectedItem = match;
+                UpdateToolTipText();
+            }
+
+            if (_popup != null)
+            {
+                _popup.IsOpen = false;
+            }
+        }
+
+        private string GetDisplayText(object item)
+        {
+            if (item == null) return string.Empty;
+
+            if (!string.IsNullOrEmpty(DisplayMemberPath))
+            {
+                var prop = item.GetType().GetProperty(DisplayMemberPath);
+                if (prop != null)
+                    return Convert.ToString(prop.GetValue(item)) ?? string.Empty;
+            }
+
+            return item.ToString();
+        }
+        public void SetSelectedItemWithText(object item)
+        {
+            SelectedItem = item;
+            CommitSelectionFromList();
+        }
+    }
+}

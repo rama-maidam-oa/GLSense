@@ -1,0 +1,2428 @@
+﻿using AddinExpress.MSO;
+using ControlzEx.Standard;
+using GLSense.Drilldowns;
+using GLSense.Helpers;
+using GLSense.Models;
+using GLSense.Repositories;
+using GLSense.Utilities;
+using GLSense.Views;
+using Microsoft.Office.Interop.Excel;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SQLite;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Security.Authentication;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Forms;
+using System.Windows.Threading;
+using System.Xml;
+using System.Xml.Linq;
+using Excel = Microsoft.Office.Interop.Excel;
+
+namespace GLSense
+{
+    /// <summary>
+    ///   Add-in Express Add-in Module
+    /// </summary>
+    [GuidAttribute("B9FB44F7-6849-4A00-9197-1F8B0D633172"), ProgId("GLSense.AddinModule")]
+    public partial class AddinModule : AddinExpress.MSO.ADXAddinModule
+    {
+        public static RibbonStateHelper RibbonHelper { get; private set; }
+        private static RibbonStateHelper _ribbonHelper;
+        private bool _isFinalized;
+        public AddinModule()
+        {
+            System.Windows.Forms.Application.EnableVisualStyles();
+            InitializeComponent();
+            // Please add any initialization code to the AddinInitialize event handler
+            this.AddinInitialize += AddinModule_AddinInitialize;
+            this.OnError += AddinModule_OnError;
+            this.OnRibbonLoaded += AddinModule_OnRibbonLoaded;
+            this.AddinFinalize += AddinModule_AddinFinalize;
+
+            adxExcelAppEvents1.WorkbookBeforeSave += AdxExcelAppEvents1_WorkbookBeforeSave;
+        }
+
+        #region Add-in Express automatic code
+
+        // Required by Add-in Express - do not modify
+        // the methods within this region
+
+        public override System.ComponentModel.IContainer GetContainer()
+        {
+            if (components == null)
+                components = new System.ComponentModel.Container();
+            return components;
+        }
+
+        [ComRegisterFunctionAttribute]
+        public static void AddinRegister(Type t)
+        {
+            AddinExpress.MSO.ADXAddinModule.ADXRegister(t);
+        }
+
+        [ComUnregisterFunctionAttribute]
+        public static void AddinUnregister(Type t)
+        {
+            AddinExpress.MSO.ADXAddinModule.ADXUnregister(t);
+        }
+
+        public override void UninstallControls()
+        {
+            base.UninstallControls();
+        }
+
+        #endregion
+
+        public static new AddinModule CurrentInstance
+        {
+            get
+            {
+                return AddinExpress.MSO.ADXAddinModule.CurrentInstance as AddinModule;
+            }
+        }
+
+        public Excel._Application ExcelApp
+        {
+            get
+            {
+                return (HostApplication as Excel._Application);
+            }
+        }
+
+        // Centralized helpers to reduce duplication and improve error handling
+        private static void SafeInvokeWpf(System.Action action)
+        {
+            if (action == null) return;
+            try
+            {
+                WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    try
+                    {
+                        action();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private static void SafeLogException(Exception ex, string context = null)
+        {
+            if (ex == null) return;
+            if (!string.IsNullOrEmpty(context))
+                LogUtility.LogError($"{context}: {ex.Message}");
+            LogUtility.LogException(ex);
+        }
+
+        private void AddinModule_AddinFinalize(object sender, EventArgs e)
+        {
+            if (_isFinalized) return;
+            _isFinalized = true;
+
+            try
+            {
+                adxExcelAppEvents1.WorkbookBeforeSave -= AdxExcelAppEvents1_WorkbookBeforeSave;
+                HideTaskPanes();
+                ReleaseExcelComObjects();
+                ExcelErrorCheckingService.Restore();
+            }
+            catch (Exception ex)
+            {
+                // Use logging and a concise message box
+                LogUtility.LogException(ex);
+                System.Windows.MessageBox.Show($"Error while unloading Excel add-in: {ex.Message}",
+                    "Orbit GLSense", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private static void ReleaseExcelComObjects()
+        {
+            try
+            {
+                ReleaseComObject(AppState.Instance.ExcelApp);
+                ReleaseComObject(AppState.Instance.EdgeAddinInstance);
+
+                AppState.Instance.ExcelApp = null;
+                AppState.Instance.EdgeAddinInstance = null;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private static void ReleaseComObject(object comObj)
+        {
+            try
+            {
+                if (comObj != null && Marshal.IsComObject(comObj))
+                {
+                    Marshal.FinalReleaseComObject(comObj);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private static void AddinModule_OnRibbonLoaded(object sender, IRibbonUI Ribbon)
+        {
+            AppState.Instance.ExcelApp = (Excel.Application)AddinModule.CurrentInstance.HostApplication;
+            LogHelper.InitializeLogger();
+
+            _ribbonHelper = new RibbonStateHelper(AddinModule.CurrentInstance, Ribbon);
+            RibbonHelper = _ribbonHelper; // Expose it globally
+
+            if (!AppState.Instance.IsLoggedIn && !AppState.Instance.IsLoginCompleted)
+            {
+                _ribbonHelper.ApplyState("LoggedOut");
+            }
+            else if (AppState.Instance.IsLoggedIn && !AppState.Instance.IsLoginCompleted)
+            {
+                _ribbonHelper.ApplyState("PartialLoggedIn");
+            }
+            else
+            {
+                _ribbonHelper.ApplyState("LoggedIn");
+            }
+
+            MahAppsBootstrapper.Init(AppState.Instance.GLAccentHex, AppState.Instance.GLTheme);
+            MahAppsBootstrapper.PreloadResources();
+        }
+
+        private static void AddinModule_AddinInitialize(object sender, EventArgs e)
+        {
+            try
+            {
+                // 1. Ensure DB file + tables exist
+                SQLiteHelper.InitializeDatabase();
+                // 2. Wipe old session data (except formulas cache)
+                SQLiteHelper.ResetSessionData();
+                LoadGLFormulasCacheFromDB();
+                //3. Get XLEdge add-in instance
+                GetEdgeAddinObject();
+                ExcelErrorCheckingService.Apply(AppState.Instance.ExcelApp);
+            }
+            catch (Exception ex)
+            {
+                SafeLogException(ex, "Addin initialization failed");
+            }
+        }
+
+        private static void GetEdgeAddinObject()
+        {
+            try
+            {
+                Type edgeType = Type.GetTypeFromProgID("XLEdge.AddinModule");
+                if (edgeType != null)
+                {
+                    object edgeAddin = Activator.CreateInstance(edgeType);
+                    AppState.Instance.EdgeAddinInstance = edgeAddin;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private static void LoadGLFormulasCacheFromDB()
+        {
+            try
+            {
+                var repo = new CacheRepository();
+                repo.LoadGLFormulasCache();
+            }
+            catch (Exception ex)
+            {
+                AppState.Instance.Logger?.Error(ex, "Failed to load GL formulas cache from database");
+                AppState.Instance.CachedFormulas = new Dictionary<string, object>();
+            }
+        }
+
+        private static void AddinModule_OnError(AddinExpress.MSO.ADXErrorEventArgs e)
+        {
+            e.Handled = true;
+            CommonFunctions.GLSenseMessage("Error: " + e.ADXError.ToString(), MessageBoxIcon.Error, MessageBoxButtons.OK);
+        }
+
+        private void AdxExcelAppEvents1_WorkbookBeforeSave(object sender, ADXHostBeforeSaveEventArgs e)
+        {
+            SaveGLFormulasCacheToDB();
+        }
+
+        private static void SaveGLFormulasCacheToDB()
+        {
+            if (AppState.Instance.CachedFormulas == null || AppState.Instance.CachedFormulas.Count == 0) return;
+
+            try
+            {
+                using (var connection = new SQLiteConnection($"Data Source={AppPaths.DatabasePath};"))
+                {
+                    connection.Open();
+                    using var transaction = connection.BeginTransaction();
+                    string sqlUnique = "CREATE UNIQUE INDEX IF NOT EXISTS ux_glformulas_cache_key ON GLFORMULAS_CACHE(key);";
+                    using (var cmd = new SQLiteCommand(sqlUnique, connection, transaction))
+                    {
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    const string sqlUpsert = @"
+                            INSERT INTO GLFORMULAS_CACHE (key, value) 
+                            VALUES (@key, @value)
+                            ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
+
+                    using (var command = new SQLiteCommand(sqlUpsert, connection, transaction))
+                    {
+                        var paramKey = command.Parameters.Add("@key", DbType.String);
+                        var paramValue = command.Parameters.Add("@value", DbType.String);
+
+                        foreach (var kvp in AppState.Instance.CachedFormulas)
+                        {
+                            string valueText = kvp.Value?.ToString() ?? "";
+
+                            paramKey.Value = kvp.Key;
+                            paramValue.Value = valueText;
+
+                            command.ExecuteNonQuery();
+                        }
+                    }
+
+                    transaction.Commit();
+                }
+                LogUtility.LogDebug($"Saved {AppState.Instance.CachedFormulas.Count} GL formulas to cache.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private void adxExcelAppEvents1_SheetActivate(object sender, object hostObj)
+        {
+            if (ExcelApp == null || !AppState.Instance.IsLoginCompleted) return;
+
+            try
+            {
+                _ribbonHelper.ApplyState("ApplySheetActiveState");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private void adxExcelAppEvents1_SheetBeforeDoubleClick(object sender, ADXExcelSheetBeforeEventArgs e)
+        {
+            try
+            {
+                if ((AppState.Instance.ExcelApp?.Hwnd ?? 0) == 0 || !AppState.Instance.IsLoginCompleted)
+                    return;
+
+                var currSheet = (Excel.Worksheet)e.Sheet;
+                var currRange = (Excel.Range)e.Range;
+
+                bool actionTaken = false;
+                DrillDownsStart(currRange, currSheet, ref actionTaken);
+                e.Cancel = actionTaken;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        public static void DrillDownsStart(Excel.Range cellRange, Excel.Worksheet currentSheet, ref bool noAction)
+        {
+            try
+            {
+                if (HasNoBalanceFormula(cellRange))
+                {
+                    RunBalancePrecedentDrilldown(cellRange);
+                    noAction = true;
+                    return;
+                }
+
+                string ddType = ResolveDrilldownType(cellRange, currentSheet);
+                if (string.IsNullOrWhiteSpace(ddType))
+                    return;
+
+                RunDrilldown(cellRange, ddType);
+                noAction = true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                try
+                {
+                    cellRange?.Worksheet?.ClearArrows();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex);
+                }
+            }
+        }
+
+        private static bool HasNoBalanceFormula(Excel.Range cellRange)
+        {
+            if (!(cellRange?.HasFormula is bool hf) || !hf)
+                return false;
+
+            string formulaString = cellRange.Formula?.ToString() ?? string.Empty;
+            return formulaString.IndexOf("GLSense_GetBalance", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static bool HasBalanceFormula(Excel.Range cellRange)
+        {
+            if (!(cellRange?.HasFormula is bool hf) || !hf)
+                return false;
+
+            string formulaString = cellRange.Formula?.ToString() ?? string.Empty;
+            return formulaString.IndexOf("GLSense_GetBalance", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static void RunBalancePrecedentDrilldown(Excel.Range cellRange)
+        {
+            try
+            {
+                string external = ExcelExternalRef.BuildExternalAddress(cellRange);
+                var runProcess = new DrilldownXlPrecedents(AppState.Instance.ExcelApp, external);
+                _ = runProcess.ProcessEPDrilldown();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private static string ResolveDrilldownType(Excel.Range cellRange, Excel.Worksheet currentSheet)
+        {
+            if (HasBalanceFormula(cellRange))
+                return "BL";
+
+            string a1Text = GetA1Text(currentSheet);
+            if (string.IsNullOrWhiteSpace(a1Text))
+                return string.Empty;
+
+            string sheetName = currentSheet.Name;
+
+            if (IsBalancesDrilldown(a1Text, sheetName))
+                return "JL";
+
+            if (IsJournalsDrilldown(a1Text, sheetName))
+                return "SL";
+
+            return string.Empty;
+        }
+
+        private static string GetA1Text(Excel.Worksheet currentSheet)
+        {
+            var a1Val = currentSheet?.Range["A1"]?.Value2;
+            return a1Val?.ToString().Trim().ToUpperInvariant() ?? string.Empty;
+        }
+
+        private static bool IsBalancesDrilldown(string a1Text, string sheetName)
+        {
+            if (a1Text.Equals("BALANCES DRILLDOWN", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return sheetName.IndexOf("_BL_", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                   sheetName.IndexOf("_JL_", StringComparison.OrdinalIgnoreCase) < 0 &&
+                   sheetName.IndexOf("_SL_", StringComparison.OrdinalIgnoreCase) < 0 &&
+                   sheetName.IndexOf("_CM_", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsJournalsDrilldown(string a1Text, string sheetName)
+        {
+            if (a1Text.Equals("JOURNALS DRILLDOWN", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return sheetName.IndexOf("_BL_", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                   sheetName.IndexOf("_JL_", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                   sheetName.IndexOf("_SL_", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static void RunDrilldown(Excel.Range cellRange, string ddType)
+        {
+            try
+            {
+                string external = ExcelExternalRef.BuildExternalAddress(cellRange);
+
+                switch (ddType)
+                {
+                    case "BL":
+                        {
+                            var runProcess = new DrilldownBl(AppState.Instance.ExcelApp, external, "BL");
+                            _ = runProcess.ProcessBLDrilldown();
+                            break;
+                        }
+
+                    case "JL":
+                        {
+                            var runProcess = new DrilldownJl(AppState.Instance.ExcelApp, external);
+                            _ = runProcess.ProcessJLDrilldown();
+                            break;
+                        }
+
+                    case "SL":
+                        {
+                            var runProcess = new DrilldownSl(AppState.Instance.ExcelApp, external);
+                            _ = runProcess.ProcessSLDrilldown();
+                            break;
+                        }
+
+                    default:
+                        // Unknown type: optionally log or ignore
+                        LogUtility.LogDebug($"Unknown drilldown type requested: {ddType}");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private async void adxExcelAppEvents1_SheetFollowHyperlink(object sender, object sheet, object hyperlink)
+        {
+            if (!GuardLoginAndExcel())
+                return;
+
+            using var ctsHelper = new CancellationHelper();
+            CancellationToken token = ctsHelper.GetToken();
+
+            CommonMethods.DisableExcelSettings();
+
+            try
+            {
+                var sht = sheet as Worksheet;
+                if (sht?.ListObjects.Count == 0 || !sht.ListObjects[1].Name.StartsWith("ORB_DD_"))
+                {
+                    return;
+                }
+
+                var hyprLink = hyperlink as Hyperlink;
+                var hyperlinkRange = hyprLink?.Parent as Excel.Range;
+
+                if (!string.IsNullOrEmpty(hyprLink?.ScreenTip) &&
+                      hyprLink.ScreenTip.IndexOf("CUSTOM DRILLDOWN", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    var tableObj = sht.ListObjects[1];
+                    Range rng = sht.Range[hyprLink.SubAddress];
+                    string headerLabel = string.Empty;
+
+                    token.ThrowIfCancellationRequested();
+
+                    try
+                    {
+                        Range rngNew = sht.Cells[5, rng.Column] as Range;
+                        object cellValue = rngNew.Value2;
+                        if (cellValue != null)
+                        {
+                            headerLabel = cellValue.ToString() ?? "";
+                            if (!string.IsNullOrWhiteSpace(headerLabel))
+                            {
+                                await GLSenseCustomDrillDown(tableObj, rng, headerLabel);
+                            }
+                            else
+                            {
+                                LogUtility.LogWarn("Exiting the hyperlink sub since the label header is null or empty");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "Unable to get the header label.");
+                    }
+                }
+                else if (hyperlinkRange != null)
+                {
+                    long n = (long)Math.Truncate(Convert.ToDouble(hyperlinkRange.Value2, CultureInfo.InvariantCulture));
+
+                    var jsonObj = new JournalAttachments
+                    {
+                        cubeId = AppState.Instance.SelectedCube.CubeId,
+                        journalHeaderId = n
+                    };
+
+                    token.ThrowIfCancellationRequested();
+
+                    string apiUrl = AppState.Instance.LoginUrl + "/rest/secure/finance/journal-attachment-files";
+                    string httpPostText = JsonSerializer.Serialize(jsonObj, JsonGlobals.Options);
+
+                    string responseData = await ApiHelper.ServerAPI(apiUrl, "JSON", httpPostText, "POST", token);
+
+                    token.ThrowIfCancellationRequested();
+
+                    if (string.IsNullOrWhiteSpace(responseData))
+                    {
+                        CommonFunctions.GLSenseMessage("Empty response from server.", MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var result = ApiResponseHelper.Parse<List<JournalAttachmentRecord>>(responseData, JsonGlobals.Options);
+                    if (!result.IsSuccess)
+                    {
+                        CommonFunctions.GLSenseMessage(result.ErrorMessage, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var records = result.Value;
+                    if (records == null || records.Count == 0)
+                    {
+                        CommonFunctions.GLSenseMessage("No attachment records found.", MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    AppState.Instance.AttachIDs = string.Empty;
+                    AppState.Instance.JournalDictionary.Clear();
+
+                    foreach (var record in records)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        if (string.IsNullOrWhiteSpace(record.FILE_ID))
+                            continue;
+
+                        if (!AppState.Instance.JournalDictionary.ContainsKey(record.FILE_ID))
+                        {
+                            AppState.Instance.JournalDictionary.Add(record.FILE_ID, record.FILE_NAME ?? string.Empty);
+                        }
+                    }
+
+                    if (AppState.Instance.JournalDictionary.Count > 0)
+                    {
+                        SafeInvokeWpf(() =>
+                        {
+                            var win = new AttachmentsDialog();
+                            win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                        });
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(AppState.Instance.AttachIDs))
+                    {
+                        var jrAttachIDs = AppState.Instance.AttachIDs
+                            .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                            .Select(id => id.Trim())
+                            .Where(id => long.TryParse(id, out _))
+                            .Select(long.Parse)
+                            .ToList();
+
+                        if (jrAttachIDs.Count == 0)
+                            return;
+
+                        var downloadRequest = new JrnalAttachRequest
+                        {
+                            cubeId = AppState.Instance.SelectedCube.CubeId,
+                            fileIds = jrAttachIDs.ToArray()
+                        };
+
+                        string downloadUrl = $"{AppState.Instance.LoginUrl}/rest/secure/finance/journal-attachments";
+                        string downloadPayload = JsonSerializer.Serialize(downloadRequest, JsonGlobals.Options);
+
+                        await GLSense_DownloadFile(downloadUrl, downloadPayload, token);
+                        token.ThrowIfCancellationRequested();
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogInfo("Sheet Follow Hyperlink operation was canceled by the user.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                CommonMethods.EnableExcelSettings();
+            }
+        }
+
+        private static string ExtractDrilldownSheet_XPath(string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml)) return null;
+
+            var doc = new XmlDocument { XmlResolver = null };
+
+            try
+            {
+                doc.LoadXml(xml);
+            }
+            catch
+            {
+                return null;
+            }
+
+            try
+            {
+                var nav = doc.CreateNavigator();
+                var node = nav.SelectSingleNode("//DRILLDOWNSHEET/text()[1]");
+                var value = node?.Value?.Trim();
+                return string.IsNullOrEmpty(value) ? null : value;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return null;
+            }
+        }
+
+        private async Task GLSenseCustomDrillDown(ListObject tableObj, Range rng, string headerLabel)
+        {
+            GLWaitWindow win = null;
+            using var ctsHelper = new CancellationHelper();
+            CancellationToken token = ctsHelper.GetToken();
+
+            try
+            {
+                win = CreateAndShowWaitWindow(ctsHelper);
+                await InitializeWaitWindowAsync(win, "Custom Drilldown", "GLSense custom drilldown...");
+                LogUtility.LogDebug("Custom Drilldown Process Started.");
+
+                Workbook wb = AppState.Instance.ExcelApp.ActiveWorkbook;
+                string xmlString = string.Empty;
+
+                token.ThrowIfCancellationRequested();
+
+                try
+                {
+                    if (wb != null && wb.CustomXMLParts?.Count > 0)
+                    {
+                        Excel.Worksheet ws = AppState.Instance.ExcelApp.ActiveSheet as Excel.Worksheet;
+                        var cxps = wb.CustomXMLParts;
+                        string sheetNameEncoded = System.Net.WebUtility.HtmlEncode(ws.Name);
+
+                        token.ThrowIfCancellationRequested();
+
+                        for (int i = cxps.Count; i >= 1; i--)
+                        {
+                            string xml = cxps[i].XML;
+                            if (!string.IsNullOrEmpty(xml) && xml.Contains("DRILLDOWNSHEET"))
+                            {
+                                string shtNameInXml = System.Net.WebUtility.HtmlEncode(ExtractDrilldownSheet_XPath(xml));
+                                if (string.IsNullOrEmpty(shtNameInXml) || !shtNameInXml.Equals(sheetNameEncoded, StringComparison.OrdinalIgnoreCase))
+                                    continue;
+                                xmlString = System.Net.WebUtility.HtmlDecode(xml);
+                                LogUtility.LogDebug($"Found XML in internal memory location: {xmlString}");
+                                break;
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(xmlString))
+                        {
+                            XDocument doc = XDocument.Parse(xmlString);
+                            XElement columnNameElement = doc.Descendants("COLUMNNAME")
+                                .FirstOrDefault(x => x.Attribute("Name")?.Value == headerLabel);
+
+                            if (columnNameElement != null)
+                            {
+                                token.ThrowIfCancellationRequested();
+
+                                string jsonData = columnNameElement.Value.Trim();
+                                LogUtility.LogDebug($"JSON to Parse: {jsonData}");
+
+                                JsonNode jsonObject = JsonNode.Parse(jsonData);
+                                JsonArray parameters = jsonObject["parameters"].AsArray();
+
+                                foreach (JsonObject param in parameters.Cast<JsonObject>())
+                                {
+                                    token.ThrowIfCancellationRequested();
+
+                                    string paramType = param["type"]?.GetValue<string>();
+
+                                    if (paramType == "COLUMN")
+                                    {
+                                        string colName = param[AppConstants.value]?.GetValue<string>();
+                                        int colNumber = 0;
+
+                                        try
+                                        {
+                                            foreach (Range hdrRange in tableObj.HeaderRowRange)
+                                            {
+                                                token.ThrowIfCancellationRequested();
+                                                object offsetValue = hdrRange.Offset[-1, 0].Value;
+                                                if (offsetValue != null && offsetValue.ToString().Trim() == colName?.Trim())
+                                                {
+                                                    colNumber = hdrRange.Column;
+                                                    break;
+                                                }
+                                            }
+
+                                            if (colNumber > 0)
+                                            {
+                                                Excel.Range rng1 = ws.Cells[rng.Row, colNumber] as Excel.Range;
+                                                object cellValue = rng1.Value2;
+                                                string val = cellValue?.ToString() ?? "";
+                                                param[AppConstants.value] = val;
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            LogUtility.LogException(ex);
+                                        }
+                                    }
+
+                                    param.Remove("id");
+                                }
+
+                                string updatedJsonString = JsonSerializer.Serialize(jsonObject, JsonGlobals.Options);
+
+                                LogUtility.LogDebug($"Request Sent to Server with JSON Body: {updatedJsonString}");
+
+                                string url = $"{AppState.Instance.LoginUrl}/rest/secure/finance/custom-drilldown?cubeId={AppState.Instance.SelectedCube.CubeId}";
+
+                                string responseString = await ApiHelper.ServerAPI(url, "JSON", updatedJsonString, "POST", token);
+
+                                token.ThrowIfCancellationRequested();
+
+                                LogUtility.LogDebug($"Response Received: {responseString}");
+
+                                var result = ApiResponseHelper.Parse<JsonElement>(responseString, JsonGlobals.Options);
+
+                                if (!result.IsSuccess)
+                                {
+                                    string errorMsg = responseString?.Contains("A task was canceled.") == true
+                                        ? "Task has been canceled."
+                                        : result.ErrorMessage;
+
+                                    await ShowErrorMessageAsync(win, errorMsg);
+                                    return;
+                                }
+
+                                string obj1 = $"{ws.Name}_CM_{rng.Address[false, false, XlReferenceStyle.xlA1]}";
+                                string obj2 = rng.Address[true, true, XlReferenceStyle.xlA1, true];
+                                string obj3 = DateTime.Now.ToString("dd-MMM-yyyy hh:mm:ss tt");
+                                string obj4 = "CM";
+                                string obj5 = MergeJsonAndGenerateString(jsonData, updatedJsonString);
+                                string finalData = $"{obj1}*{obj2}*{obj3}*{obj4}*{obj5}";
+
+                                var dataToSheet = new DDDatatoWorksheet(AppState.Instance.ExcelApp, responseString, "CM", finalData, token, win);
+                                await dataToSheet.DD_DatetoWorksheet();
+
+                                token.ThrowIfCancellationRequested();
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogInfo("Custom Drilldown operation was canceled by the user.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                await SafelyCloseWaitWindowAsync(win);
+            }
+        }
+
+        private static string MergeJsonAndGenerateString(string jsonNames, string jsonValues)
+        {
+            JsonNode namesNode = JsonNode.Parse(jsonNames);
+            JsonNode valuesNode = JsonNode.Parse(jsonValues);
+
+            string identifierName = namesNode["identifierName"]?.GetValue<string>();
+
+            var paramMap = new Dictionary<string, string>();
+            foreach (JsonObject param in namesNode["parameters"].AsArray().Cast<JsonObject>())
+            {
+                string name = param["name"]?.GetValue<string>();
+                string value = param[AppConstants.value]?.GetValue<string>();
+                if (name != null)
+                    paramMap[name] = value;
+            }
+
+            var result = new StringBuilder();
+            result.Append($"Report Name:= {identifierName}");
+
+            foreach (JsonObject param in valuesNode["parameters"].AsArray().Cast<JsonObject>())
+            {
+                string paramName = param["name"]?.GetValue<string>();
+                string paramValue = param[AppConstants.value]?.GetValue<string>();
+                string paramType = param["type"]?.GetValue<string>();
+
+                if (paramMap.TryGetValue(paramName, out string mappedName))
+                {
+                    if (paramType == "CONSTANT")
+                        result.Append($", Constant:= {paramValue}");
+                    else
+                        result.Append($", {mappedName}:= {paramValue}");
+                }
+            }
+
+            return result.ToString();
+        }
+
+        private async Task GLSense_DownloadFile(string strURL, string postData, CancellationToken token)
+        {
+            try
+            {
+                LogUtility.LogDebug($"Downloading file from {strURL}");
+
+                token.ThrowIfCancellationRequested();
+
+                var handler = new HttpClientHandler
+                {
+                    SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate
+                };
+
+                token.ThrowIfCancellationRequested();
+
+                using var client = new HttpClient(handler);
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
+                client.Timeout = Timeout.InfiniteTimeSpan;
+
+                HttpContent content = string.IsNullOrWhiteSpace(postData) ? null : new StringContent(postData, Encoding.UTF8, "application/json");
+
+                HttpResponseMessage response = await client.PostAsync(strURL, content, token);
+
+                token.ThrowIfCancellationRequested();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    string fileName = response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "DownloadedFile.zip";
+
+                    string downloadPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", fileName);
+
+                    using var fileStream = new FileStream(downloadPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                    await response.Content.CopyToAsync(fileStream);
+
+                    CommonFunctions.GLSenseMessage($"Attachment saved to downloads folder as \"{fileName}\"", MessageBoxIcon.Information);
+                }
+                else
+                {
+                    LogUtility.LogError($"Download failed: {response.StatusCode} - {response.ReasonPhrase}");
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+        private void adxExcelAppEvents1_SheetChange(object sender, object sheet, object range)
+        {
+            if (!GuardLoginAndExcel())
+            {
+                return;
+            }
+
+            try
+            {
+                if (range is not Excel.Range rng) return;
+
+                var hasFormula = (rng.HasFormula is bool hf) && hf;
+                string formula = rng.Formula as string ?? string.Empty;
+
+                if (hasFormula && formula.IndexOf("GLSense_GetBalance", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    _ribbonHelper.ApplyState("LoggedIn");
+                }
+
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+        private void adxExcelAppEvents1_SheetSelectionChange(object sender, object sheet, object range)
+        {
+            try
+            {
+                if (!AppState.Instance.IsLoginCompleted) return;
+                if (range is not Excel.Range rng) return;
+                if (rng.Rows.Count != 1 || rng.Columns.Count != 1) return;
+
+                var hasFormula = (rng.HasFormula is bool hf) && hf;
+                string formula = rng.Formula as string ?? string.Empty;
+
+                if (hasFormula && formula.IndexOf("GLSense_GetBalance", StringComparison.OrdinalIgnoreCase) >= 0 && CommonFunctions.GetBalancesCountInCells(formula) == 1)
+                {
+                    AppState.Instance.BalancePane = GetPaneInstance();
+
+                    if (AppState.Instance.BalancePane != null && AppState.Instance.BalancePane.Visible)
+                    {
+                        _ = AppState.Instance.BalancePane.RelaunchPane();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        public GLConfiguratorPane GetPaneInstance()
+        {
+            try
+            {
+                return (GLConfiguratorPane)adxExcelTaskPanesCollectionItem1.TaskPaneInstance;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return null;
+            }
+        }
+
+        private void adxExcelAppEvents1_WorkbookActivate(object sender, object hostObj)
+        {
+            if (AppState.Instance.ExcelApp == null || !AppState.Instance.IsLoginCompleted || RibLogin.Visible) return;
+
+            try
+            {
+                _ribbonHelper.ApplyState("LoggedIn");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private void RibHelp_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            try
+            {
+                if (!AppState.Instance.IsLoginCompleted)
+                {
+                    CommonFunctions.GLSenseMessage("Please log in to the instance.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                    return;
+                }
+
+                if (!string.IsNullOrEmpty(AppState.Instance.LoginToken))
+                {
+                    string helpUrl = AppState.Instance.LoginUrl + "/web/public/redirect-help/Excel_GLSense.htm?jwtParam=" + AppState.Instance.LoginToken;
+                    LogUtility.LogDebug(helpUrl);
+                    Process.Start(helpUrl);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private void RibAbout_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLAbout();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibVersionCheck_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            AppState.Instance.VersionCheck = pressed;
+        }
+
+        private void RibDebug_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            AppState.Instance.DebugLogs = pressed;
+        }
+
+        private void RibUserConfig_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLUserConfig();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void Riburl_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLServerConfiguration();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibDailyRate_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLDailyRates();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void LaunchPeriodDetails(string FuncName)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLGetPeriodDetails(FuncName);
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void LaunchPeriodStarEnd(string FuncName)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLGetPeriodStartEnd(FuncName);
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibPeriodEnd_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchPeriodStarEnd("END");
+        private void RibPeriodStart_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchPeriodStarEnd("START");
+        private void RibPeriodYear_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchPeriodDetails("YEAR");
+        private void RibPeriodQtr_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchPeriodDetails("QTR");
+        private void RibPeriodNum_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchPeriodDetails("NUM");
+
+        private void RibPeriodbyYear_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLGetPeriodByYear();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibPeriodbyDate_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLGetPeriodByDate();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibPeriod_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLGetPeriod();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void LaunchSegmentWindow(string FuncName)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLSegmentFunctions(FuncName);
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibSegmentEnabledFlag_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchSegmentWindow("ENABLEDFLAG");
+        private void RibSummaryFlag_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchSegmentWindow("SUMMARYFLAG");
+        private void RibSegment_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchSegmentWindow("DESCRIPTION");
+        private void RibNextSegment_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchSegmentWindow("NEXTSEGMENT");
+        private void RibPreviousSegment_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchSegmentWindow("PREVIOUSSEGMENT");
+        private void RibSegmentDFF_OnClick(object sender, IRibbonControl control, bool pressed) => LaunchSegmentWindow("DFF");
+
+        private void RibDrillJobs_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLJobsMonitor();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibDDConfiguration_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLDrilldownCustomization();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private static async Task RunBalanceDrilldownAsync(string ddType)
+        {
+            try
+            {
+                Excel.Range rng = (Excel.Range)AppState.Instance.ExcelApp.Selection;
+                string external = ExcelExternalRef.BuildExternalAddress(rng);
+                var runProcess = new DrilldownBl(AppState.Instance.ExcelApp, external, ddType);
+                await runProcess.ProcessBLDrilldown();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private async void RibBalanceDD_OnClick(object sender, IRibbonControl control, bool pressed) => await RunBalanceDrilldownAsync("BL");
+        private async void RibBalanceJournalDD_OnClick(object sender, IRibbonControl control, bool pressed) => await RunBalanceDrilldownAsync("BL_JL");
+        private async void RibBalanceSubLedgerDD_OnClick(object sender, IRibbonControl control, bool pressed) => await RunBalanceDrilldownAsync("BL_SL");
+        private async void RibTotaDD_OnClick(object sender, IRibbonControl control, bool pressed) => await RunBalanceDrilldownAsync("UF");
+
+        private async void RibJournalDD_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            try
+            {
+                Excel.Range rng = (Excel.Range)AppState.Instance.ExcelApp.Selection;
+                string external = ExcelExternalRef.BuildExternalAddress(rng);
+
+                var runProcess = new DrilldownJl(AppState.Instance.ExcelApp, external);
+                await runProcess.ProcessJLDrilldown();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private async void RibSubledgerDD_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            try
+            {
+                Excel.Range rng = (Excel.Range)AppState.Instance.ExcelApp.Selection;
+                string external = ExcelExternalRef.BuildExternalAddress(rng);
+
+                var runProcess = new DrilldownSl(AppState.Instance.ExcelApp, external);
+                await runProcess.ProcessSLDrilldown();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private async void RibCellHighlight_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            await DrillCellHighlighter.RibCellHighlight_OnClick();
+        }
+
+        private void RibRefreshAll_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            _ = BalanceRefresh.RefreshingBalancesAsync("Refresh", "Sheet");
+        }
+
+        private void RibRefreshBook_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            _ = BalanceRefresh.RefreshingBalancesAsync("Refresh", "Book");
+        }
+
+        private void RibSnapSubmit_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            AppState.Instance.SnapshotJob = RibSnapSubmit.Pressed;
+        }
+
+        private void RibSnapShot_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            if (!AppState.Instance.SnapshotJob)
+            {
+                if (RibSnapWorksheet.Pressed)
+                {
+                    _ = BalanceRefresh.RefreshingBalancesAsync("Snapshot", "Sheet");
+                }
+                else if (RibSnapWorkbook.Pressed)
+                {
+                    _ = BalanceRefresh.RefreshingBalancesAsync("Snapshot", "Book");
+                }
+            }
+            else
+            {
+                string mode = RibSnapWorksheet.Pressed ? "Sheet" : "Book";
+                _ = BalanceRefresh.SubmitSnapAsync(mode);
+            }
+        }
+
+        private async void RibHighlight_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            if (!GuardLoginAndExcel())
+                return;
+
+            Excel.Range adaptiveBalanceRange = null;
+            CommonMethods.DisableExcelSettings();
+            GLWaitWindow win = null;
+            using var ctsHelper = new CancellationHelper();
+            CancellationToken token = ctsHelper.GetToken();
+
+            try
+            {
+                Excel.Worksheet wrkSheet = AppState.Instance.ExcelApp.ActiveSheet as Excel.Worksheet;
+
+                LogUtility.LogDebug("Selecting balance cells whose values are from adaptive memory.");
+                LogUtility.LogDebug($"Worksheet Name : {wrkSheet?.Name}");
+
+                bool balancesExists = CommonFunctions.BalanceFormulaExists(wrkSheet?.Name);
+
+                if (!balancesExists)
+                {
+                    CommonFunctions.GLSenseMessage("No balance formulas exists in the current worksheet.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                    return;
+                }
+
+                System.Data.DataTable dt = AppState.Instance.CalculatedBalances;
+
+                if (dt == null || !dt.Columns.Contains("cache") || dt.Rows.Count == 0)
+                {
+                    LogUtility.LogDebug("No calculated values or 'cache' column found in balance refresh memory, or no rows present.");
+                    CommonFunctions.GLSenseMessage("Worksheet has to be refreshed first.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                    return;
+                }
+
+                win = CreateAndShowWaitWindow(ctsHelper);
+                await InitializeWaitWindowAsync(win, "Highlighting Adaptive Memory", "Searching adaptive memory cells...");
+
+                string sheetNameEscaped = wrkSheet.Name.Replace("'", "''");
+                string dataTableFilter = $"[excelSheet]='{sheetNameEscaped}' AND [cache] = True";
+
+                token.ThrowIfCancellationRequested();
+
+                DataRow[] sheetRows = dt.Select(dataTableFilter);
+
+                if (sheetRows == null || sheetRows.Length == 0)
+                {
+                    await ShowErrorMessageAsync(win, "No balances from adaptive memory");
+                    return;
+                }
+
+                var sortedRows = sheetRows
+                    .OrderBy(r => GetColumnNumber(wrkSheet.Name, r["excelCell"]?.ToString() ?? string.Empty))
+                    .ThenBy(r => GetRowNumber(wrkSheet.Name, r["excelCell"]?.ToString() ?? string.Empty))
+                    .ToArray();
+
+                foreach (DataRow dtRow in sortedRows)
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    try
+                    {
+                        string cellAddress = dtRow["excelCell"]?.ToString();
+                        if (string.IsNullOrWhiteSpace(cellAddress))
+                            continue;
+
+                        Excel.Range cellRange = wrkSheet.Range[cellAddress];
+
+                        adaptiveBalanceRange = adaptiveBalanceRange != null
+                            ? AppState.Instance.ExcelApp.Union(adaptiveBalanceRange, cellRange)
+                            : cellRange;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex);
+                    }
+                }
+
+                if (adaptiveBalanceRange == null)
+                {
+                    await ShowErrorMessageAsync(win, "No balances from adaptive memory");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Highlight Adaptive Memory operation was canceled by the user.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                await SafelyCloseWaitWindowAsync(win);
+
+                if (adaptiveBalanceRange != null)
+                {
+                    LogUtility.LogDebug($"Balance cells found with adaptive memory : {adaptiveBalanceRange?.Address}");
+                    try
+                    {
+                        AppState.Instance.ExcelApp.ActiveWorkbook?.Activate();
+                        Excel.Worksheet ws = AppState.Instance.ExcelApp.ActiveSheet as Excel.Worksheet;
+                        ws?.Activate();
+
+                        adaptiveBalanceRange.Select();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex);
+                    }
+                }
+                CommonMethods.EnableExcelSettings();
+            }
+        }
+
+        private static int GetRowNumber(string sheetName, string cellAddress)
+        {
+            try
+            {
+                Excel.Worksheet ws = AppState.Instance.ExcelApp.ActiveWorkbook.Worksheets[sheetName] as Excel.Worksheet;
+                Excel.Range rng = ws.Range[cellAddress];
+                return rng.Row;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return int.MaxValue;
+            }
+        }
+
+        private static int GetColumnNumber(string sheetName, string cellAddress)
+        {
+            try
+            {
+                Excel.Worksheet ws = AppState.Instance.ExcelApp.ActiveWorkbook.Worksheets[sheetName] as Excel.Worksheet;
+                Excel.Range rng = ws.Range[cellAddress];
+                return rng.Column;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return int.MaxValue;
+            }
+        }
+
+        private static async Task ResetBalances(string ResetType)
+        {
+            GLWaitWindow win = null;
+            using var ctsHelper = new CancellationHelper();
+            CancellationToken token = ctsHelper.GetToken();
+
+            try
+            {
+                AppState.Instance.ResetFormulas = true;
+                CommonMethods.DisableExcelSettings();
+
+                win = CreateAndShowWaitWindow(ctsHelper);
+                await InitializeWaitWindowAsync(win, "Reset Balance Formulas", "Resetting balances...");
+
+                await MessageWaitWindowAsync(win, "Checking if there are any broken links in the workbook.");
+                string brokenLinks = CommonFunctions.WorkbbookBrokenLinks();
+                if (!string.IsNullOrWhiteSpace(brokenLinks))
+                {
+                    var linksText = brokenLinks.Any() ? $"\"{string.Join("\", \"", brokenLinks)}\"" : "unknown links";
+                    await ShowErrorMessageAsync(win, $"The workbook has broken links: {Environment.NewLine}{linksText}{Environment.NewLine}.Please fix them.");
+                    return;
+                }
+
+                Excel.Worksheet wrksheet = AppState.Instance.ExcelApp.ActiveSheet as Excel.Worksheet;
+                if (ResetType == "Sheet")
+                {
+                    if (wrksheet != null)
+                    {
+                        BalancesReset(wrksheet.Name);
+                        token.ThrowIfCancellationRequested();
+                    }
+                }
+                else
+                {
+                    foreach (Excel.Worksheet sht in AppState.Instance.ExcelApp.ActiveWorkbook.Worksheets)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        sht.Activate();
+                        BalancesReset(sht.Name);
+                    }
+
+                    wrksheet?.Activate();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Reset Balances operation was canceled by the user.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                CommonMethods.EnableExcelSettings();
+                AppState.Instance.ResetFormulas = false;
+                await SafelyCloseWaitWindowAsync(win);
+            }
+        }
+
+        private static void BalancesReset(string shtname)
+        {
+            Excel.Worksheet ws = AppState.Instance.ExcelApp.ActiveWorkbook.Worksheets[shtname] as Excel.Worksheet;
+            try
+            {
+                ws.Cells.Replace(
+                    What: "=",
+                    Replacement: "=",
+                    LookAt: Excel.XlLookAt.xlPart,
+                    SearchOrder: Excel.XlSearchOrder.xlByRows,
+                    MatchCase: false,
+                    SearchFormat: false,
+                    ReplaceFormat: false);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"Exception encountered by resetting balances in worksheet \"{shtname}\"");
+            }
+        }
+
+        private void RibClearSheet_OnClick(object sender, IRibbonControl control, bool pressed) => _ = ResetBalances("Sheet");
+        private void RibClear_OnClick(object sender, IRibbonControl control, bool pressed) => _ = ResetBalances("Book");
+        private void RibSegProperty_OnClick(object sender, IRibbonControl control, bool pressed) => _ = SegmentDiscoverer.SegmentAction("Property");
+        private void RibExpandAll_OnClick(object sender, IRibbonControl control, bool pressed) => _ = SegmentDiscoverer.SegmentAction("HierarchyAll");
+        private void RibbonExpand1Level_OnClick(object sender, IRibbonControl control, bool pressed) => _ = SegmentDiscoverer.SegmentAction("Hierarchy1Level");
+        private void RibExpodeAll_OnClick(object sender, IRibbonControl control, bool pressed) => _ = SegmentDiscoverer.SegmentAction("ExplodeAll");
+        private void RibbonExplode1Level_OnClick(object sender, IRibbonControl control, bool pressed) => _ = SegmentDiscoverer.SegmentAction("Explode1Level");
+        private void RibDiscoverPeriod_OnClick(object sender, IRibbonControl control, bool pressed) => _ = PeriodsDiscoverer.FillPeriods();
+
+        private void RigSegDiscover_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLSegmentDiscovery();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibSegS_OnChange(object sender, IRibbonControl Control, string text)
+        {
+            AppState.Instance.DefaultSegment = string.Empty;
+            AppState.Instance.SegmentPickedIndex = -1;
+
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            var item = RibSegS.Items.Cast<AddinExpress.MSO.ADXRibbonItem>()
+                            .Select((itm, index) => new { Item = itm, Index = index })
+                            .FirstOrDefault(x => x.Item.Caption == text);
+
+            if (item != null)
+            {
+                AppState.Instance.DefaultSegment = text;
+                AppState.Instance.SegmentPickedIndex = item.Index;
+            }
+        }
+
+        private void RibLiveCalc_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            AppState.Instance.SingleRefresh = RibLiveCalc.Pressed;
+        }
+
+        private void RibFSG_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            try
+            {
+                AppState.Instance.BalancePane = GetPaneInstance();
+
+                GLConfiguratorPane blpane = AppState.Instance.BalancePane;
+
+                if (blpane != null)
+                {
+                    blpane.Visible = !blpane.Visible;
+                    if (blpane.Visible)
+                    {
+                        _ = blpane.RelaunchPane();
+                    }
+                }
+                else
+                {
+                    adxExcelTaskPanesCollectionItem1.Position = AddinExpress.XL.ADXExcelTaskPanePosition.Right;
+                    blpane = (GLConfiguratorPane)adxExcelTaskPanesCollectionItem1.CreateTaskPaneInstance();
+                    if (blpane != null)
+                    {
+                        blpane.Show();
+                        blpane.Visible = true;
+                    }
+                    AppState.Instance.BalancePane = blpane;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private void RibLOVs_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLLOVs();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibRollerGroup_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLRollerGroups();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibAccount_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLSegmentValues();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        // Extracted validation methods
+        private static bool ValidatePreconditions()
+        {
+            if (!AppState.Instance.IsLoginCompleted || AppState.Instance.SelectedCube == null)
+            {
+                CommonFunctions.GLSenseMessage("Please log in first.", MessageBoxIcon.Exclamation);
+                return false;
+            }
+            return true;
+        }
+
+        private bool ValidateLedgerChange(string text, out LedgerRecord ledger, out bool shouldContinue, out bool sheetClear)
+        {
+            ledger = AppState.Instance.SelectedCube.Ledgers.FirstOrDefault(l => l.LedgerName == text);
+            if (ledger == null)
+            {
+                CommonFunctions.GLSenseMessage("Ledger not found.", MessageBoxIcon.Exclamation);
+                shouldContinue = false; sheetClear = false;
+                return false;
+            }
+
+            shouldContinue = true; sheetClear = false;
+            if (AppState.Instance.SelectedLedger?.CoaId != ledger.Coaid)
+            {
+                var result = CommonFunctions.GLSenseMessage(
+                    "Different chart of account detected. Clear sheet?", MessageBoxIcon.Question, MessageBoxButtons.YesNoCancel);
+
+                shouldContinue = result != MessageBoxResult.Cancel;
+                sheetClear = result == MessageBoxResult.Yes;
+                if (!shouldContinue) Ribledger.Text = AppState.Instance.SelectedLedger?.LedgerName ?? "";
+            }
+            return true;
+        }
+
+        // Main work - ALL cancellation points here
+        private async Task PerformLedgerChangeAsync(LedgerRecord ledger, bool sheetClear, CancellationToken token, GLWaitWindow win)
+        {
+            await Task.Run(async () =>
+            {
+                try
+                {
+                    if (sheetClear)
+                    {
+                        await win.Dispatcher.InvokeAsync(() => win.SetProcessMessage("Clearing sheet..."));
+                        token.ThrowIfCancellationRequested();
+
+                        if (ExcelApp.ActiveSheet is Worksheet sheet)
+                            sheet.Cells.Clear();
+                    }
+
+                    await win.Dispatcher.InvokeAsync(() => win.SetProcessMessage("Loading ledger data..."));
+                    token.ThrowIfCancellationRequested();
+
+                    await CommonFunctions.FillResponsibilitiesAsync(ledger.LedgerId, AppState.Instance.SelectedCube.CubeId, token);
+
+                    token.ThrowIfCancellationRequested();
+                    UpdateRibbonUI(ledger);
+                }
+                catch (OperationCanceledException)
+                {
+                    LogUtility.LogDebug("Work task cancelled - propagating.");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "Work phase failed.");
+                    throw;
+                }
+            }, token);
+        }
+
+        private void UpdateRibbonUI(LedgerRecord ledger)
+        {
+            var rib = AddinModule.CurrentInstance;
+            rib.RibSegS.Items.Clear();
+
+            AppState.Instance.DefaultSegment = string.Empty;
+            AppState.Instance.SegmentPickedIndex = -1;
+
+            var repository = new DataRepository();
+            foreach (var s in repository.GetSegments(AppState.Instance.SelectedCube.CubeId, ledger.LedgerId))
+            {
+                rib.RibSegS.Items.Add(new ADXRibbonItem { Caption = s.SegmentName });
+            }
+
+            AppState.Instance.SelectedLedger = repository.GetLedgers(AppState.Instance.SelectedCube.CubeId)
+                ?.FirstOrDefault(l => l.LedgerId == ledger.LedgerId);
+        }
+
+        private async void Ribledger_OnChange(object sender, IRibbonControl Control, string text)
+        {
+            if (!ValidatePreconditions()) return;
+
+            using var ctsHelper = new CancellationHelper();
+            var token = ctsHelper.GetToken();
+            GLWaitWindow win = null;
+
+            try
+            {
+                if (!ValidateLedgerChange(text, out var ledger, out var shouldContinue, out var sheetClear)) return;
+
+                win = CreateAndShowWaitWindow(ctsHelper);
+
+                if (shouldContinue)
+                {
+                    await PerformLedgerChangeAsync(ledger, sheetClear, token, win);
+
+                    AppState.Instance.BalancePane = GetPaneInstance();
+
+                    if (AppState.Instance.BalancePane != null && AppState.Instance.BalancePane.Visible)
+                    {
+                        _ = AppState.Instance.BalancePane.RelaunchPane();
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Ledger change operation cancelled by user!");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                if (win != null)
+                {
+                    await win.Dispatcher.InvokeAsync(() => win.RequestClose());
+                }
+                CommonFunctions.GLSenseMessage(ex.Message, MessageBoxIcon.Error, MessageBoxButtons.OK);
+            }
+            finally
+            {
+                if (win != null)
+                {
+                    await win.Dispatcher.InvokeAsync(() => win.RequestClose());
+                }
+            }
+        }
+
+        private void RibGetCube_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLCubeDetails();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibDBL1_OnAction(object sender, IRibbonControl control, bool pressed)
+        {
+            SafeInvokeWpf(() =>
+            {
+                var win = new GLLoginDetails();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibLogin_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+
+            SafeInvokeWpf(() =>
+            {
+                AppState.Instance.LoginToken = string.Empty;
+                var win = new GLLogin();
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
+        }
+
+        private void RibLogout_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            try
+            {
+                AppState.Instance.EdgeAddinInstance?.GetType().InvokeMember("LogoffFromAddin",
+                                BindingFlags.InvokeMethod,
+                                null,
+                                AppState.Instance.EdgeAddinInstance,
+                                new object[] { });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Exception while logging out from XLEdge via GLSense!");
+            }
+
+            GLSenseLogout();
+        }
+
+        private void GLSenseLogout(bool fromExcelEdge = false)
+        {
+            using var ctsHelper = new CancellationHelper();
+            var token = ctsHelper.GetToken();
+
+            string message = string.Empty;
+            MessageBoxIcon icon = MessageBoxIcon.None;
+            try
+            {
+                HideTaskPanes();
+                (message, icon) = Task.Run(() => GetLogoutResponseAsync(token)).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Logout operation was canceled by the user.");
+                message = "Logout was canceled.";
+                icon = MessageBoxIcon.Warning;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                message = "An unexpected error occurred during logout.";
+                icon = MessageBoxIcon.Error;
+            }
+            finally
+            {
+                if (!fromExcelEdge)
+                {
+                    CommonFunctions.GLSenseMessage(message, icon);
+                }
+
+                LoggOff();
+            }
+        }
+
+        private static async Task<(string Message, MessageBoxIcon Icon)> GetLogoutResponseAsync(CancellationToken token)
+        {
+            var apiUrl = $"{AppState.Instance.LoginUrl}{AppConstants.WebSecure}applogout";
+
+            var result = await ApiHelper.ServerAPI(apiUrl, "Form", "", "GET", token);
+            token.ThrowIfCancellationRequested();
+
+            var logout = ApiResponseHelper.Parse<JsonElement>(result, JsonGlobals.Options);
+
+            if (!logout.IsSuccess)
+                return (logout.ErrorMessage, MessageBoxIcon.Error);
+
+            string message = logout.Value.TryGetProperty("message", out var msgEl) ? msgEl.GetString() : "Successfully logged out.";
+            return (message ?? "Successfully logged out.", MessageBoxIcon.Information);
+        }
+
+        private void LoggOff()
+        {
+            AppState.Instance.Reset();
+            Ribledger.Items.Clear();
+            Ribledger.Text = string.Empty;
+            RibGetCube.Caption = "Cube:  Select cube";
+            RibbonHelper.ApplyState("LoggedOut");
+        }
+
+        private void HideTaskPanes()
+        {
+            try
+            {
+                if (adxExcelTaskPanesCollectionItem1 == null || adxExcelTaskPanesCollectionItem1.TaskPaneInstances == null)
+                    return;
+
+                if (adxExcelTaskPanesCollectionItem1.TaskPaneInstances.Count > 0)
+                {
+                    foreach (GLConfiguratorPane xlTaskpane in adxExcelTaskPanesCollectionItem1.TaskPaneInstances)
+                    {
+                        xlTaskpane.Visible = false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        //Below 2 method are called from XLEdge
+        public static void LogoutSession()
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(AppState.Instance.LoginUrl))
+                    AddinModule.CurrentInstance.GLSenseLogout(true);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Exception in logout method called from XLEdge!");
+            }
+        }
+
+        private static void GetGLCubeInformation(string token, string url)
+        {
+            if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(url))
+                return;
+
+            try
+            {
+                AppState.Instance.LoginToken = token;
+                AppState.Instance.LoginUrl = url;
+
+                string apiUrl = AppState.Instance.LoginUrl + "/rest/secure/finance/finance-cubes";
+
+                string apiResponse = ExecuteApiCallWithTimeout(apiUrl);
+
+                if (string.IsNullOrWhiteSpace(apiResponse))
+                {
+                    LogUtility.LogWarn("Received an empty response when extracting cubes from XLEdge login token!");
+                    return;
+                }
+
+                Task.Run(async () => await HandleCubeApiResult(apiResponse));
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Exception in GetGLCubeInformation method called from XLEdge!");
+            }
+        }
+
+        private static string ExecuteApiCallWithTimeout(string apiUrl)
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            try
+            {
+                Task<string> apiTask = Task.Run(async () =>
+                    await ApiHelper.ServerAPI(apiUrl, "Form", "", "POST", cts.Token));
+
+                if (apiTask.Wait(TimeSpan.FromSeconds(30)))
+                    return apiTask.Result;
+
+                LogUtility.LogWarn("API timeout - Wait limit reached.");
+                return null;
+            }
+            catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+            {
+                LogUtility.LogError($"API call timed out: {ex.InnerException?.Message}");
+                return null;
+            }
+            catch (AggregateException ex) when (ex.InnerException is HttpRequestException)
+            {
+                LogUtility.LogError($"HTTP error: {ex.InnerException?.Message}");
+                return null;
+            }
+            catch (AggregateException ex)
+            {
+                LogUtility.LogError($"API error: {ex.InnerException?.Message}");
+                return null;
+            }
+        }
+
+        private static async Task HandleCubeApiResult(string jsonResponse)
+        {
+            var result = ApiResponseHelper.Parse<List<CubeRecord>>(jsonResponse, JsonGlobals.Options);
+
+            if (!result.IsSuccess)
+            {
+                LogUtility.LogWarn("Exception in updating cube data when logged with XlEdge token!");
+                return;
+            }
+
+            CubeCache.AllCubes = result.Value!.OrderBy(c => c.CubeName).ToList();
+
+            await CubeDataRepository.InsertCubeDataAsync();
+            AddinModule.RibbonHelper.ApplyState("PartialLoggedIn");
+        }
+
+        private async void RibRefreshRange_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            if (!GuardLoginAndExcel())
+            {
+                CommonFunctions.GLSenseMessage("Please log in to the instance.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                return;
+            }
+
+            CommonMethods.DisableExcelSettings();
+            GLWaitWindow win = null;
+            using var ctsHelper = new CancellationHelper();
+            CancellationToken token = ctsHelper.GetToken();
+
+            try
+            {
+                Excel.Range formulaCells = AppState.Instance.ExcelApp.Selection as Excel.Range;
+                int glBalCount = 0;
+
+                foreach (Excel.Range cell in formulaCells)
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    if (cell.HasFormula is true &&
+                        cell.Formula is string formula &&
+                        formula.IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        glBalCount++;
+                    }
+                }
+
+                if (glBalCount == 0)
+                {
+                    CommonFunctions.GLSenseMessage("No balance formulas exists in the selected range.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                    return;
+                }
+
+                if (glBalCount > UserConfig.RefreshCells)
+                {
+                    string msg = $"The selected range contains {glBalCount} balance formulas.\nThe configured refresh range is {UserConfig.RefreshCells}.\nChange the configuration and try again! Max refresh range limit is 25.";
+
+                    CommonFunctions.GLSenseMessage(msg, MessageBoxIcon.Warning, MessageBoxButtons.OK);
+                    return;
+                }
+
+                token.ThrowIfCancellationRequested();
+
+                win = CreateAndShowWaitWindow(ctsHelper);
+
+                await InitializeWaitWindowAsync(win, "Range Refresh", "Refreshing selected range...");
+                await Task.Yield();
+
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    AppState.Instance.SingleRefresh = true;
+                    foreach (Excel.Range cell in formulaCells)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        await MessageWaitWindowAsync(win, $"Refreshing range {cell.Address}.");
+                        await Task.Yield();
+                        cell.Dirty();
+                        cell.Calculate();
+                    }
+                    await MessageWaitWindowAsync(win, "Completed refreshing the range.");
+                }
+                catch (Exception ex)
+                {
+                    AppState.Instance.SingleRefresh = false;
+                    LogUtility.LogException(ex);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Range refresh operation was canceled by the user.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                CommonMethods.EnableExcelSettings();
+                await SafelyCloseWaitWindowAsync(win);
+            }
+        }
+
+        private async void RibHideRows_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            var processor = new HideRowProcessor();
+            await processor.ExecuteAsync("Hiding Rows");
+        }
+
+        private async void RibUnHideRows_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            var processor = new UnhideRowProcessor();
+            await processor.ExecuteAsync("Unhiding Rows");
+        }
+
+        public abstract class RowProcessor
+        {
+            public async Task ExecuteAsync(string operationName)
+            {
+                CommonMethods.DisableExcelSettings();
+                GLWaitWindow win = null;
+                using var ctsHelper = new CancellationHelper();
+                CancellationToken token = ctsHelper.GetToken();
+                try
+                {
+                    if (!GuardLoginAndExcel())
+                        return;
+
+                    win = CreateAndShowWaitWindow(ctsHelper);
+
+                    await InitializeWaitWindowAsync(win, operationName,
+                        operationName == "Hiding Rows" ? "Hiding rows for 0 balances…" : "Unhiding rows please wait...");
+
+                    await Task.Yield();
+
+                    Range selection = GetSelection();
+                    Worksheet sheet = selection.Worksheet;
+                    Range balanceRange = await BalancesRangeAsync(selection);
+
+                    if (balanceRange == null)
+                    {
+                        await SafelyCloseWaitWindowAsync(win);
+                        CommonFunctions.GLSenseMessage("No balance formula's in the selection!", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                        return;
+                    }
+
+                    await ProcessRowsCoreAsync(sheet, balanceRange, win, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    LogUtility.LogError("Operation cancelled by user.");
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex);
+                }
+                finally
+                {
+                    await SafelyCloseWaitWindowAsync(win);
+                    CommonMethods.EnableExcelSettings();
+                }
+            }
+
+            protected abstract Task ProcessRowsCoreAsync(Excel.Worksheet sheet, Excel.Range selection,
+                GLWaitWindow win, CancellationToken token);
+        }
+
+        public sealed class HideRowProcessor : RowProcessor
+        {
+            protected override async Task ProcessRowsCoreAsync(Excel.Worksheet sheet, Excel.Range selection,
+                GLWaitWindow win, CancellationToken token)
+            {
+                token.ThrowIfCancellationRequested();
+
+                var (formulas, values) = await GetFormulaAndValueArraysAsync(selection);
+                if (formulas == null || values == null) return;
+
+                token.ThrowIfCancellationRequested();
+
+                var hideRows = FindHideRows(formulas, values, selection.Row);
+
+                await ProcessHideRowsAsync(sheet, hideRows, win, token);
+            }
+        }
+
+        public sealed class UnhideRowProcessor : RowProcessor
+        {
+            protected override async Task ProcessRowsCoreAsync(Excel.Worksheet sheet, Excel.Range selection,
+                GLWaitWindow win, CancellationToken token)
+            {
+                token.ThrowIfCancellationRequested();
+
+                var (formulas, values) = await GetFormulaAndValueArraysAsync(selection);
+                if (formulas == null || values == null) return;
+
+                token.ThrowIfCancellationRequested();
+
+                var rowsToUnhide = FindHideRows(formulas, values, selection.Row);
+
+                if (rowsToUnhide.Count == 0)
+                {
+                    await MessageWaitWindowAsync(win, "Nothing to unhide in the current selection.");
+                    return;
+                }
+
+                double standardHeight = sheet.StandardHeight;
+
+                await ProcessUnhideRowsByBatchesAsync(sheet, rowsToUnhide, standardHeight, win, token);
+            }
+        }
+
+        // === SHARED HELPERS (60% REUSE) ===
+
+        private static List<int> FindHideRows(object[,] formulas, object[,] values, int startRow)
+        {
+            var hideRows = new List<int>();
+
+            int rLo = formulas.GetLowerBound(0);
+            int rHi = formulas.GetUpperBound(0);
+            int cLo = formulas.GetLowerBound(1);
+            int cHi = formulas.GetUpperBound(1);
+
+            if (values.GetLength(0) != formulas.GetLength(0) ||
+                values.GetLength(1) != formulas.GetLength(1))
+                throw new InvalidOperationException("Formulas and values arrays have different shapes.");
+
+            for (int r = rLo; r <= rHi; r++)
+            {
+                if (ShouldHideRow(formulas, values, r, cLo, cHi))
+                {
+                    int sheetRow = startRow + (r - rLo);
+                    hideRows.Add(sheetRow);
+                }
+            }
+
+            return hideRows;
+        }
+
+        private static bool ShouldHideRow(object[,] formulas, object[,] values, int r, int cLo, int cHi)
+        {
+            for (int c = cLo; c <= cHi; c++)
+            {
+                var f = formulas[r, c];
+                if (IsGetBalanceFormula(f))
+                {
+                    var v = values[r, c];
+                    if (IsZero(v))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsGetBalanceFormula(object f)
+        {
+            if (f == null) return false;
+
+            var s = f as string ?? f.ToString();
+            if (string.IsNullOrWhiteSpace(s)) return false;
+
+            s = s.TrimStart('=', '@');
+
+            return s.IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsZero(object value)
+        {
+            if (value == null)
+                return true;
+
+            return value switch
+            {
+                double d => Math.Abs(d) < 1e-9,
+                int i => i == 0,
+                decimal m => m == 0m,
+                string s => double.TryParse(s, out double parsed) && Math.Abs(parsed) < 1e-9,
+                _ => false,
+            };
+        }
+
+        private static bool GuardLoginAndExcel()
+        {
+            return AppState.Instance.IsLoginCompleted && AppState.Instance.ExcelApp != null;
+        }
+
+        private static Excel.Range GetSelection()
+        {
+            var selection = AppState.Instance.ExcelApp.Selection as Excel.Range
+                ?? throw new InvalidOperationException("No selection available");
+            return selection;
+        }
+
+        private static async Task<(object[,] formulas, object[,]? values)> GetFormulaAndValueArraysAsync(Excel.Range selection)
+        {
+            await Task.Yield();
+            var formulas = CoerceTo2D(selection.Formula);
+            var values = CoerceTo2D(selection.Value2);
+            return (formulas, values);
+        }
+
+        private static object[,] CoerceTo2D(object value)
+        {
+            if (value is object[,] array2d)
+                return array2d;
+
+            if (value is null)
+                return new object[1, 1] { { null! } };
+
+            return new object[1, 1] { { value } };
+        }
+
+        private static async Task<Range> BalancesRangeAsync(Excel.Range selection)
+        {
+            string rngAddress = ExcelExternalRef.BuildExternalAddress(selection);
+            Range totalRange = CommonFunctions.GetBalanceTotalRange(rngAddress);
+
+            if (totalRange != null)
+                return totalRange;
+
+            await Task.Yield();
+            return null;
+        }
+
+        private static async Task ProcessHideRowsAsync(Excel.Worksheet sheet, List<int> hideRows,
+            GLWaitWindow win, CancellationToken token)
+        {
+            if (hideRows == null || hideRows.Count == 0)
+                return;
+
+            hideRows.Sort();
+
+            int i = 0;
+            while (i < hideRows.Count)
+            {
+                token.ThrowIfCancellationRequested();
+
+                int start = hideRows[i];
+                int end = start;
+                i++;
+
+                while (i < hideRows.Count && hideRows[i] == end + 1)
+                {
+                    end = hideRows[i];
+                    i++;
+                }
+
+                sheet.Range[$"{start}:{end}"].RowHeight = 0.1;
+
+                await MessageWaitWindowAsync(win, $"Hid rows {start}:{end}…");
+                await Task.Yield();
+            }
+        }
+
+        private static async Task ProcessUnhideRowsByBatchesAsync(Excel.Worksheet sheet, List<int> unhideRows, double standardHeight, GLWaitWindow win, CancellationToken token)
+        {
+            if (unhideRows == null || unhideRows.Count == 0)
+                return;
+
+            unhideRows.Sort();
+
+            int i = 0;
+            while (i < unhideRows.Count)
+            {
+                token.ThrowIfCancellationRequested();
+
+                int start = unhideRows[i];
+                int end = start;
+                i++;
+
+                while (i < unhideRows.Count && unhideRows[i] == end + 1)
+                {
+                    end = unhideRows[i];
+                    i++;
+                }
+
+                var rng = sheet.Rows[$"{start}:{end}"] as Excel.Range;
+                if (rng != null)
+                {
+                    rng.RowHeight = standardHeight;
+                }
+
+                await MessageWaitWindowAsync(win, $"Unhid rows {start}:{end}…");
+                await Task.Yield();
+            }
+
+            await MessageWaitWindowAsync(win, "Completed successfully.");
+        }
+
+        //Progress window helpers
+        private static GLWaitWindow CreateAndShowWaitWindow(CancellationHelper cts)
+        {
+            try
+            {
+                return WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    try
+                    {
+                        var win = new GLWaitWindow(cts);
+                        win.ShowWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                        win.StartMonitoring();
+                        return win;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex);
+                        return null;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return null;
+            }
+        }
+
+        private static Task InitializeWaitWindowAsync(GLWaitWindow _win, string title, string message)
+        {
+            if (_win == null || _win.Dispatcher == null)
+                return Task.CompletedTask;
+
+            try
+            {
+                var op = _win.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        _win.SetProcessTitle(title);
+                        _win.SetProcessMessage(message);
+                    },
+                    DispatcherPriority.Normal);
+
+                return op.Task;
+            }
+            catch (TaskCanceledException)
+            {
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return Task.CompletedTask;
+            }
+        }
+
+        private static async Task SafelyCloseWaitWindowAsync(GLWaitWindow _win)
+        {
+            if (_win == null)
+                return;
+
+            try
+            {
+                if (_win.Dispatcher.CheckAccess())
+                {
+                    _win.RequestClose();
+                }
+                await _win.Dispatcher.InvokeAsync(() => _win.RequestClose());
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error closing wait window: {ex.Message}");
+            }
+        }
+
+        private static Task MessageWaitWindowAsync(GLWaitWindow _win, string message)
+        {
+            if (_win == null || _win.Dispatcher == null)
+                return Task.CompletedTask;
+
+            try
+            {
+                var op = _win.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        _win.SetProcessMessage(message);
+                    },
+                    DispatcherPriority.Normal);
+
+                return op.Task;
+            }
+            catch (TaskCanceledException)
+            {
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return Task.CompletedTask;
+            }
+        }
+
+        private static async Task ShowErrorMessageAsync(GLWaitWindow _win, string message)
+        {
+            await SafelyCloseWaitWindowAsync(_win);
+            CommonFunctions.GLSenseMessage(message, MessageBoxIcon.Error, MessageBoxButtons.OK);
+        }
+    }
+}

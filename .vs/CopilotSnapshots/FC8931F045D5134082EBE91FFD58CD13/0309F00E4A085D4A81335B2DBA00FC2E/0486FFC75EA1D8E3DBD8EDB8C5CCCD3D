@@ -1,0 +1,393 @@
+﻿using GLSense.Helpers;
+using GLSense.Interfaces;
+using GLSense.Models;
+using GLSense.Utilities;
+using GLSense.ViewModels;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Threading;
+using Excel = Microsoft.Office.Interop.Excel;
+
+namespace GLSense.Views
+{
+    /// <summary>
+    /// Interaction logic for GLBalanceConfigurator.xaml
+    /// </summary>
+    public partial class GLBalanceConfigurator : System.Windows.Controls.UserControl, IWarningHost
+    {
+        private sealed class CellData
+        {
+            public string Address { get; set; }
+            public string LedgerName { get; set; }
+            public List<string> FuncArgs { get; set; }
+            public List<string> FuncValues { get; set; }
+            public bool ZeroesChecked { get; set; }
+        }
+
+        private sealed class FormulaInfo
+        {
+            public List<string> FuncArgs { get; set; }
+            public List<string> FuncValues { get; set; }
+        }
+        private readonly GLConfiguratorViewModel vm;
+        private GLConfiguratorPane _parentPane;
+        public event Action OnCloseRequested;
+
+        public GLBalanceConfigurator(GLConfiguratorPane parentPane = null)
+        {
+            InitializeComponent();
+
+            vm = new GLConfiguratorViewModel(Dispatcher)
+            {
+                ExcelApp = AppState.Instance.ExcelApp.Application, // Pass the Excel application instance to the ViewModel
+                ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
+                ShowInfoAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowInfo(msg)),
+                ShowBusyAction = async (txt, cancel) =>
+                        await Dispatcher.InvokeAsync(async () =>
+                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
+                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync())
+            };
+
+            _parentPane = parentPane;
+            DataContext = vm;
+
+            // Subscribe to events
+            this.Loaded += OnLoaded;
+            this.SizeChanged += OnSizeChanged;
+            this.IsVisibleChanged += OnIsVisibleChanged;
+
+            if (_parentPane != null)
+            {
+                _parentPane.Resize += OnParentPaneResize;
+            }
+        }
+        public void CellSelectionWarning(string message)
+        {
+            try
+            {
+                AppOverlayControl.ShowWarning(message);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+        private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            string Address = GetActiveCellInfo();
+            GlobalStateViewModel.Instance.ReferenceText = Address;
+
+            EnsureMinimumWidth();
+            this.UpdateLayout();
+            MainScrollViewer?.UpdateLayout();
+            _ = ReLoadConfigurator();
+        }
+        private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (this.IsVisible)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    EnsureMinimumWidth();
+                    this.UpdateLayout();
+                    MainScrollViewer?.UpdateLayout();
+                }), DispatcherPriority.Loaded);
+            }
+        }
+        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            EnsureMinimumWidth();
+        }
+        private void OnParentPaneResize(object sender, EventArgs e)
+        {
+            // Update control when task pane resizes
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                EnsureMinimumWidth();
+                this.UpdateLayout();
+                MainScrollViewer?.UpdateLayout();
+            }), DispatcherPriority.Loaded);
+        }
+
+        private void EnsureMinimumWidth()
+        {
+            const double minWidth = 600;
+
+            this.MinWidth = minWidth;
+
+            if (_parentPane != null && _parentPane.Width < minWidth)
+            {
+                _parentPane.Width = (int)minWidth;
+            }
+        }
+        private static string GetActiveCellInfo()
+        {
+            var rng = AppState.Instance.ExcelApp.ActiveCell;
+            string sheetName = ((Excel.Worksheet)rng.Parent).Name;
+            string cellAddress = rng.Address[true, true, Excel.XlReferenceStyle.xlA1, false];
+            return $"'{sheetName}'!{cellAddress}";
+        }
+        private static bool FomulaloadRequired(string ledgerName)
+        {
+            // Extract the first ledger name if multiple are concatenated with ';'
+            string lName = ledgerName.Contains(";") ? ledgerName.Split(';')[0] : ledgerName;
+
+            var ledgerRecord = AppState.Instance.SelectedCube?.Ledgers
+                .FirstOrDefault(x => x.LedgerName == lName);
+
+            // Return true if ledger record exists and CoaId matches selected ledger
+            return ledgerRecord != null && ledgerRecord.Coaid == AppState.Instance.SelectedLedger?.CoaId;
+        }
+        private async Task ShowBusyOverlayAsync(CancellationHelper helper, string message)
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                AppOverlayControl.ShowBusyasyn(
+                    message: message + " (Click cancel to stop)",
+                    cancelAction: async () =>
+                    {
+                        if (!helper.IsCancellationRequested)
+                        {
+                            helper.Cancel();
+                            LogUtility.LogWarn($"Operation cancelled by user: {message}");
+                        }
+                        await Task.Delay(80); // small feedback delay
+                                              // HideBusyAsync() is already called in the overlay's handler
+                    }
+                );
+            }, DispatcherPriority.Background);
+        }
+        public async Task ExecuteWithBusyOverlay(
+                string message,
+                Func<CancellationHelper, Task> action)
+        {
+            var helper = new CancellationHelper();
+
+            try
+            {
+                await ShowBusyOverlayAsync(helper, message);
+                await action(helper);
+            }
+            finally
+            {
+                await AppOverlayControl.HideBusyAsync();
+            }
+        }
+        public async Task ReLoadConfigurator()
+        {
+            await ExecuteWithBusyOverlay("Reloading Configurator", async helper =>
+            {
+                BalanceParametersExpander.IsExpanded = false;
+
+                if (!HasValidCubeAndLedger())
+                    return;
+
+                var cellData = await ExtractCellDataAsync();
+                var config = ProcessBalanceFormula(cellData);
+                await LoadConfiguratorDataAsync(config);
+            });
+        }
+        public static void ResetCellReference()
+        {
+            string Address = GetActiveCellInfo();
+            GlobalStateViewModel.Instance.ReferenceText = Address;
+        }
+        private CellData ProcessBalanceFormula(CellData cellData)
+        {
+            // If no balance formula detected, use default values
+            if (!IsBalanceFormulaDetected(cellData))
+            {
+                return new CellData
+                {
+                    LedgerName = AppState.Instance.SelectedLedger.LedgerName,
+                    FuncArgs = null,
+                    FuncValues = null,
+                    ZeroesChecked = true,
+                    Address = cellData.Address
+                };
+            }
+
+            // Keep formula data if reload is required
+            if (!string.IsNullOrWhiteSpace(cellData.LedgerName) && FomulaloadRequired(cellData.LedgerName))
+            {
+                return cellData;
+            }
+
+            // Reset to defaults
+            return new CellData
+            {
+                LedgerName = AppState.Instance.SelectedLedger.LedgerName,
+                FuncArgs = null,
+                FuncValues = null,
+                ZeroesChecked = cellData.ZeroesChecked,
+                Address = cellData.Address
+            };
+        }
+
+        private static bool IsBalanceFormulaDetected(CellData cellData)
+        {
+            return !string.IsNullOrWhiteSpace(cellData.LedgerName);
+        }
+        private async Task<CellData> ExtractCellDataAsync()
+        {
+            return await Dispatcher.InvokeAsync(() =>
+            {
+                var rng = AppState.Instance.ExcelApp.ActiveCell;
+                var cellData = ParseCellData(rng);
+                GlobalStateViewModel.Instance.ReferenceText = cellData.Address;
+                return cellData;
+            });
+        }
+        private CellData ParseCellData(Excel.Range rng)
+        {
+            var sheetName = ((Excel.Worksheet)rng.Parent).Name;
+            var cellAddress = rng.Address[true, true, Excel.XlReferenceStyle.xlA1, false];
+            var address = $"'{sheetName}'!{cellAddress}";
+
+            var ledgerName = string.Empty;
+            var funcArgs = (List<string>)null;
+            var funcValues = (List<string>)null;
+            var zeroesChecked = true;
+
+            if ((bool)rng.HasFormula && IsBalanceFormula(rng))
+            {
+                var formulaInfo = ParseBalanceFormula(rng);
+                ledgerName = GetLedgerNameFromFormula(formulaInfo.FuncValues);
+                funcArgs = formulaInfo.FuncArgs;
+                funcValues = formulaInfo.FuncValues;
+                zeroesChecked = ParseZeroesSetting(rng.NumberFormat.ToString());
+            }
+
+            return new CellData
+            {
+                Address = address,
+                LedgerName = ledgerName,
+                FuncArgs = funcArgs,
+                FuncValues = funcValues,
+                ZeroesChecked = zeroesChecked
+            };
+        }
+        private static bool IsBalanceFormula(Excel.Range rng)
+        {
+            return rng.Formula.ToString().IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private FormulaInfo ParseBalanceFormula(Excel.Range rng)
+        {
+            string funcName = rng.Formula.ToString();
+            return new FormulaInfo
+            {
+                FuncArgs = CommonFunctions.FormulaParameters(funcName),
+                FuncValues = CommonFunctions.FormulaValues(funcName)
+            };
+        }
+
+        private static string GetLedgerNameFromFormula(List<string> funcValues)
+        {
+            if (funcValues?.Count > 1)
+            {
+                var ledgerName = funcValues[1].Replace("\"", "");
+                return ledgerName.Contains(";")
+                    ? ledgerName.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty
+                    : ledgerName;
+            }
+
+            return string.Empty;
+        }
+
+        private static bool ParseZeroesSetting(string cellFormatStr)
+        {
+            try
+            {
+                if (!cellFormatStr.Contains(";"))
+                    return true;
+
+                var parts = cellFormatStr.Split(';');
+                return parts.Length < 3 || !string.IsNullOrEmpty(parts[2]);
+            }
+            catch (Exception)
+            {
+                return true;
+            }
+        }
+        private async Task LoadConfiguratorDataAsync(CellData cellData)
+        {
+            string ledgerName = cellData.LedgerName;
+            var funcArgs = cellData.FuncArgs;
+            var funcValues = cellData.FuncValues;
+
+            if (!string.IsNullOrWhiteSpace(ledgerName) && FomulaloadRequired(ledgerName))
+            {
+                // Keep formula data
+            }
+            else
+            {
+                funcArgs = null;
+                funcValues = null;
+                ledgerName = AppState.Instance.SelectedLedger.LedgerName;
+            }
+
+            var ledger = AppState.Instance.SelectedCube.GetLedgerByName(ledgerName);
+
+            await vm.LoadConfiguratorAsync(cellData.ZeroesChecked, ledger, funcArgs, funcValues);
+            await Dispatcher.InvokeAsync(() => CmbLedgers.Text = ledgerName);
+        }
+
+        private static bool HasValidCubeAndLedger()
+        {
+            return AppState.Instance.SelectedCube != null && AppState.Instance.SelectedLedger != null;
+        }
+        private void BtnOKBottom_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(CellReference.Text))
+            {
+                AppOverlayControl.ShowWarning("Please select a cell reference for entering formula.");
+            }
+            else
+            {
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(CellReference.Text))
+                    {
+                        Excel.Range rng = CommonFunctions.RemoveInDirect(CellReference.Text);
+                        if (rng != null)
+                        {
+                            CellFormat(rng);
+                        }
+                        else
+                        {
+                            AppOverlayControl.ShowWarning("The specified cell reference does not refer to a valid cell in the current workbook.");
+                        }
+                    }
+                    else
+                    {
+                        AppOverlayControl.ShowWarning("Cell reference for get balance cannot be blank.Try providing a cell reference for generating balance formula.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex);
+                }
+            }
+        }
+        private void CellFormat(Excel.Range rng)
+        {
+            if (vm.IsZeroesChecked)
+            {
+                rng.NumberFormat = "#,##0.00_);[Red](#,##0.00)";
+            }
+            else
+            {
+                rng.NumberFormat = "#,##0.00_);[Red](#,##0.00);;@";
+            }
+            vm.WriteFormulaToCell(rng);
+        }
+        private void BtnCancelBottom_Click(object sender, RoutedEventArgs e)
+        {
+            OnCloseRequested?.Invoke();
+        }
+    }
+}

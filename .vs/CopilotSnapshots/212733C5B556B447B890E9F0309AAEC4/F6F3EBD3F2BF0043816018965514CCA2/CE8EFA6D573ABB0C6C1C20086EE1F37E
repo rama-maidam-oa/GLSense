@@ -1,0 +1,8 @@
+﻿@echo off
+SET OUTDIR=%~dp0
+SET NUGET_CACHE=%USERPROFILE%\.nuget\packages
+REM Rename app.config to GLSense.dll.config
+IF EXIST "%OUTDIR%app.config" (
+    echo Renaming app.config to GLSense.dll.config
+    COPY /Y "%OUTDIR%app.config" "%OUTDIR%GLSense.dll.config"
+)

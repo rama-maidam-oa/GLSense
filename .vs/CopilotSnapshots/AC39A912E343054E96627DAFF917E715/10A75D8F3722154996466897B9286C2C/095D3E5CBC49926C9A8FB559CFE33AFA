@@ -1,0 +1,368 @@
+﻿using GLSense.Utilities;
+using System;
+using System.Collections.Generic;
+using System.Data.SQLite;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace GLSense.Helpers
+{
+   public static  class SQLiteHelper
+    {
+        private static bool _initialized = false;
+        private static readonly object _initLock = new();
+
+        /// <summary>
+        /// Indicates whether the database already contains persisted cube data.
+        /// Used to avoid clearing tables when opening a new Excel instance.
+        /// </summary>
+        public static bool HasPersistedData()
+        {
+            try
+            {
+                if (!_initialized)
+                {
+                    InitializeDatabase();
+                }
+
+                using var connection = GetConnection();
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT 1 FROM CUBES LIMIT 1";
+                var result = cmd.ExecuteScalar();
+                return result != null && result != DBNull.Value;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to check for persisted SQLite data");
+                return false;
+            }
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr LoadLibrary(string lpFileName);
+
+        /// <summary>
+        /// Loads the native SQLite DLL from the correct architecture-specific subdirectory.
+        /// This must be called before any SQLite operations.
+        /// </summary>
+        private static void LoadNativeSQLiteDll()
+        {
+            try
+            {
+                // Determine the platform (x86 or x64)
+                string platform = Environment.Is64BitProcess ? "x64" : "x86";
+                
+                // Get the directory where the add-in assembly is located
+                string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                
+                // Construct the path to the native SQLite DLL
+                string nativeDllPath = Path.Combine(assemblyDirectory, platform, "SQLite.Interop.dll");
+                
+                LogUtility.LogDebug($"Attempting to load SQLite native DLL from: {nativeDllPath}");
+                
+                if (!File.Exists(nativeDllPath))
+                {
+                    // Try alternate naming convention
+                    nativeDllPath = Path.Combine(assemblyDirectory, platform, "e_sqlite3.dll");
+                    LogUtility.LogDebug($"First path not found, trying: {nativeDllPath}");
+                }
+                
+                if (File.Exists(nativeDllPath))
+                {
+                    IntPtr handle = LoadLibrary(nativeDllPath);
+                    if (handle == IntPtr.Zero)
+                    {
+                        int errorCode = Marshal.GetLastWin32Error();
+                        LogUtility.LogError($"Failed to load SQLite native DLL. Error code: {errorCode}");
+                    }
+                    else
+                    {
+                        LogUtility.LogDebug($"Successfully loaded SQLite native DLL from: {nativeDllPath}");
+                    }
+                }
+                else
+                {
+                    LogUtility.LogError($"SQLite native DLL not found at: {nativeDllPath}");
+                    LogUtility.LogDebug($"Assembly location: {assemblyDirectory}");
+                    
+                    // List available files for debugging
+                    if (Directory.Exists(assemblyDirectory))
+                    {
+                        var files = Directory.GetFiles(assemblyDirectory, "*.dll", SearchOption.AllDirectories);
+                        LogUtility.LogDebug($"Available DLL files in assembly directory:");
+                        foreach (var file in files.Where(f => f.IndexOf("sqlite", StringComparison.OrdinalIgnoreCase) >= 0))
+                        {
+                            LogUtility.LogDebug($"  {file}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Error loading native SQLite DLL");
+            }
+        }
+
+        /// <summary>
+        /// Initializes the SQLite database.
+        /// - Ensures the database folder exists
+        /// - Creates the .db file if it doesn't exist
+        /// - Runs schema creation (tables, indexes, etc.)
+        /// Call this once at add-in startup.
+        /// </summary>
+        /// 
+        public static void InitializeDatabase()
+        {
+            lock (_initLock)
+            {
+                if (_initialized) return;
+
+                // Load the native SQLite DLL first
+                LoadNativeSQLiteDll();
+
+                string dbPath = AppPaths.DatabasePath;  // Fully resolved path: .../GLSense_Logs/Database/GLSense.db
+
+                // Ensure the directory exists (AppPaths doesn't create it for DB yet)
+                string dbFolder = Path.GetDirectoryName(dbPath);
+                if (!Directory.Exists(dbFolder))
+                {
+                    Directory.CreateDirectory(dbFolder);
+                }
+
+                // Open connection in ReadWriteCreate mode → creates file if missing
+                using var connection = new SQLiteConnection($"Data Source={dbPath};Version=3;");
+                connection.Open();
+
+                // Create tables, indexes, etc.
+                CreateTablesIfNotExist(connection);
+
+
+                _initialized = true;
+            }
+        }
+        /// <summary>
+        /// Returns an open connection to the database.
+        /// Must call InitializeDatabase() first.
+        /// </summary>
+        public static SQLiteConnection GetConnection()
+        {
+            if (!_initialized)
+                throw new InvalidOperationException("Call SQLiteHelper.InitializeDatabase() first.");
+
+            var connection = new SQLiteConnection($"Data Source={AppPaths.DatabasePath};Version=3;");
+            connection.Open();
+            return connection;
+        }
+
+        private static void CreateTablesIfNotExist(SQLiteConnection connection)
+        {
+            string createSql = @"
+        PRAGMA foreign_keys = ON;
+
+        CREATE TABLE IF NOT EXISTS CUBES (
+            cubeId INTEGER PRIMARY KEY,
+            cubeName TEXT NOT NULL,
+            userName TEXT,
+            lastRefreshedDate TEXT,
+            blazeEnabled INTEGER DEFAULT 0,
+            erpType TEXT,
+            adaptiveMemoryEnabled INTEGER DEFAULT 0,
+            adaptiveMemoryTableName TEXT,
+            viewBased INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS LEDGERS (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            cubeName TEXT,
+            ledgerId INTEGER NOT NULL,
+            ledgerName TEXT NOT NULL,
+            coaid INTEGER,
+            periodSetName TEXT,
+            currencyCode TEXT,
+            FOREIGN KEY (cubeId) REFERENCES CUBES(cubeId) ON DELETE CASCADE,
+            UNIQUE (cubeId, ledgerId)
+        );
+
+        CREATE INDEX IF NOT EXISTS IX_LEDGERS_CubeId ON LEDGERS(cubeId);
+
+        CREATE TABLE IF NOT EXISTS JOURNALSOURCES (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            jeSourceName TEXT,
+            sourceName TEXT,
+            FOREIGN KEY (cubeId, ledgerId) REFERENCES LEDGERS(cubeId, ledgerId) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS ACTIVITY (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            activityType TEXT,
+            FOREIGN KEY (cubeId, ledgerId) REFERENCES LEDGERS(cubeId, ledgerId) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS ENCUMBRANCES (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            encumbranceTypeId INTEGER,
+            encumbranceType TEXT,
+            FOREIGN KEY (cubeId, ledgerId) REFERENCES LEDGERS(cubeId, ledgerId) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS JOURNALCATEGORIES (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            jeCategoryName TEXT,
+            categoryName TEXT,
+            FOREIGN KEY (cubeId, ledgerId) REFERENCES LEDGERS(cubeId, ledgerId) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS CURRENCIES (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            currencyCode TEXT,
+            FOREIGN KEY (cubeId, ledgerId) REFERENCES LEDGERS(cubeId, ledgerId) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS BUDGETS (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            budgetName TEXT,
+            FOREIGN KEY (cubeId, ledgerId) REFERENCES LEDGERS(cubeId, ledgerId) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS PERIODS (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            periodName TEXT,
+            periodYear INTEGER,
+            periodNum INTEGER,
+            quarterNum INTEGER,
+            periodSetName TEXT,
+            periodType TEXT,
+            startDate INTEGER,
+            endDate INTEGER,
+            adjustmentPeriodFlag TEXT,
+            FOREIGN KEY (cubeId, ledgerId) REFERENCES LEDGERS(cubeId, ledgerId) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS SEGMENTS (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            coaid INTEGER,
+            segmentName TEXT NOT NULL,
+            segmentValueSetId INTEGER NOT NULL,
+            securityEnabledFlag TEXT,
+            defaultType TEXT,
+            defaultValue TEXT,
+            displaySize INTEGER,
+            segmentDelimiter TEXT,
+            applicationColumnName TEXT,
+            FOREIGN KEY (cubeId, ledgerId) REFERENCES LEDGERS(cubeId, ledgerId) ON DELETE CASCADE,
+            UNIQUE (cubeId, ledgerId, applicationColumnName)
+        );
+
+        CREATE INDEX IF NOT EXISTS IX_SEGMENTS_CubeLedger ON SEGMENTS(cubeId, ledgerId);
+
+        CREATE TABLE IF NOT EXISTS SEGMENT_VALUES (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            segmentName TEXT NOT NULL,
+            segmentValue TEXT NOT NULL,
+            description TEXT,
+            summaryFlag TEXT,
+            enabledFlag TEXT,
+            segmentValueSetId INTEGER NOT NULL,
+            applicationColumnName TEXT,
+            FOREIGN KEY (cubeId, ledgerId) REFERENCES LEDGERS(cubeId, ledgerId) ON DELETE CASCADE,
+            UNIQUE (cubeId, ledgerId, segmentValueSetId, segmentValue, summaryFlag, applicationColumnName)
+        );
+
+        CREATE INDEX IF NOT EXISTS IX_SEGMENT_VALUES_Lookup ON SEGMENT_VALUES(cubeId, ledgerId, segmentValueSetId, segmentName);
+
+        CREATE TABLE IF NOT EXISTS SEGMENT_HIERARCHY_CACHE (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cubeId INTEGER NOT NULL,
+            ledgerId INTEGER NOT NULL,
+            segmentValueSetId INTEGER NOT NULL,
+            segmentName TEXT NOT NULL,
+            segmentValue TEXT NOT NULL,
+            description TEXT,
+            parent TEXT,
+            lvl INTEGER,
+            summaryFlag TEXT,
+            enabledFlag TEXT,
+            applicationColumnName TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS IX_HIERARCHY_CACHE_Lookup ON SEGMENT_HIERARCHY_CACHE(cubeId, ledgerId, segmentValueSetId, segmentName, parent);
+
+        CREATE TABLE IF NOT EXISTS GLFORMULAS_CACHE (
+            key TEXT PRIMARY KEY,
+            value TEXT);
+
+         CREATE TABLE IF NOT EXISTS USERPREFERENCES (
+                    PreferenceKey TEXT PRIMARY KEY,
+                    PreferenceValue TEXT NOT NULL
+        );
+         ";
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = createSql;
+            cmd.ExecuteNonQuery();
+        }
+
+        /// <summary>
+        /// Wipes all session-specific data at Excel startup (after new login).
+        /// Preserves only the persistent GLFORMULAS_CACHE table.
+        /// </summary>
+        public static void ResetSessionData()
+        {
+            try
+            {
+                using var connection = GetConnection();  // Already open from InitializeDatabase
+
+                var tablesToClear = new[]
+                {
+                    "SEGMENT_VALUES",
+                    "SEGMENT_HIERARCHY_CACHE",
+                    "SEGMENTS",
+                    "PERIODS",
+                    "BUDGETS",
+                    "CURRENCIES",
+                    "JOURNALCATEGORIES",
+                    "JOURNALSOURCES",
+                    "ENCUMBRANCES",
+                    "ACTIVITY",
+                    "LEDGERS",
+                    "CUBES"
+                    // DO NOT include "GLFORMULAS_CACHE" here!
+                };
+
+                foreach (var table in tablesToClear)
+                {
+                    using var cmd = connection.CreateCommand();
+                    cmd.CommandText = $"DELETE FROM [{table}];";  // Brackets for safety if table name has special chars
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Failed to reset session data");
+            }
+        }
+    }
+}

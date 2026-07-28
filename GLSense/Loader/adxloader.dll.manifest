@@ -1,0 +1,5 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <assemblyIdentity name="GLSense, PublicKeyToken=570e6297afbd5ef3" imageRuntimeVersion="v4.0.30319" xllClass="GLSense.GLSenseExcelFunctions" />
+  <loaderSettings generateLogFile="true" shadowCopyEnabled="false" privileges="user" minOfficeVersionSupported="16" />
+</configuration>

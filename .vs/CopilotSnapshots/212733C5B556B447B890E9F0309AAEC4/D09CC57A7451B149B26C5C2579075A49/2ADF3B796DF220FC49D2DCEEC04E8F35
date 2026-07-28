@@ -1,0 +1,38 @@
+﻿@echo off
+SET OUTDIR=%~dp0
+SET NUGET_CACHE=%USERPROFILE%\.nuget\packages
+
+REM Rename app.config to GLSense.dll.config
+IF EXIST "%OUTDIR%app.config" (
+    echo Renaming app.config to GLSense.dll.config
+    COPY /Y "%OUTDIR%app.config" "%OUTDIR%GLSense.dll.config"
+)
+
+REM Copy SQLite native DLLs from NuGet cache
+echo Copying SQLite native DLLs...
+
+REM SQLite package version (from csproj)
+SET SQLITE_VERSION=1.0.119
+SET SQLITE_STUB=%NUGET_CACHE%\stub.system.data.sqlite.core.netframework\%SQLITE_VERSION%
+
+REM Create x86 and x64 directories if they don't exist
+IF NOT EXIST "%OUTDIR%x86\" mkdir "%OUTDIR%x86"
+IF NOT EXIST "%OUTDIR%x64\" mkdir "%OUTDIR%x64"
+
+REM Copy x86 SQLite DLL
+IF EXIST "%SQLITE_STUB%\build\net46\x86\SQLite.Interop.dll" (
+    echo Copying x86 SQLite.Interop.dll...
+    COPY /Y "%SQLITE_STUB%\build\net46\x86\SQLite.Interop.dll" "%OUTDIR%x86\"
+) ELSE (
+    echo WARNING: x86 SQLite.Interop.dll not found in %SQLITE_STUB%\build\net46\x86
+)
+
+REM Copy x64 SQLite DLL
+IF EXIST "%SQLITE_STUB%\build\net46\x64\SQLite.Interop.dll" (
+    echo Copying x64 SQLite.Interop.dll...
+    COPY /Y "%SQLITE_STUB%\build\net46\x64\SQLite.Interop.dll" "%OUTDIR%x64\"
+) ELSE (
+    echo WARNING: x64 SQLite.Interop.dll not found in %SQLITE_STUB%\build\net46\x64
+)
+
+echo SQLite native DLL copy complete

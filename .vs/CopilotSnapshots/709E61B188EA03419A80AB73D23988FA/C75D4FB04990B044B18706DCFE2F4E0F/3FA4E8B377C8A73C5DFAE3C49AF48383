@@ -1,0 +1,531 @@
+﻿<utils:DpiAwareWindow x:Class="GLSense.Views.GLSegmentRef" 
+                      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+					  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+					  xmlns:local="clr-namespace:GLSense.Views" 
+					  xmlns:ctrls="clr-namespace:GLSense.Controls" 
+					  xmlns:utils="clr-namespace:GLSense.Utilities" 
+					  xmlns:conv="clr-namespace:GLSense.Converters" 
+					  xmlns:fa="http://schemas.fontawesome.io/icons/" 
+					  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome" 
+					  Background="#F8F9FA" SizeToContent="WidthAndHeight" ResizeMode="CanResize" MinWidth="650" 
+					  MaxWidth="750" MinHeight="700" MaxHeight="750" WindowStyle="None" 
+					  WindowStartupLocation="CenterScreen" Loaded="Window_Loaded">
+    <utils:DpiAwareWindow.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/GLSense;component/Themes/GlobalStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <!-- Converters (window-specific) -->
+            <conv:WidthPercentageConverter x:Key="WidthPercentageConverter"/>
+            <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <!-- Improve scroll bar visibility: explicit scrollbar + thumb styles (window-specific) -->
+            <Style TargetType="ScrollBar" x:Key="AppScrollBarStyle">
+                <Setter Property="Width" Value="12"/>
+                <Setter Property="Background" Value="#F1F3F5"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="Opacity" Value="1"/>
+            </Style>
+            <Style TargetType="Thumb" x:Key="AppScrollThumbStyle">
+                <Setter Property="Background" Value="#9E9E9E"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Opacity" Value="0.95"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Thumb">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="6"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <!-- Pagination Button Style (window-specific) -->
+            <Style x:Key="PaginationButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+                <Setter Property="Width" Value="32"/>
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Margin" Value="2,0"/>
+                <Setter Property="MinWidth" Value="32"/>
+            </Style>
+            <!-- Pagination Info Style (window-specific) -->
+            <Style x:Key="PaginationInfoText" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="#495057"/>
+                <Setter Property="FontFamily" Value="Segoe UI"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="4,0"/>
+            </Style>
+            <!-- Small TextBox Style for Pagination (window-specific) -->
+            <Style x:Key="SmallTextBox" TargetType="TextBox" BasedOn="{StaticResource ModernTextBox}">
+                <Setter Property="Width" Value="50"/>
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Padding" Value="4,2"/>
+            </Style>
+            <!-- DataGrid Text Element Style with foreground binding (window-specific override) -->
+            <Style x:Key="SegRefDataGridText" TargetType="TextBlock">
+                <Setter Property="Padding" Value="12,8"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridCell}}"/>
+            </Style>
+        </ResourceDictionary>
+    </utils:DpiAwareWindow.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Grid.ColumnSpan="3" Style="{StaticResource HeaderBar}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="LayerGroupSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="Account Assignment Configurator" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- ================= Main Content ================= -->
+        <ScrollViewer Grid.Row="1" Grid.ColumnSpan="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,2,0,0">
+            <StackPanel>
+                <Border Grid.Row="1" Background="White" CornerRadius="6" Margin="0,0,0,2" Padding="10,4">
+                    <ScrollViewer VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled" MaxHeight="200" MinHeight="48" Focusable="False">
+                        <ScrollViewer.Resources>
+                            <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}"/>
+                            <Style TargetType="Thumb" BasedOn="{StaticResource AppScrollThumbStyle}"/>
+                        </ScrollViewer.Resources>
+                        <ItemsControl x:Name="SegmentsItemsControl" ItemsSource="{Binding Segments}" Margin="0,0,0,8">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <VirtualizingStackPanel IsVirtualizing="True" VirtualizationMode="Standard"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <!-- Force a fixed height per item so MaxHeight reliably controls how many are visible -->
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Height" Value="40"/>
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="#E9ECEF" BorderThickness="0,0,0,1" Padding="4,6">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                                        <Setter Property="Background" Value="#FFFFFBE6"/>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="150"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="200"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Label Content="{Binding SegmentName}" Grid.Column="0" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" GotFocus="SegmentControl_GotFocus" IsEnabled="{Binding IsTextEnabled}" Grid.Column="1" Height="30" Margin="6,0" VerticalContentAlignment="Center"/>
+                                            <local:ExcelRefEditControl Text="{Binding Reference, Mode=TwoWay}" RowAbsolute="False" ColumnAbsolute="True" GotFocus="SegmentControl_GotFocus" Grid.Column="2" Height="30" Margin="6,0" IsEnabled="{Binding IsRefEditEnabled}" TagName="{Binding SegmentName}"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <Border Grid.Row="2" Background="White" CornerRadius="6" Margin="0,0,0,2" Padding="12,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,0">
+                            <iconPacks:PackIconFontAwesome Kind="SitemapSolid" Width="16" Height="16" Margin="0,0,8,0" Foreground="#2E86AB" VerticalAlignment="Center"/>
+                            <TextBlock Text="Hierarchies :" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
+                        </StackPanel>
+                        <ctrls:SuggestAppendComboBox x:Name="cmbHierarchy" Grid.Column="1" Height="30" VerticalAlignment="Center" ItemsSource="{Binding HierarchyItems}" DisplayMemberPath="DisplayDescription" SelectedItem="{Binding SelectedHierarchy, Mode=TwoWay}" Margin="8,0,0,0" ArrowBrush="#2E86AB" ArrowWidth="10" ArrowHeight="8" Background="White" Foreground="#212529" BorderThickness="1" BorderBrush="#E9ECEF" LostFocus="CmbHierarchy_LostFocus"/>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="3" Background="White" CornerRadius="6" Margin="0,0,0,2" Padding="12,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <iconPacks:PackIconFontAwesome Kind="SearchenginBrands" Width="16" Height="16" Margin="0,4,2,0" Foreground="#2E86AB" VerticalAlignment="Center"/>
+                            <TextBlock Text="Search :" Style="{StaticResource HeaderTextBlock}" Margin="0,0,2,0"/>
+                        </StackPanel>
+                        <ctrls:SuggestAppendComboBox x:Name="cmbSearchType" Grid.Column="1" Width="Auto" MinWidth="200" Height="30" Margin="8,0,8,0" ItemsSource="{Binding SearchTypes}" DisplayMemberPath="DisplayName" SelectedItem="{Binding SelectedSearchType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ArrowBrush="#2E86AB" ArrowWidth="10" ArrowHeight="8" Background="White" Foreground="#212529" BorderThickness="1" BorderBrush="#E9ECEF"/>
+                        <TextBox x:Name="txtSearch" Grid.Column="2" Width="Auto" MinWidth="110" Height="30" Style="{StaticResource ModernTextBox}" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="4" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.2*" MinWidth="220"/>
+                            <ColumnDefinition Width="54"/>
+                            <ColumnDefinition Width="1.0*" MinWidth="220"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Background="White" CornerRadius="4" Margin="4">
+                            <DataGrid x:Name="dgLeft" FontFamily="Segoe UI" ItemsSource="{Binding PagedSegmentValues}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Extended" SelectionUnit="FullRow" Background="White" BorderThickness="0.5" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True" MouseDoubleClick="DgLeft_MouseDoubleClick">
+                                <!-- Override system selection colors -->
+                                <DataGrid.Resources>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
+                                    <!-- Local scrollbar styles (scope-limited to this DataGrid) -->
+                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
+                                        <Setter Property="Width" Value="12"/>
+                                        <Setter Property="Background" Value="#E0E0E0"/>
+                                        <!-- visible track -->
+                                        <Setter Property="Opacity" Value="1"/>
+                                    </Style>
+                                    <Style TargetType="Thumb" BasedOn="{StaticResource AppScrollThumbStyle}">
+                                        <Setter Property="Background" Value="#6C757D"/>
+                                        <!-- darker thumb -->
+                                        <Setter Property="Opacity" Value="1"/>
+                                    </Style>
+                                </DataGrid.Resources>
+                                <DataGrid.ColumnHeaderStyle>
+                                    <Style TargetType="DataGridColumnHeader">
+                                        <Setter Property="Background" Value="#2E86AB"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                        <Setter Property="BorderBrush" Value="#1B6B93"/>
+                                        <Setter Property="BorderThickness" Value="0,0,1,0"/>
+                                        <Setter Property="Padding" Value="12,10"/>
+                                        <Setter Property="Height" Value="38"/>
+                                        <Setter Property="FontSize" Value="12"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="DataGridColumnHeader">
+                                                    <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <ContentPresenter Grid.Column="0" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                                            <Path x:Name="SortArrow" Grid.Column="1" Margin="6,0,6,0" Width="10" Height="6" Stretch="Fill" Fill="{TemplateBinding Foreground}" Visibility="Collapsed" Data="M 0 4 L 5 0 L 10 4 Z"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" TargetName="border" Value="#389BC7"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter Property="Background" TargetName="border" Value="#277596"/>
+                                                        </Trigger>
+                                                        <Trigger Property="SortDirection" Value="Ascending">
+                                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 4 L 5 0 L 10 4 Z"/>
+                                                        </Trigger>
+                                                        <Trigger Property="SortDirection" Value="Descending">
+                                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 0 L 5 4 L 10 0 Z"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </DataGrid.ColumnHeaderStyle>
+                                <DataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow">
+                                        <Setter Property="BorderBrush" Value="#F8F9FA"/>
+                                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                        <Setter Property="Background" Value="White"/>
+                                        <Setter Property="Foreground" Value="#212529"/>
+                                        <Setter Property="FontSize" Value="13"/>
+                                        <Setter Property="Height" Value="36"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#F0F8FF"/>
+                                                <Setter Property="BorderBrush" Value="#2E86AB"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="#E3F2FD"/>
+                                                <Setter Property="BorderBrush" Value="#2E86AB"/>
+                                                <Setter Property="Foreground" Value="#212529"/>
+                                            </Trigger>
+                                            <DataTrigger Binding="{Binding IsSummaryAccount}" Value="True">
+                                                <Setter Property="Background" Value="#FFFFF0"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsModified}" Value="True">
+                                                <Setter Property="Background" Value="#FFE4B5"/>
+                                            </DataTrigger>
+                                            <!-- UI interaction triggers LAST (override data triggers) -->
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#F0F8FF"/>
+                                                <Setter Property="BorderBrush" Value="#2E86AB"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="#9bcee4"/>
+                                                <Setter Property="BorderBrush" Value="#2E86AB"/>
+                                                <Setter Property="Foreground" Value="White"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.RowStyle>
+                                <!-- UPDATED CellStyle with transparent background -->
+                                <DataGrid.CellStyle>
+                                    <Style TargetType="DataGridCell">
+                                        <Setter Property="BorderBrush" Value="Transparent"/>
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Foreground" Value="{Binding Foreground, 
+                                            RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                                    </Style>
+                                </DataGrid.CellStyle>
+                                <DataGrid.Columns>
+                                    <!-- Value Column -->
+                                    <DataGridTextColumn Header="Value" Binding="{Binding DisplaySegmentValue}" Width="90" IsReadOnly="True">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                                <Setter Property="ToolTip">
+                                                    <Setter.Value>
+                                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                            <TextBlock Text="{Binding DisplaySegmentValue}"/>
+                                                        </ToolTip>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <!-- Description Column -->
+                                    <DataGridTextColumn Header="Description" IsReadOnly="True" Binding="{Binding Description}" Width="*">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                                <Setter Property="ToolTip">
+                                                    <Setter.Value>
+                                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                            <TextBlock Text="{Binding Description}" TextWrapping="Wrap"/>
+                                                        </ToolTip>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <!-- Is-Summary Column -->
+                                    <DataGridTemplateColumn Header="Is-Summary" Width="100">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox Style="{StaticResource SingleClickCheckBoxStyle}" IsChecked="{Binding IsSummaryChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsSummaryAccount}">
+                                                    <CheckBox.ToolTip>
+                                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                            <TextBlock Text="This is a summary account" TextWrapping="Wrap" MaxWidth="300"/>
+                                                        </ToolTip>
+                                                    </CheckBox.ToolTip>
+                                                </CheckBox>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+                        <Grid Grid.Column="1">
+                            <GridSplitter Width="6" HorizontalAlignment="Center" VerticalAlignment="Stretch" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Background="Transparent"/>
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,4,0,0">
+                                <Button x:Name="btnAdd" Style="{StaticResource AddToRightButtonStyle}" Click="BtnAdd_Click"/>
+                                <Button x:Name="btnBetween" Style="{StaticResource BetweenGridButtonStyle}" Click="BtnBetween_Click"/>
+                                <Button x:Name="btnNotBetween" Style="{StaticResource NotBetweenGridButtonStyle}" Click="BtnNotBetween_Click"/>
+                                <Button x:Name="btnExclude" Style="{StaticResource ExcludeButtonStyle}" Click="BtnExclude_Click"/>
+                                <Button x:Name="btnRemove" Style="{StaticResource RemoveFromRightGridButtonStyle}" Click="BtnRemove_Click"/>
+                            </StackPanel>
+                        </Grid>
+                        <Border Grid.Column="2" Background="White" CornerRadius="4" Margin="4">
+                            <DataGrid x:Name="dgRight" FontFamily="Segoe UI" ItemsSource="{Binding SelectedItemsRight}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" IsReadOnly="True" Background="White" BorderThickness="0.5" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True" SelectionMode="Extended" SelectionUnit="FullRow" MouseDoubleClick="DgRight_MouseDoubleClick">
+                                <DataGrid.Resources>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
+                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
+                                    <!-- Local scrollbar styles (scope-limited to this DataGrid) -->
+                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
+                                        <Setter Property="Width" Value="12"/>
+                                        <Setter Property="Background" Value="#E0E0E0"/>
+                                        <Setter Property="Opacity" Value="1"/>
+                                    </Style>
+                                    <Style TargetType="Thumb" BasedOn="{StaticResource AppScrollThumbStyle}">
+                                        <Setter Property="Background" Value="#6C757D"/>
+                                        <Setter Property="Opacity" Value="1"/>
+                                    </Style>
+                                </DataGrid.Resources>
+                                <DataGrid.ColumnHeaderStyle>
+                                    <Style TargetType="DataGridColumnHeader">
+                                        <Setter Property="Background" Value="#2E86AB"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                        <Setter Property="BorderBrush" Value="#1B6B93"/>
+                                        <Setter Property="BorderThickness" Value="0,0,1,0"/>
+                                        <Setter Property="Padding" Value="12,10"/>
+                                        <Setter Property="Height" Value="38"/>
+                                        <Setter Property="FontSize" Value="12"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="DataGridColumnHeader">
+                                                    <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <ContentPresenter Grid.Column="0" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                                            <Path x:Name="SortArrow" Grid.Column="1" Margin="6,0,6,0" Width="10" Height="6" Stretch="Fill" Fill="{TemplateBinding Foreground}" Visibility="Collapsed" Data="M 0 4 L 5 0 L 10 4 Z"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" TargetName="border" Value="#389BC7"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter Property="Background" TargetName="border" Value="#277596"/>
+                                                        </Trigger>
+                                                        <Trigger Property="SortDirection" Value="Ascending">
+                                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 4 L 5 0 L 10 4 Z"/>
+                                                        </Trigger>
+                                                        <Trigger Property="SortDirection" Value="Descending">
+                                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 0 L 5 4 L 10 0 Z"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </DataGrid.ColumnHeaderStyle>
+                                <DataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow">
+                                        <Setter Property="BorderBrush" Value="#F8F9FA"/>
+                                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                        <Setter Property="Background" Value="White"/>
+                                        <Setter Property="Foreground" Value="#212529"/>
+                                        <Setter Property="FontSize" Value="13"/>
+                                        <Setter Property="Height" Value="36"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#F0F8FF"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="#E3F2FD"/>
+                                                <Setter Property="Foreground" Value="#212529"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.RowStyle>
+                                <!-- UPDATED CellStyle with transparent background -->
+                                <DataGrid.CellStyle>
+                                    <Style TargetType="DataGridCell">
+                                        <Setter Property="BorderBrush" Value="Transparent"/>
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Foreground" Value="{Binding Foreground, 
+                                            RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                                    </Style>
+                                </DataGrid.CellStyle>
+                                <DataGrid.Columns>
+                                    <!-- Value1 Column -->
+                                    <DataGridTextColumn Header="Value1" Binding="{Binding Value1}" Width="100" IsReadOnly="True">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                                <Setter Property="ToolTip">
+                                                    <Setter.Value>
+                                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                            <TextBlock Text="{Binding Value1}"/>
+                                                        </ToolTip>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <!-- Value2 Column -->
+                                    <DataGridTextColumn Header="Value2" Binding="{Binding Value2}" Width="100" IsReadOnly="True">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                                <Setter Property="ToolTip">
+                                                    <Setter.Value>
+                                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                            <TextBlock Text="{Binding Value2}"/>
+                                                        </ToolTip>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <!-- Hide when empty -->
+                                                <Style.Triggers>
+                                                    <Trigger Property="Text" Value="">
+                                                        <Setter Property="ToolTip" Value="{x:Null}"/>
+                                                    </Trigger>
+                                                    <DataTrigger Binding="{Binding Value2}" Value="{x:Null}">
+                                                        <Setter Property="ToolTip" Value="{x:Null}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <!-- Segment Column -->
+                                    <DataGridTextColumn Header="Segment" Binding="{Binding Segment}" Width="*" IsReadOnly="True">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                                <Setter Property="ToolTip">
+                                                    <Setter.Value>
+                                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                            <TextBlock Text="{Binding Segment}"/>
+                                                        </ToolTip>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource CompactBorderStyle}" Margin="0,0,0,0" Padding="12,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Content="Reference :" Style="{StaticResource HeaderLabel}" MinWidth="120" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <local:ExcelRefEditControl x:Name="CellReference" Grid.Column="1" Grid.ColumnSpan="2" Height="32" Style="{StaticResource CompactRefEditControl}" Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TagName="Segments Cell Reference" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ================= Buttons ================= -->
+        <Border Grid.Row="2" Grid.ColumnSpan="3" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="8,4" Margin="0,0,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button x:Name="btnSubmit" Style="{StaticResource InsertButtonStyle}" Click="BtnSubmit_Click" Margin="0,0,8,0"/>
+                <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ================= Overlay ================= -->
+        <local:AppOverlay x:Name="AppOverlayControl" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="3" Panel.ZIndex="10" Visibility="Collapsed" DataContext="{x:Null}"/>
+    </Grid>
+</utils:DpiAwareWindow>

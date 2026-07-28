@@ -1,0 +1,275 @@
+﻿using GLSense.Helpers;
+using GLSense.Interfaces;
+using GLSense.Utilities;
+using System;
+using System.ComponentModel;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using Excel = Microsoft.Office.Interop.Excel;
+
+namespace GLSense.Views
+{
+    /// <summary>
+    /// Interaction logic for ExcelRefEditControl.xaml
+    /// </summary>
+    public partial class ExcelRefEditControl : UserControl
+    {
+        private string _currentToolTipText = "No cell selected";
+        public ExcelRefEditControl()
+        {
+            InitializeComponent(); // Don't forget this!
+            Loaded += ExcelRefEditControl_Loaded;
+        }
+
+        public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
+            "Text", typeof(string), typeof(ExcelRefEditControl),
+            new FrameworkPropertyMetadata(string.Empty, OnTextChanged));
+
+        public string Text
+        {
+            get { return (string)GetValue(TextProperty); }
+            set { SetValue(TextProperty, value); }
+        }
+
+        public static readonly DependencyProperty TagNameProperty =
+            DependencyProperty.Register("TagName", typeof(string), typeof(ExcelRefEditControl), new PropertyMetadata(string.Empty));
+
+        public string TagName
+        {
+            get { return (string)GetValue(TagNameProperty); }
+            set { SetValue(TagNameProperty, value); }
+        }
+
+        // Event passed to hosting window when Text changes
+        public event EventHandler<CellReferenceChangedEventArgs> CellReferenceChanged;
+
+        private static void OnTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var control = (ExcelRefEditControl)d;
+
+            // Update the tooltip text
+            if (string.IsNullOrEmpty(e.NewValue?.ToString()))
+            {
+                control._currentToolTipText = "No cell selected";
+            }
+            else
+            {
+                control._currentToolTipText = e.NewValue.ToString();
+            }
+
+            // Update the tooltip directly
+            if (control.txtBox != null && control.txtBox.ToolTip is ToolTip toolTip && toolTip.Content is StackPanel stackPanel)
+            {
+                foreach (var child in stackPanel.Children)
+                {
+                    if (child is TextBlock textBlock && textBlock.FontFamily?.Source == "Segoe UI")
+                    {
+                        textBlock.Text = control._currentToolTipText;
+                        break;
+                    }
+                }
+            }
+
+            control.RaiseCellReferenceChanged(e.NewValue?.ToString());
+        }
+
+        public static readonly DependencyProperty ExcelAppProperty =
+            DependencyProperty.Register("ExcelApp", typeof(Excel.Application), typeof(ExcelRefEditControl));
+
+        public Excel.Application ExcelApp
+        {
+            get { return (Excel.Application)GetValue(ExcelAppProperty); }
+            set { SetValue(ExcelAppProperty, value); }
+        }
+
+        public static readonly DependencyProperty RowAbsoluteProperty =
+            DependencyProperty.Register(
+            nameof(RowAbsolute),
+            typeof(bool),
+            typeof(ExcelRefEditControl),
+            new PropertyMetadata(true)); // default: absolute row
+
+        public bool RowAbsolute
+        {
+            get => (bool)GetValue(RowAbsoluteProperty);
+            set => SetValue(RowAbsoluteProperty, value);
+        }
+
+        public static readonly DependencyProperty ColumnAbsoluteProperty =
+            DependencyProperty.Register(
+                nameof(ColumnAbsolute),
+                typeof(bool),
+                typeof(ExcelRefEditControl),
+                new PropertyMetadata(true)); // default: absolute column
+
+        public bool ColumnAbsolute
+        {
+            get => (bool)GetValue(ColumnAbsoluteProperty);
+            set => SetValue(ColumnAbsoluteProperty, value);
+        }
+
+        private void RaiseCellReferenceChanged(string newRef)
+        {
+            CellReferenceChanged?.Invoke(this, new CellReferenceChangedEventArgs(TagName, newRef));
+        }
+        private void UpdateToolTipText(string text)
+        {
+            if (toolTipTextBlock != null)
+            {
+                toolTipTextBlock.Text = string.IsNullOrEmpty(text) ? "No cell selected" : text;
+            }
+        }
+        private void BtnEdit_Click(object sender, RoutedEventArgs e)
+        {
+            Window parentWindow = Window.GetWindow(this);
+            FrameworkElement hostContainer = parentWindow == null ? FindHostContainer() : null;
+            bool windowDisabled = false;
+            bool hostDisabled = false;
+
+            try
+            {
+                // Add null check for Excel app
+                if (AppState.Instance.ExcelApp == null)
+                {
+                    LogUtility.LogError("Excel application is not available.");
+                    return;
+                }
+
+                if (parentWindow != null)
+                {
+                    parentWindow.IsEnabled = false;
+                    windowDisabled = true;
+                }
+                else if (hostContainer != null)
+                {
+                    hostContainer.IsEnabled = false;
+                    hostDisabled = true;
+                }
+
+                AppState.Instance.ExcelApp.EnableEvents = false;
+                AppState.Instance.ExcelApp.DisplayAlerts = false;
+
+                object result = AppState.Instance.ExcelApp.InputBox(
+                    "Please select single cell..",
+                    "Select excel cell",
+                    Type: 8);
+
+                // Handle cancellation (returns false)
+                switch (result)
+                {
+                    case bool when !(bool)result:
+                        return; // User cancelled
+                    case Excel.Range rng:
+                        {
+                            // Check for single cell selection
+                            if (rng.Cells.Count > 1)
+                            {
+                                // Optional: Show message to user
+                                LogUtility.LogError("Please select only a single cell.");
+                                return;
+                            }
+
+                            string sheetName = ((Excel.Worksheet)rng.Parent).Name;
+                            string cellAddress = rng.Address[RowAbsolute, ColumnAbsolute, Excel.XlReferenceStyle.xlA1, false];
+                            string addr = $"'{sheetName}'!{cellAddress}";
+                            this.Text = addr;
+                            UpdateToolTipText(this.Text);
+                            break;
+                        }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                // Safely restore settings
+                try
+                {
+                    if (AppState.Instance.ExcelApp != null)
+                    {
+                        AppState.Instance.ExcelApp.EnableEvents = true;
+                        AppState.Instance.ExcelApp.DisplayAlerts = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogError("Error restoring Excel settings: " + ex.Message);
+                }
+                finally
+                {
+                    if (windowDisabled && parentWindow != null)
+                    {
+                        parentWindow.IsEnabled = true;
+                        parentWindow.Activate();
+                    }
+                    else if (hostDisabled && hostContainer != null)
+                    {
+                        hostContainer.IsEnabled = true;
+                        hostContainer.Focus();
+                    }
+                }
+            }
+        }
+
+        private void BtnClear_Click(object sender, RoutedEventArgs e)
+        {
+            this.Text = string.Empty;
+            UpdateToolTipText(string.Empty);
+        }
+
+        private void ExcelRefEditControl_Loaded(object sender, RoutedEventArgs e)
+        {
+            UpdateToolTipText(this.Text);
+
+            if (DesignerProperties.GetIsInDesignMode(this)) return;
+
+            IWarningHost host = FindWarningHost(this);
+
+            if (host != null)
+            {
+                ExcelRefManager.SetupControl(this, TagName, host);
+            }
+        }
+        private static IWarningHost FindWarningHost(DependencyObject child)
+        {
+            DependencyObject parent = child;
+
+            while (parent != null)
+            {
+                if (parent is IWarningHost warningHost)
+                    return warningHost;
+
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+
+            return null;
+        }
+
+        private FrameworkElement FindHostContainer()
+        {
+            DependencyObject current = this;
+            FrameworkElement lastFrameworkElement = null;
+
+            while (current != null)
+            {
+                if (current is FrameworkElement fe)
+                {
+                    lastFrameworkElement = fe;
+                }
+
+                DependencyObject parent = VisualTreeHelper.GetParent(current);
+                if (parent == null && current is FrameworkElement feCurrent)
+                {
+                    parent = feCurrent.Parent;
+                }
+
+                current = parent;
+            }
+
+            return lastFrameworkElement;
+        }
+    }
+}

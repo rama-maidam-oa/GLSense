@@ -1,0 +1,463 @@
+﻿using GLSense.Helpers;
+using GLSense.Models;
+using GLSense.Utilities;
+using GLSense.Views;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Windows.Interop;
+using Excel = Microsoft.Office.Interop.Excel;
+
+namespace GLSense.Drilldowns
+{
+    public class DrilldownXlPrecedents(Excel.Application xlapp, string rngAddress)
+    {
+        private Excel.Application ExcelApp { get; } = xlapp;
+        private Excel.Workbook EpWorbook { get; set; }
+        private Excel.Worksheet EpWorksheet { get; set; }
+        private Excel.Range EpRange { get; set; }
+        private CancellationHelper _ctsHelper;
+        private CancellationToken Token => _ctsHelper?.GetToken() ?? default;
+        private ExternalResolveResult ExternalResolveResult { get; set; } = new ExternalResolveResult();
+        private readonly string _epAddress = rngAddress;
+        private static GLWaitWindow Win { get; set; }
+
+        public async Task ProcessEPDrilldown()
+        {
+            _ctsHelper = new CancellationHelper();
+
+            try
+            {
+                await ExecuteDrilldownProcess();
+            }
+            catch (OperationCanceledException)
+            {
+                await HandleCancellation();
+            }
+            catch (Exception ex)
+            {
+                await HandleException(ex);
+            }
+            finally
+            {
+                await CleanupResources();
+            }
+        }
+
+        private async Task ExecuteDrilldownProcess()
+        {
+            CommonMethods.DisableExcelSettings();
+
+            Token.ThrowIfCancellationRequested();
+
+            ExternalResolveResult = ExcelExternalRef.ResolveRangeWithContext(_epAddress);
+            EpRange = ExternalResolveResult.Range;
+            EpWorksheet = ExternalResolveResult.Worksheet;
+            EpWorbook = ExternalResolveResult.Workbook;
+
+            Token.ThrowIfCancellationRequested();
+
+            if (EpRange == null) return;
+
+            var precedents = GetAllPrecedents(EpRange);
+            if (!HasValidPrecedents(precedents))
+            {
+                ShowNoPrecedentsMessage();
+                return;
+            }
+
+            await InitializeProgressWindow(_ctsHelper);
+            await ProcessPrecedentsAsync(precedents);
+            AddinModule.RibbonHelper.ApplyState("ApplySheetActiveState");
+        }
+        private static bool HasValidPrecedents(List<string> precedents)
+        {
+            return precedents != null && precedents.Count > 0;
+        }
+
+        private static void ShowNoPrecedentsMessage()
+        {
+            CommonFunctions.GLSenseMessage(
+                "No balance formula cells found for the selected formula.",
+                MessageBoxIcon.Exclamation);
+        }
+
+        private async Task InitializeProgressWindow(CancellationHelper cts)
+        {
+            try
+            {
+                WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    Win = new GLWaitWindow(cts);
+                    Win.SetExcelOwner((IntPtr)ExcelApp.Hwnd);
+                    Win.Show();
+                    Win.StartMonitoring();
+                });
+
+                await UpdateProgressWindow("Getting dependent formulas", "Processing request...");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error initializing progress window: {ex.Message}");
+                await SafelyCloseWindowAsync();
+                throw;
+            }
+        }
+
+        private static async Task UpdateProgressWindow(string title, string message)
+        {
+            await Win.Dispatcher.InvokeAsync(() => Win.SetProcessTitle(title));
+            await Win.Dispatcher.InvokeAsync(() => Win.SetProcessMessage(message));
+        }
+
+        private async Task ProcessPrecedentsAsync(List<string> precedents)
+        {
+            await CreateDrillReferencesAsync(EpRange, precedents);
+        }
+
+        private static async Task HandleCancellation()
+        {
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                "Operation Cancelled by the user!",
+                MessageBoxIcon.Error,
+                MessageBoxButtons.OK);
+        }
+
+        private static async Task HandleException(Exception ex)
+        {
+            LogUtility.LogException(ex);
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                $"An unexpected error occurred.{Environment.NewLine}{ex.Message}",
+                MessageBoxIcon.Error,
+                MessageBoxButtons.OK);
+        }
+
+        private async Task CleanupResources()
+        {
+            await SafelyCloseWindowAsync();
+            CancelAndDisposeTokenSource();
+            CommonMethods.EnableExcelSettings();
+        }
+        private static async Task SafelyCloseWindowAsync()
+        {
+            if (Win == null)
+                return;
+
+            try
+            {
+                if (Win.Dispatcher.CheckAccess())  // Already on UI thread
+                {
+                    Win.RequestClose();
+                }
+                await Win.Dispatcher.InvokeAsync(() => Win.RequestClose());
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error closing wait window: {ex.Message}");
+            }
+        }
+        private void CancelAndDisposeTokenSource()
+        {
+            try
+            {
+                if (_ctsHelper != null && !_ctsHelper.IsCancellationRequested)
+                    _ctsHelper.Cancel();
+
+                _ctsHelper?.Dispose();  // ? ALWAYS SAFE - handles ALL cases
+            }
+            catch
+            {
+                // Swallow dispose exceptions (Excel COM weirdness)
+            }
+        }
+        private async Task CreateDrillReferencesAsync(Excel.Range cellrng, List<string> listRng)
+        {
+            await Task.Run(() => CreateDrillReferencesCore(cellrng, listRng));
+        }
+
+        private void CreateDrillReferencesCore(Excel.Range cellrng, List<string> listRng)
+        {
+            Excel.Worksheet ws = null;
+            try
+            {
+                ws = (Excel.Worksheet)ExcelApp.Worksheets.Add();
+                ws.Tab.Color = ColorTranslator.ToOle(Color.FromArgb(131, 204, 235));
+
+                SetupDrillHeader(ws, cellrng);
+                int rowIndex = ProcessPrecedentCells(ws, listRng);
+                AutoFitColumns(ws, rowIndex);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                ws?.Activate();
+            }
+        }
+
+        private static void SetupDrillHeader(Excel.Worksheet ws, Excel.Range cellrng)
+        {
+            var drillCell = ws.Range["A1"];
+            var drillCellRng = $"'{cellrng.Worksheet.Name}'!{cellrng.Address}";
+
+            drillCell.Hyperlinks.Add(
+                 Anchor: drillCell,
+                    Address: string.Empty,          // No external URL
+                    SubAddress: drillCellRng,       // Target cell reference
+                    ScreenTip: Type.Missing,        // Optional
+                    TextToDisplay: "Goto Definition"
+                );
+            drillCell.Font.Size = 12;
+
+            SetupHeaderCell(ws.Range["A3"], "Reference Cell");
+            SetupHeaderCell(ws.Range["B3"], "Balance Value");
+        }
+
+        private static void SetupHeaderCell(Excel.Range cell, string text)
+        {
+            cell.Value = text;
+            cell.Font.Bold = true;
+            cell.Font.Italic = true;
+            cell.Font.Size = 11;
+            cell.Font.ColorIndex = 2;
+            cell.Interior.Color = ColorTranslator.ToOle(Color.FromArgb(21, 96, 130));
+        }
+
+        private int ProcessPrecedentCells(Excel.Worksheet ws, List<string> listRng)
+        {
+            int rowIndex = 3;
+            foreach (string str in listRng)
+            {
+                try
+                {
+                    var formulaCell = ExcelApp.Range[str];
+                    if (formulaCell == null) continue;
+
+                    _ = ProcessFormulaCell(str, formulaCell, ref rowIndex, ws);
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"Error processing cell {str}");
+                }
+            }
+            return rowIndex;
+        }
+
+        private static string ProcessFormulaCell(string cellAddress, Excel.Range formulaCell, ref int rowIndex, Excel.Worksheet ws)
+        {
+            string updatedFormula = string.Empty;
+
+            if (CommonFunctions.GetBalancesCountInCells(formulaCell.Formula.ToString()) >= 2)
+            {
+                var formulaStr = formulaCell.Formula.ToString();
+                var fncFormulas = CommonFunctions.MultiFormulaValues(formulaStr, "Functions");
+                if (fncFormulas != null && fncFormulas.Count > 0)
+                {
+                    foreach (string fncargs in fncFormulas)
+                    {
+                        rowIndex++;
+                        updatedFormula = ProcessSingleFormula(cellAddress, fncargs, rowIndex, ws);
+                    }
+                }
+            }
+            else
+            {
+                rowIndex++;
+                updatedFormula = ProcessSingleFormula(cellAddress, formulaCell.Formula.ToString(), rowIndex, ws);
+            }
+
+            return updatedFormula;
+        }
+
+        private static string ProcessSingleFormula(string cellAddress, string formula, int rowIndex, Excel.Worksheet ws)
+        {
+
+            var fncparser = new ClsFormulaParser(formula);
+
+            var updatedFormula = fncparser.Formula_Values();
+            ws.Range[$"A{rowIndex}"].Value = cellAddress;
+            ws.Range[$"B{rowIndex}"].Value = updatedFormula;
+            ws.Range[$"B{rowIndex}"].NumberFormat = "#,##0.00_);[Red](#,##0.00)";
+            return updatedFormula;
+
+        }
+
+        private static void AutoFitColumns(Excel.Worksheet ws, int rowIndex)
+        {
+            if (rowIndex > 3)
+            {
+                var formatRange = ws.Range[$"A3:B{rowIndex}"];
+                formatRange.EntireColumn.AutoFit();
+            }
+        }
+
+        public List<string> GetAllPrecedents(Excel.Range rng)
+        {
+            var allPrecedents = new List<string>();
+            try
+            {
+                GetPrecedents(rng, allPrecedents);
+                return allPrecedents;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Error in GetAllPrecedent");
+                return new List<string>();
+            }
+        }
+
+        private void GetPrecedents(Excel.Range rngToCheck, List<string> allPrecedents)
+        {
+            try
+            {
+                if (rngToCheck.Worksheet.ProtectContents) return;
+
+                var formulaCells = GetFormulaCells(rngToCheck);
+                if (formulaCells != null)
+                {
+                    foreach (Excel.Range cell in formulaCells.Cells)
+                    {
+                        Token.ThrowIfCancellationRequested();
+                        GetCellPrecedents(cell, allPrecedents);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private static Excel.Range GetFormulaCells(Excel.Range rngToCheck)
+        {
+            try
+            {
+                object countLargeObj = rngToCheck.Cells.CountLarge;
+                double countLarge = Convert.ToDouble(countLargeObj);
+                bool isMultiCell = countLarge > 1;
+
+                if (isMultiCell)
+                {
+                    return rngToCheck.SpecialCells(Excel.XlCellType.xlCellTypeFormulas);
+                }
+                else if ((bool)rngToCheck.HasFormula)
+                {
+                    return rngToCheck;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Error getting formula cells");
+            }
+            return null;
+        }
+
+        private void GetCellPrecedents(Excel.Range rngCell, List<string> allPrecedents)
+        {
+            const int MAX_ARROWS = 50;  // Prevent infinite loops
+            const int MAX_LINKS = 20;   // Prevent infinite loops
+
+            int arrow = 0;
+            bool hasMoreArrows = true;
+
+            while (arrow < MAX_ARROWS && hasMoreArrows)
+            {
+                Token.ThrowIfCancellationRequested();
+
+                arrow++;
+                bool newArrow = true;
+                int link = 0;
+
+                while (link < MAX_LINKS)
+                {
+                    Token.ThrowIfCancellationRequested();
+
+                    link++;
+                    var precedentRange = NavigateToPrecedent(rngCell, arrow, link);
+
+                    if (precedentRange == null) break;
+
+                    string precedentAddress = GetCellAddress(precedentRange);
+                    if (precedentAddress == GetCellAddress(rngCell))
+                    {
+                        break;
+                    }
+
+                    newArrow = false;
+                    ProcessPrecedentRange(allPrecedents, precedentAddress);
+
+                    // Recurse with depth protection
+                    if (allPrecedents.Count < 1000)  // Prevent stack overflow
+                    {
+                        GetPrecedents(precedentRange, allPrecedents);
+                    }
+                }
+                hasMoreArrows = !newArrow;
+            }
+        }
+
+        private static Excel.Range NavigateToPrecedent(Excel.Range rngCell, int arrow, int link)
+        {
+            try
+            {
+                rngCell.ShowPrecedents();
+                return (Excel.Range)rngCell.NavigateArrow(true, arrow, link);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private void ProcessPrecedentRange(List<string> allPrecedents, string precedentAddress)
+        {
+            if (allPrecedents.Contains(precedentAddress)) return;
+
+            var xlRange = ExcelApp.Range[precedentAddress];
+            if (xlRange.Cells.Count >= 2)
+            {
+                foreach (Excel.Range lpRange in xlRange)
+                {
+                    Token.ThrowIfCancellationRequested();
+                    ProcessBalanceFormulaCell(lpRange, allPrecedents);
+                }
+            }
+            else
+            {
+                ProcessBalanceFormulaCell(xlRange, allPrecedents);
+            }
+        }
+
+        private static void ProcessBalanceFormulaCell(Excel.Range range, List<string> allPrecedents)
+        {
+            if (range == null || !(bool)range.HasFormula || !range.Formula.ToString().Contains(AppConstants.glBal))
+                return;
+
+            string address = GetCellAddress(range);
+            if (!allPrecedents.Contains(address))
+            {
+                allPrecedents.Add(address);
+            }
+        }
+
+        public static string GetCellAddress(Excel.Range rng)
+        {
+            if (rng == null) return string.Empty;
+
+            string sheetName = rng.Worksheet.Name;
+            if (sheetName.Contains(" ") || sheetName.Contains("'"))
+            {
+                sheetName = $"'{sheetName.Replace("'", "''")}'";
+            }
+
+            return $"{sheetName}!{rng.Address[true, true, Excel.XlReferenceStyle.xlA1, false]}";
+        }
+    }
+}

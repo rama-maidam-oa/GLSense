@@ -1,0 +1,319 @@
+﻿using MahApps.Metro.IconPacks;
+using GLSense.Utilities;
+using System;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Threading;
+
+namespace GLSense.Views
+{
+    public partial class AppOverlay : UserControl
+    {
+        private DispatcherTimer _toastTimer;
+        private TaskCompletionSource<bool> _activeToastTcs;
+        private RoutedEventHandler YesHandler, NoHandler, CancelHandler, BusyCancelHandler;
+        private EventHandler _hideBusyHandler;
+
+        public AppOverlay()
+        {
+            InitializeComponent();
+        }
+
+        // === Toast ===
+        public void ShowToast(string message, PackIconFontAwesomeKind icon, Brush color, int durationSeconds = 4)
+        {
+            if (Toast == null) return;
+
+            this.Visibility = Visibility.Visible;
+            Toast.Visibility = Visibility.Visible;
+            Toast.Opacity = 1;
+            Toast.BeginAnimation(Border.OpacityProperty, null);
+
+            ToastMessage.Text = message;
+            ToastIcon.Kind = icon;
+            ToastIcon.Foreground = color;
+
+            Panel.SetZIndex(this, 9999);
+
+            _toastTimer?.Stop();
+            _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
+            _toastTimer.Tick += OnToastTimerTick;
+            _toastTimer.Start();
+        }
+
+        public void ShowSuccess(string message) => ShowToast(message, PackIconFontAwesomeKind.CircleCheckSolid, Brushes.LimeGreen, 4);
+        public void ShowError(string message) => ShowToast(message, PackIconFontAwesomeKind.CircleXmarkSolid, Brushes.Red, 15);
+        public void ShowWarning(string message) => ShowToast(message, PackIconFontAwesomeKind.TriangleExclamationSolid, Brushes.Orange, 10);
+        public void ShowInfo(string message) => ShowToast(message, PackIconFontAwesomeKind.CircleInfoSolid, Brushes.DodgerBlue, 4);
+
+        public Task ShowToastAsync(string message, PackIconFontAwesomeKind icon, Brush color, int durationSeconds = 4)
+        {
+            _activeToastTcs?.TrySetResult(true);
+            var tcs = new TaskCompletionSource<bool>();
+            _activeToastTcs = tcs;
+
+            this.Visibility = Visibility.Visible;
+            Toast.Visibility = Visibility.Visible;
+            Toast.Opacity = 1;
+            Toast.BeginAnimation(Border.OpacityProperty, null);
+
+            ToastMessage.Text = message;
+            ToastIcon.Kind = icon;
+            ToastIcon.Foreground = color;
+
+            Panel.SetZIndex(this, 9999);
+
+            _toastTimer?.Stop();
+            _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(durationSeconds) };
+            _toastTimer.Tick += (s, e) =>
+            {
+                _toastTimer.Stop();
+                var fade = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.5));
+                fade.Completed += (s2, e2) =>
+                {
+                    Toast.Opacity = 0;
+                    if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
+                        this.Visibility = Visibility.Collapsed;
+                    tcs.TrySetResult(true);
+                    if (_activeToastTcs == tcs)
+                        _activeToastTcs = null;
+                };
+                Toast.BeginAnimation(Border.OpacityProperty, fade);
+            };
+            _toastTimer.Start();
+
+            return tcs.Task;
+        }
+
+        public async Task ShowSuccessAsync(string message)
+        {
+            await ShowToastAsync(message, PackIconFontAwesomeKind.CircleCheckSolid, Brushes.LimeGreen, 3);
+        }
+
+        public async Task ShowErrorAsync(string message)
+        {
+            await ShowToastAsync(message, PackIconFontAwesomeKind.CircleXmarkSolid, Brushes.Red, 7);
+        }
+
+        public async Task ShowWarningAsync(string message)
+        {
+            await ShowToastAsync(message, PackIconFontAwesomeKind.TriangleExclamationSolid, Brushes.Orange, 5);
+        }
+
+        public async Task ShowInfoAsync(string message)
+        {
+            await ShowToastAsync(message, PackIconFontAwesomeKind.CircleInfoSolid, Brushes.DodgerBlue, 3);
+        }
+        private void OnToastTimerTick(object sender, EventArgs e)
+        {
+            _toastTimer.Stop();
+            HideToast();
+        }
+
+        private void BtnCloseToast_Click(object sender, RoutedEventArgs e)
+        {
+            _toastTimer?.Stop();
+            _activeToastTcs?.TrySetResult(true);
+            _activeToastTcs = null;
+            HideToast();
+        }
+
+        private void HideToast()
+        {
+            var fade = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.5));
+            fade.Completed += (s, e) =>
+            {
+                Toast.Opacity = 0;
+                if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
+                    this.Visibility = Visibility.Collapsed;
+            };
+            Toast.BeginAnimation(Border.OpacityProperty, fade);
+        }
+
+        // === Busy Overlay ===
+        public async Task ShowBusyasynTask(string message = "Please wait...", Func<Task> cancelAction = null)
+        {
+            ShowBusyasyn(message, cancelAction);
+            await Task.CompletedTask;
+        }
+        public void ShowBusyasyn(string message = "Please wait...", Func<Task> cancelAction = null)
+        {
+            BusyMessage.Text = message ?? "Please wait...";
+            this.Visibility = Visibility.Visible;
+            this.Opacity = 1.0;
+            Panel.SetZIndex(this, 9999);
+
+            // 🔥 Bring to front of parent container
+            if (this.Parent is UIElement parent)
+                Panel.SetZIndex(parent, 0);
+
+            BusyOverlay.Visibility = Visibility.Visible;
+            BusyOverlay.Opacity = 1;
+            BusyOverlay.IsHitTestVisible = true;
+
+            if (BusyCancelHandler != null)
+            {
+                BtnCancelBusy.Click -= BusyCancelHandler;
+                BusyCancelHandler = null;
+            }
+
+            BusyCancelHandler = async (sender, e) =>
+            {
+                BtnCancelBusy.IsEnabled = false;
+                try
+                {
+                    // 🟢 Run async cancel if provided
+                    if (cancelAction != null)
+                        await cancelAction();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "Busy cancel handler");
+                }
+                finally
+                {
+                    await HideBusyAsync();
+                }
+            };
+
+            BtnCancelBusy.Click += BusyCancelHandler;
+            BtnCancelBusy.Visibility = Visibility.Visible;
+            BtnCancelBusy.IsEnabled = true;
+
+            if (this.Resources["ShowBusy"] is Storyboard sb)
+                sb.Begin(this);
+        }
+        private async void BtnHideBusy_Click(object sender, RoutedEventArgs e)
+        {
+            await HideBusyAsync();
+        }
+        public async Task HideBusyAsync()
+        {
+            var tcs = new TaskCompletionSource<bool>();
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (this.Resources["HideBusy"] is not Storyboard sb)
+                {
+                    // Fallback: if storyboard missing, hide immediately
+                    BusyOverlay.Visibility = Visibility.Collapsed;
+                    this.Visibility = Visibility.Collapsed;
+                    tcs.TrySetResult(true);
+                    return;
+                }
+
+                // Remove previous handler to prevent multiple triggers
+                if (_hideBusyHandler != null)
+                    sb.Completed -= _hideBusyHandler;
+
+                _hideBusyHandler = (s, e) =>
+                {
+                    BusyOverlay.Visibility = Visibility.Collapsed;
+
+                    // Hide root only if no other overlay is visible
+                    if (Math.Abs(Toast.Opacity - 0) < 0.0001 && ConfirmOverlay.Visibility != Visibility.Visible)
+                        this.Visibility = Visibility.Collapsed;
+
+                    sb.Completed -= _hideBusyHandler; // Clean up handler
+                    _hideBusyHandler = null;
+
+                    tcs.TrySetResult(true);
+                };
+
+                sb.Completed += _hideBusyHandler;
+
+                // Ensure it stays visible during fade
+                BusyOverlay.Visibility = Visibility.Visible;
+                BusyOverlay.IsHitTestVisible = false; // allow clicks to pass during fade
+                sb.Begin(this, true); // true = controllable animation
+            });
+
+            await tcs.Task;
+        }
+
+
+        // === Confirmation ===
+        public void ShowConfirm(string message, Action yesAction, Action noAction = null, Action cancelAction = null)
+        {
+            ConfirmText.Text = message;
+            ConfirmOverlay.Visibility = Visibility.Visible;
+            this.Visibility = Visibility.Visible;
+            Panel.SetZIndex(this, 9999);
+
+            ConfirmPopup.RenderTransform = new ScaleTransform(0.8, 0.8);
+
+            if (YesHandler != null) BtnYes.Click -= YesHandler;
+            if (NoHandler != null) BtnNo.Click -= NoHandler;
+            if (CancelHandler != null) BtnCancel.Click -= CancelHandler;
+
+            YesHandler = (s, e) => { HideConfirm(); yesAction?.Invoke(); };
+            NoHandler = (s, e) => { HideConfirm(); noAction?.Invoke(); };
+            CancelHandler = (s, e) => { HideConfirm(); cancelAction?.Invoke(); };
+
+            BtnYes.Click += YesHandler;
+            BtnNo.Click += NoHandler;
+            BtnCancel.Click += CancelHandler;
+
+            if (this.Resources["ShowConfirm"] is Storyboard sb)
+                sb.Begin(this);
+        }
+
+        public Task<bool?> ShowConfirmAsync(string message)
+        {
+            var tcs = new TaskCompletionSource<bool?>();
+
+            ConfirmText.Text = message;
+            ConfirmOverlay.Visibility = Visibility.Visible;
+            this.Visibility = Visibility.Visible;
+            Panel.SetZIndex(this, 9999);
+
+            ConfirmPopup.RenderTransform = new ScaleTransform(0.8, 0.8);
+
+            if (YesHandler != null) BtnYes.Click -= YesHandler;
+            if (NoHandler != null) BtnNo.Click -= NoHandler;
+            if (CancelHandler != null) BtnCancel.Click -= CancelHandler;
+
+            YesHandler = (s, e) => { HideConfirm(); tcs.TrySetResult(true); };
+            NoHandler = (s, e) => { HideConfirm(); tcs.TrySetResult(false); };
+            CancelHandler = (s, e) => { HideConfirm(); tcs.TrySetResult(null); };
+
+            BtnYes.Click += YesHandler;
+            BtnNo.Click += NoHandler;
+            BtnCancel.Click += CancelHandler;
+
+            if (this.Resources["ShowConfirm"] is Storyboard sb)
+                sb.Begin(this);
+
+            return tcs.Task;
+        }
+
+        private void HideConfirm()
+        {
+            if (this.Resources["HideConfirm"] is Storyboard sb)
+            {
+                EventHandler onComplete = null;
+                onComplete = (s, e) =>
+                {
+                    ConfirmOverlay.Visibility = Visibility.Collapsed;
+                    if (BusyOverlay.Visibility != Visibility.Visible && Math.Abs(Toast.Opacity - 0) < 0.0001)
+                        this.Visibility = Visibility.Collapsed;
+
+                    sb.Completed -= onComplete;
+                };
+
+                sb.Completed += onComplete;
+                sb.Begin(this);
+            }
+            else
+            {
+                // Fallback when storyboard is missing
+                ConfirmOverlay.Visibility = Visibility.Collapsed;
+                if (BusyOverlay.Visibility != Visibility.Visible && Math.Abs(Toast.Opacity - 0) < 0.0001)
+                    this.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+}

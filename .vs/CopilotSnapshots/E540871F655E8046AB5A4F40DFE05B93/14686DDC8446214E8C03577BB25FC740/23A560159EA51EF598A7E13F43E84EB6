@@ -1,0 +1,130 @@
+﻿using System;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace GLSense.Helpers
+{
+#nullable enable
+    /// <summary>
+    /// Global reusable JSON configuration
+    /// Used for Serialize / Deserialize operations
+    /// </summary>
+    public static class JsonGlobals
+    {
+        public static JsonSerializerOptions Options { get; }
+
+        static JsonGlobals()
+        {
+            var opts = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = null,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                ReadCommentHandling = JsonCommentHandling.Skip,
+                WriteIndented = false,
+                AllowTrailingCommas = true,
+                NumberHandling =
+                    JsonNumberHandling.AllowReadingFromString |
+                    JsonNumberHandling.AllowNamedFloatingPointLiterals
+            };
+
+#if NET8_0_OR_GREATER
+            opts.MakeReadOnly();
+#endif
+
+            Options = opts;
+        }
+    }
+
+    /// <summary>
+    /// Safe JSON parsing helpers for dynamic API responses
+    /// </summary>
+    public static class JsonHelper
+    {
+        public static bool TryGetProperty(
+            JsonElement element,
+            string propertyName,
+            out JsonElement value)
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                value = default;
+                return false;
+            }
+
+            var match = element
+                .EnumerateObject()
+                .FirstOrDefault(p =>
+                    string.Equals(p.Name, propertyName,
+                        StringComparison.OrdinalIgnoreCase));
+
+            if (!match.Equals(default(JsonProperty)))
+            {
+                value = match.Value;
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
+        public static bool TryGetDouble(JsonElement element, out double result)
+        {
+            result = 0;
+
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Number:
+                    return element.TryGetDouble(out result);
+
+                case JsonValueKind.String:
+                    return double.TryParse(
+                        element.GetString(),
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out result);
+
+                default:
+                    return false;
+            }
+        }
+
+        public static bool TryGetString(JsonElement element, out string? result)
+        {
+            result = null;
+
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                result = element.GetString();
+                return !string.IsNullOrWhiteSpace(result);
+            }
+
+            return false;
+        }
+        public static string GetStringSafe(JsonElement element, string propertyName)
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+                return string.Empty;
+
+            var property = element
+                .EnumerateObject()
+                .FirstOrDefault(p =>
+                    string.Equals(p.Name,
+                                  propertyName,
+                                  StringComparison.OrdinalIgnoreCase));
+
+            if (!property.Equals(default(JsonProperty)))
+            {
+                var value = property.Value;
+
+                return value.ValueKind == JsonValueKind.String
+                    ? value.GetString() ?? string.Empty
+                    : value.ToString();
+            }
+
+            return string.Empty;
+        }
+    }
+#nullable restore
+}

@@ -1,0 +1,244 @@
+﻿using AddinExpress.XL;
+using GLSense.Utilities;
+using GLSense.Views;
+using System;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Windows.Forms.Integration;
+
+namespace GLSense
+{
+    public partial class GLConfiguratorPane : AddinExpress.XL.ADXExcelTaskPane
+    {
+        private GLBalanceConfigurator _wpfControl;
+        private ElementHost _host;
+        private readonly int _minWidthDip = 600;
+        private readonly int _minHeightDip = 300;
+        private const int DefaultDpi = 96;
+        private const int WM_WINDOWPOSCHANGING = 0x0046;
+        private const int WM_SIZING = 0x0214;
+        private const int WMSZ_LEFT = 1;
+        private const int WMSZ_RIGHT = 2;
+        private const int WMSZ_TOP = 3;
+        private const int WMSZ_TOPLEFT = 4;
+        private const int WMSZ_TOPRIGHT = 5;
+        private const int WMSZ_BOTTOM = 6;
+        private const int WMSZ_BOTTOMLEFT = 7;
+        private const int WMSZ_BOTTOMRIGHT = 8;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct WINDOWPOS
+        {
+            public IntPtr hwnd;
+            public IntPtr hwndInsertAfter;
+            public int x;
+            public int y;
+            public int cx;
+            public int cy;
+            public uint flags;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr hWnd);
+
+        private int GetEffectiveDpi()
+        {
+            try
+            {
+                if (this.IsHandleCreated)
+                {
+                    return (int)GetDpiForWindow(this.Handle);
+                }
+            }
+            catch
+            {
+                // ignore and fall back
+            }
+
+            return this.DeviceDpi > 0 ? this.DeviceDpi : DefaultDpi;
+        }
+        public GLConfiguratorPane()
+        {
+            InitializeComponent();
+
+            // Enable DPI-aware sizing for the WinForms host
+            this.AutoScaleMode = AutoScaleMode.Dpi;
+
+            ApplyDpiAwareSizing(GetEffectiveDpi());
+            this.DpiChanged += GLConfiguratorPane_DpiChanged;
+
+            // Create WPF control with task pane reference under per-monitor DPI context
+            using (DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                _wpfControl = new GLBalanceConfigurator(this);
+            }
+
+            _wpfControl.OnCloseRequested += () => this.Visible = false;
+
+            // Host WPF control inside WinForms
+            _host = new ElementHost
+            {
+                Dock = DockStyle.Fill,
+                Child = _wpfControl
+            };
+
+            this.Controls.Add(_host);
+
+            // Handle resize events
+            this.Resize += GLConfiguratorPane_Resize;
+
+        }
+        private void GLConfiguratorPane_DpiChanged(object sender, DpiChangedEventArgs e)
+        {
+            ApplyDpiAwareSizing(e.DeviceDpiNew);
+        }
+
+        private void ApplyDpiAwareSizing(float dpiX)
+        {
+            var scale = dpiX / 96f;
+            int minWidthPx = (int)Math.Round(_minWidthDip * scale);
+            int minHeightPx = (int)Math.Round(_minHeightDip * scale);
+
+            this.MinimumSize = new Size(minWidthPx, minHeightPx);
+            this.Size = new Size(Math.Max(this.Width, minWidthPx), Math.Max(this.Height, minHeightPx));
+        }
+        private void GLConfiguratorPane_Resize(object sender, EventArgs e)
+        {
+            var dpi = GetEffectiveDpi();
+            var dipWidth = this.Width * DefaultDpi / (float)dpi;
+
+            // Ensure minimum size in DIPs
+            if (dipWidth < _minWidthDip)
+            {
+                int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+                this.Width = minWidthPx;
+            }
+
+            // Update WPF control if needed
+            _wpfControl?.UpdateLayout();
+        }
+        public async Task RelaunchPane()
+        {
+            try
+            {
+                if (_wpfControl != null && _wpfControl.Dispatcher != null)
+                {
+                    await _wpfControl.Dispatcher.InvokeAsync(async () =>
+                    {
+                        await _wpfControl.ReLoadConfigurator();
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+        public async Task ResetPaneReference()
+        {
+            try
+            {
+                if (_wpfControl != null && _wpfControl.Dispatcher != null)
+                {
+                    await _wpfControl.Dispatcher.InvokeAsync(() =>
+                    {
+                        GLBalanceConfigurator.ResetCellReference();
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+        private void GLConfiguratorPane_ADXBeforeTaskPaneShow(object sender, ADXBeforeTaskPaneShowEventArgs e)
+        {
+            try
+            {
+                GLConfiguratorPane pane = sender as GLConfiguratorPane;
+                if (pane != null)
+                {
+                    pane.Visible = AppState.Instance.displayConfigurator;
+
+                    // Set size when showing
+                    if (pane.Visible)
+                    {
+                        pane.Width = pane.MinimumSize.Width;  // Ensure proper width when shown
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_SIZING && m.LParam != IntPtr.Zero)
+            {
+                var rc = (RECT)Marshal.PtrToStructure(m.LParam, typeof(RECT));
+                int width = rc.Right - rc.Left;
+                if (width < this.MinimumSize.Width)
+                {
+                    int minWidth = this.MinimumSize.Width;
+                    switch ((int)m.WParam)
+                    {
+                        case WMSZ_LEFT:
+                        case WMSZ_TOPLEFT:
+                        case WMSZ_BOTTOMLEFT:
+                            rc.Left = rc.Right - minWidth;
+                            break;
+                        default:
+                            rc.Right = rc.Left + minWidth;
+                            break;
+                    }
+
+                    Marshal.StructureToPtr(rc, m.LParam, true);
+                }
+            }
+            else if (m.Msg == WM_WINDOWPOSCHANGING && m.LParam != IntPtr.Zero)
+            {
+                var pos = (WINDOWPOS)Marshal.PtrToStructure(m.LParam, typeof(WINDOWPOS));
+                if (pos.cx < this.MinimumSize.Width)
+                {
+                    pos.cx = this.MinimumSize.Width;
+                    Marshal.StructureToPtr(pos, m.LParam, true);
+                }
+            }
+
+            base.WndProc(ref m);
+        }
+
+        protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
+        {
+            var dpi = GetEffectiveDpi();
+            int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+            int minHeightPx = (int)Math.Round(_minHeightDip * dpi / (float)DefaultDpi);
+
+            if ((specified & BoundsSpecified.Width) != 0 && width < minWidthPx)
+            {
+                width = minWidthPx;
+            }
+
+            if ((specified & BoundsSpecified.Height) != 0 && height < minHeightPx)
+            {
+                height = minHeightPx;
+            }
+
+            base.SetBoundsCore(x, y, width, height, specified);
+        }
+    }
+}

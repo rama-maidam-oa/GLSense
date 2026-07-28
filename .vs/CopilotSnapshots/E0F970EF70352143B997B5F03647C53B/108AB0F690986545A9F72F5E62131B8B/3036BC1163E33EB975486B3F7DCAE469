@@ -1,0 +1,30 @@
+﻿using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+
+namespace GLSense.Converters
+{
+    public static class RichTextBoxHelper
+    {
+        public static readonly DependencyProperty BindableDocumentProperty =
+            DependencyProperty.RegisterAttached(
+                "BindableDocument",
+                typeof(FlowDocument),
+                typeof(RichTextBoxHelper),
+                new PropertyMetadata(null, OnBindableDocumentChanged));
+
+        public static void SetBindableDocument(DependencyObject obj, FlowDocument value)
+            => obj.SetValue(BindableDocumentProperty, value);
+
+        public static FlowDocument GetBindableDocument(DependencyObject obj)
+            => (FlowDocument)obj.GetValue(BindableDocumentProperty);
+
+        private static void OnBindableDocumentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is RichTextBox rtb)
+            {
+                rtb.Document = e.NewValue as FlowDocument ?? new FlowDocument();
+            }
+        }
+    }
+}

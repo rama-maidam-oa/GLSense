@@ -1,0 +1,173 @@
+﻿using GLSense.Helpers;
+using GLSense.Models;
+using GLSense.Utilities;
+using GLSense.ViewModels;
+using System;
+using System.Linq;
+using System.Windows;
+using System.Windows.Input;
+
+namespace GLSense.Views
+{
+    /// <summary>
+    /// Interaction logic for GLJobsMonitor.xaml
+    /// </summary>
+    public partial class GLJobsMonitor : DpiAwareWindow
+    {
+        private readonly GLSubmittedJobsViewModel vm;
+        public GLJobsMonitor()
+        {
+            InitializeComponent();
+
+            EnhancedDragDropHelper.EnableWindowDrag(this);
+
+            AddHandler(UIElement.PreviewMouseDownEvent, new MouseButtonEventHandler(Window_PreviewMouseDown), true);
+            AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(Window_PreviewKeyDown), true);
+            AddHandler(UIElement.PreviewTextInputEvent, new TextCompositionEventHandler(Window_PreviewTextInput), true);
+
+            vm = new GLSubmittedJobsViewModel
+            {
+                ExcelApp = AppState.Instance.ExcelApp.Application,
+                ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
+                ShowInfoAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowInfo(msg)),
+                ShowInfoAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowInfoAsync(msg)),
+                ShowWarningAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowWarningAsync(msg)),
+                ShowConfirmAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowConfirmAsync(msg)),
+                ShowBusyAction = async (txt, cancel) =>
+                        await Dispatcher.InvokeAsync(async () =>
+                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
+                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync())
+            };
+
+            DataContext = vm;
+        }
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+
+            await vm.LoadJobsAsync();
+        }
+
+        private void BtnClose_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
+
+        private async void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            await vm.RefreshJobsAsync();
+        }
+
+        private async void BtnDownloadLogs_Click(object sender, RoutedEventArgs e)
+        {
+            await vm.DownloadLogsAsync();
+        }
+
+        private async void BtnDownloadOutputs_Click(object sender, RoutedEventArgs e)
+        {
+            await vm.DownloadOutputsAsync();
+        }
+
+        private async void BtnDelete_Click(object sender, RoutedEventArgs e)
+        {
+            await vm.DeleteSelectedAsync();
+        }
+
+        private async void BtnDeleteAll_Click(object sender, RoutedEventArgs e)
+        {
+            await vm.DeleteAllAsync();
+        }
+
+        private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            AppOverlayControl.DismissToast();
+        }
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            AppOverlayControl.DismissToast();
+        }
+
+        private void Window_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            AppOverlayControl.DismissToast();
+        }
+
+        // Enable window dragging
+        private void Window_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton == MouseButton.Left)
+                DragMove();
+        }
+        private void ChkSelectAll_Checked(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is GLSubmittedJobsViewModel vm1 && vm1.Jobs != null)
+            {
+                foreach (var job in vm1.Jobs)
+                {
+                    job.IsSelected = true;
+                }
+            }
+        }
+
+        private void ChkSelectAll_Unchecked(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is GLSubmittedJobsViewModel vm1 && vm1.Jobs != null)
+            {
+                foreach (var job in vm.Jobs)
+                {
+                    job.IsSelected = false;
+                }
+            }
+        }
+        private void DgJobs_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Subscribe to property changes on jobs
+            if (DataContext is GLSubmittedJobsViewModel vm1)
+            {
+                vm1.Jobs.CollectionChanged += (s, args) =>
+                {
+                    UpdateHeaderCheckbox();
+                };
+
+                foreach (var job in vm1.Jobs)
+                {
+                    job.PropertyChanged += (s, args) =>
+                    {
+                        if (args.PropertyName == nameof(GLJobModel.IsSelected))
+                        {
+                            UpdateHeaderCheckbox();
+                        }
+                    };
+                }
+            }
+        }
+
+        private void UpdateHeaderCheckbox()
+        {
+            if (DataContext is GLSubmittedJobsViewModel vm1 && vm1.Jobs != null && vm1.Jobs.Count > 0)
+            {
+                var allSelected = vm1.Jobs.All(j => j.IsSelected);
+                var anySelected = vm1.Jobs.Any(j => j.IsSelected);
+
+                // Update header checkbox state
+                if (allSelected)
+                {
+                    chkSelectAll.IsChecked = true;
+                }
+                else if (anySelected)
+                {
+                    chkSelectAll.IsChecked = null; // Indeterminate state
+                }
+                else
+                {
+                    chkSelectAll.IsChecked = false;
+                }
+            }
+            else
+            {
+                chkSelectAll.IsChecked = false;
+            }
+        }
+    }
+}
+

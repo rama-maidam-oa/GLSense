@@ -1,0 +1,356 @@
+﻿using GLSense.Utilities;
+using System;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Security;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace GLSense.Helpers
+{
+    public static class ApiHelper
+    {
+        private static readonly HttpClient _sharedClient;
+        private static readonly object _lock = new object();
+
+        static ApiHelper()
+        {
+            LogUtility.LogDebug("Initializing ApiHelper shared HttpClient");
+            var handler = new HttpClientHandler
+            {
+                SslProtocols = (System.Security.Authentication.SslProtocols)(SecurityProtocolType.Tls12 | SecurityProtocolType.Tls13),
+                ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate,
+                MaxConnectionsPerServer = 10
+            };
+
+            _sharedClient = new HttpClient(handler)
+            {
+                Timeout = Timeout.InfiniteTimeSpan
+            };
+            _sharedClient.DefaultRequestHeaders.ExpectContinue = false;
+            LogUtility.LogDebug("ApiHelper shared HttpClient initialized successfully");
+        }
+
+        public static async Task<string> ServerAPI(string sendURL, string StrContentType, string PostData = "", string MethodType = "POST", CancellationToken cancellationToken = default)
+        {
+            using (new LogUtility.LogScope("ServerAPI"))
+            using (var perfScope = PerformanceHelper.MeasureExecutionTime("API Call"))
+            {
+                try
+                {
+                    LogUtility.LogDebug($"Starting API call to: {sendURL}");
+                    LogUtility.LogDebug($"Method: {MethodType}, ContentType: {StrContentType}");
+
+                    var content = CreateHttpContent(PostData, StrContentType);
+                    LogRequestDetails(sendURL, MethodType, StrContentType, PostData, _sharedClient.Timeout);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // Update authorization header for this request
+                    lock (_lock)
+                    {
+                        _sharedClient.DefaultRequestHeaders.Authorization =
+                            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
+                    }
+
+                    var response = await SendRequestAsync(_sharedClient, sendURL, MethodType, content, cancellationToken);
+                    var responseBody = await response.Content.ReadAsStringAsync();
+
+                    LogResponseDetails(response, responseBody);
+
+                    var result = ProcessResponse(response, responseBody);
+                    ApiOperationHelper.EnsureValidApiResponse(result, $"API call to {sendURL}");
+
+                    LogUtility.LogDebug($"API call completed successfully, response length: {result?.Length ?? 0}");
+
+                    return result;
+                }
+                catch (OperationCanceledException)
+                {
+                    LogUtility.LogWarn($"API call cancelled for {sendURL}");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"API call failed for {sendURL}");
+                    ApiOperationHelper.NotifyApiError(ExceptionHelper.GetFriendlyErrorMessage(ex), operationName: $"API call to {sendURL}");
+                    throw;
+                }
+            }
+        }
+        private static HttpContent CreateHttpContent(string postData, string contentType)
+        {
+            if (string.IsNullOrWhiteSpace(postData))
+                return null;
+
+            var mediaType = contentType == "JSON" ? "application/json" : "application/x-www-form-urlencoded";
+            return new StringContent(postData, Encoding.UTF8, mediaType);
+        }
+
+        private static void LogRequestDetails(string url, string method, string contentType, string payload, TimeSpan timeout)
+        {
+            LogUtility.LogDebug($"┌─ API Request ─────────────────");
+            LogUtility.LogDebug($"│ URL: {url}");
+            LogUtility.LogDebug($"│ Method: {method}");
+            LogUtility.LogDebug($"│ ContentType: {contentType}");
+            LogUtility.LogDebug($"│ Timeout: {timeout}");
+
+            if (!string.IsNullOrWhiteSpace(payload))
+            {
+                var truncatedPayload = payload.Length > 500 ? payload.Substring(0, 500) + "..." : payload;
+                LogUtility.LogDebug($"│ Payload: {truncatedPayload}");
+            }
+            else
+            {
+                LogUtility.LogDebug($"│ Payload: (empty)");
+            }
+            LogUtility.LogDebug($"└───────────────────────────────");
+        }
+
+        private static async Task<HttpResponseMessage> SendRequestAsync(HttpClient client, string url, string method, HttpContent content, CancellationToken cancellationToken)
+        {
+            return method.ToUpperInvariant() switch
+            {
+                "POST" => await client.PostAsync(url, content, cancellationToken),
+                "GET" => await client.GetAsync(url, cancellationToken),
+                _ => throw new ArgumentException($"Unsupported HTTP method: {method}")
+            };
+        }
+
+        private static void LogResponseDetails(HttpResponseMessage response, string responseBody)
+        {
+            LogUtility.LogDebug($"┌─ API Response ────────────────");
+            LogUtility.LogDebug($"│ Status Code: {(int)response.StatusCode} {response.StatusCode}");
+            LogUtility.LogDebug($"│ Content Type: {response.Content?.Headers?.ContentType?.MediaType ?? "N/A"}");
+            LogUtility.LogDebug($"│ Content Length: {response.Content?.Headers?.ContentLength ?? 0}");
+
+            if (!string.IsNullOrWhiteSpace(responseBody))
+            {
+                var truncatedBody = responseBody.Length > 1000 ? responseBody.Substring(0, 1000) + "..." : responseBody;
+                LogUtility.LogDebug($"│ Body: {truncatedBody}");
+            }
+            else
+            {
+                LogUtility.LogDebug($"│ Body: (empty)");
+            }
+            LogUtility.LogDebug($"└───────────────────────────────");
+        }
+
+        private static string ProcessResponse(HttpResponseMessage response, string responseBody)
+        {
+            if (response.IsSuccessStatusCode)
+                return CleanResponse(responseBody);
+
+            return !string.IsNullOrWhiteSpace(responseBody) && responseBody.Contains("status")
+                ? CleanResponse(responseBody)
+                : response.StatusCode.ToString();
+        }
+
+        private static string CleanResponse(string response)
+        {
+            if (string.IsNullOrEmpty(response))
+                return response;
+
+            // Preserve existing behavior of stripping "null"
+            var cleaned = response.Replace("null", string.Empty);
+
+            var sb = new StringBuilder(cleaned.Length + 8);
+            bool inString = false;
+            bool escape = false;
+
+            for (int i = 0; i < cleaned.Length; i++)
+            {
+                char c = cleaned[i];
+
+                if (inString)
+                {
+                    sb.Append(c);
+
+                    if (escape)
+                    {
+                        escape = false;
+                        continue;
+                    }
+
+                    if (c == '\\')
+                    {
+                        escape = true;
+                    }
+                    else if (c == '"')
+                    {
+                        inString = false;
+                    }
+
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    inString = true;
+                    sb.Append(c);
+                    continue;
+                }
+
+                if (c == ':')
+                {
+                    int j = i + 1;
+                    while (j < cleaned.Length && char.IsWhiteSpace(cleaned[j]))
+                    {
+                        j++;
+                    }
+
+                    // Empty value before comma/closing brace/bracket => inject ""
+                    if (j < cleaned.Length && (cleaned[j] == ',' || cleaned[j] == '}' || cleaned[j] == ']'))
+                    {
+                        sb.Append(':');
+                        sb.Append("\"\"");
+                        i = j - 1; // we already handled the whitespace span
+                        continue;
+                    }
+                }
+
+                sb.Append(c);
+            }
+
+            return sb.ToString();
+        }
+
+        private static string HandleException(Exception ex, string url, CancellationToken cancellationToken)
+        {
+            return ex switch
+            {
+                HttpRequestException httpEx =>
+                    HandleHttpRequestException(httpEx, url),
+
+                TaskCanceledException taskEx when cancellationToken.IsCancellationRequested =>
+                    HandleUserCancellation(taskEx),
+
+                TaskCanceledException taskEx =>
+                    HandleTimeout(taskEx, url),
+
+                IOException ioEx =>
+                    HandleIOException(ioEx, url),
+
+                _ =>
+                    HandleGenericException(ex, url)
+            };
+        }
+
+        private static string HandleHttpRequestException(HttpRequestException ex, string url)
+        {
+            LogUtility.LogException(ex, $"Network error for {url}");
+            return ex.Message;
+        }
+
+        private static string HandleUserCancellation(TaskCanceledException ex)
+        {
+            LogUtility.LogException(ex, "Operation was canceled by the user");
+            return ex.Message;
+        }
+
+        private static string HandleTimeout(TaskCanceledException ex, string url)
+        {
+            LogUtility.LogException(ex, $"Request Timeout for {url}");
+            return ex.Message;
+        }
+
+        private static string HandleIOException(IOException ex, string url)
+        {
+            LogUtility.LogException(ex, $"I/O Error for {url}");
+            return ex.Message;
+        }
+
+        private static string HandleGenericException(Exception ex, string url)
+        {
+            LogUtility.LogException(ex, $"Unexpected Exception for {url}");
+            return ex.Message;
+        }
+
+
+        public static async Task<string> HttpUploadFileAsync(string uri, CancellationToken token)
+        {
+            using (new LogUtility.LogScope("HttpUploadFileAsync"))
+            using (var perfScope = PerformanceHelper.MeasureExecutionTime("File Upload"))
+            {
+                try
+                {
+                    LogUtility.LogDebug($"Starting file upload to: {uri}");
+                    token.ThrowIfCancellationRequested();
+
+                    var path = AppPaths.TempFilesPath ?? string.Empty;
+                    var zipPath = Path.Combine(path, AppConstants.RefreshZipFileName);
+
+                    LogUtility.LogDebug($"File path: {zipPath}");
+
+                    token.ThrowIfCancellationRequested();
+
+                    if (!File.Exists(zipPath))
+                    {
+                        LogUtility.LogError($"File not found: {zipPath}");
+                        return "Error: File not found.";
+                    }
+
+                    var fileInfo = new FileInfo(zipPath);
+                    LogUtility.LogDebug($"File size: {fileInfo.Length:N0} bytes");
+
+                    var handler = new HttpClientHandler
+                    {
+                        SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                        ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate
+                    };
+
+                    using var client = new HttpClient(handler);
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
+                    client.Timeout = Timeout.InfiniteTimeSpan;
+
+                    token.ThrowIfCancellationRequested();
+
+                    LogUtility.LogDebug("Opening file stream");
+                    using var fileStream = new FileStream(zipPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    using var content = new StreamContent(fileStream);
+                    content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
+
+                    LogUtility.LogDebug("Sending POST request with file content");
+                    using var response = await client.PostAsync(uri, content, token).ConfigureAwait(false);
+
+                    token.ThrowIfCancellationRequested();
+
+                    var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+                    LogUtility.LogDebug($"Upload response: Status={response.StatusCode}, Response length={responseText?.Length ?? 0}");
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return responseText;
+                    }
+                    else
+                    {
+                        LogUtility.LogError($"Upload failed: {response.StatusCode} - {responseText}");
+                        return $"Error: {response.StatusCode} - {responseText}";
+                    }
+                }
+                catch (TaskCanceledException)
+                {
+                    LogUtility.LogWarn("File upload was cancelled by user");
+                    return "Error: Upload was canceled.";
+                }
+                catch (HttpRequestException ex)
+                {
+                    LogUtility.LogException(ex, $"HTTP request failed during file upload to {uri}");
+                    return $"Error: {ex.Message}";
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"Unexpected error during file upload to {uri}");
+                    return $"Error: {ex.Message}";
+                }
+            }
+        }
+    }
+}

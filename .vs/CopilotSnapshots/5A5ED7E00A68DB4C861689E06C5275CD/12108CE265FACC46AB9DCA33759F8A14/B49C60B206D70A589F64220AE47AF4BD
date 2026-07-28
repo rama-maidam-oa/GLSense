@@ -1,0 +1,222 @@
+﻿using GLSense.Helpers;
+using GLSense.Utilities;
+using Microsoft.Web.WebView2.Core;
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Threading;
+
+#nullable enable
+namespace GLSense.Views
+{
+    /// <summary>
+    /// Interaction logic for GLDrilldownCustomization.xaml
+    /// </summary>
+    public partial class GLDrilldownCustomization : DpiAwareWindow
+    {
+        private Task? _webViewInitTask;
+        private bool _navInProgress;
+        private bool _navCompleted;
+        private bool _domLoaded;
+        private DateTime _localBusyShownAt;
+        private static readonly TimeSpan _minBusyDuration = TimeSpan.FromMilliseconds(900);
+        public GLDrilldownCustomization()
+        {
+            InitializeComponent();
+            EnhancedDragDropHelper.EnableWindowDrag(this);
+
+            webView.Loaded += WebView_Loaded;
+            webView.NavigationStarting += WebView_NavigationStarting;
+            webView.NavigationCompleted += WebView_NavigationCompleted;
+        }
+        private async void WebView_Loaded(object sender, RoutedEventArgs e)
+        {
+            webView.Loaded -= WebView_Loaded; // prevent double init
+
+            try
+            {
+                // 1) Ensure a writable user data folder (logs/profile)
+                string logDir = AppPaths.LoginBrowserLogsPath;
+                DirectoryInfo di = new(logDir);
+                if (!di.Exists)
+                    di.Create();
+
+                string webViewLogsPath = di.FullName;
+
+                // 2) Create environment options FIRST
+                var envOptions = new CoreWebView2EnvironmentOptions
+                {
+                    // Enable SSO if your scenario needs it
+                    AllowSingleSignOnUsingOSPrimaryAccount = true
+                };
+
+                // 3) Create the environment with options + user data folder
+                var env = await CoreWebView2Environment.CreateAsync(
+                    browserExecutableFolder: null,
+                    userDataFolder: webViewLogsPath,
+                    options: envOptions);
+
+                // 4) Initialize WebView2 with that environment
+                _webViewInitTask = webView.EnsureCoreWebView2Async(env);
+                await _webViewInitTask;
+
+                // Hook DOMContentLoaded for more reliable "page ready"
+                HookDomContentLoaded();
+
+                // 5) Hook device permission handler and diagnostics after CoreWebView2 is ready
+                webView.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
+                webView.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
+
+                // Optional: turn on DevTools during development
+                webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+
+                // 6) Diagnostics: log WebView2 runtime and SSO setting
+                var version = webView.CoreWebView2.Environment.BrowserVersionString;
+                LogUtility.LogDebug($"WebView2 BrowserVersion={version}");
+                LogUtility.LogDebug($"AllowSingleSignOnUsingOSPrimaryAccount={envOptions.AllowSingleSignOnUsingOSPrimaryAccount}");
+
+
+                if (AppState.Instance.SelectedCube != null)
+                {
+                    string drilldownUrl = $"{AppState.Instance.LoginUrl.TrimEnd('/')}/web/public/cube/{AppState.Instance.SelectedCube.CubeId}/drilldown/launcher?jwtParam=";
+                    string finalUrl = $"{drilldownUrl}{AppState.Instance.LoginToken}";
+
+                    ShowLocalBusy("Loading Drilldown Customizations");
+                    await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render); // let overlay render before navigation
+
+                    _navInProgress = true;
+                    _navCompleted = false;
+                    _domLoaded = false;
+
+                    webView.CoreWebView2.Navigate(finalUrl);
+                }
+
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "WebView2 initialization failed in GLDrilldownCustomization");
+                await HideLocalBusyAsync();
+            }
+        }
+        private void WebView_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+        {
+            // Ensure overlay stays visible for any navigation
+            ShowLocalBusy("Loading Drilldown Customizations");
+            _navInProgress = true;
+            _navCompleted = false;
+            _domLoaded = false;
+        }
+        private void HookDomContentLoaded()
+        {
+            if (webView?.CoreWebView2 == null) return;
+
+            webView.CoreWebView2.DOMContentLoaded -= CoreWebView2_DOMContentLoaded;
+            webView.CoreWebView2.DOMContentLoaded += CoreWebView2_DOMContentLoaded;
+        }
+
+        private async void CoreWebView2_DOMContentLoaded(object? sender, CoreWebView2DOMContentLoadedEventArgs e)
+        {
+            _domLoaded = true;
+            await TryHideBusyAsync();
+        }
+
+        private async void WebView_NavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+
+            if (!e.IsSuccess)
+            {
+                LogUtility.LogWarn($"Navigation failed: {e.WebErrorStatus}");
+                _navInProgress = false;
+                await HideLocalBusyAsync();
+                return;
+            }
+
+            _navCompleted = true;
+            await TryHideBusyAsync();
+        }
+
+        private async Task TryHideBusyAsync()
+        {
+            if (!_navInProgress) return;
+            if (!_navCompleted) return;
+            if (!_domLoaded) return;
+
+            var elapsed = DateTime.UtcNow - _localBusyShownAt;
+            if (elapsed < _minBusyDuration)
+            {
+                await Task.Delay(_minBusyDuration - elapsed);
+            }
+
+            _navInProgress = false;
+            await Task.Delay(300); // small buffer for heavy JS rendering
+            await HideLocalBusyAsync();
+        }
+
+        private void ShowLocalBusy(string message)
+        {
+            if (LocalBusyOverlay == null) return;
+
+            _localBusyShownAt = DateTime.UtcNow;
+            LocalBusyText.Text = message;
+            LocalBusyOverlay.Visibility = Visibility.Visible;
+            LocalBusyOverlay.IsHitTestVisible = true;
+        }
+
+        private async Task HideLocalBusyAsync()
+        {
+            if (LocalBusyOverlay == null) return;
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                LocalBusyOverlay.Visibility = Visibility.Collapsed;
+                LocalBusyOverlay.IsHitTestVisible = false;
+            }, DispatcherPriority.Background);
+        }
+        private void CoreWebView2_PermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug($"Permission requested: Kind={e.PermissionKind}, Uri={e.Uri}");
+
+                // Decide what to allow
+                switch (e.PermissionKind)
+                {
+                    case CoreWebView2PermissionKind.Microphone:
+                    case CoreWebView2PermissionKind.Camera:
+                    case CoreWebView2PermissionKind.Geolocation:
+                    case CoreWebView2PermissionKind.MidiSystemExclusiveMessages:
+                    case CoreWebView2PermissionKind.ClipboardRead:
+                        {
+                            e.State = CoreWebView2PermissionState.Allow;
+                            e.Handled = true;
+                            LogUtility.LogDebug($"Permission allowed: {e.PermissionKind}");
+                            break;
+                        }
+
+                    default:
+                        e.State = CoreWebView2PermissionState.Deny;
+                        e.Handled = true;
+                        LogUtility.LogWarn($"Permission denied: {e.PermissionKind}");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "PermissionRequested handler error");
+                // Fail closed on error
+                e.State = CoreWebView2PermissionState.Deny;
+                e.Handled = true;
+            }
+        }
+        private void CoreWebView2_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+        {
+            LogUtility.LogWarn($"WebView2 process failed. Kind={e.ProcessFailedKind}");
+        }
+        private void BtnClose_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
+    }
+}
+#nullable disable

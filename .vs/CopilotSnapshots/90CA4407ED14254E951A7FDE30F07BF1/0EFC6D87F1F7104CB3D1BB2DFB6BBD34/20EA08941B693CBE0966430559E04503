@@ -1,0 +1,1232 @@
+﻿using GLSense.Utilities;
+using GLSense.Views;
+using System;
+using System.Data;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Threading;
+using Excel = Microsoft.Office.Interop.Excel;
+
+namespace GLSense.Drilldowns
+{
+#nullable enable
+    public class BulkRefreshProcess
+    {
+        private static GLWaitWindow? Win { get; set; }
+        private static Exception? ProcException = null;
+        private static bool UserCancelled;
+
+        private static Excel.Application? _excelApp;
+        private static Excel.Workbook? _workbook;
+        private static Excel.Worksheet? _worksheet;
+
+        private static JsonArray? snapshotJsonArray;
+
+        private static readonly string LoginURL = AppState.Instance.LoginUrl;
+        private static readonly string AuthToken = AppState.Instance.LoginToken;
+        private static readonly string TempFilesPath = AppPaths.TempFilesPath;
+        private static readonly string refreshFileName = AppConstants.RefreshFileName;
+        private static readonly string refreshZipFileName = AppConstants.RefreshZipFileName;
+        private static readonly string refreshJSONFileName = AppConstants.RefreshJsonFileName;
+
+        private static string RefreshFilePath => Path.Combine(TempFilesPath, refreshFileName);
+        private static string RefreshZipPath => Path.Combine(TempFilesPath, refreshZipFileName);
+        private static string RefreshJsonPath => Path.Combine(TempFilesPath, refreshJSONFileName);
+        private static string TempFilesRootWithSeparator => TempFilesPath + Path.DirectorySeparatorChar;
+
+        private static bool _isTypeSheet = false;
+        private static bool _isSnapshot = false;
+        private static string _snapShotFilepath = string.Empty;  
+
+        private static void LogDebug(string? msg) => LogUtility.LogDebug(msg);
+        private static void LogWarn(string? msg) => LogUtility.LogWarn(msg);
+
+        private static void LogError(Exception ex, string? msg = null)
+        {
+            if (msg == null)
+                LogUtility.LogException(ex);
+            else
+                LogUtility.LogError($"{msg} :: {ex}");
+        }
+        public static async Task<Exception?> StartRefreshing(
+                GLWaitWindow window,
+                string? refreshMode,
+                bool isSnapshot,
+                string filepath,
+                CancellationToken token)
+        {
+            UserCancelled = false;
+            Win = window;
+
+            snapshotJsonArray = null;
+            _isSnapshot=isSnapshot;
+            _snapShotFilepath = filepath;
+            InitializeExcelReferences();
+
+            _isTypeSheet = string.Equals(refreshMode, "Sheet", StringComparison.OrdinalIgnoreCase);
+
+            try
+            {
+                Exception? ex;
+
+                ex = await Step_SaveAndZipWorkbook(token);
+                if (ex != null) return HandleStepFailure(ex);
+
+                ex = await Step_UploadZipToServer(token);
+                if (ex != null) return HandleStepFailure(ex);
+
+                ex = await Step_ExtractZipFile(token);
+                if (ex != null) return HandleStepFailure(ex);
+
+                ex = await Step_BalancesToDataTable(token);
+                if (ex != null) return HandleStepFailure(ex);
+
+                ex = await Step_FinalRefresh(token);
+                if (ex != null) return HandleStepFailure(ex);
+
+                AppState.Instance.SnapshotSuccess = true;
+                return null;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+                return ex;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Initialization
+        // ---------------------------------------------------------------------
+        private static void InitializeExcelReferences()
+        {
+            _excelApp = AppState.Instance.ExcelApp;
+            _workbook = _excelApp.ActiveWorkbook;
+            _worksheet = _excelApp.ActiveSheet as Excel.Worksheet;
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 1: Save and Zip
+        // ---------------------------------------------------------------------
+        private static async Task<Exception?> Step_SaveAndZipWorkbook(CancellationToken token)
+        {
+            if (_workbook == null)
+            {
+                var ex = new Exception("No active workbook found.");
+                LogError(ex);
+                return ex;
+            }
+
+            return await RunLongRunningTask(token, ct => SaveAndZipWorkbookAsync(_workbook, ct));
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 2: Upload
+        // ---------------------------------------------------------------------
+        private static async Task<Exception?> Step_UploadZipToServer(CancellationToken token)
+        {
+            string postUrl = BuildUploadUrl();
+
+            try
+            {
+                await MessageProgressWindowAsync("Uploading zip file to server.").ConfigureAwait(true);
+                await UploadZiptoServerAsync(postUrl, token).ConfigureAwait(false);
+                return null;
+            }
+            catch (OperationCanceledException ex)
+            {
+                LogWarn("Upload canceled by user.");
+                return ex;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+                return token.IsCancellationRequested ? null : ex;
+            }
+        }
+
+        private static string BuildUploadUrl()
+        {
+            if (_worksheet == null)
+                return string.Empty;
+
+            long cubeId = AppState.Instance.SelectedCube.CubeId;
+            long coaId = AppState.Instance.SelectedLedger.CoaId;
+
+            if (_isTypeSheet)
+            {
+                string sheetName = WebUtility.UrlEncode(_worksheet.Name);
+                return $"{LoginURL}/rest/secure/finance/sheet-balances?cubeId={cubeId}&coaid={coaId}&sheetName={sheetName}";
+            }
+
+            return $"{LoginURL}/rest/secure/finance/sheet-balances?cubeId={cubeId}&coaid={coaId}";
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 3: Extract Zip
+        // ---------------------------------------------------------------------
+        private static async Task<Exception?> Step_ExtractZipFile(CancellationToken token)
+        {
+            return await RunLongRunningTask(token, ct => ExtractZipFileAsync(ct));
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 4: Balances to DataTable
+        // ---------------------------------------------------------------------
+        private static Task<Exception?> Step_BalancesToDataTable(CancellationToken token)
+        {
+            return RunLongRunningTask(token, ct => BalancestoDTAsync(ct));
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 5: Final Refresh
+        // ---------------------------------------------------------------------
+        private static async Task<Exception?> Step_FinalRefresh(CancellationToken token)
+        {
+            if (_workbook == null || _worksheet == null)
+            {
+                var ex = new Exception("No active workbook or worksheet found.");
+                LogError(ex);
+                return ex;
+            }
+
+            if (_isSnapshot)
+            {
+                return await RunLongRunningTask(token, ct => RefreshSnapshotBalancesAsync(_worksheet.Name, token));
+            }
+
+            return await RunLongRunningTask(token, ct => RefreshWithBalancesAsync(_workbook, _worksheet, token));
+        }
+
+        // ---------------------------------------------------------------------
+        // Helper: Run long-running CPU-bound task with consistent error handling
+        // ---------------------------------------------------------------------
+        private static async Task<Exception?> RunLongRunningTask(
+                CancellationToken token,
+                Func<CancellationToken, Task> actionAsync)
+        {
+            try
+            {
+                // Use Task.Run for non-COM work. For COM work, call on UI thread directly.
+                await Task.Run(() => actionAsync(token), token).ConfigureAwait(false);
+                return null;
+            }
+            catch (OperationCanceledException ex)
+            {
+                LogWarn($"{nameof(RunLongRunningTask)}|Operation canceled: {ex.Message}");
+                return ex; // Or return null if your flow treats cancel as non-error
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+                return ex;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Helper: Early return on step failure
+        // ---------------------------------------------------------------------
+        private static Exception? HandleStepFailure(Exception? ex)
+        {
+            AppState.Instance.SnapshotSuccess = false;
+            return ex;
+        }
+
+        private static async Task SaveAndZipWorkbookAsync(Excel.Workbook wb, CancellationToken token)
+        {
+            LogDebug($"Saving and zipping the workbook \"{wb?.Name}\" started.");
+            token.ThrowIfCancellationRequested();
+
+            string filePath = RefreshFilePath;
+            string zipPath = RefreshZipPath;
+
+            if (wb == null)
+            {
+                var ex = new Exception("No active workbook found for saving.");
+                LogError(ex);
+                throw ex;
+            }
+
+            try
+            {
+                // UI/COM-bound progress UI (if it is UI-bound)
+                await MessageProgressWindowAsync("Preparing for bulk refresh.").ConfigureAwait(true);
+
+                // COM call: must stay on Excel UI thread
+                AppState.Instance.ExcelApp.Calculation = Excel.XlCalculation.xlCalculationManual;
+                AppState.Instance.ExcelApp.ScreenUpdating = false;
+                AppState.Instance.ExcelApp.EnableEvents = false;
+                wb.CheckCompatibility = false; // Disable compatibility check to avoid prompts during SaveCopyAs
+                wb.SaveCopyAs(filePath);
+
+
+                if (_isSnapshot)
+                {
+                    try
+                    {
+                        if (File.Exists(filePath))
+                        {
+                            File.Copy(
+                                filePath,
+                                _snapShotFilepath,
+                                overwrite: true    // replaces existing file without warning
+                            );
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError(ex);
+                        // or handle as appropriate
+                    }
+                }
+
+                token.ThrowIfCancellationRequested();
+
+                // Offload pure file I/O to a background thread
+                await Task.Run(() =>
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    if (File.Exists(zipPath))
+                    {
+                        File.Delete(zipPath);
+                    }
+
+                    token.ThrowIfCancellationRequested();
+
+                    MessageProgressWindowAsync("Zipping the file.").ConfigureAwait(true);
+
+                    using ZipArchive newfile = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+                    newfile.CreateEntryFromFile(filePath, refreshFileName);
+                }, token).ConfigureAwait(false);
+
+                token.ThrowIfCancellationRequested();
+
+                LogDebug($"Saving and zipping the workbook \"{wb?.Name}\" completed.");
+            }
+            catch (OperationCanceledException)
+            {
+                LogDebug("Save & ZIP canceled.");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                ProcException = new Exception("Error during saving and zipping a copy of workbook.", ex);
+                throw ProcException;
+            }
+        }
+        private static async Task UploadZiptoServerAsync(string? uri, CancellationToken token)
+        {
+            var handler = new HttpClientHandler
+            {
+                SslProtocols = System.Security.Authentication.SslProtocols.Tls12 |
+                               System.Security.Authentication.SslProtocols.Tls13,
+                ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate
+            };
+
+            LogDebug($"Uploading file to the server. URL: {uri}");
+
+            if (token.IsCancellationRequested) return;
+
+            HandleCancellation(token);
+
+            if (token.IsCancellationRequested) return;
+
+            try
+            {
+                // Initialize HttpClient - removed disposeHandler parameter to match VB.NET default behavior
+                using var client = new HttpClient(handler);
+                client.DefaultRequestHeaders.ExpectContinue = false;
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AuthToken);
+                client.Timeout = Timeout.InfiniteTimeSpan;
+
+                // Prepare the file stream - removed FileShare.Read to match VB.NET
+                using var fileStream = new FileStream(RefreshZipPath, FileMode.Open, FileAccess.Read);
+                using var content = new StreamContent(fileStream);
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
+
+                LogDebug($"Waiting for the server response. URL: {uri}");
+
+                // Send the request - removed ConfigureAwait(false)
+                var response = await client.PostAsync(uri, content, token);
+
+                // Handle response
+                if (response.IsSuccessStatusCode)
+                {
+                    await MessageProgressWindowAsync("Uploading zip file to server completed.").ConfigureAwait(true);
+
+                    LogDebug("Upload completed successfully.");
+                    LogDebug("Waiting for the response stream.");
+
+                    // Removed ConfigureAwait(false)
+                    using var responseStream = await response.Content.ReadAsStreamAsync();
+                    // Match VB.NET file creation parameters exactly
+                    using var fileOutput = new FileStream(RefreshZipPath, FileMode.Create, FileAccess.Write);
+
+                    byte[] buffer = new byte[16384]; // 16KB buffer size
+                    int bytesRead;
+                    LogDebug("Writing response stream to file.");
+
+                    do
+                    {
+                        bytesRead = await responseStream.ReadAsync(buffer, 0, buffer.Length, token);
+                        if (bytesRead > 0)
+                        {
+                            await fileOutput.WriteAsync(buffer, 0, bytesRead, token);
+                        }
+                    } while (bytesRead != 0);
+
+                    await MessageProgressWindowAsync("Response flushed to file.").ConfigureAwait(true);
+
+                    LogDebug("Response stream flushed to file.");
+                }
+                else
+                {
+                    var responseText = await response.Content.ReadAsStringAsync();
+                    LogUtility.LogError($"Upload failed: {response.StatusCode} - {responseText}");
+                    ProcException = new Exception(responseText);
+                    throw ProcException;
+                }
+            }
+            catch (TaskCanceledException ex)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    ProcException = new Exception("Operation was canceled by the user.", ex);
+                }
+                else
+                {
+                    ProcException = new Exception("Upload request timed out.", ex);
+                }
+                throw ProcException;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+                throw;
+            }
+        }
+
+        private static async Task ExtractZipFileAsync(CancellationToken token)
+        {
+            LogDebug("Zip file extraction started.");
+
+            await MessageProgressWindowAsync("Extracting the response stream.").ConfigureAwait(true);
+
+            token.ThrowIfCancellationRequested();
+
+            string errorString = GetModeErrorMessage();
+
+            string zipPath = RefreshZipPath;
+
+            if (!File.Exists(zipPath))
+                return;
+
+            try
+            {
+                await MessageProgressWindowAsync("Opening zip file.").ConfigureAwait(true);
+
+                using ZipArchive archive = ZipFile.OpenRead(zipPath);
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    await ImprovedExtractToFileAsync(
+                        entry,
+                        TempFilesRootWithSeparator,
+                        token,
+                        Overwrite.Always
+                    );
+                }
+
+                LogDebug("Zip file extraction completed.");
+            }
+            catch (OperationCanceledException)
+            {
+                LogDebug("Zip file extraction canceled.");
+                throw;
+            }
+            catch (IOException exIO)
+            {
+                ProcException = new Exception(errorString, exIO);
+                throw ProcException;
+            }
+            catch (Exception ex)
+            {
+                ProcException = new Exception(errorString, ex);
+                throw ProcException;
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(zipPath))
+                        File.Delete(zipPath);
+                }
+                catch (Exception cleanupEx)
+                {
+                    LogDebug($"Failed to delete zip after extraction: {cleanupEx.Message}");
+                }
+            }
+        }
+
+        private enum Overwrite
+        {
+            Always,
+            IfNewer,
+            Never
+        }
+        private static async Task ImprovedExtractToFileAsync(
+            ZipArchiveEntry entry,
+            string? destinationRoot,
+            CancellationToken token,
+            Overwrite overwrite = Overwrite.Always)
+        {
+            try
+            {
+                token.ThrowIfCancellationRequested();
+                await MessageProgressWindowAsync($"Extracting: {entry?.FullName ?? "(unknown)"}").ConfigureAwait(true);
+
+                if (entry == null)
+                    throw new ArgumentNullException(nameof(entry));
+
+                ValidateArgs(entry, destinationRoot);
+
+                string destRoot = NormalizeRoot(destinationRoot!);
+                string destPath = GetSafeDestinationPath(destRoot, entry);
+
+                if (IsDirectoryEntry(entry))
+                {
+                    EnsureDirectory(destPath);
+                    return;
+                }
+
+                EnsureDirectory(Path.GetDirectoryName(destPath)!);
+
+                if (!ShouldExtract(entry, destPath, overwrite))
+                    return;
+
+                await CopyEntryToFileAsync(entry, destPath, overwrite, token).ConfigureAwait(false);
+
+                // Preserve timestamp for fidelity
+                File.SetLastWriteTimeUtc(destPath, entry.LastWriteTime.UtcDateTime);
+            }
+            catch (Exception ex)
+            {
+                ProcException = new Exception("Error during extracting zip.", ex);
+                throw ProcException;
+            }
+        }
+
+
+        private static void ValidateArgs(ZipArchiveEntry entry, string? destinationRoot)
+        {
+            if (entry is null)
+                throw new ArgumentNullException(nameof(entry));
+            if (string.IsNullOrWhiteSpace(destinationRoot))
+                throw new ArgumentException("Destination path cannot be null or empty.", nameof(destinationRoot));
+        }
+
+        private static string NormalizeRoot(string destinationRoot)
+        {
+            // Ensure a trailing separator and normalize to a full path
+            return Path.GetFullPath(destinationRoot + Path.DirectorySeparatorChar);
+        }
+
+        private static string GetSafeDestinationPath(string destRoot, ZipArchiveEntry entry)
+        {
+            // Normalize entry path separators for the current OS
+            string relative = (entry.FullName ?? string.Empty).Replace('/', Path.DirectorySeparatorChar);
+            string fullPath = Path.GetFullPath(Path.Combine(destRoot, relative));
+
+            // Zip Slip protection
+            if (!fullPath.StartsWith(destRoot, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Invalid entry path in archive (Zip Slip detected).");
+
+            return fullPath;
+        }
+
+        private static bool IsDirectoryEntry(ZipArchiveEntry entry)
+        {
+            // Many zips mark directories with a trailing slash
+            string name = entry.FullName ?? string.Empty;
+            return name.EndsWith("/", StringComparison.Ordinal) || name.EndsWith("\\", StringComparison.Ordinal);
+        }
+
+        private static void EnsureDirectory(string path)
+        {
+            if (!Directory.Exists(path))
+                Directory.CreateDirectory(path);
+        }
+
+        /// <summary>
+        /// Decides whether extraction should proceed based on overwrite policy and timestamps.
+        /// </summary>
+        private static bool ShouldExtract(ZipArchiveEntry entry, string destinationFile, Overwrite overwrite)
+        {
+            switch (overwrite)
+            {
+                case Overwrite.Never:
+                    return !File.Exists(destinationFile);
+
+                case Overwrite.IfNewer:
+                    if (!File.Exists(destinationFile)) return true;
+                    DateTime srcUtc = entry.LastWriteTime.UtcDateTime;
+                    DateTime dstUtc = File.GetLastWriteTimeUtc(destinationFile);
+                    return srcUtc > dstUtc;
+
+                case Overwrite.Always:
+                default:
+                    return true;
+            }
+        }
+
+        private static async Task CopyEntryToFileAsync(
+            ZipArchiveEntry entry,
+            string destinationFile,
+            Overwrite overwrite,
+            CancellationToken token)
+        {
+            // Choose file mode based on overwrite policy
+            var mode = overwrite == Overwrite.Never ? FileMode.CreateNew : FileMode.Create;
+
+            token.ThrowIfCancellationRequested();
+
+            using (var source = entry.Open())
+            using (var target = new FileStream(
+                destinationFile,
+                mode,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                useAsync: true))
+            {
+                await source.CopyToAsync(target, 81920, token).ConfigureAwait(false);
+            }
+        }
+
+
+        private static async Task BalancestoDTAsync(CancellationToken token)
+        {
+            LogDebug("Exporting balances to data table started.");
+
+            token.ThrowIfCancellationRequested();
+
+            await MessageProgressWindowAsync("Reading balances from json.").ConfigureAwait(true);
+
+            string jsonFileName = RefreshJsonPath;
+
+            try
+            {
+                if (File.Exists(jsonFileName))
+                {
+                    // Offload synchronous file I/O + CPU parsing to a background thread
+                    await Task.Run(() =>
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        string jsonString = File.ReadAllText(jsonFileName);
+                        AppState.Instance.CalculatedBalances = new DataTable();
+                        LogDebug($"Server response data : {jsonString}");
+
+                        if (!string.IsNullOrWhiteSpace(jsonString) &&
+                            jsonString.IndexOf("balanceValue", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            jsonString = jsonString.Replace("=@_XLL.", "=_XLL");
+
+                            // Parse as JsonArray
+                            JsonArray? rawJson = JsonNode.Parse(jsonString)?.AsArray();
+
+                            if (rawJson != null)
+                            {
+                                if (_isSnapshot)
+                                {
+                                    snapshotJsonArray = ExcelFormulaGenerator.GenerateExcelOutput(rawJson);
+                                }
+                                else
+                                {
+                                    JsonArray normalized = BalanceNormalizer.Normalize(rawJson);
+                                    AppState.Instance.CalculatedBalances = DataTableBuilder.ToDataTable(normalized);
+                                }
+                            }
+                            else
+                            {
+                                LogUtility.LogWarn("Unable to parse balance data JSON.");
+                            }
+                        }
+                        else
+                        {
+                            LogUtility.LogWarn("No balance data found in the server response.");
+                        }
+                    }, token).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogDebug("Exporting balances canceled.");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                ProcException = new Exception("Exception in exporting balances to data table.", ex);
+                throw ProcException;
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(jsonFileName))
+                        File.Delete(jsonFileName);
+                }
+                catch (Exception cleanupEx)
+                {
+                    LogDebug($"Failed to delete JSON file: {cleanupEx.Message}");
+                }
+            }
+        }
+
+
+        private static async Task RefreshWithBalancesAsync(
+            Excel.Workbook wrkbook,
+            Excel.Worksheet wrksheet,
+            CancellationToken token)
+        {
+            await MessageProgressWindowAsync("Refreshing balance formulas.").ConfigureAwait(true);
+            LogDebug("Refreshing the formulas started.");
+            AppState.Instance.StartBatchCalc = true;
+
+            token.ThrowIfCancellationRequested();
+            if (IsCancelled(token)) return;
+
+            try
+            {
+                if (_isTypeSheet)
+                {
+                    await RefreshSheetAsync(wrksheet, token).ConfigureAwait(true); // COM
+                }
+                else
+                {
+                    await RefreshWorkbookAsync(wrkbook, token).ConfigureAwait(true); // COM
+                    ReactivateOriginalSheet(wrkbook);    // COM
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogDebug("Formula refresh canceled.");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+                ProcException = new Exception("Error during formula refresh.", ex);
+                throw ProcException;
+            }
+            finally
+            {
+                AppState.Instance.StartBatchCalc = false;
+                LogDebug("Refreshing the formulas completed.");
+            }
+        }
+        // ---------------------------------------------------------------------
+        // Refresh single sheet (sheet mode)
+        // ---------------------------------------------------------------------
+        private static async Task RefreshSheetAsync(Excel.Worksheet? sheet, CancellationToken token = default)
+        {
+            if (sheet == null) return;
+            token.ThrowIfCancellationRequested();
+
+            try
+            {
+                await MessageProgressWindowAsync($"Refreshing formulas for worksheet \"{sheet.Name}\".").ConfigureAwait(true);
+
+                sheet.EnableCalculation=false; // Disable calculation to prevent intermediate states during refresh
+                sheet.EnableCalculation=true;  // Re-enable to trigger recalculation of all formulas in the sheet
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, ex.Message);
+                throw;
+            }
+        }
+        private static async Task RefreshWorkbookAsync(Excel.Workbook workBook, CancellationToken token = default)
+        {
+            foreach (Excel.Worksheet sht in workBook.Worksheets)
+            {
+                bool sheetVisible = true;
+                if (sht.Visible == Excel.XlSheetVisibility.xlSheetHidden)
+                    sheetVisible = false;
+
+                if (!sheetVisible)
+                    sht.Visible = Excel.XlSheetVisibility.xlSheetVisible;
+                sht.Activate();
+
+                try
+                {
+                    await RefreshSheetAsync(sht, token).ConfigureAwait(true); // COM
+                }
+                catch (Exception ex)
+                {
+                    LogError(ex, ex.Message);
+                }
+                finally
+                {
+                    if (!sheetVisible)
+                        sht.Visible = Excel.XlSheetVisibility.xlSheetHidden;
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Reactivate the originally active sheet after refresh
+        // ---------------------------------------------------------------------
+        private static void ReactivateOriginalSheet(Excel.Workbook wrkbook)
+        {
+            if (_worksheet == null) return;
+
+            string? originalSheetName = _worksheet.Name;
+            if (string.IsNullOrWhiteSpace(originalSheetName)) return;
+
+            try
+            {
+                var originalSheet = (Excel.Worksheet)wrkbook.Worksheets[originalSheetName];
+                originalSheet?.Activate();
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+            }
+        }
+        private static async Task RefreshSnapshotBalancesAsync(string shtName, CancellationToken token)
+        {
+            LogDebug("Replacing the formulas with values started.");
+            await MessageProgressWindowAsync("Refreshing snapshot data.").ConfigureAwait(true);
+
+            token.ThrowIfCancellationRequested();
+            if (IsCancelledOrExcelNull(token)) return;
+
+            var hiddenApp = new Excel.Application 
+            { 
+                Visible = false, 
+                ScreenUpdating = false, 
+                EnableEvents = false,
+                DisplayAlerts = false 
+            };
+
+            try
+            {
+
+
+                // COM-bound: keep these on the Excel UI thread
+                await MessageProgressWindowAsync("Saving a snapshot file.");
+
+                Excel.Workbook? snapshotBook = hiddenApp.Workbooks.Open(_snapShotFilepath, ReadOnly: false);
+
+                if (IsCancelled(token)) return;
+
+                await MessageProgressWindowAsync("Refreshing formulas.");
+                await ForceFormulaRecalculation(snapshotBook, shtName, token); // COM
+
+                await MessageProgressWindowAsync("Replacing formulas with values.");
+                ReplaceJObjectFormulas(snapshotBook);  //This replaces the formula from snapshotjsonarray object Pure CPU work, but interacts with Excel ranges, so keep on UI thread to avoid COM marshalling overhead
+                ReplaceFormulasWithValues(snapshotBook, shtName, token); // COM and long-running
+                CleanupExtraSheets(snapshotBook, shtName);
+
+                snapshotBook.Save();
+                snapshotBook.Close(SaveChanges: false); // COM
+                //SaveAndCloseSnapshot(snapshotBook); // COM
+            }
+            catch (OperationCanceledException)
+            {
+                LogDebug("Snapshot refresh canceled.");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+                ProcException = new Exception("Error during snapshot refresh process.", ex);
+                throw ProcException;
+            }
+            finally
+            {
+                hiddenApp.Quit();
+                LogDebug("Replacing the formulas with values completed.");
+            }
+        }
+        // ---------------------------------------------------------------------
+        // Guard clauses
+        // ---------------------------------------------------------------------
+        private static bool IsCancelledOrExcelNull(CancellationToken token)
+        {
+            return token.IsCancellationRequested || _excelApp == null || _workbook == null;
+        }
+
+        private static bool IsCancelled(CancellationToken token)
+        {
+            HandleCancellation(token);
+            return token.IsCancellationRequested;
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 1: Open snapshot workbook
+        // ---------------------------------------------------------------------
+        private static Excel.Workbook? OpenSnapshotWorkbook(string? filePath)
+        {
+            try
+            {
+                CommonMethods.DisableExcelSettings();
+                Excel.Workbook? book = _excelApp?.Workbooks.Open(filePath);
+                CommonMethods.DisableExcelSettings();
+                return book;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+                return null;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 2: Force recalculation (F9 equivalent)
+        // ---------------------------------------------------------------------
+        private static async Task ForceFormulaRecalculation(Excel.Workbook? snapshotBook, string shtName, CancellationToken token = default)
+        {
+
+            if (snapshotBook == null || snapshotJsonArray == null) return;
+
+            foreach (var item in snapshotJsonArray.OfType<JsonObject>())
+            {
+                string? sheetName = item["excelSheet"]?.GetValue<string>();
+                string? cellAddress = item["excelCell"]?.GetValue<string>();
+
+                if (string.IsNullOrEmpty(sheetName) || string.IsNullOrEmpty(cellAddress)) 
+                    continue;
+
+                Excel.Worksheet ws = (Excel.Worksheet)snapshotBook.Worksheets[sheetName];
+                Excel.Range range = ws.Range[cellAddress];
+
+                bool hasRefs = item["hasReferences"]?.GetValue<bool>() ?? false;
+                if (!hasRefs)
+                {
+                   try
+                    {
+                        string value = item["value"]?.GetValue<string>() ?? "";
+                        range.Value2= value;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError(ex, $"Error calculating cell {cellAddress}");
+                    }
+                }
+                if (hasRefs)
+                {
+                    try
+                    {
+                        string formula = item["formula"]?.GetValue<string>() ?? "";
+                        range.Value2 = formula;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError(ex, $"Error calculating cell {cellAddress}");
+                    }
+                }
+            }
+
+            var ws1 = snapshotBook.Worksheets[shtName] as Excel.Worksheet;
+
+            if (_isTypeSheet)
+            {
+
+                await RefreshSheetAsync(ws1, token).ConfigureAwait(true); ;
+            }
+            else
+            {
+                await RefreshWorkbookAsync(snapshotBook, token).ConfigureAwait(true);
+                ReactivateOriginalSheet(snapshotBook);
+            }
+        }
+        private static string GetCellAddress(JsonObject item)
+        {
+            string sheet = item["excelSheet"]?.GetValue<string>() ?? "";
+            string cell = item["excelCell"]?.GetValue<string>() ?? "";
+
+            if (string.IsNullOrWhiteSpace(sheet) || string.IsNullOrWhiteSpace(cell))
+                return string.Empty;
+
+            return $"'{sheet.Replace("'","")}'!{cell}";
+        }
+
+        
+        // ---------------------------------------------------------------------
+        // Step 4: Replace formulas with values
+        // ---------------------------------------------------------------------
+        private static void ReplaceFormulasWithValues(Excel.Workbook? snapshotBook, string? shtName, CancellationToken token)
+        {
+
+            if (snapshotBook == null) return;
+
+
+
+            if (_isTypeSheet)
+            {
+                if (snapshotBook.Worksheets[shtName] is Excel.Worksheet ws)
+                    ReplaceFormulas(ws, token);
+            }
+            else
+            {
+                foreach (Excel.Worksheet ws in snapshotBook.Worksheets)
+                {
+                    ReplaceFormulas(ws, token);
+                }
+            }
+        }
+        private static void ReplaceJObjectFormulas(Excel.Workbook snapshotBook)
+        {
+            if (snapshotJsonArray == null) return;
+
+            foreach (var item in snapshotJsonArray.OfType<JsonObject>())
+            {
+                string? sheetName = item["sheetName"]?.GetValue<string>();
+                string? cellAddress = item["cellAddress"]?.GetValue<string>();
+
+                if (string.IsNullOrEmpty(sheetName) || string.IsNullOrEmpty(cellAddress))
+                    continue;
+
+                Excel.Worksheet ws = (Excel.Worksheet)snapshotBook.Worksheets[sheetName];
+                Excel.Range range = ws.Range[cellAddress];
+
+                bool hasRefs = item["hasReferences"]?.GetValue<bool>() ?? false;
+                if (hasRefs)
+                {
+                    try
+                    {
+                        object val = range.Value2;
+                        range.Value2 = val;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError(ex, $"Error calculating cell {cellAddress}");
+                    }
+                }
+            }
+        }
+        // ---------------------------------------------------------------------
+        // Step 5: Cleanup extra sheets (only in sheet mode)
+        // ---------------------------------------------------------------------
+        private static void CleanupExtraSheets(Excel.Workbook? snapshotBook, string? shtName)
+        {
+            if (!_isTypeSheet || snapshotBook == null) return;
+
+            foreach (Excel.Worksheet ws in snapshotBook.Worksheets)
+            {
+                if (ws.Name != shtName && !ws.Name.EndsWith("_LOV", StringComparison.Ordinal))
+                {
+                    try
+                    {
+                        ws.Delete();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError(ex);
+                    }
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Step 6: Save and close
+        // ---------------------------------------------------------------------
+        private static void SaveAndCloseSnapshot(Excel.Workbook? snapshotBook)
+        {
+            if (snapshotBook == null) return;
+
+            try
+            {
+                snapshotBook.Close(SaveChanges: true);
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+            }
+        }
+
+        private static void ReplaceFormulas(Excel.Worksheet wrksht, CancellationToken token)
+        {
+            if (token.IsCancellationRequested)
+                return;
+
+            var formulas = GetFormulaCells(wrksht);
+            if (formulas == null)
+                return;
+
+            LogDebug($"Replacing GLSense formulas with values, in sheet: {wrksht.Name}");
+
+            foreach (Excel.Range cell in formulas)
+            {
+                ProcessFormulaCell(cell, token);
+            }
+        }
+
+        private static Excel.Range? GetFormulaCells(Excel.Worksheet wrksht)
+        {
+            try
+            {
+                return wrksht.Cells.SpecialCells(Excel.XlCellType.xlCellTypeFormulas);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void ProcessFormulaCell(Excel.Range cell, CancellationToken token)
+        {
+            HandleCancellation(token);
+            if (token.IsCancellationRequested || cell == null)
+                return;
+
+            IgnoreExceptions(() => cell.Worksheet.Columns.AutoFit());
+
+            string formula = cell.Formula?.ToString() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(formula))
+                return;
+
+            if (!IsGlSenseFormula(formula))
+                return;
+
+            LogCellDetails(cell);
+            UpdateCellFormatAndValue(cell, formula);
+        }
+
+        private static bool IsGlSenseFormula(string? formula)
+        {
+            return Regex.Match(formula, "GLSense").Success;
+        }
+
+        private static void LogCellDetails(Excel.Range cell)
+        {
+            try
+            {
+                var sheetName = cell.Worksheet.Name;
+                LogDebug($"Range: '{sheetName}!{cell.Address}'");
+                LogDebug($"Range Formula: {cell.Formula}");
+                LogDebug($"Range Value: {cell.Value}");
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, cell.Address?.ToString());
+            }
+        }
+
+        private static void UpdateCellFormatAndValue(Excel.Range cell, string formula)
+        {
+            try
+            {
+                if (!ContainsGetBalance(formula))
+                    cell.NumberFormat = "@";
+
+                if (cell.Text.ToString().StartsWith("#"))
+                    cell.Value2 = cell.Text;
+                else
+                {
+                    object val = cell.Value2;
+                    cell.Value2 = val;
+                }
+
+            }
+            catch (Exception ex)
+            {
+                LogError(ex, cell.Address?.ToString());
+            }
+        }
+
+        private static bool ContainsGetBalance(string formula)
+        {
+            return formula.IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static void IgnoreExceptions(Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private static void HandleCancellation(CancellationToken token)
+        {
+            if (token.IsCancellationRequested && !UserCancelled)
+            {
+                UserCancelled = true;
+                try
+                {
+                    token.ThrowIfCancellationRequested();
+                }
+                catch (OperationCanceledException ex)
+                {
+                    LogWarn($"HandleCancellation detected operation canceled: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    LogWarn($"Unexpected error in HandleCancellation: {ex.Message}");
+                }
+            }
+        }
+        private static Task MessageProgressWindowAsync(string? message)
+        {
+            // Basic guards
+            if (Win == null || Win.Dispatcher == null)
+                return Task.CompletedTask;
+
+            try
+            {
+                // Use a reasonable priority and capture the Task [web:66]
+                var op = Win.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        Win.SetProcessMessage(message);
+                    },
+                    DispatcherPriority.Normal);
+
+                return op.Task;
+            }
+            catch (TaskCanceledException)
+            {
+                // Dispatcher shutting down; nothing to do
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                // Last-resort logging if something unexpected happens
+                LogUtility.LogException(ex);
+                return Task.CompletedTask;
+            }
+        }
+
+        private static string GetModeErrorMessage()
+        {
+            if (_isSnapshot)
+            {
+                return "An internal error occurred while creating the snapshot.";
+            }
+
+            return _isTypeSheet
+                ? "An internal error occurred while performing the sheet refresh."
+                : "An internal error occurred while performing the book refresh.";
+        }
+    }
+#nullable enable
+}

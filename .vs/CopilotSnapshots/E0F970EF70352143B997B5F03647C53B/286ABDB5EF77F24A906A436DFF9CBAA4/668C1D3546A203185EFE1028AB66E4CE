@@ -1,0 +1,169 @@
+﻿using GLSense.Base;
+using GLSense.ViewModels;
+using System.Linq;
+
+namespace GLSense.Bindings
+{
+    public class FieldBinding : NotifyBase
+    {
+        public GLConfiguratorViewModel OwnerViewModel { get; set; }
+
+        // ==============================
+        // ComboText
+        // ==============================
+        private string _comboText;
+        public string ComboText
+        {
+            get => _comboText;
+            set
+            {
+                if (_comboText != value)
+                {
+                    _comboText = value;
+                    OnPropertyChanged(nameof(ComboText));
+
+                    if (string.IsNullOrWhiteSpace(_comboText))
+                    {
+                        ComboValue = null;
+                    }
+                }
+            }
+        }
+
+        // ==============================
+        // ComboValue
+        // ==============================
+        private object _comboValue;
+        public object ComboValue
+        {
+            get => _comboValue;
+            set
+            {
+                if (!Equals(_comboValue, value))
+                {
+                    _comboValue = value;
+                    OnPropertyChanged(nameof(ComboValue));
+                    OnPropertyChanged(nameof(IsComboEnabled));
+                    OnPropertyChanged(nameof(IsRefEnabled));
+
+                    OwnerViewModel?.OnFieldDependencyChanged(this);
+                }
+            }
+        }
+        // ==============================
+        // RefValue
+        // ==============================
+        private string _refValue;
+        public string RefValue
+        {
+            get => _refValue;
+            set
+            {
+                if (_refValue != value)
+                {
+                    _refValue = value;
+                    OnPropertyChanged(nameof(RefValue));
+                    OnPropertyChanged(nameof(IsRefEnabled));
+                    OnPropertyChanged(nameof(IsComboEnabled));
+
+                    OwnerViewModel?.OnRefEditTextChanged(this, value);
+                }
+            }
+        }
+
+        // ==============================
+        // Enable / Disable Logic
+        // ==============================
+        public bool IsRefEnabled
+        {
+            get
+            {
+                GLConfiguratorViewModel parent = OwnerViewModel;
+                if (parent == null) return false;
+
+                // Determine some context values used by multiple field types
+                var balanceTypeCombo = parent.BalanceTypeField?.ComboValue?.ToString();
+                bool isJEDType = !string.IsNullOrWhiteSpace(balanceTypeCombo) && (
+                    balanceTypeCombo.Equals("JED", System.StringComparison.OrdinalIgnoreCase) ||
+                    balanceTypeCombo.Equals("JEDP", System.StringComparison.OrdinalIgnoreCase) ||
+                    balanceTypeCombo.Equals("JEDU", System.StringComparison.OrdinalIgnoreCase)
+                );
+
+                return Type switch
+                {
+                    FieldType.Ledger => parent.IsLedgerEnabled &&
+                                                   (!(parent.Ledgers?.Any(l => l.IsSelected) ?? false) || !string.IsNullOrEmpty(RefValue)),
+                    FieldType.Budgets => parent.IsBudgetEnabled && (ComboValue == null || ComboValue.ToString() == "" || !string.IsNullOrEmpty(RefValue)),
+                    FieldType.Encumbrances => parent.IsEncumbranceEnabled &&
+                                                   (!(parent.Encumbrances?.Any(e => e.IsSelected) ?? false) || !string.IsNullOrEmpty(RefValue)),
+                    FieldType.EndPeriod => parent.IsEndPeriodsEnabled && (ComboValue == null || ComboValue.ToString() == "" || !string.IsNullOrEmpty(RefValue)),
+                    // StartDate/EndDate should only be enabled when BalanceType indicates JED variants
+                    FieldType.StartDate => isJEDType && (ComboValue == null || !string.IsNullOrEmpty(RefValue)),
+                    FieldType.EndDate => isJEDType && (ComboValue == null || !string.IsNullOrEmpty(RefValue)),
+                    _ => ComboValue == null || !string.IsNullOrEmpty(RefValue),// Default logic
+                };
+            }
+        }
+
+        public bool IsComboEnabled
+        {
+            get
+            {
+                GLConfiguratorViewModel parent = OwnerViewModel;
+                if (parent == null) return false;
+
+                var balanceTypeCombo = parent.BalanceTypeField?.ComboValue?.ToString();
+                bool isJEDType = !string.IsNullOrWhiteSpace(balanceTypeCombo) && (
+                    balanceTypeCombo.Equals("JED", System.StringComparison.OrdinalIgnoreCase) ||
+                    balanceTypeCombo.Equals("JEDP", System.StringComparison.OrdinalIgnoreCase) ||
+                    balanceTypeCombo.Equals("JEDU", System.StringComparison.OrdinalIgnoreCase)
+                );
+
+                return Type switch
+                {
+                    FieldType.Encumbrances => parent.IsEncumbranceEnabled && string.IsNullOrEmpty(RefValue),// Enable combo only if ActualFlag allows it and refedit empty
+                    FieldType.Budgets => parent.IsBudgetEnabled && string.IsNullOrEmpty(RefValue),// Enable only when ActualFlag allows
+                    FieldType.EndPeriod => parent.IsEndPeriodsEnabled && string.IsNullOrEmpty(RefValue),// Enable when BalanceType allows
+                    // Period selection should be disabled for JED types (dates used instead)
+                    FieldType.Period => !isJEDType && string.IsNullOrEmpty(RefValue),
+                    FieldType.StartDate => isJEDType && string.IsNullOrEmpty(RefValue),
+                    FieldType.EndDate => isJEDType && string.IsNullOrEmpty(RefValue),
+                    _ => string.IsNullOrEmpty(RefValue),
+                };
+            }
+        }
+
+        // ==============================
+        // Utility
+        // ==============================
+        public void RefreshEnableState()
+        {
+            OnPropertyChanged(nameof(IsRefEnabled));
+            OnPropertyChanged(nameof(IsComboEnabled));
+        }
+
+        // ==============================
+        // Enum
+        // ==============================
+        public enum FieldType
+        {
+            Ledger,
+            Activity,
+            BalanceType,
+            Period,
+            EndPeriod,
+            StartDate,
+            EndDate,
+            Currency,
+            CurrencyType,
+            ActualFlag,
+            Budgets,
+            Encumbrances,
+            JournalSources,
+            JournalCategories,
+            AccountAssignments
+        }
+
+        public FieldType Type { get; set; }
+    }
+}

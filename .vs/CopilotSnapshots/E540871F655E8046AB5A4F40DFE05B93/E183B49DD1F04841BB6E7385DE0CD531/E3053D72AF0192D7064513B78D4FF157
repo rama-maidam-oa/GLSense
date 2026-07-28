@@ -1,0 +1,421 @@
+﻿using System;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
+
+namespace GLSense.Utilities
+{
+    using System;
+
+    public class DpiAwareWindow : Window
+    {
+        private HwndSource _hwndSource;
+        private double _currentScaleFactor = 1.0;
+        private readonly string _windowName;
+
+        public double CurrentScaleFactor => _currentScaleFactor;
+        public bool AutoClampToWorkArea { get; set; } = true;
+        public double WorkAreaMargin { get; set; } = 24d;
+        public double? MaxWidthCap { get; set; } = 1400d;
+        public double? MaxHeightCap { get; set; }
+            = null;
+
+        public DpiAwareWindow()
+        {
+            try
+            {
+                _windowName = GetType().Name;
+                LogUtility.LogDebug($"[{_windowName}] constructing window");
+
+                // Ensure WPF Application exists
+                WpfAppManager.EnsureApplication();
+
+                // Initialize on the WPF thread
+                WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    try
+                    {
+                        using (DpiAwarenessHelper.SetPerMonitorAware())
+                        {
+                            // Suppress flickering for borderless windows with SizeToContent
+                            this.UseLayoutRounding = true;
+                            this.SnapsToDevicePixels = true;
+
+                            // Set render mode to software to avoid GPU compositing artifacts
+                            RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
+
+                            this.SourceInitialized += OnSourceInitialized;
+                            this.Loaded += OnLoaded;
+                            this.ContentRendered += OnContentRenderedDebug;
+                            this.Closed += OnClosedDebug;
+                            this.Unloaded += OnUnloadedDebug;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogError($"Error in DpiAwareWindow constructor: {ex.Message}");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Fatal error in DpiAwareWindow: {ex.Message}");
+            }
+        }
+
+        protected override void OnInitialized(EventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug($"[{_windowName}] initialized");
+                base.OnInitialized(e);
+            }
+            catch (System.IO.IOException ex)
+            {
+                LogUtility.LogError($"IO Exception during window initialization: {ex.Message}");
+                // Try to continue - the window might still work
+            }
+        }
+
+        /// <summary>
+        /// Helper method to set Excel as owner
+        /// </summary>
+        public void SetExcelOwner(IntPtr excelHwnd)
+        {
+            try
+            {
+                var helper = new WindowInteropHelper(this);
+                helper.Owner = excelHwnd;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error setting Excel owner: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Show dialog with Excel as owner
+        /// </summary>
+        public bool? ShowDialogWithOwner(IntPtr excelHwnd)
+        {
+            try
+            {
+                SetExcelOwner(excelHwnd);
+                return this.ShowDialog();
+            }
+            catch (System.IO.IOException ex)
+            {
+                LogUtility.LogError($"IO Exception showing dialog: {ex.Message}");
+                // Retry once
+                System.Threading.Thread.Sleep(100);
+                SetExcelOwner(excelHwnd);
+                return this.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error showing dialog: {ex.Message}");
+                // Fallback - try to show as independent window
+                try
+                {
+                    return this.ShowDialog();
+                }
+                catch (Exception innerEx)
+                {
+                    LogUtility.LogError($"Critical error showing dialog: {innerEx.Message}");
+                    return null;
+                }
+            }
+        }
+        /// <summary>
+        /// Show window with Excel as owner (modeless/non-modal)
+        /// </summary>
+        public void ShowWithOwner(IntPtr excelHwnd)
+        {
+            try
+            {
+                SetExcelOwner(excelHwnd);
+                this.Show();
+            }
+            catch (System.IO.IOException ex)
+            {
+                LogUtility.LogError($"IO Exception showing window: {ex.Message}");
+                // Retry once
+                System.Threading.Thread.Sleep(100);
+                SetExcelOwner(excelHwnd);
+                this.Show();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error showing window: {ex.Message}");
+
+                // Fallback - try to show without owner
+                try
+                {
+                    this.Show();
+                }
+                catch (Exception innerEx)
+                {
+                    LogUtility.LogError($"Critical error showing window: {innerEx.Message}");
+                }
+            }
+        }
+
+        private void OnSourceInitialized(object sender, EventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug($"[{_windowName}] source initialized");
+                _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
+                _hwndSource?.AddHook(WndProc);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error in OnSourceInitialized: {ex.Message}");
+            }
+        }
+
+        private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug($"[{_windowName}] loaded - applying DPI adjustments");
+                AdjustForCurrentDpi();
+                EnsureFitsWorkArea();
+                LogUtility.LogDebug($"[{_windowName}] load complete");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error in OnLoaded: {ex.Message}");
+            }
+        }
+
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            try
+            {
+                const int WM_DPICHANGED = 0x02E0;
+
+                if (msg == WM_DPICHANGED)
+                {
+                    uint newDpi = (uint)wParam;
+                    AdjustForDpiChange(newDpi, lParam);
+                    handled = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error in WndProc: {ex.Message}");
+            }
+
+            return IntPtr.Zero;
+        }
+
+        private void AdjustForCurrentDpi()
+        {
+            if (_hwndSource == null) return;
+
+            try
+            {
+                var monitorDpi = GetDpiForWindow(_hwndSource.Handle);
+                var wpfDpi = 96.0 * _hwndSource.CompositionTarget.TransformToDevice.M11;
+                var scaleFactor = monitorDpi / wpfDpi;
+
+                ApplyScaleTransform(scaleFactor);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error adjusting DPI: {ex.Message}");
+            }
+        }
+
+        private void AdjustForDpiChange(uint newDpi, IntPtr lParam)
+        {
+            if (_hwndSource == null) return;
+
+            try
+            {
+                var wpfDpi = 96.0 * _hwndSource.CompositionTarget.TransformToDevice.M11;
+                var scaleFactor = newDpi / wpfDpi;
+
+                ApplyScaleTransform(scaleFactor);
+
+                // Resize window according to the suggested rectangle
+                if (lParam != IntPtr.Zero)
+                {
+                    var rect = Marshal.PtrToStructure<Rect>(lParam);
+
+                    this.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            this.Width = rect.Width;
+                            this.Height = rect.Height;
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogError($"Error resizing window: {ex.Message}");
+                        }
+                    }));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error in AdjustForDpiChange: {ex.Message}");
+            }
+        }
+
+        private void ApplyScaleTransform(double scaleFactor)
+        {
+            if (Math.Abs(scaleFactor - _currentScaleFactor) < 0.001)
+                return;
+
+            try
+            {
+                _currentScaleFactor = scaleFactor;
+
+                if (this.Content is FrameworkElement element)
+                {
+                    element.LayoutTransform = new ScaleTransform(scaleFactor, scaleFactor);
+                    element.InvalidateMeasure();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error applying scale transform: {ex.Message}");
+            }
+        }
+
+        protected double DipToPixels(double dip)
+        {
+            return dip * _currentScaleFactor;
+        }
+
+        protected double PixelsToDip(double pixels)
+        {
+            return pixels / _currentScaleFactor;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Rect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+            public readonly int Width => Right - Left;
+            public readonly int Height => Bottom - Top;
+        }
+
+        protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+        {
+            base.OnRenderSizeChanged(sizeInfo);
+
+            if (!AutoClampToWorkArea)
+                return;
+
+            try
+            {
+                EnsureFitsWorkArea();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error clamping window size: {ex.Message}");
+            }
+        }
+
+        protected void EnsureFitsWorkArea(double? marginOverride = null)
+        {
+            var margin = marginOverride ?? WorkAreaMargin;
+            try
+            {
+                var workArea = SystemParameters.WorkArea;
+
+                var baseMaxWidth = Math.Max(MinWidth, workArea.Width - margin);
+                var baseMaxHeight = Math.Max(MinHeight, workArea.Height - margin);
+
+                if (MaxWidthCap.HasValue)
+                {
+                    baseMaxWidth = Math.Min(baseMaxWidth, MaxWidthCap.Value);
+                }
+
+                if (MaxHeightCap.HasValue)
+                {
+                    baseMaxHeight = Math.Min(baseMaxHeight, MaxHeightCap.Value);
+                }
+
+                var effectiveMaxWidth = double.IsPositiveInfinity(MaxWidth)
+                    ? baseMaxWidth
+                    : Math.Min(MaxWidth, baseMaxWidth);
+
+                var effectiveMaxHeight = double.IsPositiveInfinity(MaxHeight)
+                    ? baseMaxHeight
+                    : Math.Min(MaxHeight, baseMaxHeight);
+
+                MaxWidth = effectiveMaxWidth;
+                MaxHeight = effectiveMaxHeight;
+
+                if (Width > effectiveMaxWidth)
+                {
+                    Width = effectiveMaxWidth;
+                }
+                else if (Width < MinWidth)
+                {
+                    Width = MinWidth;
+                }
+
+                if (Height > effectiveMaxHeight)
+                {
+                    Height = effectiveMaxHeight;
+                }
+                else if (Height < MinHeight)
+                {
+                    Height = MinHeight;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error ensuring window fits work area: {ex.Message}");
+            }
+        }
+
+        private void OnContentRenderedDebug(object sender, EventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug($"[{_windowName}] content rendered");
+            }
+            catch
+            {
+                // swallow
+            }
+        }
+
+        private void OnClosedDebug(object sender, EventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug($"[{_windowName}] closed");
+            }
+            catch
+            {
+                // swallow
+            }
+        }
+
+        private void OnUnloadedDebug(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug($"[{_windowName}] unloaded");
+            }
+            catch
+            {
+                // swallow
+            }
+        }
+    }
+}

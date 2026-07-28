@@ -1,0 +1,331 @@
+﻿<utils:DpiAwareWindow x:Class="GLSense.Views.GLLOVs" 
+                      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+					  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+					  xmlns:utils="clr-namespace:GLSense.Utilities" 
+					  xmlns:local="clr-namespace:GLSense.Views" 
+					  xmlns:ctrls="clr-namespace:GLSense.Controls" 
+					  xmlns:conv="clr-namespace:GLSense.Converters" 
+					  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome" 
+					  Background="#F8F9FA" SizeToContent="Manual" ResizeMode="CanResize" MinWidth="600" MaxWidth="850" 
+					  MinHeight="650" MaxHeight="680" WindowStyle="None" WindowStartupLocation="CenterOwner" Loaded="Window_Loaded">
+    <utils:DpiAwareWindow.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/GLSense;component/Themes/GlobalStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <!-- Converters (window-specific) -->
+            <conv:WidthPercentageConverter x:Key="WidthPercentageConverter"/>
+            <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <!-- Custom Scrollbar styles (window-specific) -->
+            <Style TargetType="ScrollBar" x:Key="AppScrollBarStyle">
+                <Setter Property="Width" Value="12"/>
+                <Setter Property="Background" Value="#E0E0E0"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="Opacity" Value="1"/>
+            </Style>
+            <Style TargetType="Thumb" x:Key="AppScrollThumbStyle">
+                <Setter Property="Background" Value="{StaticResource SecondaryBrush}"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Opacity" Value="1"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Thumb">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="6"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <!-- DataGrid Text Element Style - UPDATED to inherit foreground (window-specific override) -->
+            <Style x:Key="LOVDataGridText" TargetType="TextBlock">
+                <Setter Property="Padding" Value="12,8"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridCell}}"/>
+            </Style>
+            <!-- Watermark TextBox Style (window-specific) -->
+            <Style x:Key="WatermarkTextBox" TargetType="TextBox" BasedOn="{StaticResource ModernTextBox}">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Grid>
+                                <ScrollViewer x:Name="PART_ContentHost" Background="Transparent" VerticalAlignment="Top" Padding="{TemplateBinding Padding}"/>
+                                <TextBlock x:Name="WatermarkText" Text="Add your comments here. The entered text will be added as excel cell comment. If left as is then the selected ledger will be set as excel cell comment." Foreground="{StaticResource TextSecondaryBrush}" FontStyle="Italic" Margin="8,4" VerticalAlignment="Top" TextWrapping="Wrap" Visibility="Collapsed"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter TargetName="WatermarkText" Property="Visibility" Value="Visible"/>
+                                </Trigger>
+                                <Trigger Property="Text" Value="{x:Null}">
+                                    <Setter TargetName="WatermarkText" Property="Visibility" Value="Visible"/>
+                                </Trigger>
+                                <Trigger Property="IsFocused" Value="True">
+                                    <Setter TargetName="WatermarkText" Property="Visibility" Value="Collapsed"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </utils:DpiAwareWindow.Resources>
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Left side with icon and title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="ListCheckSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="GLSense LOVs" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <!-- Ledger Selection in the middle/right area -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0">
+                    <Label Content="Ledger:" Foreground="White" FontFamily="Segoe UI" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <ctrls:SuggestAppendComboBox x:Name="cmbLedgers" Width="400" Height="28" ItemsSource="{Binding Ledgers}" DisplayMemberPath="LedgerName" SelectedItem="{Binding LOV_SelectedLedger, Mode=TwoWay}" VerticalAlignment="Center" ArrowBrush="#2E86AB" ArrowWidth="10" ArrowHeight="8" Background="White" Foreground="#212529"/>
+                </StackPanel>
+                <!-- Close Button -->
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
+        <!-- ================= Main Content: LOVs DataGrid + Comments ================= -->
+        <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,6,0,2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,4">
+                <DataGrid x:Name="dgLovs" FontFamily="Segoe UI" ItemsSource="{Binding LOVRows}" SelectedItem="{Binding SelectedLov, Mode=TwoWay}" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False" Background="White" IsReadOnly="True" SelectionUnit="FullRow" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionMode="Single">
+                <!-- Override system selection colors -->
+                <DataGrid.Resources>
+                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
+                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
+                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
+                    <!-- local scrollbar styles scoped to this DataGrid (ensure visible, consistent look) -->
+                    <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
+                        <Setter Property="Background" Value="#E0E0E0"/>
+                        <Setter Property="Opacity" Value="1"/>
+                    </Style>
+                    <Style TargetType="Thumb" BasedOn="{StaticResource AppScrollThumbStyle}">
+                        <Setter Property="Background" Value="#6C757D"/>
+                        <Setter Property="Opacity" Value="1"/>
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#2E86AB"/>
+                        <Setter Property="Foreground" Value="White"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="BorderBrush" Value="#1B6B93"/>
+                        <Setter Property="BorderThickness" Value="0,0,1,0"/>
+                        <Setter Property="Padding" Value="12,8"/>
+                        <Setter Property="Height" Value="36"/>
+                        <Setter Property="FontSize" Value="12"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="DataGridColumnHeader">
+                                    <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ContentPresenter Grid.Column="0" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                            <Path x:Name="SortArrow" Grid.Column="1" Margin="6,0,6,0" Width="10" Height="6" Stretch="Fill" Fill="{TemplateBinding Foreground}" Visibility="Collapsed" Data="M 0 4 L 5 0 L 10 4 Z"/>
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" TargetName="border" Value="#389BC7"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter Property="Background" TargetName="border" Value="#277596"/>
+                                        </Trigger>
+                                        <Trigger Property="SortDirection" Value="Ascending">
+                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 4 L 5 0 L 10 4 Z"/>
+                                        </Trigger>
+                                        <Trigger Property="SortDirection" Value="Descending">
+                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 0 L 5 4 L 10 0 Z"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
+                <!-- UPDATED RowStyle with consistent hover/selected formatting -->
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="BorderBrush" Value="#F8F9FA"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        <Setter Property="Background" Value="White"/>
+                        <Setter Property="Foreground" Value="#212529"/>
+                        <Setter Property="FontSize" Value="13"/>
+                        <Setter Property="Height" Value="36"/>
+                        <Style.Triggers>
+                            <!-- Data/business condition triggers FIRST -->
+                            <DataTrigger Binding="{Binding Category}" Value="Segment">
+                                <Setter Property="Background" Value="#FFFFF0"/>
+                            </DataTrigger>
+                            <!-- UI interaction triggers LAST (override data triggers) -->
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#F0F8FF"/>
+                                <Setter Property="BorderBrush" Value="#2E86AB"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#9bcee4"/>
+                                <Setter Property="BorderBrush" Value="#2E86AB"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+                <!-- UPDATED CellStyle with transparent background -->
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="BorderBrush" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Foreground" Value="{Binding Foreground, 
+                            RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                    </Style>
+                </DataGrid.CellStyle>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Available LOVs" Binding="{Binding Name}" Width="2*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource LOVDataGridText}">
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding Category}" FontStyle="Italic"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Click to select this list of values" FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                                            <TextBlock Text="Category: " FontSize="11" FontWeight="SemiBold" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="{Binding Category}" FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Items Count" Binding="{Binding ItemsCount}" Width="1*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource LOVDataGridText}">
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Number of values in this list" TextWrapping="Wrap"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Click to select this list of values" FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="1*" Visibility="Collapsed"/>
+                </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+
+            <!-- Comments Section -->
+            <Border Grid.Row="1" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,0" Padding="12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Label Content="Comments" Style="{StaticResource HeaderLabel}" Grid.Row="0" Margin="0,0,0,5"/>
+                    <TextBox x:Name="TxtComments" Grid.Row="1" Style="{StaticResource WatermarkTextBox}" Height="45" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto">
+                        <TextBox.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <StackPanel>
+                                    <TextBlock Text="Add comments that will be attached as excel cell comment." TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Entered text will be:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Added as Excel cell comment" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Visible when hovering over the cell" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </ToolTip>
+                        </TextBox.ToolTip>
+                    </TextBox>
+                </Grid>
+            </Border>
+        </Grid>
+        <!-- Footer Actions -->
+        <Border Grid.Row="2" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="8,4" Margin="0,2,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Cell Reference -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Reference :" Style="{StaticResource HeaderTextBlock}" Margin="0,0,10,0"/>
+                    <local:ExcelRefEditControl x:Name="excelRefEdit" Tag="LOV's Cell Reference" Width="250" Height="28" VerticalAlignment="Center"/>
+                </StackPanel>
+                <!-- Action Buttons -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                    <Button x:Name="CmdSubmit" Style="{StaticResource InsertButtonStyle}" Margin="0,0,8,0" Click="CmdSubmit_Click">
+                        <Button.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <StackPanel>
+                                    <TextBlock Text="Insert selected list of values into Excel at specified cell reference" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Will insert:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Selected LOV values" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                <TextBlock Text="• With comments (if entered)" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Into selected Excel cell/range" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </ToolTip>
+                        </Button.ToolTip>
+                    </Button>
+                    <Button x:Name="CmdClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <!-- Toast / Busy overlay -->
+        <local:AppOverlay x:Name="AppOverlayControl" Margin="0" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="10"/>
+    </Grid>
+</utils:DpiAwareWindow>

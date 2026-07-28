@@ -1,0 +1,888 @@
+﻿#nullable enable
+using GLSense.Helpers;
+using GLSense.Models;
+using GLSense.Utilities;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Forms;
+
+namespace GLSense.Views
+{
+    /// <summary>
+    /// Interaction logic for GLUserConfig.xaml
+    /// </summary>
+    public partial class GLUserConfig : DpiAwareWindow
+    {
+        private string? _dataOption;
+        private bool? _suppressZeroes;
+        private int? _refreshCells;
+        private int? _recordsPerPage;
+        private bool? _validateCube;
+        private bool _runSubLedgerDrilldownAsJob;
+        private bool _runBalDrilldownAsJob;
+        private bool _runTotalDrilldownAsJob;
+        private bool _runJournalDrilldownAsJob;
+        private bool _journalRealTimeDataEnabled;
+        private CancellationHelper? _activeCancellation;
+
+        public ObservableCollection<DrillDownOption> DrillDowns { get; set; } = new ObservableCollection<DrillDownOption>();
+        private readonly List<OptionItem> _options = new()
+        {
+            new OptionItem { Value = "#Missing" },
+            new OptionItem { Value = "#Blank" },
+            new OptionItem { Value = "#Zero" },
+            new OptionItem { Value = "#Hyphen" }
+        };
+
+        public GLUserConfig()
+        {
+            InitializeComponent();
+            EnhancedDragDropHelper.EnableWindowDrag(this);
+            Loaded += (s, e) =>
+            {
+                ExcelWindowHelper.CenterWindowOverExcel(this);
+            };
+            DataContext = this;
+
+            CmbOptions.SelectionCommitted += CmbOptions_SelectionCommitted;
+            HookComboTextChanges();
+
+            InitializeDrillDownGrid();
+
+            Loaded += Window_Loaded;
+        }
+        private void InitializeDrillDownGrid()
+        {
+            bool isViewBased = AppState.Instance.SelectedCube?.ViewBased ?? false;
+
+            DrillDowns = new ObservableCollection<DrillDownOption>
+            {
+                new DrillDownOption
+                {
+                    Name="Balance Drilldown",
+                    RunAsJob= false,
+                    RealTime=false,
+                    CanEditRealTime=false
+                },
+                new DrillDownOption
+                {
+                    Name="Journal Drilldown",
+                    RunAsJob= false,
+                    RealTime= true,
+                    CanEditRealTime=true
+                },
+                new DrillDownOption
+                {
+                    Name="SubLedger Drilldown",
+                    RunAsJob=true,
+                    RealTime=false,
+                    CanEditRealTime=false
+                },
+                new DrillDownOption
+                {
+                    Name="Unified Drilldown",
+                    RunAsJob=true,
+                    RealTime=false,
+                    CanEditRealTime=false
+                }
+            };
+
+            dgDrillDowns.ItemsSource = DrillDowns;
+
+            UserConfig.DrillDownSettings = DrillDowns.ToList();
+        }
+        private void CmbOptions_Loaded(object sender, RoutedEventArgs e)
+        {
+            EnsureOptionsSource();
+            SetOptionsComboFromState();
+            RefreshComboDisplay();
+        }
+
+        private void EnsureOptionsSource()
+        {
+            if (CmbOptions.ItemsSource == null)
+            {
+                CmbOptions.ItemsSource = _options;
+                LogUtility.LogDebug("CmbOptions initialized on tab selection");
+            }
+        }
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            _activeCancellation?.Cancel();
+            _activeCancellation = null;
+
+            using var cts = new CancellationHelper();
+            _activeCancellation = cts;
+
+            try
+            {
+                await ShowBusyOverlayAsync(cts, "Loading user preferences...");
+
+                await Task.Delay(100, cts.GetToken());
+
+                var (isSuccess, message) = await GetUserPreferences(cts.GetToken());
+
+                if (!isSuccess)
+                {
+                    await HandleLoadFailureAsync(message);
+                    LoadUserPreferences();
+                    return;
+                }
+
+                var userConfigs = ParseUserConfigs(message);
+
+                if (userConfigs == null)
+                {
+                    await HandleParseFailureAsync(message);
+                    return;
+                }
+
+                await HideBusyAndShowErrorAsync(string.Empty);
+                await ApplyUserPreferences(userConfigs);
+
+                LoadUserPreferences();
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Window load cancelled by user");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                await HideBusyAndShowErrorAsync(ex.Message);
+            }
+            finally
+            {
+                if (_activeCancellation == cts)
+                {
+                    _activeCancellation = null;
+                }
+            }
+        }
+        private static UserConfigResponse? ParseUserConfigs(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                LogUtility.LogWarn("Empty response received.");
+                return null;
+            }
+
+            try
+            {
+                var result =
+                    ApiResponseHelper.Parse<UserConfigResponse>(
+                        message,
+                        JsonGlobals.Options);
+
+                if (result.IsSuccess && result.Value != null)
+                {
+                    return result.Value;
+                }
+
+                // Fallback: handle raw payloads that already contain preferences/status
+                var fallback = JsonSerializer.Deserialize<UserConfigResponse>(message, JsonGlobals.Options);
+                if (fallback != null)
+                {
+                    if (string.IsNullOrWhiteSpace(fallback.Status))
+                    {
+                        fallback.Status = "success";
+                    }
+                    return fallback;
+                }
+
+                LogUtility.LogWarn(
+                    $"API returned non-success: {result.ErrorMessage}");
+                return null;
+            }
+            catch (JsonException jex)
+            {
+                LogUtility.LogWarn(
+                    $"JSON parse failed: {jex.Message}\nRaw: {message}");
+                LogUtility.LogRawJson("GLUserConfig.ParseUserConfigs", message);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(
+                    ex,
+                    "Unexpected error in ParseUserConfigs");
+                LogUtility.LogRawJson("GLUserConfig.ParseUserConfigs", message);
+                return null;
+            }
+        }
+
+        private async Task ApplyUserPreferences(UserConfigResponse firstRecord)
+        {
+            _dataOption = firstRecord.Preferences.DataOption ?? string.Empty;
+            _suppressZeroes = firstRecord.Preferences.SupressZeroBalDrilldown ?? false;
+            _refreshCells = firstRecord.Preferences.RefreshCells ?? 5;
+            _validateCube = firstRecord.Preferences.ValidateCube ?? false;
+            _recordsPerPage = firstRecord.Preferences.RecordsPerPage ?? 100;
+            _runBalDrilldownAsJob = firstRecord.Preferences.RunBalDrilldownAsJob ?? false;
+            _runJournalDrilldownAsJob = firstRecord.Preferences.RunJournalDrilldownAsJob ?? false;
+            _runSubLedgerDrilldownAsJob = firstRecord.Preferences.RunSubLedgerDrilldownAsJob ?? false;
+            _runTotalDrilldownAsJob = firstRecord.Preferences.RunTotalDrilldownAsJob ?? false;
+            _journalRealTimeDataEnabled = firstRecord.Preferences.JournalRealTimeDataEnabled ?? false;
+
+            UserConfig.DataOption = _dataOption ?? string.Empty;
+            UserConfig.SupressZeroBalDrilldown = _suppressZeroes ?? false;
+            UserConfig.RefreshCells = _refreshCells ?? UserConfig.RefreshCells;
+            UserConfig.RecordsPerPage = _recordsPerPage ?? UserConfig.RecordsPerPage;
+            UserConfig.ValidateCube = _validateCube ?? false;
+            UserConfig.Balance_RunAsJob = _runBalDrilldownAsJob;
+            UserConfig.Journal_RunAsJob = _runJournalDrilldownAsJob;
+            UserConfig.Journal_RealTime = _journalRealTimeDataEnabled;
+            UserConfig.SubLedger_RunAsJob = _runSubLedgerDrilldownAsJob;
+            UserConfig.Unified_RunAsJob = _runTotalDrilldownAsJob;
+            UserConfig.DrillDownSettings = DrillDowns.ToList();
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                SetOptionsComboFromState();
+                ChkZeroes.IsChecked = _suppressZeroes;
+                SpinnerRefreshCells.Value = _refreshCells ?? 5;
+                SpinnerRecordsPerPage.Value = _recordsPerPage ?? 100;
+                ChkValidateCube.IsChecked = _validateCube;
+                var balanceDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Balance Drilldown");
+                if (balanceDrilldown != null)
+                {
+                    balanceDrilldown.RunAsJob = _runBalDrilldownAsJob;
+                }
+                var journalDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Journal Drilldown");
+                if (journalDrilldown != null)
+                {
+                    journalDrilldown.RunAsJob = _runJournalDrilldownAsJob;
+                    journalDrilldown.RealTime = _journalRealTimeDataEnabled;
+                }
+                var subLedgerDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "SubLedger Drilldown");
+                if (subLedgerDrilldown != null)
+                {
+                    subLedgerDrilldown.RunAsJob = _runSubLedgerDrilldownAsJob;
+                }
+                var totalDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Unified Drilldown");
+                if (totalDrilldown != null)
+                {
+                    totalDrilldown.RunAsJob = _runTotalDrilldownAsJob;
+                }
+
+                dgDrillDowns.Items.Refresh();
+                UserConfig.DrillDownSettings = DrillDowns.ToList();
+            });
+        }
+
+        private async Task HandleLoadFailureAsync(string message)
+        {
+            LogUtility.LogWarn($"Failed to load/read user preferences. {message}");
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                await AppOverlayControl.HideBusyAsync();
+                await AppOverlayControl.ShowErrorAsync("Failed to load user preferences.");
+            });
+        }
+
+        private async Task HandleParseFailureAsync(string message)
+        {
+            var displayMsg = "Invalid user preferences data.";
+
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                displayMsg = message;
+            }
+
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                await AppOverlayControl.HideBusyAsync();
+                await AppOverlayControl.ShowErrorAsync($"Failed to load preferences: {displayMsg}");
+            });
+        }
+
+        private async Task HideBusyAndShowErrorAsync(string errorMsg)
+        {
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                await AppOverlayControl.HideBusyAsync();
+                if (!string.IsNullOrWhiteSpace(errorMsg))
+                {
+                    await AppOverlayControl.ShowErrorAsync(errorMsg);
+                }
+            });
+        }
+        private async Task HideBusyAndShowSuccessAsync(string successMsg)
+        {
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                await AppOverlayControl.HideBusyAsync();
+                if (!string.IsNullOrWhiteSpace(successMsg))
+                {
+                    await AppOverlayControl.ShowSuccessAsync(successMsg);
+                }
+            });
+        }
+        private async Task HideBusyAndShowWarnAsync(string warnMsg)
+        {
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                await AppOverlayControl.HideBusyAsync();
+                if (!string.IsNullOrWhiteSpace(warnMsg))
+                {
+                    await AppOverlayControl.ShowWarningAsync(warnMsg);
+                }
+            });
+        }
+        private void CmbOptions_SelectionCommitted(object obj)
+        {
+            if (obj is OptionItem opt)
+            {
+                UpdateDataOption(opt.Value);
+            }
+            else
+            {
+                UpdateDataOption(obj?.ToString());
+            }
+        }
+
+        private void ChkZeroes_Click(object sender, RoutedEventArgs e)
+        {
+            _suppressZeroes = ChkZeroes.IsChecked ?? false;
+        }
+        private async Task ShowBusyOverlayAsync(CancellationHelper helper, string message)
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                AppOverlayControl.ShowBusyasyn(
+                    message: message,
+                    cancelAction: async () =>
+                    {
+                        if (!helper.IsCancellationRequested)
+                        {
+                            helper.Cancel();
+                            LogUtility.LogWarn($"Operation cancelled by user: {message}");
+                        }
+
+                        await Task.Delay(80);
+                    }
+                );
+            });
+        }
+        private static async Task<(bool success, string result)> GetUserPreferences(
+            CancellationToken ct)
+        {
+            string apiUrl =
+                $"{AppState.Instance.LoginUrl}/rest/secure/finance/user-config/get" +
+                $"?cubeId={AppState.Instance.SelectedCube.CubeId}";
+
+            try
+            {
+                string response =
+                    await ApiHelper.ServerAPI(apiUrl, "Form", "", "GET", ct);
+
+                ValidateTransportResponse(response);
+
+                var parsed = ApiResponseHelper.Parse<UserConfigResponse>(response, JsonGlobals.Options);
+
+                if (!parsed.IsSuccess)
+                {
+                    return (false, parsed.ErrorMessage ?? "Failed to fetch preferences.");
+                }
+
+                return (true, response);
+            }
+            catch (OperationCanceledException exOp)
+            {
+                LogUtility.LogWarn(exOp.Message);
+                return (false, "User cancelled operation");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return (false, ex.Message);
+            }
+        }
+        private static void ValidateTransportResponse(string response)
+        {
+            if (string.IsNullOrWhiteSpace(response))
+            {
+                throw new InvalidOperationException("Empty API response.");
+            }
+
+            if (response.IndexOf("(401)", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                throw new UnauthorizedAccessException("Session expired.");
+            }
+
+            if (response.StartsWith("Error", StringComparison.OrdinalIgnoreCase) ||
+                response.IndexOf("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                throw new InvalidOperationException(response);
+            }
+        }
+        private async void CmdSave_Click(object sender, RoutedEventArgs e)
+        {
+            _activeCancellation?.Cancel();
+            _activeCancellation = null;
+
+            using var cts = new CancellationHelper();
+            _activeCancellation = cts;
+
+            try
+            {
+                if (cts.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                _refreshCells = SpinnerRefreshCells.Value;
+                _recordsPerPage = SpinnerRecordsPerPage.Value;
+
+                SyncDrilldownSelections();
+
+                if (CmbOptions.SelectedItem is OptionItem opt)
+                {
+                    _dataOption = opt.Value;
+                }
+                else
+                {
+                    _dataOption = CmbOptions.Text;
+                }
+
+                UserConfig.RefreshCells = SpinnerRefreshCells.Value;
+                UserConfig.RecordsPerPage = SpinnerRecordsPerPage.Value;
+                UserConfig.DataOption = _dataOption ?? string.Empty;
+                UserConfig.SupressZeroBalDrilldown = _suppressZeroes ?? false;
+                UserConfig.ValidateCube = _validateCube ?? false;
+                UserConfig.Balance_RunAsJob = _runBalDrilldownAsJob;
+                UserConfig.Journal_RunAsJob = _runJournalDrilldownAsJob;
+                UserConfig.Journal_RealTime = _journalRealTimeDataEnabled;
+                UserConfig.SubLedger_RunAsJob = _runSubLedgerDrilldownAsJob;
+                UserConfig.Unified_RunAsJob = _runTotalDrilldownAsJob;
+                UserConfig.DrillDownSettings = DrillDowns.ToList();
+
+                await ShowBusyOverlayAsync(cts, "Saving user preferences...");
+
+                var payloadObject = new
+                {
+                    cubeId = AppState.Instance.SelectedCube.CubeId,
+                    preferences = new
+                    {
+                        validateCube = (_validateCube ?? false).ToString().ToLowerInvariant(),
+                        supressZeroBalDrilldown = (_suppressZeroes ?? false).ToString().ToLowerInvariant(),
+                        runSubLedgerDrilldownAsJob = _runSubLedgerDrilldownAsJob.ToString().ToLowerInvariant(),
+                        runBalDrilldownAsJob = _runBalDrilldownAsJob.ToString().ToLowerInvariant(),
+                        runTotalDrilldownAsJob = _runTotalDrilldownAsJob.ToString().ToLowerInvariant(),
+                        recordsPerPage = (_recordsPerPage ?? 100).ToString(),
+                        refreshCells = (_refreshCells ?? 5).ToString(),
+                        runJournalDrilldownAsJob = _runJournalDrilldownAsJob.ToString().ToLowerInvariant(),
+                        dataOption = _dataOption ?? string.Empty,
+                        journalRealTimeDataEnabled = _journalRealTimeDataEnabled.ToString().ToLowerInvariant()
+                    }
+                };
+
+                string payload =
+                    JsonSerializer.Serialize(payloadObject, JsonGlobals.Options);
+
+                string apiUrl =
+                    $"{AppState.Instance.LoginUrl}/rest/secure/finance/user-config/save?cubeId={AppState.Instance.SelectedCube.CubeId}";
+
+                LogUtility.LogDebug(apiUrl);
+                LogUtility.LogDebug($"Saving user config: {payload}");
+
+                string response =
+                    await ApiHelper.ServerAPI(
+                        apiUrl,
+                        "JSON",
+                        payload,
+                        "POST",
+                        cts.GetToken());
+
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    await HideBusyAndShowErrorAsync("No response from server.");
+                    return;
+                }
+
+                ValidateTransportResponse(response);
+
+                var parsed =
+                    ApiResponseHelper.Parse<JsonElement>(response, JsonGlobals.Options);
+
+                if (!parsed.IsSuccess)
+                {
+                    await HideBusyAndShowWarnAsync(
+                        parsed.ErrorMessage ?? "Save failed.");
+                    return;
+                }
+
+                string message = ExtractMessage(parsed.Value)
+                                 ?? "Saved successfully.";
+
+                await HideBusyAndShowSuccessAsync(message);
+            }
+            catch (OperationCanceledException)
+            {
+                await HideBusyAndShowWarnAsync("Save operation cancelled.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                await HideBusyAndShowErrorAsync($"Save failed: {ex.Message}");
+            }
+            finally
+            {
+                if (_activeCancellation == cts)
+                {
+                    _activeCancellation = null;
+                }
+            }
+        }
+        private static readonly string[] _messageKeys = new[]
+        {
+            "msg",
+            "message",
+            "detail"
+        };
+
+        private static string? ExtractMessage(JsonElement root)
+        {
+            var matchingProp = root.EnumerateObject()
+                .FirstOrDefault(prop => _messageKeys.Contains(prop.Name, StringComparer.OrdinalIgnoreCase));
+
+            return !matchingProp.Equals(default) ? matchingProp.Value.GetString() : null;
+        }
+        private async void CmdReset_Click(object sender, RoutedEventArgs e)
+        {
+            _activeCancellation?.Cancel();
+            _activeCancellation = null;
+
+            using var cts = new CancellationHelper();
+            _activeCancellation = cts;
+
+            string resultString = string.Empty;
+            try
+            {
+                if (cts.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                ApplyDefaultPreferences();
+
+                await ShowBusyOverlayAsync(cts, "Resetting user preferences...");
+
+                string apiUrl = AppState.Instance.LoginUrl
+                    + $"/rest/secure/finance/user-config/reset?cubeId={AppState.Instance.SelectedCube.CubeId}";
+
+                resultString = await ApiHelper.ServerAPI(
+                    apiUrl,
+                    "Form",
+                    "",
+                    "GET",
+                    cts.GetToken()
+                );
+
+                await Dispatcher.InvokeAsync(async () =>
+                {
+                    if (string.IsNullOrWhiteSpace(resultString) || !resultString.Contains("status"))
+                    {
+                        await HideBusyAndShowErrorAsync("Failed to reset user preferences." + Environment.NewLine + resultString);
+                        return;
+                    }
+
+                    var resetResponse = JsonSerializer.Deserialize<UserConfigResetResponse>(
+                        resultString,
+                        JsonGlobals.Options
+                    );
+
+                    if (resetResponse?.status == AppConstants.Success)
+                    {
+                        ApplyDefaultPreferences();
+                        await HideBusyAndShowSuccessAsync(resetResponse.msg ?? "Reset successful.");
+                    }
+                    else
+                    {
+                        string errorMsg = resetResponse?.msg
+                            ?? (resultString.Contains("message") ? resetResponse?.message : null)
+                            ?? "Failed to reset user preferences.";
+                        await HideBusyAndShowErrorAsync(errorMsg);
+                    }
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                await HideBusyAndShowWarnAsync("Reset cancelled.");
+            }
+            catch (JsonException ex)
+            {
+                LogUtility.LogException(ex, "Failed to parse reset user preferences response");
+                LogUtility.LogRawJson("GLUserConfig.ResetUserPreferences", resultString);
+                await HideBusyAndShowErrorAsync("Reset failed: Invalid response format.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                LogUtility.LogRawJson("GLUserConfig.ResetUserPreferences", resultString);
+                await HideBusyAndShowErrorAsync($"Reset failed: {ex.Message}");
+            }
+            finally
+            {
+                if (_activeCancellation == cts)
+                {
+                    _activeCancellation = null;
+                }
+            }
+        }
+        private void BtnClose_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
+
+        private void ChkZeroes_Checked(object sender, RoutedEventArgs e)
+        {
+            _suppressZeroes = true;
+        }
+
+        private void ChkZeroes_Unchecked(object sender, RoutedEventArgs e)
+        {
+            _suppressZeroes = false;
+        }
+        private void ChkValidateCube_Checked(object sender, RoutedEventArgs e)
+        {
+            _validateCube = true;
+        }
+
+        private void ChkValidateCube_Unchecked(object sender, RoutedEventArgs e)
+        {
+            _validateCube = false;
+        }
+        private void SpinnerRefreshCells_ValueChanged(object sender, RoutedPropertyChangedEventArgs<int> e)
+        {
+            _refreshCells = e.NewValue;
+        }
+
+        private void SpinnerRecordsPerPage_ValueChanged(object sender, RoutedPropertyChangedEventArgs<int> e)
+        {
+            _recordsPerPage = e.NewValue;
+        }
+        private void LoadUserPreferences()
+        {
+            _dataOption = UserConfig.DataOption;
+            _suppressZeroes = UserConfig.SupressZeroBalDrilldown;
+            _refreshCells = UserConfig.RefreshCells;
+            _recordsPerPage = UserConfig.RecordsPerPage;
+            _validateCube = UserConfig.ValidateCube;
+            _runBalDrilldownAsJob = UserConfig.Balance_RunAsJob;
+            _runJournalDrilldownAsJob = UserConfig.Journal_RunAsJob;
+            _journalRealTimeDataEnabled = UserConfig.Journal_RealTime;
+            _runSubLedgerDrilldownAsJob = UserConfig.SubLedger_RunAsJob;
+            _runTotalDrilldownAsJob = UserConfig.Unified_RunAsJob;
+
+            SpinnerRefreshCells.Value = _refreshCells ?? 5;
+            SpinnerRecordsPerPage.Value = _recordsPerPage ?? 100;
+            SetOptionsComboFromState();
+            ChkZeroes.IsChecked = _suppressZeroes;
+            ChkValidateCube.IsChecked = _validateCube;
+
+            var balanceDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Balance Drilldown");
+            if (balanceDrilldown != null)
+            {
+                balanceDrilldown.RunAsJob = _runBalDrilldownAsJob;
+            }
+            var journalDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Journal Drilldown");
+            if (journalDrilldown != null)
+            {
+                journalDrilldown.RunAsJob = _runJournalDrilldownAsJob;
+                journalDrilldown.RealTime = _journalRealTimeDataEnabled;
+            }
+            var subLedgerDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "SubLedger Drilldown");
+            if (subLedgerDrilldown != null)
+            {
+                subLedgerDrilldown.RunAsJob = _runSubLedgerDrilldownAsJob;
+            }
+            var totalDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Unified Drilldown");
+            if (totalDrilldown != null)
+            {
+                totalDrilldown.RunAsJob = _runTotalDrilldownAsJob;
+            }
+
+            dgDrillDowns.Items.Refresh();
+            UserConfig.DrillDownSettings = DrillDowns.ToList();
+        }
+
+        private void ApplyComboOption(string? option)
+        {
+            if (string.IsNullOrWhiteSpace(option))
+            {
+                _dataOption = string.Empty;
+                UserConfig.DataOption = string.Empty;
+                return;
+            }
+
+            EnsureOptionsSource();
+            var match = _options.FirstOrDefault(o => string.Equals(o.Value, option, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                CmbOptions.SelectedItem = match;
+            }
+            CmbOptions.Text = option;
+
+            UpdateDataOption(option);
+            RefreshComboDisplay();
+        }
+
+        private void SetOptionsComboFromState()
+        {
+            var option = !string.IsNullOrWhiteSpace(UserConfig.DataOption)
+                ? UserConfig.DataOption
+                : _dataOption;
+
+            if (!string.IsNullOrWhiteSpace(option))
+            {
+                ApplyComboOption(option);
+            }
+        }
+
+        private void CmbOptions_LostFocus(object sender, RoutedEventArgs e)
+        {
+            UpdateDataOption(CmbOptions.Text);
+        }
+
+        private void HookComboTextChanges()
+        {
+            DependencyPropertyDescriptor.FromProperty(Controls.SuggestAppendComboBox.TextProperty, typeof(Controls.SuggestAppendComboBox))
+                ?.AddValueChanged(CmbOptions, (s, e) => UpdateDataOption(CmbOptions.Text));
+            CmbOptions.LostFocus += CmbOptions_LostFocus;
+        }
+
+        private void UpdateDataOption(string? value)
+        {
+            var text = value ?? string.Empty;
+            _dataOption = text;
+        }
+
+        private void RefreshComboDisplay()
+        {
+            Dispatcher.InvokeAsync(() =>
+            {
+                CmbOptions.ApplyTemplate();
+                CmbOptions.UpdateLayout();
+                if (!string.IsNullOrEmpty(_dataOption))
+                {
+                    CmbOptions.Text = _dataOption;
+                    CmbOptions.SelectedItem = _options.FirstOrDefault(o => string.Equals(o.Value, _dataOption, StringComparison.OrdinalIgnoreCase));
+                }
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.TabControl tab && tab.SelectedItem is TabItem selected && selected.Header is string header)
+            {
+                if (string.Equals(header, "Options", StringComparison.OrdinalIgnoreCase))
+                {
+                    SetOptionsComboFromState();
+                    RefreshComboDisplay();
+                }
+            }
+        }
+
+        private class OptionItem
+        {
+            public string Value { get; set; } = string.Empty;
+        }
+
+        private void ApplyDefaultPreferences()
+        {
+            _dataOption = string.Empty;
+            _suppressZeroes = false;
+            _refreshCells = 5;
+            _recordsPerPage = 100;
+            _validateCube = false;
+            _runBalDrilldownAsJob = false;
+            _runJournalDrilldownAsJob = false;
+            _runSubLedgerDrilldownAsJob = true;
+            _runTotalDrilldownAsJob = true;
+            _journalRealTimeDataEnabled = true;
+
+            CmbOptions.Text = string.Empty;
+            ChkZeroes.IsChecked = _suppressZeroes;
+            ChkValidateCube.IsChecked = _validateCube;
+            SpinnerRefreshCells.Value = _refreshCells ?? 5;
+            SpinnerRecordsPerPage.Value = _recordsPerPage ?? 100;
+
+            var balanceDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Balance Drilldown");
+            if (balanceDrilldown != null)
+            {
+                balanceDrilldown.RunAsJob = _runBalDrilldownAsJob;
+            }
+
+            var journalDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Journal Drilldown");
+            if (journalDrilldown != null)
+            {
+                journalDrilldown.RunAsJob = _runJournalDrilldownAsJob;
+                journalDrilldown.RealTime = _journalRealTimeDataEnabled;
+            }
+
+            var subLedgerDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "SubLedger Drilldown");
+            if (subLedgerDrilldown != null)
+            {
+                subLedgerDrilldown.RunAsJob = _runSubLedgerDrilldownAsJob;
+            }
+
+            var totalDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Unified Drilldown");
+            if (totalDrilldown != null)
+            {
+                totalDrilldown.RunAsJob = _runTotalDrilldownAsJob;
+            }
+
+            dgDrillDowns.Items.Refresh();
+
+            UserConfig.DataOption = _dataOption;
+            UserConfig.SupressZeroBalDrilldown = _suppressZeroes ?? false;
+            UserConfig.RefreshCells = _refreshCells ?? UserConfig.RefreshCells;
+            UserConfig.RecordsPerPage = _recordsPerPage ?? UserConfig.RecordsPerPage;
+            UserConfig.ValidateCube = _validateCube ?? false;
+            UserConfig.Balance_RunAsJob = _runBalDrilldownAsJob;
+            UserConfig.Journal_RunAsJob = _runJournalDrilldownAsJob;
+            UserConfig.Journal_RealTime = _journalRealTimeDataEnabled;
+            UserConfig.SubLedger_RunAsJob = _runSubLedgerDrilldownAsJob;
+            UserConfig.Unified_RunAsJob = _runTotalDrilldownAsJob;
+            UserConfig.DrillDownSettings = DrillDowns.ToList();
+        }
+
+        private void SyncDrilldownSelections()
+        {
+            var balanceDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Balance Drilldown");
+            if (balanceDrilldown != null)
+            {
+                _runBalDrilldownAsJob = balanceDrilldown.RunAsJob;
+            }
+
+            var journalDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Journal Drilldown");
+            if (journalDrilldown != null)
+            {
+                _runJournalDrilldownAsJob = journalDrilldown.RunAsJob;
+                _journalRealTimeDataEnabled = journalDrilldown.RealTime;
+            }
+
+            var subLedgerDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "SubLedger Drilldown");
+            if (subLedgerDrilldown != null)
+            {
+                _runSubLedgerDrilldownAsJob = subLedgerDrilldown.RunAsJob;
+            }
+
+            var totalDrilldown = DrillDowns.FirstOrDefault(d => d.Name == "Unified Drilldown");
+            if (totalDrilldown != null)
+            {
+                _runTotalDrilldownAsJob = totalDrilldown.RunAsJob;
+            }
+        }
+    }
+#nullable restore
+}

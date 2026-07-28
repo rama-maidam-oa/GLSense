@@ -1,0 +1,861 @@
+﻿using GLSense.Helpers;
+using GLSense.Utilities;
+using GLSense.Views;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Windows.Interop;
+using System.Windows.Threading;
+using Excel = Microsoft.Office.Interop.Excel;
+
+namespace GLSense.Drilldowns
+{
+#nullable enable
+    public static class BalanceRefresh
+    {
+        private static GLWaitWindow? Win { get; set; }
+        private static Excel.Application? ExcelApp { get; set; }
+        private static Excel.Workbook? BrWorbook { get; set; }
+        private static Excel.Worksheet? BrWorksheet { get; set; }
+
+        private static CancellationHelper? _ctsHelper;
+        private static CancellationToken Token => _ctsHelper?.GetToken() ?? default;
+
+        private static string _Title = string.Empty;
+
+        private static Excel.XlWindowState? _originalExcelWindowState;
+
+        private static readonly Dictionary<string, string> TitleLookup
+            = new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Refresh-Sheet"] = "Worksheet Refresh",
+                ["Refresh-Book"] = "Workbook Refresh",
+                ["Snapshot-Sheet"] = "Worksheet Snapshot",
+                ["Snapshot-Book"] = "Workbook Snapshot"
+            };
+        // Rest remains the same...
+        private static string GetTitle(string refreshType, string refreshMode)
+        {
+            string key = $"{refreshType}-{refreshMode}";
+            return TitleLookup.TryGetValue(key, out string title) ? title : "Processing...";
+        }
+        public static async Task SubmitSnapAsync(string RefreshMode)
+        {
+
+            _ctsHelper = new CancellationHelper();
+
+            _Title = GetTitle("Snapshot", RefreshMode);
+
+            CommonMethods.DisableExcelSettings();
+            ExcelApp = AppState.Instance.ExcelApp;
+            BrWorbook = ExcelApp.ActiveWorkbook;
+            BrWorksheet = (Excel.Worksheet)ExcelApp.ActiveSheet;
+            _originalExcelWindowState = ExcelApp.WindowState;
+
+            try
+            {
+                Win = CreateAndShowProgressWindow(_ctsHelper);
+                await InitializeProgressWindowAsync("Processing request...");
+
+                Token.ThrowIfCancellationRequested();
+
+                if (!await ValidateBalanceFormulasExistAsync())
+                    return;
+
+                if (!await ValidateNoBrokenLinksAsync())
+                    return;
+
+                Token.ThrowIfCancellationRequested();
+
+                if (AppState.Instance.VersionCheck)
+                {
+                    await ValidateAndUpdateFormulasIfNeededAsync();
+                }
+
+                await MessageProgressWindowAsync("Saving and zipping the file copy...");
+
+                if (!await SavingAndZipping())
+                {
+                    await ShowErrorMessage("Exception encountered while saving the file copy.");
+                    return;
+                }
+
+                string postURL = BuildApiUrl(RefreshMode);
+                await SendRequestAndHandleResponseAsync(postURL);
+                Token.ThrowIfCancellationRequested();
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Snapshot submission cancelled by user.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                await HandleUnexpectedErrorAsync(ex); // Optional: if you have a UI-friendly handler
+            }
+            finally
+            {
+                try
+                {
+                    if (_ctsHelper != null && !_ctsHelper.IsCancellationRequested)
+                        _ctsHelper.Cancel();
+
+                    _ctsHelper?.Dispose();  // ? ALWAYS SAFE - handles ALL cases
+                }
+                catch
+                {
+                    // Swallow dispose exceptions (Excel COM weirdness)
+                }
+                await ClearFiles();
+                await SafelyCloseWindowAsync();
+                CommonMethods.EnableExcelSettings();
+            }
+        }
+        private static string BuildApiUrl(string RefreshMode)
+        {
+            _ = MessageProgressWindowAsync("Creating api url");
+            string bookName = WebUtility.UrlEncode(BrWorbook?.Name ?? string.Empty);
+            string sheetName = WebUtility.UrlEncode(BrWorksheet?.Name ?? string.Empty);
+            string LoginURL = AppState.Instance.LoginUrl;
+            long RespID = AppState.Instance.SelectedCube.CubeId;
+            long ChartofAccountID = AppState.Instance.SelectedLedger.CoaId;
+
+            Token.ThrowIfCancellationRequested();
+
+            string encodedUrl;
+
+            if (RefreshMode == "Book")
+            {
+                LogUtility.LogDebug($"Submitting snapshot for the workbook \"{BrWorbook?.Name}\"");
+                encodedUrl = $"{LoginURL}/rest/secure/finance/sheet-snapshot?cubeId={RespID}&coaid={ChartofAccountID}&bookName={bookName}";
+            }
+            else
+            {
+                LogUtility.LogDebug($"Submitting snapshot for the worksheet \"{BrWorksheet?.Name}\"");
+                encodedUrl = $"{LoginURL}/rest/secure/finance/sheet-snapshot?cubeId={RespID}&coaid={ChartofAccountID}&sheetName={sheetName}&bookName={bookName}";
+            }
+
+            return encodedUrl;
+        }
+        private static async Task SendRequestAndHandleResponseAsync(
+            string apiUrl)
+        {
+            Token.ThrowIfCancellationRequested();
+
+            await MessageProgressWindowAsync("Uploading the file to server...");
+            try
+            {
+                string response = await ApiHelper.HttpUploadFileAsync(apiUrl, Token);
+
+                Token.ThrowIfCancellationRequested();
+                await MessageProgressWindowAsync("Response received from server...");
+
+                if (!IsValidOutput(response))
+                {
+                    await ShowErrorMessage(response);
+                }
+                else
+                {
+                    await HandleResponseAsync(response.ToString().Trim());
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+        private static async Task HandleResponseAsync(string json)
+        {
+            await MessageProgressWindowAsync("Parsing the response.");
+
+            JsonDocument document;
+            try
+            {
+                // Parse the JSON string. No built-in MaxJsonLength equivalent exists,
+                // but System.Text.Json handles very large payloads efficiently by default.
+                document = JsonDocument.Parse(json);
+            }
+            catch (JsonException ex)
+            {
+                LogUtility.LogException(ex);
+                return;
+            }
+            catch (Exception ex) // e.g., OutOfMemory for extremely large input
+            {
+                LogUtility.LogException(ex);
+                return;
+            }
+
+            var root = document.RootElement;
+
+            string status = root.TryGetProperty("status", out var statusElement)
+                ? statusElement.GetString() ?? string.Empty
+                : string.Empty;
+
+            string msg = root.TryGetProperty("msg", out var msgElement)
+                ? msgElement.GetString() ?? string.Empty
+                : string.Empty;
+
+            if (!IsSuccessStatus(status))
+            {
+                await ShowErrorMessage(msg);
+                return;
+            }
+
+            await HandleBackgroundMessageAsync(msg);
+
+            document.Dispose(); // Always dispose JsonDocument to release memory
+        }
+        private static async Task HandleBackgroundMessageAsync(string msg)
+        {
+            string msgStr = msg ?? string.Empty;
+            string id = ExtractLastToken(msgStr);
+            if (!string.IsNullOrEmpty(id))
+            {
+                string rangeName = "GLSense_DD_" + id;
+                if (!CommonFunctions.NameRangeExists(rangeName))
+                {
+                    try
+                    {
+                        BrWorbook?.Names.Add(Name: rangeName, RefersToR1C1: id);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "Exception adding the named range");
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(msgStr))
+            {
+                msgStr += Environment.NewLine + "Launch monitor window to check the status.";
+            }
+
+            await ShowInfoMessage(msgStr);
+        }
+
+        private static string ExtractLastToken(string msg)
+        {
+            if (string.IsNullOrWhiteSpace(msg))
+                return string.Empty;
+
+            var parts = msg.Split(' ');
+            return parts.Length == 0 ? string.Empty : parts[parts.Length - 1];
+        }
+
+        private static bool IsSuccessStatus(string status) =>
+              string.Equals(status, AppConstants.Success, StringComparison.OrdinalIgnoreCase);
+        private static bool IsValidOutput(object output)
+        {
+            if (output == null)
+                return false;
+
+            string s = output.ToString();
+            return s.Length > 3 && s.IndexOf("status", StringComparison.Ordinal) >= 0;
+        }
+        private static Task<bool> SavingAndZipping()
+        {
+            var path = AppPaths.TempFilesPath ?? string.Empty;
+            var filePath1 = Path.Combine(path, AppConstants.RefreshFileName);
+            var zipPath = Path.Combine(path, AppConstants.RefreshZipFileName);
+
+            // Save a copy of the workbook
+            try
+            {
+                BrWorbook?.SaveCopyAs(filePath1);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return Task.FromResult(false);
+            }
+
+            try
+            {
+                if (File.Exists(zipPath))
+                {
+                    File.Delete(zipPath);
+                }
+
+                using var newfile = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+                newfile.CreateEntryFromFile(filePath1, AppConstants.RefreshFileName);
+                return Task.FromResult(true);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            return Task.FromResult(false);
+        }
+
+        //Refreshing Balances Async Method
+
+        public static async Task RefreshingBalancesAsync(string RefreshType, string RefreshMode)
+        {
+
+            _ctsHelper = new CancellationHelper();
+            bool showMessage = false;
+            try
+            {
+                InitializeEnvironment(RefreshType, RefreshMode);
+
+                Win = CreateAndShowProgressWindow(_ctsHelper);
+
+                if (Win == null)
+                {
+                    LogUtility.LogWarn("Unable to set progress window");
+                    return;
+                }
+
+                await InitializeProgressWindowAsync("Processing request...");
+
+                if (!await ValidateWorkbookIsSavedAsync()) return;
+                if (!await ValidateNoBrokenLinksAsync()) return;
+
+                Token.ThrowIfCancellationRequested();
+
+                bool isSnapshot = IsSnapshotMode();
+                string snapshotFilePath = string.Empty;
+
+                if (isSnapshot)
+                {
+                    snapshotFilePath = await PromptForSnapshotPathAsync(Token);
+                    Token.ThrowIfCancellationRequested();
+                    if (string.IsNullOrEmpty(snapshotFilePath)) return;
+                }
+
+                if (!await ValidateBalanceFormulasExistAsync()) return;
+
+                Token.ThrowIfCancellationRequested();
+
+                CollectBalanceFormulas(RefreshMode);
+
+                if (AppState.Instance.VersionCheck)
+                {
+                    Token.ThrowIfCancellationRequested();
+                    await ValidateAndUpdateFormulasIfNeededAsync();
+                }
+
+                await MessageProgressWindowAsync("Saving copy and preparing for refresh...");
+
+                Exception? refreshException = await BulkRefreshProcess.StartRefreshing(
+                    Win, RefreshMode, isSnapshot, snapshotFilePath, Token);
+
+                if (refreshException != null)
+                {
+                    await HandleRefreshErrorAsync(refreshException);
+                }
+                else
+                {
+                    showMessage = isSnapshot;
+                    LogSuccess(RefreshType);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                await ShowCancelledAsync();
+                LogUtility.LogWarn($"{_Title} cancelled by user.");
+            }
+            catch (Exception ex)
+            {
+                await HandleUnexpectedErrorAsync(ex);
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                try
+                {
+                    if (_ctsHelper != null && !_ctsHelper.IsCancellationRequested)
+                        _ctsHelper.Cancel();
+
+                    _ctsHelper?.Dispose();  // ? ALWAYS SAFE - handles ALL cases
+                }
+                catch
+                {
+                    // Swallow dispose exceptions (Excel COM weirdness)
+                }
+                await ClearFiles();
+                await SafelyCloseWindowAsync();
+                CommonMethods.EnableExcelSettings();
+                if (showMessage)
+                {
+                   string message = DisplayMessage(RefreshType);
+                    if (!string.IsNullOrEmpty(message))
+                    {
+                        CommonFunctions.GLSenseMessage(message, MessageBoxIcon.Information, MessageBoxButtons.OK);
+                    }
+                }
+            }
+        }
+
+        // ── Initialization ─────────────────────────────────────────────────────
+        private static void InitializeEnvironment(string refreshType, string refreshMode)
+        {
+            _Title = GetTitle(refreshType, refreshMode);
+            CommonMethods.DisableExcelSettings();
+            ExcelApp = AppState.Instance.ExcelApp;
+            BrWorbook = ExcelApp.ActiveWorkbook;
+            BrWorksheet = (Excel.Worksheet)ExcelApp.ActiveSheet;
+            _originalExcelWindowState = ExcelApp.WindowState;
+            LogDebugs();
+        }
+
+        // ── Validation Steps (each returns false on failure) ───────────────────
+        private static async Task<bool> ValidateWorkbookIsSavedAsync()
+        {
+            await MessageProgressWindowAsync("Checking if workbook is saved or not.");
+            if (!string.IsNullOrWhiteSpace(BrWorbook?.Path))
+                return true;
+
+            await ShowErrorMessage("Save this file before executing this function.");
+            return false;
+        }
+
+        private static async Task<bool> ValidateNoBrokenLinksAsync()
+        {
+            await MessageProgressWindowAsync("Checking for broken links in the workbook.");
+            string brokenLinks = CommonFunctions.WorkbookBrokenLinks();
+
+            if (string.IsNullOrWhiteSpace(brokenLinks))
+                return true;
+
+            string linksText = string.Join("\", \"", brokenLinks);
+            await ShowErrorMessage(
+                $"The workbook has broken links:{Environment.NewLine}\"{linksText}\"{Environment.NewLine}Please fix them before proceeding.");
+
+            return false;
+        }
+
+        private static bool IsSnapshotMode()
+        {
+            return _Title.IndexOf("snapshot", StringComparison.CurrentCultureIgnoreCase) >= 0;
+        }
+
+        private static async Task<string> PromptForSnapshotPathAsync(CancellationToken token)
+        {
+            await MessageProgressWindowAsync("Select save location for snapshot.");
+            return await SnapshotDialogHelper.PromptSnapshotAsync(Win, token);
+        }
+
+        private static async Task<bool> ValidateBalanceFormulasExistAsync()
+        {
+            await MessageProgressWindowAsync("Checking for balance formulas...");
+            bool exists = await ExistsBalanceFormulas();
+
+            if (exists)
+                return true;
+
+            await ShowErrorMessage($"No balance formulas found in the worksheet for {_Title}");
+            return false;
+        }
+
+        private static void CollectBalanceFormulas(string refreshMode)
+        {
+            if (refreshMode.Equals("Sheet", StringComparison.OrdinalIgnoreCase))
+            {
+                if (BrWorksheet != null)
+                    CommonMethods.Get_GLSense_MultiFormulas(BrWorksheet.Name);
+            }
+            else
+            {
+                if (BrWorbook == null) return;
+
+                foreach (Excel.Worksheet ws in BrWorbook.Worksheets)
+                {
+                    CommonMethods.Get_GLSense_MultiFormulas(ws.Name);
+                }
+            }
+        }
+
+        private static async Task ValidateAndUpdateFormulasIfNeededAsync()
+        {
+            await MessageProgressWindowAsync("Validating balance formulas...");
+
+            var invalidFormulas = CommonFunctions.NotValidBalancesDict(
+                AppState.Instance.ExcelApp.ActiveCell.Address);
+
+            if (invalidFormulas == null || invalidFormulas.Count == 0 || Win == null)
+                return;
+
+            bool shouldUpdate = await EnsureCompatibilityAsync(Win);
+            if (shouldUpdate)
+            {
+                await MessageProgressWindowAsync("Updating invalid balance formulas...");
+                CommonMethods.BalanceFormulas_Updation(invalidFormulas);
+            }
+            else
+            {
+                await MessageProgressWindowAsync("Skipping formula updates as requested...");
+            }
+        }
+
+        private static async Task HandleRefreshErrorAsync(Exception ex)
+        {
+            string errorMessage = ParseRefreshErrorMessage(ex.Message);
+            await ShowErrorMessage(errorMessage);
+            LogUtility.LogException(ex);
+        }
+        private static string DisplayMessage(string refreshType)
+        {
+
+            if (BrWorksheet == null || BrWorbook == null)
+                return string.Empty;
+
+            string scope = refreshType.Equals("Sheet", StringComparison.OrdinalIgnoreCase)
+                ? $"worksheet \"{BrWorksheet.Name}\""
+                : $"workbook \"{BrWorbook.Name}\"";
+
+            return $"{_Title} completed successfully for {scope}";
+        }
+        private static void LogSuccess(string refreshType)
+        {
+
+            if (BrWorksheet == null || BrWorbook == null)
+                return;
+
+            string scope = refreshType.Equals("Sheet", StringComparison.OrdinalIgnoreCase)
+                ? $"worksheet \"{BrWorksheet.Name}\""
+                : $"workbook \"{BrWorbook.Name}\"";
+
+            LogUtility.LogDebug($"{_Title} completed successfully for {scope}");
+        }
+
+        // Helper method to cleanly parse error messages (JSON or HTML)
+        private static string ParseRefreshErrorMessage(string rawMessage)
+        {
+            if (string.IsNullOrEmpty(rawMessage))
+                return "An unknown error occurred during refresh.";
+
+            // Check for HTML (likely server error page)
+            if (rawMessage.IndexOf("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                LogUtility.LogError("Server returned HTML error page: " + rawMessage);
+                return "A server error occurred. Please check logs for details.";
+            }
+
+            // Try to parse as JSON with "msg" and "msg1"
+            try
+            {
+                using JsonDocument doc = JsonDocument.Parse(rawMessage);
+                var root = doc.RootElement;
+
+                string msg = root.TryGetProperty("msg", out var msgProp) ? msgProp.GetString() ?? "" : "";
+                string msg1 = root.TryGetProperty("msg1", out var msg1Prop) ? msg1Prop.GetString() ?? "" : "";
+
+                if (!string.IsNullOrEmpty(msg) || !string.IsNullOrEmpty(msg1))
+                    return $"{msg}{Environment.NewLine}{msg1}".Trim();
+            }
+            catch
+            {
+                // Not JSON, fall through
+            }
+
+            return rawMessage;
+        }
+        private static async Task ClearFiles()
+        {
+            try
+            {
+                string workingFile = Path.Combine(AppPaths.TempFilesPath, AppConstants.RefreshFileName);
+                string zipFile = Path.Combine(AppPaths.TempFilesPath, AppConstants.RefreshZipFileName);
+
+                await TryDeleteFileWithFallbackAsync(workingFile);
+                await TryDeleteFileWithFallbackAsync(zipFile);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Exception while deleting the bulk refresh files");
+            }
+        }
+
+        /// <summary>
+        /// Attempts to safely delete a file with timeout and quarantine fallback.
+        /// Logs warnings on timeout, exceptions on errors, but never throws.
+        /// </summary>
+        private static async Task TryDeleteFileWithFallbackAsync(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                return;
+
+            var timeout = TimeSpan.FromSeconds(10);
+
+            try
+            {
+                bool deleted = await Helpers.SafeDeleteHelper
+                    .TryDeleteFileAsync(filePath, timeout)
+                    .ConfigureAwait(false);
+
+                if (deleted)
+                    return;
+
+                // Fallback: quarantine and attempt async cleanup
+                string? quarantinedPath = Helpers.QuarantineDeleteHelper.TryQuarantine(filePath);
+                if (quarantinedPath != null)
+                {
+                    // Fire-and-forget: don't await or block
+                    await Helpers.SafeDeleteHelper.TryDeleteFileAsync(quarantinedPath, TimeSpan.FromSeconds(5));
+                }
+
+                LogUtility.LogWarn($"Could not delete '{filePath}' within timeout.");
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected during cancellation — silently honor it
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"Error deleting file: {filePath}");
+            }
+        }
+        private static async Task<bool> EnsureCompatibilityAsync(GLWaitWindow win)
+        {
+
+            string quest =
+                "This GLSense workbook is not compatible with the GLSense version.\n" +
+                "Do you wish to make it compatible?\n\n" +
+                "Note: This can take some time depending on the number of GLSense formulas in the workbook.";
+
+
+            bool? action = await win.ShowConfirmToastAsync(quest);
+
+            if (action == true)
+            {
+                // YES
+                return true;
+            }
+            else if (action == false)
+            {
+                // NO
+                return false;
+            }
+            else // action == null
+            {
+                // CANCEL (or dialog dismissed)
+                return false;
+            }
+        }
+        private static void LogDebugs()
+        {
+            LogUtility.LogDebug($"User : {AppState.Instance.LoginUserName}");
+            LogUtility.LogDebug($"Instance : {AppState.Instance.LoginUrl}");
+            LogUtility.LogDebug($"Cube Selected : {AppState.Instance.SelectedCube.CubeName}");
+        }
+        private static async Task<bool> ExistsBalanceFormulas()
+        {
+            if (BrWorbook == null || BrWorksheet == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                if (_Title == "Worksheet Refresh" || _Title == "Worksheet Snapshot")
+                {
+                    return CommonFunctions.BalanceFormulaExists(BrWorksheet.Name);
+                }
+                else
+                {
+
+                    bool formulasExists = BrWorbook.Worksheets
+                             .Cast<Excel.Worksheet>()
+                             .Any(wsheet => CommonFunctions.BalanceFormulaExists(wsheet.Name));
+
+                    return formulasExists;
+                }
+            }
+            catch (Exception ex)
+            {
+                await HandleUnexpectedErrorAsync(ex);
+                return false;
+            }
+        }
+        private static async Task ShowErrorMessage(string message)
+        {
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                message,
+                MessageBoxIcon.Error,
+                MessageBoxButtons.OK);
+        }
+        private static async Task ShowInfoMessage(string message)
+        {
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                message,
+                MessageBoxIcon.Information,
+                MessageBoxButtons.OK);
+        }
+        private static async Task ShowCancelledAsync()
+        {
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                "Operation cancelled!",
+                MessageBoxIcon.Error,
+                MessageBoxButtons.OK);
+        }
+
+        private static async Task HandleUnexpectedErrorAsync(Exception ex)
+        {
+            LogUtility.LogException(ex);
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                $"An unexpected error occurred.{Environment.NewLine}{ex.Message}",
+                MessageBoxIcon.Error,
+                MessageBoxButtons.OK);
+        }
+        private static GLWaitWindow? CreateAndShowProgressWindow(CancellationHelper cts)
+        {
+            try
+            {
+                // Use Invoke to get a return value
+                return WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    try
+                    {
+                        // Use the passed-in cts, don't create a new one
+                        var win = new GLWaitWindow(cts);
+                        win.ShowWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                        win.StartMonitoring();
+                        return win;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex);
+                        return null;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            return null;
+        }
+
+        private static Task InitializeProgressWindowAsync(string message)
+        {
+            // Basic guards
+            if (Win == null || Win.Dispatcher == null)
+                return Task.CompletedTask;
+
+            try
+            {
+                // Use a reasonable priority and capture the Task [web:66]
+                var op = Win.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        Win.SetProcessTitle(_Title);
+                        Win.SetProcessMessage(message);
+                    },
+                    DispatcherPriority.Normal);
+
+                return op.Task;
+            }
+            catch (TaskCanceledException)
+            {
+                // Dispatcher shutting down; nothing to do
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                // Last-resort logging if something unexpected happens
+                LogUtility.LogException(ex);
+                return Task.CompletedTask;
+            }
+        }
+        private static Task MessageProgressWindowAsync(string message)
+        {
+            // Basic guards
+            if (Win == null || Win.Dispatcher == null)
+                return Task.CompletedTask;
+
+            try
+            {
+                // Use a reasonable priority and capture the Task [web:66]
+                var op = Win.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        Win.SetProcessMessage(message);
+                    },
+                    DispatcherPriority.Normal);
+
+                return op.Task;
+            }
+            catch (TaskCanceledException)
+            {
+                // Dispatcher shutting down; nothing to do
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                // Last-resort logging if something unexpected happens
+                LogUtility.LogException(ex);
+                return Task.CompletedTask;
+            }
+        }
+        private static async Task SafelyCloseWindowAsync()
+        {
+            if (Win == null)
+                return;
+
+            try
+            {
+                if (Win.Dispatcher.CheckAccess())  // Already on UI thread
+                {
+                    Win.RequestClose();
+                }
+                await Win.Dispatcher.InvokeAsync(() => Win.RequestClose());
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error closing wait window: {ex.Message}");
+            }
+
+            AppState.Instance.ExcelApp.WindowState =  Excel.XlWindowState.xlMaximized;
+
+            AppState.Instance.ExcelApp.ActiveWorkbook.Activate();
+
+            //RestoreExcelFocus();
+        }
+        private static void RestoreExcelFocus()
+        {
+            try
+            {
+                Excel.Application excel = AppState.Instance.ExcelApp;
+
+                if (excel == null)
+                    return;
+
+                // Activate Excel window
+                excel.ActiveWindow?.Activate();
+
+                // Reinforce with Win32
+                IntPtr hwnd = new IntPtr(excel.Hwnd);
+                NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
+                NativeMethods.SetForegroundWindow(hwnd);
+
+                excel.WindowState = _originalExcelWindowState ?? Excel.XlWindowState.xlMaximized;
+            }
+            catch { /* ignore – Excel COM sometimes throws transient focus errors */ }
+        }
+        internal static class NativeMethods
+        {
+            [DllImport("user32.dll")]
+            internal static extern bool SetForegroundWindow(IntPtr hWnd);
+
+            [DllImport("user32.dll")]
+            internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+            internal const int SW_RESTORE = 9;
+        }
+    }
+#nullable disable
+}

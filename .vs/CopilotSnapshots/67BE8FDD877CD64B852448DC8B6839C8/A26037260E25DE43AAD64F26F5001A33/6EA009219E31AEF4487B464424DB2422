@@ -1,0 +1,370 @@
+﻿using AddinExpress.MSO;
+using GLSense.Helpers;
+using GLSense.Utilities;
+using GLSense.Views;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Windows.Interop;
+using Excel = Microsoft.Office.Interop.Excel;
+
+namespace GLSense.Drilldowns
+{
+    public static class DrillCellHighlighter
+    {
+        private static GLWaitWindow Win { get; set; }
+        private static CancellationHelper _ctsHelper;
+        private static CancellationToken Token => _ctsHelper?.GetToken() ?? default;
+        /// <summary>
+        /// Ribbon click: Selects cells that reference balance formulas (GLSense_GetBalance) on the active sheet.
+        /// </summary>
+        public static async Task RibCellHighlight_OnClick()
+        {
+            _ctsHelper = new CancellationHelper();
+            try
+            {
+                if (!GuardLoginAndExcel()) return;
+
+                var actCell = AppState.Instance.ExcelApp.ActiveCell;
+                if (AppState.Instance.ExcelApp.ActiveSheet is not Excel.Worksheet wrksht || actCell == null) return;
+
+                CommonMethods.DisableExcelSettings();
+
+                LogUtility.LogDebug("Selecting cells which have reference to balance formula(s).");
+                LogUtility.LogDebug($"Worksheet Name : {wrksht.Name}");
+
+                if (!CommonFunctions.BalanceFormulaExists(wrksht.Name))
+                {
+                    await ShowMessageAsync("No getbalance formulas in the current sheet.", MessageBoxIcon.Exclamation);
+                    return;
+                }
+
+                Win = CreateAndShowProgressWindow(_ctsHelper);
+
+                Excel.Range formulaCells = await fRange(wrksht);
+                if (formulaCells == null) return;
+                Token.ThrowIfCancellationRequested();
+
+                await InitializeProgressWindowAsync("Drill Cell Highlighter", "Processing request...");
+
+                string external = ExcelExternalRef.BuildExternalAddress(formulaCells);
+
+                Token.ThrowIfCancellationRequested();
+
+                Excel.Range totalRange = null;
+
+                totalRange = CommonFunctions.GetBalanceTotalRange(external);
+
+                if (totalRange == null)
+                {
+                    await ShowMessageAsync("No cells found which have reference to balance formula(s).", MessageBoxIcon.Exclamation);
+                    actCell.Select();
+                    return;
+                }
+
+                LogUtility.LogDebug($"Balance cells found : {totalRange.Cells.Address}");
+
+                var uniqueDependentAddresses = CollectDependentsAddresses(totalRange, wrksht);
+
+                if (uniqueDependentAddresses.Count > 0)
+                {
+                    if (TryBuildUnionRangeFromAddresses(uniqueDependentAddresses, out var selection))
+                    {
+                        selection?.Select();
+                    }
+                }
+                else
+                {
+                    LogUtility.LogDebug("No dependent cells found.");
+                    await ShowMessageAsync("No cells found which have reference to balance formula(s).", MessageBoxIcon.Exclamation);
+                    actCell.Select();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Drill cell highlight operation cancelled by user.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Exception in finding balance formulas dependencies.");
+            }
+            finally
+            {
+                try
+                {
+                    if (_ctsHelper != null && !_ctsHelper.IsCancellationRequested)
+                        _ctsHelper.Cancel();
+
+                    _ctsHelper?.Dispose();  // ? ALWAYS SAFE - handles ALL cases
+                }
+                catch
+                {
+                    // Swallow dispose exceptions (Excel COM weirdness)
+                }
+                CommonMethods.EnableExcelSettings();
+                LogUtility.LogDebug("Selecting cells which have reference to balance formula(s) completed.");
+                await SafelyCloseWindowAsync();
+            }
+        }
+        private static async Task<Excel.Range> fRange(Excel.Worksheet ws)
+        {
+            try
+            {
+                Excel.Range rng = null;
+                // Get all cells on sheet that contain formulas.
+                // SpecialCells(xlCellTypeFormulas) throws if there are no such cells. [web:24][web:31]
+                rng = ws.Cells.SpecialCells(
+                    Excel.XlCellType.xlCellTypeFormulas,
+                    Type.Missing);
+
+                return rng;
+            }
+            catch (System.Runtime.InteropServices.COMException ex)
+            {
+                // Thrown when there are no formula cells on the sheet; treat as "not found". [web:24][web:31]
+                LogUtility.LogException(ex);
+                await ShowMessageAsync($"An unexpected error occurred.{Environment.NewLine}{ex.Message}", MessageBoxIcon.Error);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                await ShowMessageAsync($"An unexpected error occurred.{Environment.NewLine}{ex.Message}", MessageBoxIcon.Error);
+            }
+            return null;
+        }
+        private static bool GuardLoginAndExcel()
+        {
+            return AppState.Instance.IsLoginCompleted && AppState.Instance.ExcelApp != null;
+        }
+        private static async Task ShowMessageAsync(string message, MessageBoxIcon icon)
+        {
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                message,
+                icon,
+                MessageBoxButtons.OK);
+        }
+        private static GLWaitWindow CreateAndShowProgressWindow(CancellationHelper cts)
+        {
+            try
+            {
+                // Use Invoke to get a return value
+                return WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    try
+                    {
+                        // Use the passed-in cts, don't create a new one
+                        var win = new GLWaitWindow(cts);
+                        win.ShowWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                        win.StartMonitoring();
+                        return win;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex);
+                        return null;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            return null;
+        }
+
+        private static Task InitializeProgressWindowAsync(string title, string message)
+        {
+            return Win.Dispatcher.InvokeAsync(() =>
+            {
+                Win.SetProcessTitle(title);
+                Win.SetProcessMessage(message);
+            }).Task;
+        }
+
+        private static async Task SafelyCloseWindowAsync()
+        {
+            if (Win == null)
+                return;
+
+            try
+            {
+                if (Win.Dispatcher.CheckAccess())  // Already on UI thread
+                {
+                    Win.RequestClose();
+                }
+                await Win.Dispatcher.InvokeAsync(() => Win.RequestClose());
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error closing wait window: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Returns unique dependent addresses (external A1 form) for all cells in balancesRng on wrksht.
+        /// </summary>
+        private static HashSet<string> CollectDependentsAddresses(Excel.Range balancesRng, Excel.Worksheet wrksht)
+        {
+            Token.ThrowIfCancellationRequested();
+
+            if (balancesRng == null || wrksht == null)
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            int count = balancesRng.Cells.Count;
+
+            // Use Enumerable.Range + LINQ to flatten logic
+            var allDeps = Enumerable.Range(1, count)
+                .Select(i => balancesRng.Cells[i] as Excel.Range)
+                .Where(cell => cell != null)
+                .SelectMany(cell =>
+                {
+                    LogUtility.LogDebug($"Finding dependencies for cell : {cell.Address}");
+                    var deps = GetCellDependents(cell, wrksht);
+                    Token.ThrowIfCancellationRequested();
+                    foreach (var dep in deps)
+                        LogUtility.LogDebug($"Found dependencies at : {dep}");
+                    return deps;
+                });
+
+            return new HashSet<string>(allDeps, StringComparer.OrdinalIgnoreCase);
+
+        }
+
+        /// <summary>
+        /// Uses tracer arrows to collect dependent addresses of a single cell (same-sheet only).
+        /// </summary>
+        private static List<string> GetCellDependents(Excel.Range rng, Excel.Worksheet currentSheet)
+        {
+            var dependents = new List<string>();
+            if (rng == null || currentSheet == null) return dependents;
+
+            try
+            {
+                rng.Worksheet.ClearArrows();
+                rng.ShowDependents(); // shows tracer arrows for dependents [web:49][web:50]
+
+                const int maxArrows = 50;
+                const int maxLinks = 50;
+
+                for (int arrow = 1; arrow <= maxArrows; arrow++)
+                {
+                    if (!CollectDependentsForArrow(rng, currentSheet, dependents, arrow, maxLinks))
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                rng.Worksheet.ClearArrows();
+            }
+
+            return dependents;
+        }
+
+        private static bool CollectDependentsForArrow(
+            Excel.Range source,
+            Excel.Worksheet currentSheet,
+            List<string> dependents,
+            int arrow,
+            int maxLinks)
+        {
+            var foundAnyForArrow = false;
+
+            for (int link = 1; link <= maxLinks; link++)
+            {
+                Token.ThrowIfCancellationRequested();
+                Excel.Range tempRange;
+                try
+                {
+                    // Navigate to dependent (TowardPrecedent = false). [web:50]
+                    tempRange = (Excel.Range)source.NavigateArrow(false, arrow, link);
+                }
+                catch
+                {
+                    break; // no more links on this arrow
+                }
+
+                if (tempRange == null)
+                    break;
+
+                if (IsSameCell(source, tempRange))
+                    continue;
+
+                if (IsSameWorksheet(currentSheet, tempRange.Worksheet))
+                {
+                    if (AddDependentAddress(tempRange, dependents))
+                        foundAnyForArrow = true;
+                }
+                else
+                {
+                    // Different sheet → at least one dependent exists on this arrow.
+                    foundAnyForArrow = true;
+                }
+            }
+
+            return foundAnyForArrow;
+        }
+
+        private static bool IsSameCell(Excel.Range a, Excel.Range b)
+        {
+            return string.Equals(a.Address, b.Address, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSameWorksheet(Excel.Worksheet expected, Excel.Worksheet actual)
+        {
+            return actual != null &&
+                   string.Equals(expected.Name, actual.Name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool AddDependentAddress(Excel.Range cell, List<string> dependents)
+        {
+            string address = cell.Address[RowAbsolute: false,
+                                          ColumnAbsolute: false,
+                                          ReferenceStyle: Excel.XlReferenceStyle.xlA1,
+                                          External: true]; // external A1-style address
+
+            if (dependents.Contains(address))
+                return false;
+
+            dependents.Add(address);
+            return true;
+        }
+
+
+        /// <summary>
+        /// Builds a union range from a set of external A1 addresses.
+        /// </summary>
+        private static bool TryBuildUnionRangeFromAddresses(IEnumerable<string> addresses, out Excel.Range unionRange)
+        {
+            unionRange = null;
+
+            var app = AppState.Instance.ExcelApp;
+            if (app == null || addresses == null)
+                return false;
+
+            Excel.Range built = null;
+
+            foreach (var addr in addresses)
+            {
+                // Skip null/empty addresses
+                if (string.IsNullOrWhiteSpace(addr)) continue;
+
+                // Resolve address to a Range (external A1 addresses supported)
+                var rng = app.Range[addr];
+                if (rng == null) continue;
+
+                built = (built == null) ? rng : app.Union(built, rng);
+            }
+
+            unionRange = built;
+            return unionRange != null;
+        }
+    }
+}

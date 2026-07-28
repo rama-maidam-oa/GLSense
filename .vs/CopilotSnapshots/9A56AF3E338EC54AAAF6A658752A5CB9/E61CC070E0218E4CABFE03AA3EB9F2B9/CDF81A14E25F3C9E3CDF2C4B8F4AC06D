@@ -1,0 +1,910 @@
+﻿using GLSense.Helpers;
+using GLSense.Utilities;
+using GLSense.Views;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Windows.Interop;
+using System.Windows.Threading;
+using Excel = Microsoft.Office.Interop.Excel;
+
+namespace GLSense.Drilldowns
+{
+    using GLSense.Helpers;
+#nullable enable
+    public class BalanceRefresh
+    {
+        private readonly AppState _state;
+        private readonly SynchronizationContext? _excelContext;
+
+        private GLWaitWindow? Win { get; set; }
+        private Excel.Application? ExcelApp { get; set; }
+        private Excel.Workbook? BrWorbook { get; set; }
+        private Excel.Worksheet? BrWorksheet { get; set; }
+
+        private CancellationHelper? _ctsHelper;
+        private CancellationToken Token => _ctsHelper?.GetToken() ?? default;
+
+        private string _Title = string.Empty;
+
+        private static readonly Dictionary<string, string> TitleLookup
+            = new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Refresh-Sheet"] = "Worksheet Refresh",
+                ["Refresh-Book"] = "Workbook Refresh",
+                ["Snapshot-Sheet"] = "Worksheet Snapshot",
+                ["Snapshot-Book"] = "Workbook Snapshot"
+            };
+
+        public BalanceRefresh(AppState? state = null, SynchronizationContext? excelContext = null)
+        {
+            _state = state ?? AppState.Instance;
+            _excelContext = excelContext ?? SynchronizationContext.Current;
+        }
+
+        public static Task SubmitSnapAsync(string refreshMode) => new BalanceRefresh().SubmitSnapshotInternalAsync(refreshMode);
+
+        public static Task RefreshingBalancesAsync(string refreshType, string refreshMode) => new BalanceRefresh().RefreshBalancesInternalAsync(refreshType, refreshMode);
+
+        private static string GetTitle(string refreshType, string refreshMode)
+        {
+            string key = $"{refreshType}-{refreshMode}";
+            return TitleLookup.TryGetValue(key, out string title) ? title : "Processing...";
+        }
+
+        private async Task SubmitSnapshotInternalAsync(string RefreshMode)
+        {
+            await InitializeAsync("Snapshot", RefreshMode);
+
+            try
+            {
+                Win = CreateAndShowProgressWindow(_ctsHelper);
+                if (Win == null)
+                {
+                    LogUtility.LogWarn("Unable to set progress window");
+                    return;
+                }
+
+                await InitializeProgressWindowAsync("Processing request...");
+
+                Token.ThrowIfCancellationRequested();
+
+                if (!await ValidateBalanceFormulasExistAsync())
+                    return;
+
+                if (!await ValidateNoBrokenLinksAsync())
+                    return;
+
+                Token.ThrowIfCancellationRequested();
+
+                if (_state.VersionCheck)
+                {
+                    await ValidateAndUpdateFormulasIfNeededAsync();
+                }
+
+                await MessageProgressWindowAsync("Saving and zipping the file copy...");
+
+                if (!await SavingAndZippingAsync())
+                {
+                    await ShowErrorMessage("Exception encountered while saving the file copy.");
+                    return;
+                }
+
+                string postURL = await BuildApiUrlAsync(RefreshMode);
+                await SendRequestAndHandleResponseAsync(postURL);
+                Token.ThrowIfCancellationRequested();
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn("Snapshot submission cancelled by user.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                await HandleUnexpectedErrorAsync(ex);
+            }
+            finally
+            {
+                await CleanupAsync();
+            }
+        }
+
+        private async Task InitializeAsync(string refreshType, string refreshMode)
+        {
+            _ctsHelper = new CancellationHelper();
+            _Title = GetTitle(refreshType, refreshMode);
+
+            await RunExcelAsync(() =>
+            {
+                CommonMethods.DisableExcelSettings();
+                ExcelApp = _state.ExcelApp;
+                BrWorbook = ExcelApp?.ActiveWorkbook;
+                BrWorksheet = ExcelApp?.ActiveSheet as Excel.Worksheet;
+            });
+
+            LogDebugs();
+        }
+
+        private async Task CleanupAsync(Func<Task>? postCleanup = null)
+        {
+            try
+            {
+                if (_ctsHelper != null && !_ctsHelper.IsCancellationRequested)
+                    _ctsHelper.Cancel();
+
+                _ctsHelper?.Dispose();
+            }
+            catch
+            {
+                // Swallow dispose exceptions (Excel COM weirdness)
+            }
+
+            await ClearFiles();
+            await SafelyCloseWindowAsync();
+            await RunExcelAsync(() => CommonMethods.EnableExcelSettings());
+
+            if (postCleanup != null)
+            {
+                await postCleanup();
+            }
+        }
+
+        private async Task<string> BuildApiUrlAsync(string RefreshMode)
+        {
+            await MessageProgressWindowAsync("Creating api url");
+
+            return await RunExcelAsync(() =>
+            {
+                string bookName = WebUtility.UrlEncode(BrWorbook?.Name ?? string.Empty);
+                string sheetName = WebUtility.UrlEncode(BrWorksheet?.Name ?? string.Empty);
+                string LoginURL = _state.LoginUrl;
+                long RespID = _state.SelectedCube.CubeId;
+                long ChartofAccountID = _state.SelectedLedger.CoaId;
+
+                Token.ThrowIfCancellationRequested();
+
+                if (RefreshMode == "Book")
+                {
+                    LogUtility.LogDebug($"Submitting snapshot for the workbook \"{BrWorbook?.Name}\"");
+                    return $"{LoginURL}/rest/secure/finance/sheet-snapshot?cubeId={RespID}&coaid={ChartofAccountID}&bookName={bookName}";
+                }
+
+                LogUtility.LogDebug($"Submitting snapshot for the worksheet \"{BrWorksheet?.Name}\"");
+                return $"{LoginURL}/rest/secure/finance/sheet-snapshot?cubeId={RespID}&coaid={ChartofAccountID}&sheetName={sheetName}&bookName={bookName}";
+            });
+        }
+
+        private async Task SendRequestAndHandleResponseAsync(string apiUrl)
+        {
+            Token.ThrowIfCancellationRequested();
+
+            await MessageProgressWindowAsync("Uploading the file to server...");
+            try
+            {
+                string response = await ApiHelper.HttpUploadFileAsync(apiUrl, Token);
+
+                Token.ThrowIfCancellationRequested();
+                await MessageProgressWindowAsync("Response received from server...");
+
+                if (!IsValidOutput(response))
+                {
+                    await ShowErrorMessage(response);
+                }
+                else
+                {
+                    await HandleResponseAsync(response.ToString(). Trim());
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        private async Task HandleResponseAsync(string json)
+        {
+            await MessageProgressWindowAsync("Parsing the response.");
+
+            JsonDocument document;
+            try
+            {
+                document = JsonDocument.Parse(json);
+            }
+            catch (JsonException ex)
+            {
+                LogUtility.LogException(ex);
+                return;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return;
+            }
+
+            var root = document.RootElement;
+
+            string status = root.TryGetProperty("status", out var statusElement)
+                ? statusElement.GetString() ?? string.Empty
+                : string.Empty;
+
+            string msg = root.TryGetProperty("msg", out var msgElement)
+                ? msgElement.GetString() ?? string.Empty
+                : string.Empty;
+
+            if (!IsSuccessStatus(status))
+            {
+                await ShowErrorMessage(msg);
+                return;
+            }
+
+            await HandleBackgroundMessageAsync(msg);
+
+            document.Dispose();
+        }
+
+        private async Task HandleBackgroundMessageAsync(string msg)
+        {
+            string msgStr = msg ?? string.Empty;
+            string id = ExtractLastToken(msgStr);
+            if (!string.IsNullOrEmpty(id))
+            {
+                await RunExcelAsync(() =>
+                {
+                    string rangeName = "GLSense_DD_" + id;
+                    if (!CommonFunctions.NameRangeExists(rangeName))
+                    {
+                        try
+                        {
+                            BrWorbook?.Names.Add(Name: rangeName, RefersToR1C1: id);
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogException(ex, "Exception adding the named range");
+                        }
+                    }
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(msgStr))
+            {
+                msgStr += Environment.NewLine + "Launch monitor window to check the status.";
+            }
+
+            await ShowInfoMessage(msgStr);
+        }
+
+        private static string ExtractLastToken(string msg)
+        {
+            if (string.IsNullOrWhiteSpace(msg))
+                return string.Empty;
+
+            var parts = msg.Split(' ');
+            return parts.Length == 0 ? string.Empty : parts[parts.Length - 1];
+        }
+
+        private static bool IsSuccessStatus(string status) =>
+              string.Equals(status, AppConstants.Success, StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsValidOutput(object output)
+        {
+            if (output == null)
+                return false;
+
+            string s = output.ToString();
+            return s.Length > 3 && s.IndexOf("status", StringComparison.Ordinal) >= 0;
+        }
+
+        private async Task<bool> SavingAndZippingAsync()
+        {
+            var path = AppPaths.TempFilesPath ?? string.Empty;
+            var filePath1 = Path.Combine(path, AppConstants.RefreshFileName);
+            var zipPath = Path.Combine(path, AppConstants.RefreshZipFileName);
+
+            try
+            {
+                await RunExcelAsync(() => BrWorbook?.SaveCopyAs(filePath1));
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return false;
+            }
+
+            try
+            {
+                if (File.Exists(zipPath))
+                {
+                    File.Delete(zipPath);
+                }
+
+                using var newfile = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+                newfile.CreateEntryFromFile(filePath1, AppConstants.RefreshFileName);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            return false;
+        }
+
+        public async Task RefreshBalancesInternalAsync(string RefreshType, string RefreshMode)
+        {
+            bool showMessage = false;
+            string completionMessage = string.Empty;
+
+            try
+            {
+                await InitializeAsync(RefreshType, RefreshMode);
+
+                Win = CreateAndShowProgressWindow(_ctsHelper);
+
+                if (Win == null)
+                {
+                    LogUtility.LogWarn("Unable to set progress window");
+                    return;
+                }
+
+                await InitializeProgressWindowAsync("Processing request...");
+
+                if (!await ValidateWorkbookIsSavedAsync()) return;
+                if (!await ValidateNoBrokenLinksAsync()) return;
+
+                Token.ThrowIfCancellationRequested();
+
+                bool isSnapshot = IsSnapshotMode();
+                string snapshotFilePath = string.Empty;
+
+                if (isSnapshot)
+                {
+                    snapshotFilePath = await PromptForSnapshotPathAsync(Token);
+                    Token.ThrowIfCancellationRequested();
+                    if (string.IsNullOrEmpty(snapshotFilePath)) return;
+                }
+
+                if (!await ValidateBalanceFormulasExistAsync()) return;
+
+                Token.ThrowIfCancellationRequested();
+
+                await CollectBalanceFormulasAsync(RefreshMode);
+
+                if (_state.VersionCheck)
+                {
+                    Token.ThrowIfCancellationRequested();
+                    await ValidateAndUpdateFormulasIfNeededAsync();
+                }
+
+                await MessageProgressWindowAsync("Saving copy and preparing for refresh...");
+
+                Exception? refreshException = await BulkRefreshProcess.StartRefreshing(
+                    Win, RefreshMode, isSnapshot, snapshotFilePath, Token);
+
+                if (refreshException != null)
+                {
+                    await HandleRefreshErrorAsync(refreshException);
+                }
+                else
+                {
+                    showMessage = isSnapshot;
+                    completionMessage = await DisplayMessageAsync(RefreshType);
+                    await LogSuccessAsync(RefreshType);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                await ShowCancelledAsync();
+                LogUtility.LogWarn($"{_Title} cancelled by user.");
+            }
+            catch (Exception ex)
+            {
+                await HandleUnexpectedErrorAsync(ex);
+                LogUtility.LogException(ex);
+            }
+            finally
+            {
+                await CleanupAsync(() =>
+                {
+                    if (showMessage && !string.IsNullOrEmpty(completionMessage))
+                    {
+                        CommonFunctions.GLSenseMessage(completionMessage, MessageBoxIcon.Information, MessageBoxButtons.OK);
+                    }
+
+                    return Task.CompletedTask;
+                });
+            }
+        }
+
+        private bool IsSnapshotMode()
+        {
+            return _Title.IndexOf("snapshot", StringComparison.CurrentCultureIgnoreCase) >= 0;
+        }
+
+        private async Task<bool> ValidateWorkbookIsSavedAsync()
+        {
+            await MessageProgressWindowAsync("Checking if workbook is saved or not.");
+
+            bool isSaved = await RunExcelAsync(() => !string.IsNullOrWhiteSpace(BrWorbook?.Path));
+
+            if (isSaved)
+                return true;
+
+            await ShowErrorMessage("Save this file before executing this function.");
+            return false;
+        }
+
+        private async Task<bool> ValidateNoBrokenLinksAsync()
+        {
+            await MessageProgressWindowAsync("Checking for broken links in the workbook.");
+            string brokenLinks = await RunExcelAsync(() => CommonFunctions.WorkbookBrokenLinks());
+
+            if (string.IsNullOrWhiteSpace(brokenLinks))
+                return true;
+
+            string linksText = string.Join("\", \"", brokenLinks);
+            await ShowErrorMessage(
+                $"The workbook has broken links:{Environment.NewLine}\"{linksText}\"{Environment.NewLine}Please fix them before proceeding.");
+
+            return false;
+        }
+
+        private async Task<string> PromptForSnapshotPathAsync(CancellationToken token)
+        {
+            await MessageProgressWindowAsync("Select save location for snapshot.");
+            return await SnapshotDialogHelper.PromptSnapshotAsync(Win, token);
+        }
+
+        private async Task<bool> ValidateBalanceFormulasExistAsync()
+        {
+            await MessageProgressWindowAsync("Checking for balance formulas...");
+            bool exists = await ExistsBalanceFormulasAsync();
+
+            if (exists)
+                return true;
+
+            await ShowErrorMessage($"No balance formulas found in the worksheet for {_Title}");
+            return false;
+        }
+
+        private async Task CollectBalanceFormulasAsync(string refreshMode)
+        {
+            await RunExcelAsync(() =>
+            {
+                if (refreshMode.Equals("Sheet", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (BrWorksheet != null)
+                        CommonMethods.Get_GLSense_MultiFormulas(BrWorksheet.Name);
+                }
+                else
+                {
+                    if (BrWorbook == null) return;
+
+                    foreach (Excel.Worksheet ws in BrWorbook.Worksheets)
+                    {
+                        CommonMethods.Get_GLSense_MultiFormulas(ws.Name);
+                    }
+                }
+            });
+        }
+
+        private async Task ValidateAndUpdateFormulasIfNeededAsync()
+        {
+            await MessageProgressWindowAsync("Validating balance formulas...");
+
+            var invalidFormulas = await RunExcelAsync(() =>
+                CommonFunctions.NotValidBalancesDict(AppState.Instance.ExcelApp.ActiveCell.Address));
+
+            if (invalidFormulas == null || invalidFormulas.Count == 0 || Win == null)
+                return;
+
+            bool shouldUpdate = await EnsureCompatibilityAsync(Win);
+            if (shouldUpdate)
+            {
+                await MessageProgressWindowAsync("Updating invalid balance formulas...");
+                await RunExcelAsync(() => CommonMethods.BalanceFormulas_Updation(invalidFormulas));
+            }
+            else
+            {
+                await MessageProgressWindowAsync("Skipping formula updates as requested...");
+            }
+        }
+
+        private async Task HandleRefreshErrorAsync(Exception ex)
+        {
+            string errorMessage = ParseRefreshErrorMessage(ex.Message);
+            await ShowErrorMessage(errorMessage);
+            LogUtility.LogException(ex);
+        }
+
+        private async Task<string> DisplayMessageAsync(string refreshType)
+        {
+            return await RunExcelAsync(() =>
+            {
+                if (BrWorksheet == null || BrWorbook == null)
+                    return string.Empty;
+
+                string scope = refreshType.Equals("Sheet", StringComparison.OrdinalIgnoreCase)
+                    ? $"worksheet \"{BrWorksheet.Name}\""
+                    : $"workbook \"{BrWorbook.Name}\"";
+
+                return $"{_Title} completed successfully for {scope}";
+            });
+        }
+
+        private Task LogSuccessAsync(string refreshType)
+        {
+            return RunExcelAsync(() =>
+            {
+                if (BrWorksheet == null || BrWorbook == null)
+                    return;
+
+                string scope = refreshType.Equals("Sheet", StringComparison.OrdinalIgnoreCase)
+                    ? $"worksheet \"{BrWorksheet.Name}\""
+                    : $"workbook \"{BrWorbook.Name}\"";
+
+                LogUtility.LogDebug($"{_Title} completed successfully for {scope}");
+            });
+        }
+
+        private async Task SafelyCloseWindowAsync()
+        {
+            if (Win == null)
+                return;
+
+            try
+            {
+                if (Win.Dispatcher.CheckAccess())
+                {
+                    Win.RequestClose();
+                }
+                await Win.Dispatcher.InvokeAsync(() => Win.RequestClose());
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError($"Error closing wait window: {ex.Message}");
+            }
+
+            await RunExcelAsync(() =>
+            {
+                if (_state.ExcelApp != null)
+                {
+                    _state.ExcelApp.WindowState = Excel.XlWindowState.xlMaximized;
+                    _state.ExcelApp.ActiveWorkbook?.Activate();
+                }
+            });
+        }
+
+        private static class ExcelStaDispatcher
+        {
+            public static Task Run(SynchronizationContext? context, Action action)
+            {
+                if (context == null || context == SynchronizationContext.Current)
+                {
+                    action();
+                    return Task.CompletedTask;
+                }
+
+                var tcs = new TaskCompletionSource<object?>();
+                context.Post(_ =>
+                {
+                    try
+                    {
+                        action();
+                        tcs.SetResult(null);
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.SetException(ex);
+                    }
+                }, null);
+                return tcs.Task;
+            }
+
+            public static Task<T> Run<T>(SynchronizationContext? context, Func<T> func)
+            {
+                if (context == null || context == SynchronizationContext.Current)
+                {
+                    return Task.FromResult(func());
+                }
+
+                var tcs = new TaskCompletionSource<T>();
+                context.Post(_ =>
+                {
+                    try
+                    {
+                        T result = func();
+                        tcs.SetResult(result);
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.SetException(ex);
+                    }
+                }, null);
+                return tcs.Task;
+            }
+        }
+
+        private Task RunExcelAsync(Action action) => ExcelStaDispatcher.Run(_excelContext, action);
+
+        private Task<T> RunExcelAsync<T>(Func<T> func) => ExcelStaDispatcher.Run(_excelContext, func);
+
+        internal static class NativeMethods
+        {
+            [DllImport("user32.dll")]
+            internal static extern bool SetForegroundWindow(IntPtr hWnd);
+
+            [DllImport("user32.dll")]
+            internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+            internal const int SW_RESTORE = 9;
+        }
+
+        private static string ParseRefreshErrorMessage(string rawMessage)
+        {
+            if (string.IsNullOrEmpty(rawMessage))
+                return "An unknown error occurred during refresh.";
+
+            if (rawMessage.IndexOf("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                LogUtility.LogError("Server returned HTML error page: " + rawMessage);
+                return "A server error occurred. Please check logs for details.";
+            }
+
+            try
+            {
+                using JsonDocument doc = JsonDocument.Parse(rawMessage);
+                var root = doc.RootElement;
+
+                string msg = root.TryGetProperty("msg", out var msgProp) ? msgProp.GetString() ?? "" : "";
+                string msg1 = root.TryGetProperty("msg1", out var msg1Prop) ? msg1Prop.GetString() ?? "" : "";
+
+                if (!string.IsNullOrEmpty(msg) || !string.IsNullOrEmpty(msg1))
+                    return $"{msg}{Environment.NewLine}{msg1}".Trim();
+            }
+            catch
+            {
+                LogUtility.LogError("Failed to parse error message as JSON: " + rawMessage);
+            }
+
+            return rawMessage;
+        }
+
+        private static async Task ClearFiles()
+        {
+            try
+            {
+                string workingFile = Path.Combine(AppPaths.TempFilesPath, AppConstants.RefreshFileName);
+                string zipFile = Path.Combine(AppPaths.TempFilesPath, AppConstants.RefreshZipFileName);
+
+                await TryDeleteFileWithFallbackAsync(workingFile);
+                await TryDeleteFileWithFallbackAsync(zipFile);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Exception while deleting the bulk refresh files");
+            }
+        }
+
+        private static async Task TryDeleteFileWithFallbackAsync(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                return;
+
+            var timeout = TimeSpan.FromSeconds(10);
+
+            try
+            {
+                bool deleted = await Helpers.SafeDeleteHelper
+                    .TryDeleteFileAsync(filePath, timeout)
+                    .ConfigureAwait(false);
+
+                if (deleted)
+                    return;
+
+                string? quarantinedPath = Helpers.QuarantineDeleteHelper.TryQuarantine(filePath);
+                if (quarantinedPath != null)
+                {
+                    await Helpers.SafeDeleteHelper.TryDeleteFileAsync(quarantinedPath, TimeSpan.FromSeconds(5));
+                }
+
+                LogUtility.LogWarn($"Could not delete '{filePath}' within timeout.");
+            }
+            catch (OperationCanceledException)
+            {
+                LogUtility.LogWarn($"Timed out while trying to delete file: {filePath}");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"Error deleting file: {filePath}");
+            }
+        }
+
+        private static async Task<bool> EnsureCompatibilityAsync(GLWaitWindow win)
+        {
+            string quest =
+                "This GLSense workbook is not compatible with the GLSense version.\n" +
+                "Do you wish to make it compatible?\n\n" +
+                "Note: This can take some time depending on the number of GLSense formulas in the workbook.";
+
+            bool? action = await win.ShowConfirmToastAsync(quest);
+
+            if (action == true)
+            {
+                return true;
+            }
+            else if (action == false)
+            {
+                return false;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        private void LogDebugs()
+        {
+            LogUtility.LogDebug($"User : {_state.LoginUserName}");
+            LogUtility.LogDebug($"Instance : {_state.LoginUrl}");
+            LogUtility.LogDebug($"Cube Selected : {_state.SelectedCube.CubeName}");
+        }
+
+        private async Task<bool> ExistsBalanceFormulasAsync()
+        {
+            try
+            {
+                return await RunExcelAsync(() =>
+                {
+                    if (BrWorbook == null || BrWorksheet == null)
+                    {
+                        return false;
+                    }
+
+                    if (_Title == "Worksheet Refresh" || _Title == "Worksheet Snapshot")
+                    {
+                        return CommonFunctions.BalanceFormulaExists(BrWorksheet.Name);
+                    }
+
+                    bool formulasExists = BrWorbook.Worksheets
+                             .Cast<Excel.Worksheet>()
+                             .Any(wsheet => CommonFunctions.BalanceFormulaExists(wsheet.Name));
+
+                    return formulasExists;
+                });
+            }
+            catch (Exception ex)
+            {
+                await HandleUnexpectedErrorAsync(ex);
+                return false;
+            }
+        }
+
+        private async Task ShowErrorMessage(string message)
+        {
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                message,
+                MessageBoxIcon.Error,
+                MessageBoxButtons.OK);
+        }
+
+        private async Task ShowInfoMessage(string message)
+        {
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                message,
+                MessageBoxIcon.Information,
+                MessageBoxButtons.OK);
+        }
+
+        private async Task ShowCancelledAsync()
+        {
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                "Operation cancelled!",
+                MessageBoxIcon.Error,
+                MessageBoxButtons.OK);
+        }
+
+        private async Task HandleUnexpectedErrorAsync(Exception ex)
+        {
+            LogUtility.LogException(ex);
+            await SafelyCloseWindowAsync();
+            CommonFunctions.GLSenseMessage(
+                $"An unexpected error occurred.{Environment.NewLine}{ex.Message}",
+                MessageBoxIcon.Error,
+                MessageBoxButtons.OK);
+        }
+
+        private GLWaitWindow? CreateAndShowProgressWindow(CancellationHelper? cts)
+        {
+            try
+            {
+                return WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    try
+                    {
+                        var win = new GLWaitWindow(cts);
+                        win.ShowWithOwner((IntPtr)_state.ExcelApp.Hwnd);
+                        win.StartMonitoring();
+                        return win;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex);
+                        return null;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+            return null;
+        }
+
+        private Task InitializeProgressWindowAsync(string message)
+        {
+            if (Win == null || Win.Dispatcher == null)
+                return Task.CompletedTask;
+
+            try
+            {
+                var op = Win.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        Win.SetProcessTitle(_Title);
+                        Win.SetProcessMessage(message);
+                    },
+                    DispatcherPriority.Normal);
+
+                return op.Task;
+            }
+            catch (TaskCanceledException)
+            {
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return Task.CompletedTask;
+            }
+        }
+
+        private Task MessageProgressWindowAsync(string message)
+        {
+            if (Win == null || Win.Dispatcher == null)
+                return Task.CompletedTask;
+
+            try
+            {
+                var op = Win.Dispatcher.InvokeAsync(
+                    () =>
+                    {
+                        Win.SetProcessMessage(message);
+                    },
+                    DispatcherPriority.Normal);
+
+                return op.Task;
+            }
+            catch (TaskCanceledException)
+            {
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+                return Task.CompletedTask;
+            }
+        }
+
+    }
+#nullable disable
+}
