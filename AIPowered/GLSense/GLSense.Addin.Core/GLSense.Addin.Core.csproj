@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{76F5002B-6A27-4B68-ADEE-EB673A363228}</ProjectGuid>
+    <OutputType>library</OutputType>
+    <RootNamespace>GLSense.Addin.Core</RootNamespace>
+    <AssemblyName>GLSense.Addin.Core</AssemblyName>
+    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
+    <LangVersion>latest</LangVersion>
+    <FileAlignment>512</FileAlignment>
+    <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <WarningLevel>4</WarningLevel>
+    <Deterministic>true</Deterministic>
+    <NuGetPackageImportStamp>
+    </NuGetPackageImportStamp>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="MahApps.Metro.IconPacks.Core, Version=6.0.0.0, Culture=neutral, PublicKeyToken=0c0d510f9915137a, processorArchitecture=MSIL">
+      <HintPath>..\packages\MahApps.Metro.IconPacks.Core.6.2.1\lib\net47\MahApps.Metro.IconPacks.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="MahApps.Metro.IconPacks.FontAwesome, Version=6.0.0.0, Culture=neutral, PublicKeyToken=0c0d510f9915137a, processorArchitecture=MSIL">
+      <HintPath>..\packages\MahApps.Metro.IconPacks.FontAwesome.6.2.1\lib\net47\MahApps.Metro.IconPacks.FontAwesome.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Bcl.AsyncInterfaces, Version=10.0.0.9, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Bcl.AsyncInterfaces.10.0.9\lib\net462\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Office.Interop.Excel, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71e9bce111e9429c, processorArchitecture=MSIL">
+      <EmbedInteropTypes>False</EmbedInteropTypes>
+    </Reference>
+    <Reference Include="office, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71e9bce111e9429c, processorArchitecture=MSIL">
+      <EmbedInteropTypes>False</EmbedInteropTypes>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Core, Version=1.0.4078.44, Culture=neutral, PublicKeyToken=2a8ab48044d2601e, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Web.WebView2.1.0.4078.44\lib\net462\Microsoft.Web.WebView2.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.WinForms, Version=1.0.4078.44, Culture=neutral, PublicKeyToken=2a8ab48044d2601e, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Web.WebView2.1.0.4078.44\lib\net462\Microsoft.Web.WebView2.WinForms.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Wpf, Version=1.0.4078.44, Culture=neutral, PublicKeyToken=2a8ab48044d2601e, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Web.WebView2.1.0.4078.44\lib\net462\Microsoft.Web.WebView2.Wpf.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Data.SQLite, Version=2.0.3.0, Culture=neutral, PublicKeyToken=db937bc2d44ff139, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Data.SQLite.2.0.3\lib\net471\System.Data.SQLite.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Data.SQLite.Linq, Version=1.0.119.0, Culture=neutral, PublicKeyToken=db937bc2d44ff139, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Data.SQLite.Linq.1.0.119.0\lib\net46\System.Data.SQLite.Linq.dll</HintPath>
+    </Reference>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.IO.Pipelines, Version=10.0.0.9, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.IO.Pipelines.10.0.9\lib\net462\System.IO.Pipelines.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Memory, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Memory.4.6.3\lib\net462\System.Memory.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Numerics.Vectors, Version=4.1.6.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Numerics.Vectors.4.6.1\lib\net462\System.Numerics.Vectors.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.3.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Runtime.CompilerServices.Unsafe.6.1.2\lib\net462\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Encodings.Web, Version=10.0.0.9, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Text.Encodings.Web.10.0.9\lib\net462\System.Text.Encodings.Web.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Json, Version=10.0.0.9, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Text.Json.10.0.9\lib\net462\System.Text.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Threading.Tasks.Extensions, Version=4.2.4.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Threading.Tasks.Extensions.4.6.3\lib\net462\System.Threading.Tasks.Extensions.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Transactions" />
+    <Reference Include="System.ValueTuple" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Xml" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xaml">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="Wpf.Ui, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
+      <HintPath>..\packages\WPF-UI.4.3.0\lib\net481\Wpf.Ui.dll</HintPath>
+    </Reference>
+    <Reference Include="Wpf.Ui.Abstractions, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
+      <HintPath>..\packages\WPF-UI.Abstractions.4.3.0\lib\net481\Wpf.Ui.Abstractions.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="AddinEntry.cs" />
+    <Compile Include="AppConstants.cs" />
+    <Compile Include="AppState.cs" />
+    <Compile Include="Caching\FormulaCache.cs" />
+    <Compile Include="Common\DrilldownMetadata.cs" />
+    <Compile Include="Common\DrilldownType.cs" />
+    <Compile Include="Common\EnumExtensions.cs" />
+    <Compile Include="Udf\UdfDispatcher.cs" />
+    <Compile Include="Converters\Converters.cs" />
+    <Compile Include="Converters\RichTextBoxHelper.cs" />
+    <Compile Include="Drilldowns\DrillCellHighlighter.cs" />
+    <Compile Include="Drilldowns\DD_BL.cs" />
+    <Compile Include="Drilldowns\DD_JL.cs" />
+    <Compile Include="Drilldowns\DD_SL.cs" />
+    <Compile Include="Drilldowns\DD_EP.cs" />
+    <Compile Include="Drilldowns\DDDatatoWorksheet.cs" />
+    <Compile Include="Drilldowns\BalanceNormalizer.cs" />
+    <Compile Include="Drilldowns\DataTableBuilder.cs" />
+    <Compile Include="Drilldowns\ExcelFormulaGenerator.cs" />
+    <Compile Include="Drilldowns\BulkRefreshProcess.cs" />
+    <Compile Include="Drilldowns\BalanceRefresh.cs" />
+    <Compile Include="Drilldowns\BalanceHighlighter.cs" />
+    <Compile Include="Drilldowns\RangeRefresher.cs" />
+    <Compile Include="Drilldowns\RowVisibilityProcessor.cs" />
+    <Compile Include="Drilldowns\CustomDrilldown.cs" />
+    <Compile Include="Drilldowns\JournalAttachments.cs" />
+    <Compile Include="Helpers\CompressionHelper.cs" />
+    <Compile Include="Helpers\SafeDeleteHelper.cs" />
+    <Compile Include="Helpers\SnapshotDialogHelper.cs" />
+    <Compile Include="Utilities\BatchCalcScope.cs" />
+    <Compile Include="Helpers\ApiHelper.cs" />
+    <Compile Include="Helpers\ApiOperationHelper.cs" />
+    <Compile Include="Helpers\ApiResponseHelper.cs" />
+    <Compile Include="Helpers\CancellationHelper.cs" />
+    <Compile Include="Helpers\CancellationTokenHelper.cs" />
+    <Compile Include="Helpers\ClsFormulaParser.cs" />
+    <Compile Include="Helpers\DpiAwarenessHelper.cs" />
+    <Compile Include="Helpers\EdgeAddinHelper.cs" />
+    <Compile Include="Helpers\ExcelComHelper.cs" />
+    <Compile Include="Helpers\ExcelWindowHelper.cs" />
+    <Compile Include="Helpers\ExcelExternalRef.cs" />
+    <Compile Include="Helpers\ExcelRangeHelper.cs" />
+    <Compile Include="Helpers\ExceptionHelper.cs" />
+    <Compile Include="Helpers\JsonGlobals.cs" />
+    <Compile Include="Helpers\PerformanceHelper.cs" />
+    <Compile Include="Helpers\StrictCertificateValidator.cs" />
+    <Compile Include="Helpers\DrilldownHelpers.cs" />
+    <Compile Include="Models\ApiResult.cs" />
+    <Compile Include="Models\BalanceDtoModel.cs" />
+    <Compile Include="Models\UdfModels.cs" />
+    <Compile Include="Models\GLJobModel.cs" />
+    <Compile Include="Models\CubeModels.cs" />
+    <Compile Include="Models\LedgerModel.cs" />
+    <Compile Include="Models\LedgerQueryModels.cs" />
+    <Compile Include="Models\JournalAttachmentModels.cs" />
+    <Compile Include="Repositories\CubeDataRepository.cs" />
+    <Compile Include="Repositories\DataRepository.cs" />
+    <Compile Include="Repositories\LedgerDataRepository.cs" />
+    <Compile Include="Models\ExternalResolveResult.cs" />
+    <Compile Include="Bindings\ComboFieldBindings.cs" />
+    <Compile Include="Bindings\FieldBinding.cs" />
+    <Compile Include="Interfaces\Interfaces.cs" />
+    <Compile Include="Models\PeriodModels.cs" />
+    <Compile Include="Models\SegmentSelectorModels.cs" />
+    <Compile Include="Services\DataServiceLocator.cs" />
+    <Compile Include="Services\PeriodDataService.cs" />
+    <Compile Include="Services\SegmentDataService.cs" />
+    <Compile Include="Helpers\DatePickerTooltipHelper.cs" />
+    <Compile Include="Helpers\ExcelRefManager.cs" />
+    <Compile Include="Extensions\DatePickerExtensions.cs" />
+    <Compile Include="ViewModels\GlobalStateViewModel.cs" />
+    <Compile Include="ViewModels\GLConfiguratorViewModel.cs" />
+    <Compile Include="ViewModels\GLGetPeriodModel.cs" />
+    <Compile Include="ViewModels\GLGetPeriodByYearModel.cs" />
+    <Compile Include="ViewModels\GLPeriodByDateModel.cs" />
+    <Compile Include="ViewModels\GLPeriodDetails.cs" />
+    <Compile Include="ViewModels\GLSegmentFuncsViewModel.cs" />
+    <Compile Include="ViewModels\GLDailyRatesViewModel.cs" />
+    <Compile Include="ViewModels\GLSubmittedJobsViewModel.cs" />
+    <Compile Include="ViewModels\GLLovViewModel.cs" />
+    <Compile Include="ViewModels\SimpleSegmentViewModel.cs" />
+    <Compile Include="ViewModels\SegmentSelectorViewModel.cs" />
+    <Compile Include="Utilities\CommonFunctions.cs" />
+    <Compile Include="Utilities\CommonMethods.cs" />
+    <Compile Include="Utilities\MouseWheelFocusHelper.cs" />
+    <Compile Include="Utilities\DataGridColumnFillHelper.cs" />
+    <Compile Include="Utilities\PeriodsDiscoverer.cs" />
+    <Compile Include="Utilities\SegmentDiscoverer.cs" />
+    <Compile Include="Utilities\UserConfig.cs" />
+    <Compile Include="Utilities\WpfAppManager.cs" />
+    <Compile Include="Utilities\WpfUiBootstrapper.cs" />
+    <Compile Include="Views\AppOverlay.xaml.cs">
+      <DependentUpon>AppOverlay.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\BaseWindow.cs" />
+    <Compile Include="Views\GLCubeDetails.xaml.cs">
+      <DependentUpon>GLCubeDetails.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLLogin.xaml.cs">
+      <DependentUpon>GLLogin.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLLoginDetails.xaml.cs">
+      <DependentUpon>GLLoginDetails.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLWaitWindow.xaml.cs">
+      <DependentUpon>GLWaitWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\ExcelRefEditControl.xaml.cs">
+      <DependentUpon>ExcelRefEditControl.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLGetPeriod.xaml.cs">
+      <DependentUpon>GLGetPeriod.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLGetPeriodByYear.xaml.cs">
+      <DependentUpon>GLGetPeriodByYear.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLGetPeriodByDate.xaml.cs">
+      <DependentUpon>GLGetPeriodByDate.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLGetPeriodDetails.xaml.cs">
+      <DependentUpon>GLGetPeriodDetails.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLGetPeriodStartEnd.xaml.cs">
+      <DependentUpon>GLGetPeriodStartEnd.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLSegmentFunctions.xaml.cs">
+      <DependentUpon>GLSegmentFunctions.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLDailyRates.xaml.cs">
+      <DependentUpon>GLDailyRates.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLSegmentDiscovery.xaml.cs">
+      <DependentUpon>GLSegmentDiscovery.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLExpandOptions.xaml.cs">
+      <DependentUpon>GLExpandOptions.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLDrilldownCustomization.xaml.cs">
+      <DependentUpon>GLDrilldownCustomization.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\ConfiguratorPaneHost.cs" />
+    <Compile Include="Views\GLJobsMonitor.xaml.cs">
+      <DependentUpon>GLJobsMonitor.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLAccountsRef.xaml.cs">
+      <DependentUpon>GLAccountsRef.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLBalanceConfigurator.xaml.cs">
+      <DependentUpon>GLBalanceConfigurator.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLLOVs.xaml.cs">
+      <DependentUpon>GLLOVs.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLRollerGroups.xaml.cs">
+      <DependentUpon>GLRollerGroups.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLSegmentManager.xaml.cs">
+      <DependentUpon>GLSegmentManager.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLSegmentRef.xaml.cs">
+      <DependentUpon>GLSegmentRef.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLSegmentValues.xaml.cs">
+      <DependentUpon>GLSegmentValues.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLUserConfig.xaml.cs">
+      <DependentUpon>GLUserConfig.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLServerConfiguration.xaml.cs">
+      <DependentUpon>GLServerConfiguration.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLAbout.xaml.cs">
+      <DependentUpon>GLAbout.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\AttachmentsDialog.xaml.cs">
+      <DependentUpon>AttachmentsDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLMessageWindow.xaml.cs">
+      <DependentUpon>GLMessageWindow.xaml</DependentUpon>
+    </Compile>
+    <Page Include="Themes\Generic.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Themes\GlobalStyles.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Compile Include="Controls\SuggestAppendComboBox.cs" />
+    <Compile Include="Controls\NumericSpinner.xaml.cs">
+      <DependentUpon>NumericSpinner.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Models\DrillDownOption.cs" />
+    <Compile Include="Helpers\SQLiteHelper.cs" />
+    <Compile Include="Infrastructure\ServiceLocator.cs" />
+    <Page Include="Views\AppOverlay.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLCubeDetails.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLLogin.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLLoginDetails.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLWaitWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\ExcelRefEditControl.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLGetPeriod.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLGetPeriodByYear.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLGetPeriodByDate.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLGetPeriodDetails.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLGetPeriodStartEnd.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLSegmentFunctions.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLDailyRates.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLSegmentDiscovery.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLExpandOptions.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLDrilldownCustomization.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLJobsMonitor.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLAccountsRef.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLBalanceConfigurator.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLLOVs.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLRollerGroups.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLSegmentManager.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLSegmentRef.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLSegmentValues.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLUserConfig.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLServerConfiguration.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLAbout.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\AttachmentsDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLMessageWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Controls\NumericSpinner.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="..\GLSenseSharedVersion.cs">
+      <Link>Properties\GLSenseSharedVersion.cs</Link>
+    </Compile>
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\Settings.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+    </Compile>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <None Include="app.config" />
+    <None Include="packages.config" />
+    <None Include="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GLSense.Contracts\GLSense.Contracts.csproj">
+      <Project>{5ea4c54e-4d4c-467d-a600-5f5910847a63}</Project>
+      <Name>GLSense.Contracts</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\GLSense.Shared\GLSense.Shared.csproj">
+      <Project>{7fccdd5e-9798-455d-9e3a-c9c40802a32c}</Project>
+      <Name>GLSense.Shared</Name>
+    </ProjectReference>
+    <!-- Not used by any code here - added purely so MSBuild (a) always builds
+         GLSense.Loader.Core before this project (proper dependency ordering,
+         instead of relying on solution-file/build-order luck), and (b) copies
+         GLSense.Loader.Core.dll into THIS project's own bin output automatically.
+         That DLL has to ship alongside GLSense.Addin.Core.dll wherever this
+         payload gets deployed - AddinDomainLoader.Load()'s
+         CreateInstanceAndUnwrap(typeof(RemoteLoader)...) call needs
+         GLSense.Loader.Core.dll (RemoteLoader's own assembly) resolvable from the
+         new AppDomain's ApplicationBase, which is set to wherever this zip gets
+         extracted (Versions\V{version}\) - see post_build.cmd and
+         UpdateBootstrapper.cs. -->
+    <ProjectReference Include="..\GLSense.Loader.Core\GLSense.Loader.Core.csproj">
+      <Project>{05bee008-89f7-4036-a110-0703d594f782}</Project>
+      <Name>GLSense.Loader.Core</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Company logo for GLAbout.xaml, ported from FinalWorkingCode's Images\orbit_logo.png
+         (referenced there via pack URI "/GLSense;component/Images/orbit_logo.png"). Build
+         Action "Resource" so it's embedded and reachable via the equivalent AIPowered pack
+         URI "/GLSense.Addin.Core;component/Images/orbit_logo.png". -->
+    <Resource Include="Images\orbit_logo.png" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>call "$(ProjectDir)sqlite_postbuild.cmd" "$(TargetDir)"
+
+call "$(ProjectDir)post_build.cmd" "$(TargetDir)"</PostBuildEvent>
+  </PropertyGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\System.ValueTuple.4.6.2\build\net471\System.ValueTuple.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\System.ValueTuple.4.6.2\build\net471\System.ValueTuple.targets'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Web.WebView2.1.0.4078.44\build\Microsoft.Web.WebView2.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Web.WebView2.1.0.4078.44\build\Microsoft.Web.WebView2.targets'))" />
+  </Target>
+  <Import Project="..\packages\System.ValueTuple.4.6.2\build\net471\System.ValueTuple.targets" Condition="Exists('..\packages\System.ValueTuple.4.6.2\build\net471\System.ValueTuple.targets')" />
+  <Import Project="..\packages\Microsoft.Web.WebView2.1.0.4078.44\build\Microsoft.Web.WebView2.targets" Condition="Exists('..\packages\Microsoft.Web.WebView2.1.0.4078.44\build\Microsoft.Web.WebView2.targets')" />
+</Project>

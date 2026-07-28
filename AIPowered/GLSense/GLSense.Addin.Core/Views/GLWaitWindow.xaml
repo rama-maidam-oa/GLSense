@@ -1,0 +1,194 @@
+<views:BaseWindow x:Class="GLSense.Addin.Core.Views.GLWaitWindow"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:local="clr-namespace:GLSense.Addin.Core.Views"
+                  xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
+                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+                  mc:Ignorable="d"
+                  WindowCaption="Refreshing Data"
+                  IconSymbol="ArrowRotateRightSolid"
+                  WindowStartupLocation="CenterOwner"
+                  SizeToContent="WidthAndHeight"
+                  MinWidth="420" MaxWidth="420"
+                  MinHeight="150" MaxHeight="350"
+                  ResizeMode="NoResize"
+                  WindowStyle="SingleBorderWindow"
+                  ExtendsContentIntoTitleBar="True"
+                  ShowInTaskbar="False">
+
+    <!--
+    NOTE: The original main-project GLWaitWindow used WindowStyle="None" +
+    AllowsTransparency="True" for a borderless floating look. That combination is
+    untested against WPF-UI's FluentWindow chrome in this project (AllowsTransparency
+    disables DWM composition, which can conflict with FluentWindow's own backdrop
+    handling), so this port intentionally uses the same bordered SingleBorderWindow +
+    ExtendsContentIntoTitleBar pattern already proven working in GLLogin.xaml instead.
+    Switch back to a transparent/borderless style later once that combination has been
+    verified on your machine.
+
+    Height sizing: SizeToContent="Height" + Auto rows throughout (no "*" rows) so the
+    window always sizes to its actual content - see the fix notes for the original
+    GLWaitWindow height bug for why a "*" row + unset Height is unsafe here.
+    -->
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <!--
+            Spacer row (2026-07-15 fix): contributes 0 height in the normal
+            SizeToContent="Height" auto-measure pass (Star rows measure as 0 with infinite
+            available height), so it's invisible day-to-day. It only matters when
+            AppOverlay.EnsureOwnerWindowRoomForConfirm temporarily switches this window to
+            a taller, manually-sized Height while a confirm popup is showing (e.g.
+            BalanceRefresh.EnsureCompatibilityAsync) - without this row, that extra height
+            had nowhere to go and rendered as dead blank space below the Cancel button,
+            since AppOverlayControl only spanned the two rows above. Now AppOverlayControl
+            spans this row too, so its dimmed background/popup properly cover the full
+            enlarged window instead.
+            -->
+        </Grid.RowDefinitions>
+
+        <!-- Title Bar -->
+        <Grid Grid.Row="0"
+              Style="{StaticResource TitleBarGridStyle}"
+              MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <iconPacks:PackIconFontAwesome Grid.Column="0"
+                           Style="{StaticResource TitleBarIconStyle}"
+                           Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
+
+            <!--
+            NOTE: Text is set directly in code-behind (SetProcessTitle), not via binding.
+            WindowCaption is a plain CLR property (not a DependencyProperty and this class
+            has no INotifyPropertyChanged), so a binding to it would only pick up the
+            initial value and never refresh when the title changes at runtime - which this
+            window does every time a new operation starts.
+            -->
+            <TextBlock x:Name="txtTitle"
+                       Grid.Column="1"
+                       Style="{StaticResource TitleBarTextStyle}"
+                       Text="Refreshing Data"
+                       TextTrimming="CharacterEllipsis"/>
+        </Grid>
+
+        <!-- Content -->
+        <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" Padding="20,16,20,16">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <!-- Process Label -->
+                    <RowDefinition Height="Auto"/>
+                    <!-- Progress bar -->
+                    <RowDefinition Height="Auto"/>
+                    <!-- Time & Button -->
+                </Grid.RowDefinitions>
+
+                <!-- Process Name -->
+                <TextBlock x:Name="ProcessNameLabel"
+                           FontFamily="Segoe UI"
+                           Grid.Row="0"
+                           FontSize="13"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           TextWrapping="Wrap"
+                           Text="Loading data..."
+                           Margin="0,0,0,16"/>
+
+                <!-- Progress Bar -->
+                <ProgressBar x:Name="ProgressBarControl"
+                             Grid.Row="1"
+                             Style="{StaticResource IndeterminateProgressBar}"
+                             IsIndeterminate="True"
+                             Margin="0,0,0,16"/>
+
+                <!-- Bottom Row: Time and Cancel Button -->
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Elapsed Time -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <iconPacks:PackIconFontAwesome Kind="ClockSolid"
+                                                        Width="12" Height="12"
+                                                        Foreground="{StaticResource TextSecondaryBrush}"
+                                                        VerticalAlignment="Center"
+                                                        Margin="0,0,6,0"/>
+                        <TextBlock x:Name="ElapsedTimeLabel"
+                                   FontFamily="Segoe UI"
+                                   FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Text="Time Elapsed: 00:00:00"/>
+                    </StackPanel>
+
+                    <!-- Cancel Button - testing feedback: even though this button's
+                         function is Cancel, it should look like every other window's
+                         Close button (CloseButtonStyle), not the red/attention-grabbing
+                         CancelButtonStyle. Both styles share the same DynamicContentButton
+                         base template (light gray at rest, PrimaryBrush blue + white text
+                         on hover - see GlobalStyles.xaml), so the actual fix is twofold:
+                         (1) point Style at CloseButtonStyle so this button matches every
+                         other CloseButtonStyle button's visual identity/hover behavior
+                         exactly, and (2) stop hardcoding the icon/text to
+                         Foreground="White" - that was rendering white-on-near-white (the
+                         default, non-hover Background is #F8F9FA) until hovered, which is
+                         exactly the "wrong style" look being reported. Leaving Foreground
+                         unset lets both inherit the Button's own ambient Foreground -
+                         black at rest, white on hover/pressed - via the shared template's
+                         triggers, matching every other Close button in the app. Bound
+                         (not left ambient) via RelativeSource, the same explicit-Foreground-
+                         propagation pattern already used elsewhere in this codebase (e.g.
+                         GLSegmentManager.xaml's DataGridCell -> DataGridRow Foreground
+                         binding) rather than relying on implicit property inheritance.
+                         Content stays a local StackPanel (icon + "Cancel" text) so the
+                         button still reads "Cancel" and keeps its Click="BtnCancel_Click"
+                         function - only the look changes, not what it does. -->
+                    <Button x:Name="BtnCancel"
+                            Grid.Column="1"
+                            Style="{StaticResource CloseButtonStyle}"
+                            Width="90"
+                            Click="BtnCancel_Click"
+                            ToolTip="Cancel operation">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <iconPacks:PackIconFontAwesome Kind="CircleXmarkSolid"
+                                                            Width="10" Height="10"
+                                                            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                            VerticalAlignment="Center"
+                                                            Margin="0,0,5,0"/>
+                            <TextBlock Text="Cancel"
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Overlay (confirm toast for Cancel) -->
+        <local:AppOverlay x:Name="AppOverlayControl"
+                          Grid.Row="0" Grid.RowSpan="3"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Visibility="Collapsed"
+                          Panel.ZIndex="100"/>
+    </Grid>
+</views:BaseWindow>

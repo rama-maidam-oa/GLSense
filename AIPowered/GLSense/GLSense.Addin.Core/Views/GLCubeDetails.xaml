@@ -1,0 +1,265 @@
+<views:BaseWindow x:Class="GLSense.Addin.Core.Views.GLCubeDetails"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:local="clr-namespace:GLSense.Addin.Core.Views"
+                  xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
+                  xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
+                  xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
+                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+                  mc:Ignorable="d"
+                  WindowCaption="GLSense Cube Details"
+                  IconSymbol="CubesSolid"
+                  SizeToContent="WidthAndHeight"
+                  MinWidth="680" MaxWidth="750"
+                  MinHeight="500" MaxHeight="650"
+                  ResizeMode="CanResize"
+                  WindowStyle="SingleBorderWindow"
+                  ExtendsContentIntoTitleBar="True"
+                  Loaded="Window_Loaded">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <!-- Converters (window-specific) -->
+            <conv:WidthPercentageConverter x:Key="WidthPercentageConverter"/>
+            <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title Bar -->
+        <Grid Grid.Row="0"
+              Style="{StaticResource TitleBarGridStyle}"
+              MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <iconPacks:PackIconFontAwesome Grid.Column="0"
+                           Style="{StaticResource TitleBarIconStyle}"
+                           Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
+
+            <TextBlock Grid.Column="1"
+                       Style="{StaticResource TitleBarTextStyle}"
+                       Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"/>
+
+            <Button Grid.Column="2"
+                    x:Name="CloseButton"
+                    Style="{StaticResource TitleBarCloseButtonStyle}"
+                    Content="&#xE8BB;"
+                    Click="BtnClose_Click"/>
+        </Grid>
+
+        <!-- Controls Section: cube combo + validate -->
+        <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" CornerRadius="8" Margin="10,10,10,8" Padding="16,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Label Grid.Column="0" Content="Cubes:" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+                <ctrls:SuggestAppendComboBox x:Name="cmbCubes"
+                                              Grid.Column="1"
+                                              MinWidth="200"
+                                              Height="30"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Stretch"
+                                              Background="{StaticResource WhiteBrush}"
+                                              Foreground="{StaticResource TextPrimaryBrush}"
+                                              BorderThickness="1"
+                                              BorderBrush="{StaticResource BorderLightBrush}"
+                                              Margin="0,0,10,0">
+                    <ctrls:SuggestAppendComboBox.ToolTip>
+                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                            <TextBlock Text="Select a cube to view its details" TextWrapping="Wrap"/>
+                        </ToolTip>
+                    </ctrls:SuggestAppendComboBox.ToolTip>
+                </ctrls:SuggestAppendComboBox>
+
+                <CheckBox x:Name="chkValidateCube" Grid.Column="2" Content="Validate Cube" VerticalAlignment="Center" Margin="0,0,20,0" Style="{StaticResource CompactCheckBox}" Checked="ChkValidateCube_Changed" Unchecked="ChkValidateCube_Changed"/>
+                <Button x:Name="btnValidateCube" Grid.Column="3" Content="Validate" MinWidth="90" Style="{StaticResource DynamicContentButton}" Click="BtnValidateCube_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- Cube DataGrid -->
+        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,8">
+            <DataGrid x:Name="dgCubes" FontFamily="Segoe UI" AutoGenerateColumns="False" CanUserAddRows="False" Background="{StaticResource WhiteBrush}" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" SelectionUnit="FullRow" BorderThickness="0" GridLinesVisibility="None" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <DataGrid.Resources>
+                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
+                    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
+                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
+                    <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
+                        <Setter Property="Background" Value="#E0E0E0"/>
+                        <Setter Property="Opacity" Value="1"/>
+                    </Style>
+                    <Style TargetType="Thumb" BasedOn="{StaticResource AppScrollThumbStyle}">
+                        <Setter Property="Background" Value="#6C757D"/>
+                        <Setter Property="Opacity" Value="1"/>
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#2E86AB"/>
+                        <Setter Property="Foreground" Value="White"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="BorderBrush" Value="#1B6B93"/>
+                        <Setter Property="BorderThickness" Value="0,0,1,0"/>
+                        <Setter Property="Padding" Value="12,10"/>
+                        <Setter Property="Height" Value="38"/>
+                        <Setter Property="FontSize" Value="12"/>
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="BorderBrush" Value="#F8F9FA"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        <Setter Property="Background" Value="White"/>
+                        <Setter Property="Foreground" Value="#212529"/>
+                        <Setter Property="FontSize" Value="13"/>
+                        <Setter Property="Height" Value="36"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#F0F8FF"/>
+                                <Setter Property="BorderBrush" Value="#2E86AB"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#9bcee4"/>
+                                <Setter Property="BorderBrush" Value="#2E86AB"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="BorderBrush" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Foreground" Value="{Binding Foreground,
+                                    RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                    </Style>
+                </DataGrid.CellStyle>
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="" Width="42">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <iconPacks:PackIconFontAwesome Kind="TriangleExclamationSolid" Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="DarkOrange" Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <iconPacks:PackIconFontAwesome.ToolTip>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Warning" FontWeight="SemiBold" Foreground="DarkOrange"/>
+                                                <TextBlock Text="This cube has validation warnings" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </iconPacks:PackIconFontAwesome.ToolTip>
+                                </iconPacks:PackIconFontAwesome>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Ledger Name" Width="Auto">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding LedgerName}" Padding="12,8" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                                    <TextBlock.ToolTip>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <TextBlock Text="{Binding LedgerName}" TextWrapping="Wrap"/>
+                                        </ToolTip>
+                                    </TextBlock.ToolTip>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Last Refreshed Date" Width="Auto">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding LastRefreshedDate}" Padding="12,8" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                                    <TextBlock.ToolTip>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <TextBlock Text="{Binding LastRefreshedDate}"/>
+                                        </ToolTip>
+                                    </TextBlock.ToolTip>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Time Zone" Width="Auto">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding TimeZone}" Padding="12,8" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                                    <TextBlock.ToolTip>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <TextBlock Text="{Binding TimeZone}"/>
+                                        </ToolTip>
+                                    </TextBlock.ToolTip>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Footer -->
+        <Border Grid.Row="3" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="10,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed" x:Name="statusPanel">
+                    <Border Background="#E3F2FD" CornerRadius="4" Padding="8,6">
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconFontAwesome Kind="InfoSolid" x:Name="statusIcon" Width="14" Height="14" VerticalAlignment="Center" Foreground="#2E86AB"/>
+                            <TextBlock x:Name="lblCubeStatus" VerticalAlignment="Center" Margin="8,0,0,0"
+                                       FontWeight="SemiBold" Foreground="#2E86AB"
+                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                       MaxWidth="400"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="btnOK" Style="{StaticResource DynamicContentButton}" Content="Ok" Margin="0,0,8,0" Click="BtnOK_Click">
+                        <Button.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Accept and close"/>
+                            </ToolTip>
+                        </Button.ToolTip>
+                    </Button>
+                    <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Toast / Busy overlay -->
+        <local:AppOverlay x:Name="AppOverlayControl"
+                          Grid.Row="0" Grid.RowSpan="4"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Visibility="Collapsed"
+                          Panel.ZIndex="100"/>
+    </Grid>
+</views:BaseWindow>

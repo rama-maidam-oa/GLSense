@@ -1,0 +1,161 @@
+﻿<utils:DpiAwareWindow x:Class="GLSense.Views.GLLoginDetails" 
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+        xmlns:data="clr-namespace:GLSense"
+        xmlns:utils="clr-namespace:GLSense.Utilities"
+        xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        WindowStyle="None" 
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="Manual" 
+        MinHeight="260" MaxHeight="400" 
+        MinWidth="460" MaxWidth="580"
+        ResizeMode="CanResize" 
+        Background="#F8F9FA">
+
+    <utils:DpiAwareWindow.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/GLSense;component/Themes/GlobalStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </utils:DpiAwareWindow.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <!-- Header -->
+            <RowDefinition Height="Auto"/>
+            <!-- Content -->
+            <RowDefinition Height="Auto"/>
+            <!-- Buttons -->
+        </Grid.RowDefinitions>
+
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left side with icon and title -->
+                <StackPanel Grid.Column="0" 
+           Orientation="Horizontal" 
+           VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="CircleInfoSolid" 
+                 Style="{StaticResource LargeIcon}" />
+                    <TextBlock Text="GLSense Login Details" 
+                 Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+
+                <Button Grid.Column="2" 
+             Style="{StaticResource CustomWindowCloseButtonStyle}" 
+             Click="BtnClose_Click" />
+            </Grid>
+        </Border>
+
+        <!-- ================= Content Section ================= -->
+        <Border Grid.Row="1" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="20" Margin="0,0,0,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- User Row -->
+                <Border Grid.Row="0" Grid.Column="0" Background="#F8F9FA" CornerRadius="4" Padding="8,6" Margin="0,0,12,12">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <iconPacks:PackIconFontAwesome 
+                            Kind="UserRegular" 
+                            Margin="0,4,0,0"
+                            Style="{StaticResource SmallIcon}"
+                            Foreground="#2E86AB" 
+                            VerticalAlignment="Center"/>
+                        <TextBlock Text="User:" 
+                                   Style="{StaticResource HeaderTextBlock}" 
+                                   Margin="8,0,0,0"/>
+                    </StackPanel>
+                </Border>
+                <TextBox x:Name="TxtUser" 
+                         Grid.Row="0" Grid.Column="1" 
+                         Style="{StaticResource ModernTextBox}" 
+                         Text="{Binding LoginUserName, Source={x:Static data:AppState.Instance}}"
+                         IsReadOnly="True" 
+                         d:Text =" "
+                         Margin="0,0,0,12" >
+                    <TextBox.ToolTip>
+                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                            <StackPanel>
+                                <TextBlock Text="User logged in:" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding LoginUserName, Source={x:Static data:AppState.Instance}}" 
+                                           FontFamily="Segoe UI" 
+                                           Background="#F5F5F5" 
+                                           Padding="4" 
+                                           Margin="0,6,0,0"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="300"
+                                           d:Text =" "/>
+                            </StackPanel>
+                        </ToolTip>
+                    </TextBox.ToolTip>
+                </TextBox>
+
+                <!-- URL Row -->
+                <Border Grid.Row="1" Grid.Column="0" Background="#F8F9FA" CornerRadius="4" Padding="8,6" Margin="0,0,12,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <iconPacks:PackIconFontAwesome 
+                            Kind="LinkSolid" 
+                            Style="{StaticResource SmallIcon}"
+                            Foreground="#2E86AB" 
+                            Margin="0,4,0,0"
+                            VerticalAlignment="Center"/>
+                        <TextBlock Text="URL:" 
+                                   Style="{StaticResource HeaderTextBlock}" 
+                                   Margin="8,0,0,0"/>
+                    </StackPanel>
+                </Border>
+                <TextBox x:Name="TxtURL" 
+                         Grid.Row="1" Grid.Column="1" 
+                         Style="{StaticResource ModernTextBox}" 
+                         Text="{Binding LoginUrl, Source={x:Static data:AppState.Instance}}"
+                         d:Text=" "
+                         IsReadOnly="True" >
+                    <TextBox.ToolTip>
+                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                            <StackPanel>
+                                <TextBlock Text="Instance logged in:" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding LoginUrl, Source={x:Static data:AppState.Instance}}" 
+                                           FontFamily="Segoe UI" 
+                                           Background="#F5F5F5" 
+                                           Padding="4" 
+                                           Margin="0,6,0,0"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="300"
+                                           d:Text =" "/>
+                            </StackPanel>
+                        </ToolTip>
+                    </TextBox.ToolTip>
+                </TextBox>
+            </Grid>
+        </Border>
+
+        <!-- ================= Buttons Section ================= -->
+        <Border Grid.Row="2" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="10,4">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <!-- Close Button -->
+                <Button x:Name="CmdClose" Style="{StaticResource CloseButtonStyle}" 
+                    Click="BtnClose_Click" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</utils:DpiAwareWindow>

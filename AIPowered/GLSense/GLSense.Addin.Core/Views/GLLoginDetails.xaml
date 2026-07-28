@@ -1,0 +1,109 @@
+<views:BaseWindow x:Class="GLSense.Addin.Core.Views.GLLoginDetails"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
+                  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+                  xmlns:core="clr-namespace:GLSense.Addin.Core"
+                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                  mc:Ignorable="d"
+                  WindowCaption="GLSense Login Details"
+                  IconSymbol="CircleInfoSolid"
+                  SizeToContent="Width"
+                  MinHeight="100" MaxHeight="230"
+                  MinWidth="460" MaxWidth="480"
+                  ResizeMode="CanResize"
+                  WindowStyle="SingleBorderWindow"
+                  ExtendsContentIntoTitleBar="True">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <!-- This window has no genuine "fill remaining space" element (no DataGrid/
+                 TabControl/WebView2/Expander - just two read-only fields and a Close
+                 button), so there is no legitimate reason for a "*" row here at all. An
+                 earlier fix added an Auto content row + "*" spacer to absorb the extra
+                 height that a since-removed MinHeight="180"/MaxHeight="300" forced onto
+                 the window beyond its natural content size - but that just relocated the
+                 visible gap (leaking below the Grid before a relayout happened, or
+                 appearing as a big blank strip between the URL field and the Close
+                 button once it did) instead of eliminating it. With MinHeight/MaxHeight
+                 removed, both rows below can just be Auto and the window sizes itself
+                 exactly to its natural content - no spacer, nothing to collapse or
+                 over-absorb. -->
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title Bar -->
+        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
+            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="GLSense Login Details" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <Button Grid.Column="2" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
+        </Grid>
+
+        <!-- Content -->
+        <StackPanel Grid.Row="1" Margin="10,10,10,4">
+            <!-- User Row -->
+            <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Label Content="User :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="70" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="1" Style="{StaticResource ModernTextBox}"
+                             Text="{Binding LoginUserName, Source={x:Static core:AppState.Instance}}"
+                             IsReadOnly="True" d:Text=" " VerticalAlignment="Center">
+                        <TextBox.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="User logged in" FontWeight="SemiBold"/>
+                            </ToolTip>
+                        </TextBox.ToolTip>
+                    </TextBox>
+                </Grid>
+            </Border>
+
+            <!-- URL Row -->
+            <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Padding="10,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Label Content="URL :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="70" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="1" Style="{StaticResource ModernTextBox}"
+                             Text="{Binding LoginUrl, Source={x:Static core:AppState.Instance}}"
+                             IsReadOnly="True" d:Text=" " VerticalAlignment="Center">
+                        <TextBox.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Instance logged in" FontWeight="SemiBold"/>
+                            </ToolTip>
+                        </TextBox.ToolTip>
+                    </TextBox>
+                </Grid>
+            </Border>
+        </StackPanel>
+
+        <!-- Buttons -->
+        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="8,6">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</views:BaseWindow>

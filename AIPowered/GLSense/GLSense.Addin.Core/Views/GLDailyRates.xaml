@@ -1,0 +1,166 @@
+<views:BaseWindow x:Class="GLSense.Addin.Core.Views.GLDailyRates"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                  xmlns:local="clr-namespace:GLSense.Addin.Core.Views"
+                  xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
+                  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+                  xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
+                  xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
+                  xmlns:sys="clr-namespace:System;assembly=mscorlib"
+                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                  mc:Ignorable="d"
+                  WindowCaption="GLSense Daily Rates"
+                  IconSymbol="MoneyBillWaveSolid"
+                  SizeToContent="WidthAndHeight"
+                  MinWidth="640" MaxWidth="660"
+                  MinHeight="350" MaxHeight="450"
+                  ResizeMode="CanResize"
+                  WindowStyle="SingleBorderWindow"
+                  ExtendsContentIntoTitleBar="True">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <sys:Double x:Key="LabelMinWidth">130</sys:Double>
+            <sys:Double x:Key="ControlHeight">32</sys:Double>
+            <Thickness x:Key="ControlMargin">6,0</Thickness>
+            <Thickness x:Key="LabelMargin">0,0,6,0</Thickness>
+            <sys:Double x:Key="RefEditMinWidth">200</sys:Double>
+            <sys:Double x:Key="ComboMinWidth">200</sys:Double>
+            <conv:NullableDateConverter x:Key="NullableDateConverter"/>
+            <SolidColorBrush x:Key="SoftControlBorderBrush" Color="#D6DCE5"/>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
+        <!-- SizeToContent="WidthAndHeight" (see GLGetPeriod.xaml for the full
+             reasoning): the earlier "Width"-only + fixed Min/MaxHeight + dead "*"
+             spacer row workaround traded the collapse-until-resize bug for a visible
+             dead gap between content and buttons. BaseWindow's Window.ContentRendered
+             resettle (CLAUDE.md 1.4e) now fixes the collapse symptom generically, so
+             this window can shrink-to-fit its content like FinalWorkingCode's does. -->
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title Bar -->
+        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
+            <TextBlock x:Name="TxtFuncName" Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="GLSense Daily Rates" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
+        </Grid>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="10,10,10,4">
+            <StackPanel>
+                <!-- From Currency -->
+                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Content="Currency From :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <ctrls:SuggestAppendComboBox x:Name="cmbFromCurrency" Grid.Column="1" Height="{StaticResource ControlHeight}" MinWidth="{StaticResource ComboMinWidth}" HorizontalAlignment="Stretch" ItemsSource="{Binding Currencies}" SelectedItem="{Binding FromCurrencyField.ComboValue, Mode=TwoWay}" Text="{Binding FromCurrencyField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="{StaticResource ControlMargin}" Background="White" Foreground="#212529" IsEnabled="{Binding FromCurrencyField.IsComboEnabled}"/>
+                        <local:ExcelRefEditControl Grid.Column="2" Height="{StaticResource ControlHeight}" MinWidth="{StaticResource RefEditMinWidth}" HorizontalAlignment="Stretch" Text="{Binding FromCurrencyField.RefValue, Mode=TwoWay}" TagName="Daily Rate From Currency Field" Margin="{StaticResource ControlMargin}" IsEnabled="{Binding FromCurrencyField.IsRefEnabled}" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+                <!-- To Currency -->
+                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Content="Currency To :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <ctrls:SuggestAppendComboBox x:Name="cmbToCurrency" Grid.Column="1" Height="{StaticResource ControlHeight}" MinWidth="{StaticResource ComboMinWidth}" HorizontalAlignment="Stretch" ItemsSource="{Binding Currencies}" SelectedItem="{Binding ToCurrencyField.ComboValue, Mode=TwoWay}" Text="{Binding ToCurrencyField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="{StaticResource ControlMargin}" Background="White" Foreground="#212529" IsEnabled="{Binding ToCurrencyField.IsComboEnabled}"/>
+                        <local:ExcelRefEditControl Grid.Column="2" Height="{StaticResource ControlHeight}" MinWidth="{StaticResource RefEditMinWidth}" HorizontalAlignment="Stretch" Text="{Binding ToCurrencyField.RefValue, Mode=TwoWay}" TagName="Daily Rate To Currency Field" Margin="{StaticResource ControlMargin}" IsEnabled="{Binding ToCurrencyField.IsRefEnabled}" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+                <!-- Conversion Type -->
+                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Content="Conversion Type :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <TextBox x:Name="txtConversion" Grid.Column="1" Grid.ColumnSpan="2" Height="{StaticResource ControlHeight}" HorizontalAlignment="Stretch" Text="{Binding ConversionType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Margin="{StaticResource ControlMargin}" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+                <!-- Currency Date -->
+                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Content="Currency Date :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <DatePicker x:Name="dtpDate" Grid.Column="1" Style="{StaticResource ModernDatePicker}" Height="{StaticResource ControlHeight}" MinWidth="200" HorizontalAlignment="Stretch" VerticalAlignment="Center" SelectedDateFormat="Short" SelectedDate="{Binding SelectedDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=False, NotifyOnValidationError=True}" IsEnabled="{Binding DateField.IsComboEnabled}" Margin="{StaticResource ControlMargin}">
+                            <DatePicker.Resources>
+                                <Style TargetType="{x:Type DatePickerTextBox}">
+                                    <Setter Property="Control.Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="{x:Type DatePickerTextBox}">
+                                                <!-- BorderThickness/Background: was BorderThickness="1"
+                                                     BorderBrush="SoftControlBorderBrush" Background="White",
+                                                     which drew a visible nested border/box around just the
+                                                     text portion, distinct from ModernDatePicker's own outer
+                                                     Border - made transparent so only the outer control
+                                                     border shows (see GlobalStyles.xaml ModernDatePicker). -->
+                                                <TextBox x:Name="PART_TextBox" Height="{StaticResource ControlHeight}" MinWidth="200" HorizontalAlignment="Stretch" VerticalAlignment="Center" VerticalContentAlignment="Center" BorderThickness="0" Background="Transparent" Padding="4,0,4,0" Text="{Binding Path=SelectedDate,
+                                            RelativeSource={RelativeSource AncestorType={x:Type DatePicker}},
+                                            Converter={StaticResource NullableDateConverter},
+                                            Mode=TwoWay,
+                                            UpdateSourceTrigger=LostFocus}"/>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </DatePicker.Resources>
+                        </DatePicker>
+                        <local:ExcelRefEditControl Grid.Column="2" Height="{StaticResource ControlHeight}" MinWidth="{StaticResource RefEditMinWidth}" HorizontalAlignment="Stretch" Text="{Binding DateField.RefValue, Mode=TwoWay}" TagName="Daily Rate Currency Date Field" Margin="{StaticResource ControlMargin}" IsEnabled="{Binding DateField.IsRefEnabled}" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+                <!-- Cell Reference -->
+                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Padding="10,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Label Content="Reference :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <local:ExcelRefEditControl x:Name="CellReference" Grid.Column="1" Grid.ColumnSpan="2" Height="{StaticResource ControlHeight}" HorizontalAlignment="Stretch" Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TagName="Daily Rate Cell Reference" Margin="{StaticResource ControlMargin}" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Buttons -->
+        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="8,6">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button x:Name="btnSubmit" Style="{StaticResource InsertButtonStyle}" Click="BtnSubmit_Click" Margin="0,0,6,0"/>
+                <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Toast / Busy overlay -->
+        <local:AppOverlay x:Name="AppOverlayControl" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" Panel.ZIndex="100"/>
+    </Grid>
+</views:BaseWindow>

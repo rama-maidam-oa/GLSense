@@ -1,0 +1,31 @@
+# This drive holds many unrelated old experiment/scratch folders alongside the
+# two GLSense codebases. Only track FinalWorkingCode/ and AIPowered/ - everything
+# else at the root is ignored.
+/*
+!/FinalWorkingCode/
+!/AIPowered/
+!/.gitignore
+!/README.md
+
+# --- Build/IDE artifacts (either codebase, any depth) ---
+**/bin/
+**/obj/
+**/.vs/
+**/packages/
+**/*.user
+**/*.suo
+**/*.pdb
+
+# --- Logs (both codebases write runtime logs under a Logs/ folder) ---
+**/Logs/
+**/*.log
+
+# --- FinalWorkingCode-specific excludes ---
+/FinalWorkingCode/MigrationBackup/
+
+# --- AIPowered-specific excludes: bkpup1/bkpup2 are the user's own manual
+# whole-solution backups taken before/during the multi-project rewrite. Now that
+# this is under version control, git history replaces the need for them, so
+# they're left on disk but not tracked. Revisit if you want them tracked instead. ---
+/AIPowered/bkpup1/
+/AIPowered/bkpup2/
