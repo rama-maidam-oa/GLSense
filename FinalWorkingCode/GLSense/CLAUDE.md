@@ -5,6 +5,32 @@ happens in AIPowered (see that project's `CLAUDE.md` for the full log and the re
 behind each fix); the two items below were explicitly reported as bugs in **both**
 codebases and mirrored here identically.
 
+## `Utilities\DpiAwareWindow.cs`
+
+- **Windows not centered on screen in the shipped MSI**: `WindowStartupLocation="CenterOwner"`
+  (set per-window in XAML, or via `WindowHelper.SetExcelAsOwner`) only centers a window
+  once, at the moment WPF applies it. Two methods in this base class can resize the window
+  afterward without ever recalculating position: `FitToAvailableWorkArea()` (runs once from
+  `OnLoaded`, can shrink Width/Height to fit the screen's work area based on measured content
+  size) and `EnsureFitsWorkArea()` (runs on every `OnRenderSizeChanged` - e.g. a DataGrid
+  populating with data after an async load, or a DPI change - clamps Width/Height against
+  Min/Max bounds). Both only ever changed Width/Height, never Left/Top, so a resize always
+  grew/shrank anchored at the window's current top-left corner - the window's true center
+  silently drifted away from wherever `CenterOwner` originally centered it.
+  Fixed by adding `RecenterAfterSizeChange(previousLeft, previousTop, previousWidth,
+  previousHeight)`: both methods now capture Left/Top/Width/Height before making their
+  change, and if they actually changed the size, recenter around the same center point
+  afterward (clamped so it can't be pushed off the visible work area). This is scoped
+  narrowly - it only fires when these two methods themselves changed the size, so a plain
+  user drag-resize (`ResizeMode="CanResize"`, used by nearly every window here) is
+  completely unaffected, since `EnsureFitsWorkArea` only reassigns Width/Height when a drag
+  actually violates Min/MaxWidth/Height (in which case recentering after the forced clamp
+  is correct anyway).
+  **Status: fixed in FinalWorkingCode only so far** - port the same two-method change to
+  AIPowered's `GLSense.Addin.Core\Views\BaseWindow.cs` (`CenterWindowInExcel()`,
+  `FitToAvailableWorkArea()`, `ForceSizeToContentResettle()` there have the identical
+  resize-without-recenter shape) once confirmed working here.
+
 ## `ViewModels\GLConfiguratorViewModel.cs`
 
 - **Journal Source/Category always disabled**: `GetFieldValue()`'s `RefValue` branch

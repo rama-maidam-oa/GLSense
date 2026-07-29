@@ -473,18 +473,89 @@ namespace GLSense.Utilities
                 var targetWidth = Math.Min(desiredWidth * fitScale, availableWidth);
                 var targetHeight = Math.Min(desiredHeight * fitScale, availableHeight);
 
-                if (targetWidth > 0)
-                    Width = targetWidth;
+                // Capture the size/position as they stood before this method changes them,
+                // so we can recenter around the same center point afterward (see
+                // RecenterAfterSizeChange for why this matters - WindowStartupLocation only
+                // centers the window once, and any resize after that anchors at the current
+                // Left/Top, silently drifting the window off-center as it grows/shrinks).
+                double previousLeft = Left;
+                double previousTop = Top;
+                double previousWidth = Width;
+                double previousHeight = Height;
+                bool sizeChanged = false;
 
-                if (targetHeight > 0)
+                if (targetWidth > 0 && Math.Abs(targetWidth - previousWidth) > 0.5)
+                {
+                    Width = targetWidth;
+                    sizeChanged = true;
+                }
+
+                if (targetHeight > 0 && Math.Abs(targetHeight - previousHeight) > 0.5)
+                {
                     Height = targetHeight;
+                    sizeChanged = true;
+                }
 
                 MaxWidth = availableWidth;
                 MaxHeight = availableHeight;
+
+                if (sizeChanged)
+                    RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "DpiAwareWindow.FitToAvailableWorkArea");
+            }
+        }
+
+        /// <summary>
+        /// Recenters the window around the same center point it had before Width/Height
+        /// were just changed by FitToAvailableWorkArea/EnsureFitsWorkArea, instead of
+        /// leaving Left/Top untouched. A resize always grows/shrinks anchored at the
+        /// window's current top-left corner, so without this, any post-centering resize
+        /// (e.g. content growing once async data finishes loading, or the safety clamp in
+        /// EnsureFitsWorkArea kicking in) silently drifts the window's true center away
+        /// from wherever WindowStartupLocation originally centered it (typically
+        /// CenterOwner against the Excel window) - this was the root cause of windows
+        /// appearing off-center in the shipped MSI. Only called when this class itself
+        /// changed Width/Height; never touches Left/Top for a plain user-initiated
+        /// drag-resize (ResizeMode="CanResize"), since that doesn't go through either of
+        /// those two methods unless the drag actually violates Min/MaxWidth/Height, in
+        /// which case re-centering after the forced clamp is the correct behavior anyway.
+        /// </summary>
+        private void RecenterAfterSizeChange(double previousLeft, double previousTop, double previousWidth, double previousHeight)
+        {
+            try
+            {
+                if (double.IsNaN(previousLeft) || double.IsNaN(previousTop) ||
+                    double.IsNaN(previousWidth) || double.IsNaN(previousHeight) ||
+                    previousWidth <= 0 || previousHeight <= 0 ||
+                    double.IsNaN(Width) || double.IsNaN(Height) ||
+                    Width <= 0 || Height <= 0)
+                {
+                    return;
+                }
+
+                double centerX = previousLeft + (previousWidth / 2.0);
+                double centerY = previousTop + (previousHeight / 2.0);
+
+                double newLeft = centerX - (Width / 2.0);
+                double newTop = centerY - (Height / 2.0);
+
+                // Clamp so recentering never pushes the window off the visible work area
+                // (e.g. if the old center point was near a screen edge).
+                var workArea = SystemParameters.WorkArea;
+                if (Width < workArea.Width)
+                    newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - Width));
+                if (Height < workArea.Height)
+                    newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - Height));
+
+                Left = newLeft;
+                Top = newTop;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "DpiAwareWindow.RecenterAfterSizeChange");
             }
         }
 
@@ -575,6 +646,12 @@ namespace GLSense.Utilities
             var margin = marginOverride ?? WorkAreaMargin;
             try
             {
+                double previousLeft = Left;
+                double previousTop = Top;
+                double previousWidth = Width;
+                double previousHeight = Height;
+                bool sizeChanged = false;
+
                 var workArea = SystemParameters.WorkArea;
 
                 var baseMaxWidth = Math.Max(0, workArea.Width - margin);
@@ -621,20 +698,30 @@ namespace GLSense.Utilities
                 if (Width > effectiveMaxWidth)
                 {
                     Width = effectiveMaxWidth;
+                    sizeChanged = true;
                 }
                 else if (Width < MinWidth)
                 {
                     Width = MinWidth;
+                    sizeChanged = true;
                 }
 
                 if (Height > effectiveMaxHeight)
                 {
                     Height = effectiveMaxHeight;
+                    sizeChanged = true;
                 }
                 else if (Height < MinHeight)
                 {
                     Height = MinHeight;
+                    sizeChanged = true;
                 }
+
+                // Only recenter when this method itself just forced a clamp - a plain
+                // user drag-resize (ResizeMode="CanResize") stays within Min/MaxWidth/Height
+                // and never reaches here, so ordinary manual resizing is left untouched.
+                if (sizeChanged)
+                    RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
             }
             catch (Exception ex)
             {
