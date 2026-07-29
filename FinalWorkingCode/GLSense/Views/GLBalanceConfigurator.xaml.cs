@@ -182,12 +182,19 @@ namespace GLSense.Views
             {
                 if (vm == null) return;
 
-                // Determine allowed range from Periods collection
+                // Determine allowed range from Periods collection. Take the actual min
+                // StartDate / max EndDate across the whole collection rather than assuming
+                // Periods[0]/Periods[last] are the earliest/latest - custom fiscal calendars
+                // (e.g. a "GOV Calendar" period set starting in July instead of January, or
+                // one a user has shifted to start in a different quarter) are not guaranteed
+                // to come back from the repository in chronological order, so relying on
+                // list position silently truncated the selectable range to whatever period
+                // happened to be first/last in the query result instead of the true bounds.
                 if (vm.Periods == null || vm.Periods.Count == 0)
                     return;
 
-                DateTime minDate = vm.Periods[0].StartDate.Date;
-                DateTime maxDate = vm.Periods[vm.Periods.Count - 1].EndDate.Date;
+                DateTime minDate = vm.Periods.Min(p => p.StartDate).Date;
+                DateTime maxDate = vm.Periods.Max(p => p.EndDate).Date;
 
                 if (sender is DatePicker dp)
                 {
