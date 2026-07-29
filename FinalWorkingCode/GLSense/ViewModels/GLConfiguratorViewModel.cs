@@ -816,6 +816,30 @@ namespace GLSense.ViewModels
             long ledgerId = ledger.LedgerId;
             long coaid = ledger.Coaid;
 
+            // Force a fresh pull of ledger setup data (Periods, Activity, Currencies, etc.)
+            // from the source system every time the configurator loads for a ledger, instead
+            // of relying on whatever was cached the first time this ledger was ever opened.
+            // Some ledgers use custom fiscal calendars that get extended with new future
+            // periods over time (e.g. a "GOV Calendar" period set growing past its original
+            // last period); without this refresh, PERIODS (and the other tables below) stayed
+            // frozen at whatever was cached on first load, so the Start/End Date pickers in
+            // GLBalanceConfigurator silently capped out at stale data even though the source
+            // system had newer periods available.
+            // LedgerDataRepository.InsertLedgerDataAsync (called at the end of this pipeline)
+            // already does a proper DELETE-then-INSERT per cubeId/ledgerId/table (see its
+            // ClearExistingData step), so it's safe to invoke on every load, not just the first.
+            // Failures here (e.g. offline, API error) are logged and swallowed so the
+            // configurator still falls back to whatever is already cached instead of blocking.
+            try
+            {
+                using var refreshCts = new CancellationHelper();
+                await CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, refreshCts.GetToken());
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"GLConfiguratorViewModel.LoadDataAsync: failed to refresh ledger setup data from source for CubeId={cubeId}, LedgerId={ledgerId}; falling back to cached data.");
+            }
+
             var tasks = new Task<object>[]
             {
                 Task.Run(() => (object)repo.GetSegments(cubeId, ledgerId)),
