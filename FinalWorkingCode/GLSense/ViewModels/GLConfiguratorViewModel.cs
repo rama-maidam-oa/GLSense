@@ -830,13 +830,21 @@ namespace GLSense.ViewModels
             // ClearExistingData step), so it's safe to invoke on every load, not just the first.
             // Failures here (e.g. offline, API error) are logged and swallowed so the
             // configurator still falls back to whatever is already cached instead of blocking.
+            //
+            // TEMP DIAGNOSTIC (LogWarn, so it shows up even without ribbon Debug mode enabled) -
+            // remove once the periods-refresh symptom is confirmed fixed:
+            int periodsCountBeforeDiag = DataRepository.GetTableItemsCount(cubeId, ledgerId, "PERIODS");
+            LogUtility.LogWarn($"[PeriodsRefreshDiag] LoadDataAsync: CubeId={cubeId}, LedgerId={ledgerId}. Cached PERIODS row count BEFORE refresh attempt: {periodsCountBeforeDiag}.");
             try
             {
                 using var refreshCts = new CancellationHelper();
                 await CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, refreshCts.GetToken());
+                int periodsCountAfterDiag = DataRepository.GetTableItemsCount(cubeId, ledgerId, "PERIODS");
+                LogUtility.LogWarn($"[PeriodsRefreshDiag] LoadDataAsync: CubeId={cubeId}, LedgerId={ledgerId}. Refresh call completed without throwing. Cached PERIODS row count AFTER refresh: {periodsCountAfterDiag}.");
             }
             catch (Exception ex)
             {
+                LogUtility.LogWarn($"[PeriodsRefreshDiag] LoadDataAsync: CubeId={cubeId}, LedgerId={ledgerId}. Refresh call THREW: {ex.GetType().Name}: {ex.Message}");
                 LogUtility.LogException(ex, $"GLConfiguratorViewModel.LoadDataAsync: failed to refresh ledger setup data from source for CubeId={cubeId}, LedgerId={ledgerId}; falling back to cached data.");
             }
 
