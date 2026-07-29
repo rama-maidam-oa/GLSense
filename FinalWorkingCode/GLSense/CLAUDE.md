@@ -26,10 +26,9 @@ codebases and mirrored here identically.
   completely unaffected, since `EnsureFitsWorkArea` only reassigns Width/Height when a drag
   actually violates Min/MaxWidth/Height (in which case recentering after the forced clamp
   is correct anyway).
-  **Status: fixed in FinalWorkingCode only so far** - port the same two-method change to
-  AIPowered's `GLSense.Addin.Core\Views\BaseWindow.cs` (`CenterWindowInExcel()`,
-  `FitToAvailableWorkArea()`, `ForceSizeToContentResettle()` there have the identical
-  resize-without-recenter shape) once confirmed working here.
+  **Status: confirmed working, ported to AIPowered.** See AIPowered's `CLAUDE.md` for the
+  equivalent write-up in `BaseWindow.cs` (`CenterWindowInExcel()`, `FitToAvailableWorkArea()`,
+  `ForceSizeToContentResettle()`), which had the identical resize-without-recenter shape.
 
 ## `ViewModels\GLConfiguratorViewModel.cs`
 
@@ -88,6 +87,16 @@ looked like) - it applies here verbatim.
   `Task.Run`-wrapped SQLite write), so it doesn't block the UI thread; failures (e.g.
   offline) are caught and logged, and the configurator falls back to whatever was already
   cached rather than blocking the user.
+  Verified via temporary `LogWarn` diagnostics (logged the cached PERIODS row count before
+  and after the refresh call, regardless of ribbon Debug mode) - confirmed the refresh runs
+  and completes without throwing, and the row count/date range is unchanged (176 rows,
+  through 2028-06-30) before and after. That, plus a direct read of the live source dates,
+  showed there was no remaining caching bug: the "-28" suffix in this ledger's period names
+  is a fiscal-year label (FY28 = Jul 2027-Jun 2028), not a calendar year, so e.g. "DEC-28" is
+  real calendar December 2027 (already well within the selectable range), and the genuinely
+  missing months are real Jul-Dec 2028, which belong to the next fiscal year (FY29) and don't
+  exist in the source system yet - a data/calendar-setup gap upstream, not an app bug. The
+  diagnostic `LogWarn` calls have been removed now that this is confirmed.
   **Status: fixed in FinalWorkingCode only so far** - port both this fix and the Min/Max
   fix above to AIPowered's identical `GLSense.Addin.Core\Views\GLBalanceConfigurator.xaml.cs`
-  / `GLConfiguratorViewModel.cs` once confirmed working here.
+  / `GLConfiguratorViewModel.cs` once requested.

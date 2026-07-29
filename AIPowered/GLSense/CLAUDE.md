@@ -4035,6 +4035,59 @@ rebuilt/tested by the user - no Windows/MSBuild toolchain available in this envi
 
 ---
 
+## 33. Windows not centered on screen in the shipped MSI (ported from FinalWorkingCode - fixed in **both** codebases)
+
+Reported as a bug against the FinalWorkingCode MSI build, but `BaseWindow.cs` here has the
+identical root cause and was fixed the same way once the FinalWorkingCode fix was confirmed
+working.
+
+`CenterWindowInExcel()` (called once from `OnLoaded` when `CenterInExcel` is true) computes
+`Left`/`Top` from the window's `ActualWidth`/`ActualHeight` at that instant, positioned
+against Excel's window rect. Several things can resize the window *after* that one-time
+centering, none of which ever recalculated position:
+
+- `FitToAvailableWorkArea()` (also called once from `OnLoaded`, right after
+  `CenterWindowInExcel()`) can shrink `Width`/`Height` to fit the screen's work area.
+- `ForceSizeToContentResettle()` - the mechanism built in section 1 to fix the
+  SizeToContent blank-gap saga - toggles `SizeToContent` off/on and nudges `Width`/`Height`
+  by a full pixel to force a genuine native resize. It's called up to three times per
+  window: once synchronously in `OnLoaded` (right after `FitToAvailableWorkArea()`), again
+  from `OnContentRendered` (guaranteed post-paint, per section 1.4e), and again from
+  `AdjustForDpiChange`'s `autoSized` branch on `WM_DPICHANGED`.
+
+Every one of these changes `Width`/`Height` without ever touching `Left`/`Top`, and a
+resize always grows/shrinks anchored at the window's current top-left corner - so each
+resettle call silently drifted the window further away from wherever `CenterWindowInExcel()`
+originally centered it. This is a direct side effect of section 1's own fix: the more
+reliably `ForceSizeToContentResettle()` fires post-paint to fix the blank-gap bug, the more
+reliably it also un-centers the window afterward.
+
+Fixed by adding `RecenterAfterSizeChange(previousLeft, previousTop, previousWidth,
+previousHeight, newWidth, newHeight)`: both `FitToAvailableWorkArea()` and
+`ForceSizeToContentResettle()` now capture position/size before they run, and if the size
+actually changed, reposition `Left`/`Top` to preserve the same center point afterward
+(clamped to `SystemParameters.WorkArea` so it can't be pushed off-screen). `FitToAvailableWorkArea`
+compares `Width`/`Height` directly (it assigns those DPs itself); `ForceSizeToContentResettle`
+compares `ActualWidth`/`ActualHeight` instead, since a `SizeToContent`-active window's
+`Width`/`Height` DPs aren't reliably kept in sync with its true rendered size, and
+`ActualWidth`/`ActualHeight` are only guaranteed fresh right after an `UpdateLayout()` call
+(which this method already does several times). The DPI-change path needed no separate
+handling - it already re-runs `ForceSizeToContentResettle()` for `autoSized` windows, which
+now recenters as part of that same call.
+
+Scoped narrowly: `RecenterAfterSizeChange` is only invoked from these two methods when they
+themselves changed the size, so it never interferes with `OnMouseMove`'s manual window-drag
+logic (which only touches `Left`/`Top`, never `Width`/`Height`, and isn't called from
+either of these methods).
+
+**Status: fixed in both codebases.** See FinalWorkingCode's `CLAUDE.md` (`Utilities\DpiAwareWindow.cs`)
+for the original write-up - that codebase uses native WPF `WindowStartupLocation=CenterOwner`
+instead of a custom `CenterWindowInExcel()`, but has the exact same
+resize-after-centering-without-recentering shape in its own `FitToAvailableWorkArea()`/
+`EnsureFitsWorkArea()`.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

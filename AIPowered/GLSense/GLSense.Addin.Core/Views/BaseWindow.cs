@@ -289,6 +289,23 @@ namespace GLSense.Addin.Core.Views
         {
             try
             {
+                // Capture the position/size the window had before this resettle runs, so
+                // that if the resettle actually changes its rendered size (the whole point
+                // of this method - forcing SizeToContent to regrow/reflow to real content),
+                // we can recenter it afterward instead of leaving Left/Top untouched. A
+                // resize always grows/shrinks anchored at the current top-left corner, so
+                // without this, every resettle call (there are several: once in OnLoaded,
+                // again in OnContentRendered, again from the DPI-change handler for
+                // auto-sized windows) silently drifts the window away from wherever
+                // CenterWindowInExcel originally centered it - the reported "windows not
+                // centered" MSI bug. ActualWidth/ActualHeight (not Width/Height) are used
+                // here since SizeToContent windows don't reliably keep the Width/Height DPs
+                // in sync with their true rendered size.
+                double previousLeft = this.Left;
+                double previousTop = this.Top;
+                double previousWidth = this.ActualWidth > 0 ? this.ActualWidth : this.Width;
+                double previousHeight = this.ActualHeight > 0 ? this.ActualHeight : this.Height;
+
                 var mode = this.SizeToContent;
                 this.SizeToContent = SizeToContent.Manual;
                 this.UpdateLayout();
@@ -339,6 +356,17 @@ namespace GLSense.Addin.Core.Views
                 {
                     SetWindowPos(_hwndSource.Handle, IntPtr.Zero, 0, 0, 0, 0,
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                }
+
+                if (CenterInExcel)
+                {
+                    double newWidth = this.ActualWidth > 0 ? this.ActualWidth : this.Width;
+                    double newHeight = this.ActualHeight > 0 ? this.ActualHeight : this.Height;
+
+                    if (Math.Abs(newWidth - previousWidth) > 0.5 || Math.Abs(newHeight - previousHeight) > 0.5)
+                    {
+                        RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight, newWidth, newHeight);
+                    }
                 }
 
                 ServiceLocator.Logger?.LogDebug($"[{_windowName}] SizeToContent resettled ({mode})");
@@ -408,6 +436,57 @@ namespace GLSense.Addin.Core.Views
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "CenterWindowInExcel error");
+            }
+        }
+
+        /// <summary>
+        /// Recenters the window around the same center point it had before Width/Height
+        /// just changed (in ForceSizeToContentResettle or FitToAvailableWorkArea), instead
+        /// of leaving Left/Top untouched. See ForceSizeToContentResettle's comment for the
+        /// full reasoning - this is the fix for the reported "windows not centered on
+        /// screen" bug in the shipped MSI, ported from FinalWorkingCode's identical fix in
+        /// DpiAwareWindow.cs. Takes explicit before/after width/height (rather than reading
+        /// Width/Height itself) because callers need different sources depending on
+        /// whether SizeToContent is involved: FitToAvailableWorkArea assigns the Width/Height
+        /// DPs directly, while ForceSizeToContentResettle's real size change is only
+        /// reliably observable via ActualWidth/ActualHeight once UpdateLayout() has run.
+        /// </summary>
+        private void RecenterAfterSizeChange(double previousLeft, double previousTop,
+            double previousWidth, double previousHeight, double newWidth, double newHeight)
+        {
+            try
+            {
+                if (double.IsNaN(previousLeft) || double.IsNaN(previousTop) ||
+                    double.IsNaN(previousWidth) || double.IsNaN(previousHeight) ||
+                    previousWidth <= 0 || previousHeight <= 0 ||
+                    double.IsNaN(newWidth) || double.IsNaN(newHeight) ||
+                    newWidth <= 0 || newHeight <= 0)
+                {
+                    return;
+                }
+
+                double centerX = previousLeft + (previousWidth / 2.0);
+                double centerY = previousTop + (previousHeight / 2.0);
+
+                double newLeft = centerX - (newWidth / 2.0);
+                double newTop = centerY - (newHeight / 2.0);
+
+                // Clamp so recentering never pushes the window off the visible work area
+                // (e.g. if the old center point was near a screen edge).
+                var workArea = SystemParameters.WorkArea;
+                if (newWidth < workArea.Width)
+                    newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - newWidth));
+                if (newHeight < workArea.Height)
+                    newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - newHeight));
+
+                this.Left = newLeft;
+                this.Top = newTop;
+
+                ServiceLocator.Logger?.LogDebug($"[{_windowName}] Recentered after size change: Left={newLeft}, Top={newTop}");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] RecenterAfterSizeChange error");
             }
         }
 
@@ -593,10 +672,25 @@ namespace GLSense.Addin.Core.Views
                 this.MaxWidth = Math.Min(this.MaxWidth, availableWidth);
                 this.MaxHeight = Math.Min(this.MaxHeight, availableHeight);
 
+                double previousLeft = this.Left;
+                double previousTop = this.Top;
+                double previousWidth = this.Width;
+                double previousHeight = this.Height;
+                bool sizeChanged = false;
+
                 if (this.Width > availableWidth)
+                {
                     this.Width = availableWidth;
+                    sizeChanged = true;
+                }
                 if (this.Height > availableHeight)
+                {
                     this.Height = availableHeight;
+                    sizeChanged = true;
+                }
+
+                if (sizeChanged && CenterInExcel)
+                    RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight, this.Width, this.Height);
             }
             catch (Exception ex)
             {
