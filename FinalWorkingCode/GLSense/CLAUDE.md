@@ -100,3 +100,52 @@ looked like) - it applies here verbatim.
   **Status: fixed in FinalWorkingCode only so far** - port both this fix and the Min/Max
   fix above to AIPowered's identical `GLSense.Addin.Core\Views\GLBalanceConfigurator.xaml.cs`
   / `GLConfiguratorViewModel.cs` once requested.
+
+## `Utilities\SegmentDiscoverer.cs`
+
+- **"COM object separated from its underlying RCW" on Explode All / Explode 1 Level**:
+  `SegmentAction` caches the source worksheet in a class-level field (`HrWorksheet =
+  CellActive.Worksheet`) before doing any async work. Many awaits later,
+  `CreateSingleSheetAsync` reads that cached field (`HrWorksheet?.Index`, then
+  `HrWorksheet?.Copy(...)`) - but just before that, it calls `SheetExists`/
+  `GetWorksheetByName` to check whether a sheet with the target name already exists,
+  and both of those helper methods called `ExcelComHelper.SafeRelease(ws, "Worksheet")`
+  (`Marshal.FinalReleaseComObject`) on *every* worksheet enumerated that didn't match the
+  target name - including the source sheet, since the new sheet's sanitized name is
+  essentially never equal to the source sheet's own name. Since .NET's classic COM
+  interop layer caches one RCW per underlying COM object (within the same execution
+  context), the `ws` yielded for that sheet during enumeration is the *same* wrapper as
+  the cached `HrWorksheet` field - so releasing it there detached `HrWorksheet`'s RCW
+  too, and the very next lines in the same call (`HrWorksheet?.Index`,
+  `HrWorksheet?.Copy(...)`) threw "COM object that has been separated from its
+  underlying RCW cannot be used." This was fully deterministic on the very first child
+  sheet of the very first click, not timing-dependent.
+  Fixed by removing the `SafeRelease` calls from `SheetExists`/`GetWorksheetByName`
+  entirely - both are lightweight name-lookup helpers with no long-lived object graph to
+  worry about (unlike Application/Workbook/Worksheets, which is what actually keeps
+  Excel.exe alive after close, per the section below on that topic), so they don't need
+  to force-release anything, and doing so here was unsafe given `HrWorksheet`'s lifetime.
+  Verified these two methods are called from nowhere else in the file, so this doesn't
+  affect any other code path.
+  **Status: fixed in FinalWorkingCode only so far** - AIPowered's
+  `GLSense.Addin.Core\Utilities\SegmentDiscoverer.cs` has byte-for-byte identical
+  `SheetExists`/`GetWorksheetByName`/`ExcelComHelper.SafeRelease` code and the same bug -
+  port once confirmed working here.
+
+## `ViewModels\SegmentSelectorViewModel.cs` (GLSegmentValues)
+
+- **Hierarchy field not cleared when segment changes**: `SelectedSegment`'s setter kicks
+  off `LoadSegmentValuesAsync()` for the newly selected segment, which repopulates
+  `HierarchyItems` (the Hierarchy combo's `ItemsSource`) for the new segment - but nothing
+  cleared `SelectedHierarchy` itself (the combo's bound `SelectedItem`), so after picking
+  a hierarchy value and then switching segments, the Hierarchy combo kept showing the
+  previous segment's stale selection even though it no longer applied.
+  Fixed by clearing the `_selectedHierarchy` backing field directly (not through the
+  `SelectedHierarchy` property setter) whenever `SelectedSegment` actually changes.
+  Bypassing the property setter is deliberate: setting it normally would also fire
+  `LoadHierarchySegmentValuesAsync()`, which would run concurrently with (and race
+  against) the `LoadSegmentValuesAsync()` call already firing for the newly selected
+  segment - clearing the field directly and raising `OnPropertyChanged` avoids that.
+  **Status: fixed in FinalWorkingCode only so far** - port the same fix to AIPowered's
+  equivalent view-model backing `GLSegmentValues`/`GLSegmentManager` once confirmed
+  working here.
