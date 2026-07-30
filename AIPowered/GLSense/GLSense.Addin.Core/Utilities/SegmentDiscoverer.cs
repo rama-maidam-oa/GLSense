@@ -1111,12 +1111,24 @@ namespace GLSense.Addin.Core.Utilities
         private static Excel.Worksheet? GetWorksheetByName(Excel.Workbook? wb, string sheetName)
         {
             if (wb == null || string.IsNullOrEmpty(sheetName)) return null;
+
+            // NOTE: this loop used to call ExcelComHelper.SafeRelease(ws, "Worksheet") on every
+            // non-matching sheet, which calls Marshal.FinalReleaseComObject - forcibly zeroing
+            // that sheet's RCW ref count regardless of any other outstanding references. Since
+            // .NET's COM interop layer caches one RCW per underlying COM object (within the same
+            // execution context), the "ws" yielded here for the *source* sheet is the exact same
+            // wrapper as the HrWorksheet field cached earlier in SegmentAction - so releasing it
+            // here detached HrWorksheet's RCW too, and the very next line back in
+            // CreateSingleSheetAsync (HrWorksheet?.Copy(...)) then threw "COM object that has
+            // been separated from its underlying RCW cannot be used" on the very first Explode
+            // All/Explode 1 Level click. This is a lightweight name lookup with no long-lived
+            // object graph to worry about (unlike Application/Workbook/Worksheets, which is what
+            // actually keeps Excel.exe alive after close) - it doesn't need to force-release
+            // anything, and doing so here was unsafe given HrWorksheet's lifetime.
             foreach (Excel.Worksheet ws in wb.Worksheets)
             {
                 if (string.Equals(ws.Name, sheetName, StringComparison.OrdinalIgnoreCase))
                     return ws;
-
-                ExcelComHelper.SafeRelease(ws, "Worksheet");
             }
             return null;
         }
@@ -1124,12 +1136,12 @@ namespace GLSense.Addin.Core.Utilities
         private static bool SheetExists(Excel.Workbook? wb, string sheetName)
         {
             if (wb == null || string.IsNullOrEmpty(sheetName)) return false;
+
+            // See GetWorksheetByName's comment above - same reasoning, same fix.
             foreach (Excel.Worksheet ws in wb.Worksheets)
             {
                 if (string.Equals(ws.Name, sheetName, StringComparison.OrdinalIgnoreCase))
                     return true;
-
-                ExcelComHelper.SafeRelease(ws, "Worksheet");
             }
             return false;
         }

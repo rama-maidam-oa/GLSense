@@ -119,6 +119,22 @@ namespace GLSense.Addin.Core.ViewModels
 
                 if (SetProperty(ref _selectedSegment, value))
                 {
+                    // A hierarchy selected against the PREVIOUS segment no longer means
+                    // anything once the segment changes - HierarchyItems below gets
+                    // repopulated for the new segment, but nothing was clearing the
+                    // still-selected value itself, so the Hierarchy combo (bound to
+                    // SelectedHierarchy) kept showing the old segment's stale selection.
+                    // Clear the backing field directly (rather than going through the
+                    // SelectedHierarchy property setter) so this doesn't also kick off
+                    // LoadHierarchySegmentValuesAsync's hierarchy-data fetch, which would
+                    // otherwise run concurrently with - and race against - the
+                    // LoadSegmentValuesAsync() call below for the newly selected segment.
+                    if (_selectedHierarchy != null)
+                    {
+                        _selectedHierarchy = null;
+                        OnPropertyChanged(nameof(SelectedHierarchy));
+                    }
+
                     // Load async (safe only if method does not touch UI)
                     _ = LoadSegmentValuesAsync();
 

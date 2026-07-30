@@ -127,10 +127,7 @@ looked like) - it applies here verbatim.
   to force-release anything, and doing so here was unsafe given `HrWorksheet`'s lifetime.
   Verified these two methods are called from nowhere else in the file, so this doesn't
   affect any other code path.
-  **Status: fixed in FinalWorkingCode only so far** - AIPowered's
-  `GLSense.Addin.Core\Utilities\SegmentDiscoverer.cs` has byte-for-byte identical
-  `SheetExists`/`GetWorksheetByName`/`ExcelComHelper.SafeRelease` code and the same bug -
-  port once confirmed working here.
+  **Status: confirmed working, ported to AIPowered.** See AIPowered's `CLAUDE.md` section 34.
 
 ## `ViewModels\SegmentSelectorViewModel.cs` (GLSegmentValues)
 
@@ -146,6 +143,4 @@ looked like) - it applies here verbatim.
   `LoadHierarchySegmentValuesAsync()`, which would run concurrently with (and race
   against) the `LoadSegmentValuesAsync()` call already firing for the newly selected
   segment - clearing the field directly and raising `OnPropertyChanged` avoids that.
-  **Status: fixed in FinalWorkingCode only so far** - port the same fix to AIPowered's
-  equivalent view-model backing `GLSegmentValues`/`GLSegmentManager` once confirmed
-  working here.
+  **Status: confirmed working, ported to AIPowered.** See AIPowered's `CLAUDE.md` section 35.

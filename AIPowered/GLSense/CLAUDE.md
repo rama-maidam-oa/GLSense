@@ -4088,6 +4088,58 @@ resize-after-centering-without-recentering shape in its own `FitToAvailableWorkA
 
 ---
 
+## 34. "COM object separated from its underlying RCW" on Explode All / Explode 1 Level (ported from FinalWorkingCode - fixed in **both** codebases)
+
+`Utilities\SegmentDiscoverer.cs`'s `SegmentAction` caches the source worksheet in a
+class-level field (`HrWorksheet = CellActive.Worksheet`) before doing any async work.
+Many awaits later, `CreateSingleSheetAsync` reads that cached field
+(`HrWorksheet?.Index`, then `HrWorksheet?.Copy(...)`) - but just before that, it calls
+`SheetExists`/`GetWorksheetByName` to check whether a sheet with the target name already
+exists, and both helpers called `ExcelComHelper.SafeRelease(ws, "Worksheet")`
+(`Marshal.FinalReleaseComObject`) on *every* worksheet enumerated that didn't match the
+target name - including the source sheet, since the new sheet's sanitized name is
+essentially never equal to the source sheet's own name. Since .NET's classic COM
+interop layer caches one RCW per underlying COM object (within the same execution
+context), the `ws` yielded for that sheet during enumeration is the *same* wrapper as
+the cached `HrWorksheet` field - so releasing it there detached `HrWorksheet`'s RCW too,
+and the very next lines in the same call threw "COM object that has been separated from
+its underlying RCW cannot be used." Fully deterministic on the first child sheet of the
+first click, not timing-dependent - and confirmed **not** a cross-AppDomain marshaling
+issue (unlike section 25's `SanitizeSheetName` bug): the byte-for-byte identical code in
+FinalWorkingCode, which has no AppDomain boundary at all, hits the exact same crash.
+
+Fixed by removing the `SafeRelease` calls from `SheetExists`/`GetWorksheetByName`
+entirely - both are lightweight name-lookup helpers with no long-lived object graph to
+worry about (unlike Application/Workbook/Worksheets, which is what actually keeps
+Excel.exe alive after close, per section 29), so they don't need to force-release
+anything, and doing so here was unsafe given `HrWorksheet`'s lifetime. Verified these two
+methods are called from nowhere else in the file.
+
+**Status: fixed in both codebases**, user-confirmed working in FinalWorkingCode before
+porting here.
+
+## 35. GLSegmentValues/GLSegmentManager: Hierarchy field not cleared when segment changes (ported from FinalWorkingCode - fixed in **both** codebases)
+
+`SegmentSelectorViewModel.SelectedSegment`'s setter kicks off `LoadSegmentValuesAsync()`
+for the newly selected segment, which repopulates `HierarchyItems` (the Hierarchy
+combo's `ItemsSource`) for the new segment - but nothing cleared `SelectedHierarchy`
+itself (the combo's bound `SelectedItem`), so after picking a hierarchy value and then
+switching segments, the Hierarchy combo kept showing the previous segment's stale
+selection even though it no longer applied. Since `GLSegmentManager` shares this same
+`SegmentSelectorViewModel` (see section 26/9), this affected both windows.
+
+Fixed by clearing the `_selectedHierarchy` backing field directly (not through the
+`SelectedHierarchy` property setter) whenever `SelectedSegment` actually changes.
+Bypassing the property setter is deliberate: setting it normally would also fire
+`LoadHierarchySegmentValuesAsync()`, which would run concurrently with (and race
+against) the `LoadSegmentValuesAsync()` call already firing for the newly selected
+segment - clearing the field directly and raising `OnPropertyChanged` avoids that.
+
+**Status: fixed in both codebases**, user-confirmed working in FinalWorkingCode before
+porting here.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
