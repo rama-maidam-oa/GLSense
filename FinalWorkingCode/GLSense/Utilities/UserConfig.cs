@@ -29,7 +29,9 @@ namespace GLSense.Utilities
             { "Unified_RunAsJob", _stringTrue },
             { "Manual_Journal", _stringFalse },
             // Cube validation defaults
-            { "ValidateCube", _stringFalse }
+            { "ValidateCube", _stringFalse },
+            // Drilldown metadata: default unchecked (do not overwrite with locally saved metadata)
+            { "OverwriteDrilldownMetadata", _stringFalse }
         };
 
         private static void EnsureLoaded()
@@ -175,6 +177,14 @@ namespace GLSense.Utilities
         {
             get => bool.TryParse(Get("Unified_RunAsJob"), out bool v) && v;
             set => Set("Unified_RunAsJob", value.ToString());
+        }
+
+        // Drilldown metadata: overwrite server-fetched drilldown metadata with the copy saved
+        // locally via GLDrilldownCustomization's "Save Locally" button (see DDDatatoWorksheet.ExtractMetadata).
+        public static bool OverwriteDrilldownMetadata
+        {
+            get => bool.TryParse(Get("OverwriteDrilldownMetadata"), out bool v) && v;
+            set => Set("OverwriteDrilldownMetadata", value.ToString());
         }
     }
 }

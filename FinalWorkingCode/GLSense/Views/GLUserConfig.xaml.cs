@@ -31,6 +31,7 @@ namespace GLSense.Views
         private bool _runTotalDrilldownAsJob;
         private bool _runJournalDrilldownAsJob;
         private bool _includeManualJournal;
+        private bool? _overwriteDrilldownMetadata;
         private CancellationHelper? _activeCancellation;
         private string _baselineDataOption = string.Empty;
         private bool _baselineSuppressZeroes;
@@ -42,6 +43,7 @@ namespace GLSense.Views
         private bool _baselineRunTotalDrilldownAsJob;
         private bool _baselineRunJournalDrilldownAsJob;
         private bool _baselineIncludeManualJournal;
+        private bool _baselineOverwriteDrilldownMetadata;
         private readonly string balanceDrilldownName = "Balance Drilldown";
         private readonly string journalDrilldownName = "Journal Drilldown";
         private readonly string subLedgerDrilldownName = "SubLedger Drilldown";
@@ -307,6 +309,7 @@ namespace GLSense.Views
             _runSubLedgerDrilldownAsJob = firstRecord.Preferences.RunSubLedgerDrilldownAsJob ?? false;
             _runTotalDrilldownAsJob = firstRecord.Preferences.RunTotalDrilldownAsJob ?? false;
             _includeManualJournal = firstRecord.Preferences.IncludeManualJournal ?? false;
+            _overwriteDrilldownMetadata = firstRecord.Preferences.OverwriteDrilldownMetadata ?? false;
 
             UserConfig.DataOption = _dataOption ?? string.Empty;
             UserConfig.SupressZeroBalDrilldown = _suppressZeroes ?? false;
@@ -318,6 +321,7 @@ namespace GLSense.Views
             UserConfig.SubLedger_RunAsJob = _runSubLedgerDrilldownAsJob;
             UserConfig.SubLedger_Manual_Journal = _includeManualJournal;
             UserConfig.Unified_RunAsJob = _runTotalDrilldownAsJob;
+            UserConfig.OverwriteDrilldownMetadata = _overwriteDrilldownMetadata ?? false;
             UserConfig.DrillDownSettings = DrillDowns.ToList();
 
             await Dispatcher.InvokeAsync(() =>
@@ -327,6 +331,7 @@ namespace GLSense.Views
                 SpinnerRefreshCells.Value = _refreshCells ?? 100;
                 SpinnerRecordsPerPage.Value = _recordsPerPage ?? 100;
                 ChkValidateCube.IsChecked = _validateCube;
+                ChkOverwriteDrilldownMetadata.IsChecked = _overwriteDrilldownMetadata;
                 var balanceDrilldown = DrillDowns.FirstOrDefault(d => d.Name == balanceDrilldownName);
                 if (balanceDrilldown != null)
                 {
@@ -558,6 +563,7 @@ namespace GLSense.Views
                 UserConfig.SubLedger_RunAsJob = _runSubLedgerDrilldownAsJob;
                 UserConfig.SubLedger_Manual_Journal = _includeManualJournal;
                 UserConfig.Unified_RunAsJob = _runTotalDrilldownAsJob;
+                UserConfig.OverwriteDrilldownMetadata = _overwriteDrilldownMetadata ?? false;
                 UserConfig.DrillDownSettings = DrillDowns.ToList();
 
                 await ShowBusyOverlayAsync(cts, "Saving user preferences...");
@@ -576,7 +582,8 @@ namespace GLSense.Views
                         refreshCells = (_refreshCells ?? 100).ToString(),
                         runJournalDrilldownAsJob = _runJournalDrilldownAsJob.ToString().ToLowerInvariant(),
                         dataOption = _dataOption ?? string.Empty,
-                        includeManualJournal = _includeManualJournal.ToString().ToLowerInvariant()
+                        includeManualJournal = _includeManualJournal.ToString().ToLowerInvariant(),
+                        overwriteDrilldownMetadata = (_overwriteDrilldownMetadata ?? false).ToString().ToLowerInvariant()
                     }
                 };
 
@@ -783,6 +790,15 @@ namespace GLSense.Views
         {
             _validateCube = false;
         }
+        private void ChkOverwriteDrilldownMetadata_Checked(object sender, RoutedEventArgs e)
+        {
+            _overwriteDrilldownMetadata = true;
+        }
+
+        private void ChkOverwriteDrilldownMetadata_Unchecked(object sender, RoutedEventArgs e)
+        {
+            _overwriteDrilldownMetadata = false;
+        }
         private void SpinnerRefreshCells_ValueChanged(object sender, RoutedPropertyChangedEventArgs<int> e)
         {
             _refreshCells = e.NewValue;
@@ -804,12 +820,14 @@ namespace GLSense.Views
             _runSubLedgerDrilldownAsJob = UserConfig.SubLedger_RunAsJob;
             _includeManualJournal = UserConfig.SubLedger_Manual_Journal;
             _runTotalDrilldownAsJob = UserConfig.Unified_RunAsJob;
+            _overwriteDrilldownMetadata = UserConfig.OverwriteDrilldownMetadata;
 
             SpinnerRefreshCells.Value = _refreshCells ?? 100;
             SpinnerRecordsPerPage.Value = _recordsPerPage ?? 100;
             SetOptionsComboFromState();
             ChkZeroes.IsChecked = _suppressZeroes;
             ChkValidateCube.IsChecked = _validateCube;
+            ChkOverwriteDrilldownMetadata.IsChecked = _overwriteDrilldownMetadata;
 
             var balanceDrilldown = DrillDowns.FirstOrDefault(d => d.Name == balanceDrilldownName);
             if (balanceDrilldown != null)
@@ -933,10 +951,12 @@ namespace GLSense.Views
             _runSubLedgerDrilldownAsJob = false;
             _includeManualJournal = false;
             _runTotalDrilldownAsJob = false;
+            _overwriteDrilldownMetadata = false;
 
             CmbOptions.Text = _dataOption;
             ChkZeroes.IsChecked = _suppressZeroes;
             ChkValidateCube.IsChecked = _validateCube;
+            ChkOverwriteDrilldownMetadata.IsChecked = _overwriteDrilldownMetadata;
             SpinnerRefreshCells.Value = _refreshCells ?? 100;
             SpinnerRecordsPerPage.Value = _recordsPerPage ?? 100;
 
@@ -980,6 +1000,7 @@ namespace GLSense.Views
             UserConfig.SubLedger_RunAsJob = _runSubLedgerDrilldownAsJob;
             UserConfig.SubLedger_Manual_Journal = _includeManualJournal;
             UserConfig.Unified_RunAsJob = _runTotalDrilldownAsJob;
+            UserConfig.OverwriteDrilldownMetadata = _overwriteDrilldownMetadata ?? false;
             UserConfig.DrillDownSettings = DrillDowns.ToList();
             CaptureCurrentPreferencesAsBaseline();
         }
@@ -990,6 +1011,7 @@ namespace GLSense.Views
             _recordsPerPage = SpinnerRecordsPerPage.Value;
             _suppressZeroes = ChkZeroes.IsChecked ?? false;
             _validateCube = ChkValidateCube.IsChecked ?? false;
+            _overwriteDrilldownMetadata = ChkOverwriteDrilldownMetadata.IsChecked ?? false;
 
             if (CmbOptions.SelectedItem is OptionItem opt)
             {
@@ -1015,6 +1037,7 @@ namespace GLSense.Views
             _baselineRunSubLedgerDrilldownAsJob = _runSubLedgerDrilldownAsJob;
             _baselineIncludeManualJournal = _includeManualJournal;
             _baselineRunTotalDrilldownAsJob = _runTotalDrilldownAsJob;
+            _baselineOverwriteDrilldownMetadata = _overwriteDrilldownMetadata ?? false;
         }
 
         private bool HasPreferenceChanges()
@@ -1028,7 +1051,8 @@ namespace GLSense.Views
                 || _baselineRunJournalDrilldownAsJob != _runJournalDrilldownAsJob
                 || _baselineRunSubLedgerDrilldownAsJob != _runSubLedgerDrilldownAsJob
                 || _baselineIncludeManualJournal != _includeManualJournal
-                || _baselineRunTotalDrilldownAsJob != _runTotalDrilldownAsJob;
+                || _baselineRunTotalDrilldownAsJob != _runTotalDrilldownAsJob
+                || _baselineOverwriteDrilldownMetadata != (_overwriteDrilldownMetadata ?? false);
         }
 
         private void SyncDrilldownSelections()

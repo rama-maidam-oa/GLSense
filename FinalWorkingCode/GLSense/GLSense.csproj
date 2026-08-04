@@ -118,6 +118,7 @@
     <Compile Include="Bindings\FieldBinding.cs" />
     <Compile Include="Caching\CachedFormulaEntry.cs" />
     <Compile Include="Common\DrilldownMetadata.cs" />
+    <Compile Include="Common\DrilldownMetadataXmlStore.cs" />
     <Compile Include="Common\DrilldownType.cs" />
     <Compile Include="Common\EnumExtensions.cs" />
     <Compile Include="Controls\NumericSpinner.cs" />

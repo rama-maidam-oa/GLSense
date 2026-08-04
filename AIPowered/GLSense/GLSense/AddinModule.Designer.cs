@@ -59,11 +59,6 @@ namespace GLSense
             this.adxRibbonMenuSeparator1 = new AddinExpress.MSO.ADXRibbonMenuSeparator(this.components);
             this.RigSegDiscover = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibSegProperty = new AddinExpress.MSO.ADXRibbonButton(this.components);
-            // RibSegmentExpand: was an ADXRibbonMenu ("Hierarchy") hosting two
-            // ADXRibbonButton menu items (RibExpandAll / RibbonExpand1Level). Per the
-            // GLExpandOptions redesign, it is now a single ADXRibbonButton that opens that
-            // dialog - Expand-All-vs-1-Level and By-Rows-vs-By-Columns are chosen there
-            // instead of via two separate ribbon buttons.
             this.RibSegmentExpand = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibSegmentExplode = new AddinExpress.MSO.ADXRibbonMenu(this.components);
             this.RibExpodeAll = new AddinExpress.MSO.ADXRibbonButton(this.components);
@@ -108,8 +103,8 @@ namespace GLSense
             this.RibSegment = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibNextSegment = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibPreviousSegment = new AddinExpress.MSO.ADXRibbonButton(this.components);
-            this.RibSegmentDFF = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibSegmentAccountType = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibSegmentDFF = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonMenuSeparator4 = new AddinExpress.MSO.ADXRibbonMenuSeparator(this.components);
             this.RibPeriod = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibPeriodbyDate = new AddinExpress.MSO.ADXRibbonButton(this.components);
@@ -217,6 +212,7 @@ namespace GLSense
             this.ImageList_32X32.Images.SetKeyName(30, "PeriodEnd_32.png");
             this.ImageList_32X32.Images.SetKeyName(31, "PeriodStart_32.png");
             this.ImageList_32X32.Images.SetKeyName(32, "SegmentDescriptiveField_32.png");
+            this.ImageList_32X32.Images.SetKeyName(33, "deleteDrilldowns.png");
             // 
             // orbittab
             // 
@@ -488,9 +484,9 @@ namespace GLSense
             this.RibSegProperty.ScreenTip = "Discover";
             this.RibSegProperty.SuperTip = "Generates the information related to the selected segment value.";
             this.RibSegProperty.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibSegProperty_OnClick);
-            //
+            // 
             // RibSegmentExpand
-            //
+            // 
             this.RibSegmentExpand.Caption = "Hierarchy";
             this.RibSegmentExpand.Id = "adxRibbonMenu_4421e85230bf4e8aba75f2ae2464aa53";
             this.RibSegmentExpand.Image = 16;
@@ -500,7 +496,7 @@ namespace GLSense
             this.RibSegmentExpand.ScreenTip = "Hierarchy Expand";
             this.RibSegmentExpand.SuperTip = "Opens the Expand options dialog (level + row/column fill direction).";
             this.RibSegmentExpand.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibSegmentExpand_OnClick);
-            //
+            // 
             // RibSegmentExplode
             // 
             this.RibSegmentExplode.Caption = "Explode";
@@ -1029,19 +1025,6 @@ namespace GLSense
     "reviousSegment(Segment Value, Segment Name or Segment Sequence number).";
             this.RibPreviousSegment.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibPreviousSegment_OnClick);
             // 
-            // RibSegmentDFF
-            // 
-            this.RibSegmentDFF.Caption = "Descriptive Flex Field";
-            this.RibSegmentDFF.Id = "adxRibbonButton_025131aec69f412fac43e6773a459c12";
-            this.RibSegmentDFF.Image = 39;
-            this.RibSegmentDFF.ImageList = this.ImageList_16X16;
-            this.RibSegmentDFF.ImageTransparentColor = System.Drawing.Color.Transparent;
-            this.RibSegmentDFF.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
-            this.RibSegmentDFF.ScreenTip = "Descriptive Flex Field";
-            this.RibSegmentDFF.SuperTip = "Returns descriptive flex field of the selected segment value. Formula:=GLSense_Ge" +
-    "tSegmentDFF(Segment Value, Segment Name or Segment Sequence number, Attribute).";
-            this.RibSegmentDFF.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibSegmentDFF_OnClick);
-            // 
             // RibSegmentAccountType
             // 
             this.RibSegmentAccountType.Caption = "Account Type";
@@ -1054,6 +1037,19 @@ namespace GLSense
             this.RibSegmentAccountType.SuperTip = "Gives the segment account type. Formula:=GLSense_GetAccountType(Account Value, Se" +
     "gment Name or Segment Sequence number, Selected Ledger)";
             this.RibSegmentAccountType.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibSegmentAccountType_OnClick);
+            // 
+            // RibSegmentDFF
+            // 
+            this.RibSegmentDFF.Caption = "Descriptive Flex Field";
+            this.RibSegmentDFF.Id = "adxRibbonButton_025131aec69f412fac43e6773a459c12";
+            this.RibSegmentDFF.Image = 39;
+            this.RibSegmentDFF.ImageList = this.ImageList_16X16;
+            this.RibSegmentDFF.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibSegmentDFF.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibSegmentDFF.ScreenTip = "Descriptive Flex Field";
+            this.RibSegmentDFF.SuperTip = "Returns descriptive flex field of the selected segment value. Formula:=GLSense_Ge" +
+    "tSegmentDFF(Segment Value, Segment Name or Segment Sequence number, Attribute).";
+            this.RibSegmentDFF.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibSegmentDFF_OnClick);
             // 
             // adxRibbonMenuSeparator4
             // 

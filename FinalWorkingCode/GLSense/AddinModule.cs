@@ -9,6 +9,7 @@ using GLSense.Views;
 using Microsoft.Office.Interop.Excel;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Data;
 using System.Data.SQLite;
 using System.Diagnostics;
@@ -2198,6 +2199,41 @@ namespace GLSense
             });
         }
 
+        private void RibDDDeleteConfiguration_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            LogUtility.LogDebug("RibDDDeleteConfiguration_OnClick clicked.");
+
+            if (AppState.Instance.SelectedCube == null)
+            {
+                CommonFunctions.GLSenseMessage("No cube selected. Please select a cube first.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                return;
+            }
+
+            long cubeId = AppState.Instance.SelectedCube.CubeId;
+
+            try
+            {
+                var wb = AppState.Instance.ExcelApp?.ActiveWorkbook;
+                bool deleted = GLSense.Common.DrilldownMetadataXmlStore.Delete(wb, cubeId);
+
+                if (deleted)
+                {
+                    LogUtility.LogDebug($"RibDDDeleteConfiguration_OnClick: deleted saved drilldown customization for cubeId={cubeId}.");
+                    CommonFunctions.GLSenseMessage("Saved drilldown customization deleted successfully.", MessageBoxIcon.Information, MessageBoxButtons.OK);
+                }
+                else
+                {
+                    LogUtility.LogDebug($"RibDDDeleteConfiguration_OnClick: no saved drilldown customization found for cubeId={cubeId}.");
+                    CommonFunctions.GLSenseMessage("No saved drilldown customization exists for the current cube.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "RibDDDeleteConfiguration_OnClick");
+                CommonFunctions.GLSenseMessage("Failed to delete the saved drilldown customization.", MessageBoxIcon.Error, MessageBoxButtons.OK);
+            }
+        }
+
         private static async Task RunBalanceDrilldownAsync(string ddType)
         {
             try
@@ -2457,6 +2493,24 @@ namespace GLSense
             if (AppState.Instance.DefaultSegment == null || string.IsNullOrEmpty(AppState.Instance.DefaultSegment) || AppState.Instance.SegmentPickedIndex < 0)
             {
                 CommonFunctions.GLSenseMessage("Please select a segment from the dropdown.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                return;
+            }
+
+            //If the selection is a single cell we will validate if its a summary account or not and if its a summary account
+            //we will display the GLExpandOptions window. If its not a summary account we will directly call
+            //the SegmentAction method to expand the segment.
+
+            Excel.Range selection = GetSelection();
+
+            if (selection == null) {
+                CommonFunctions.GLSenseMessage("Please select a cell with a segment value.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                return;
+            }
+
+            string activeCellValue = selection?.Value2?.ToString().Trim();
+
+            if (activeCellValue == null) {
+                CommonFunctions.GLSenseMessage("Active cell is empty. Please select a cell with a segment value.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
                 return;
             }
 
@@ -2778,6 +2832,23 @@ namespace GLSense
         private void RibLogout_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             LogUtility.LogDebug("RibLogout_OnClick clicked.");
+
+            // Captured BEFORE invoking XLEdge's logoff below, and threaded through to
+            // GetLogoutResponseAsync explicitly, rather than letting that method re-read
+            // AppState.Instance.LoginUrl fresh. XLEdge's logoff (invoked via InvokeMember
+            // just below) is fire-and-forget on its side (LogoffFromAddin -> "_ =
+            // LogoffFromAddinAsync()", never awaited here) and eventually calls back into
+            // this add-in's own LogoutSession() -> LoggOff() -> AppState.Instance.Reset(),
+            // which blanks every writable AppState property including LoginUrl via
+            // reflection. Since that callback runs concurrently with GLSenseLogout() below
+            // with no ordering guarantee, GetLogoutResponseAsync could previously race
+            // against it and build its request URL AFTER LoginUrl had already been reset to
+            // null - producing a bare "/web/secure/applogout" with no host, which HttpClient
+            // then rejected as "not an absolute URI". Capturing the URL here, before either
+            // logout path can touch AppState, makes this call immune to that race regardless
+            // of which side wins it.
+            string loginUrlAtLogout = AppState.Instance.LoginUrl;
+
             try
             {
                 object edgeAddin = AddinModule.GetEdgeAddinInstance();
@@ -2787,10 +2858,10 @@ namespace GLSense
             {
                 LogUtility.LogException(ex, "Exception while logging out from XLEdge via GLSense!");
             }
-            GLSenseLogout();
+            GLSenseLogout(loginUrlAtLogout);
         }
 
-        private void GLSenseLogout()
+        private void GLSenseLogout(string loginUrlAtLogout)
         {
             using var ctsHelper = new CancellationHelper();
             var token = ctsHelper.GetToken();
@@ -2800,7 +2871,7 @@ namespace GLSense
             try
             {
                 HideTaskPanes();
-                (message, icon) = Task.Run(() => GetLogoutResponseAsync(token)).GetAwaiter().GetResult();
+                (message, icon) = Task.Run(() => GetLogoutResponseAsync(loginUrlAtLogout, token)).GetAwaiter().GetResult();
             }
             catch (OperationCanceledException)
             {
@@ -2821,9 +2892,9 @@ namespace GLSense
             }
         }
 
-        private static async Task<(string Message, MessageBoxIcon Icon)> GetLogoutResponseAsync(CancellationToken token)
+        private static async Task<(string Message, MessageBoxIcon Icon)> GetLogoutResponseAsync(string loginUrl, CancellationToken token)
         {
-            var apiUrl = $"{AppState.Instance.LoginUrl}{AppConstants.WebSecure}applogout";
+            var apiUrl = $"{loginUrl}{AppConstants.WebSecure}applogout";
 
             LogUtility.LogDebug(apiUrl);
 

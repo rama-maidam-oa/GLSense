@@ -464,6 +464,10 @@ namespace GLSense.Models
         [JsonConverter(typeof(StringToBoolConverter))]
         [JsonPropertyName("includeManualJournal")]
         public bool? IncludeManualJournal { get; set; }
+
+        [JsonConverter(typeof(StringToBoolConverter))]
+        [JsonPropertyName("overwriteDrilldownMetadata")]
+        public bool? OverwriteDrilldownMetadata { get; set; }
     }
 
     public class UserConfigResetResponse

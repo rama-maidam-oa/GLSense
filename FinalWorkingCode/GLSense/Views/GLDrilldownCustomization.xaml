@@ -43,6 +43,15 @@
         <!-- ================= Close Button Section ================= -->
         <Border Grid.Row="2" Background="Transparent" Margin="0,8,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button x:Name="btnSaveLocally" Content="Save Locally" Margin="0,0,8,0" Style="{StaticResource DynamicContentButton}" Click="BtnSaveLocally_Click">
+                    <Button.ToolTip>
+                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                            <StackPanel>
+                                <TextBlock Text="Fetch and store this cube's drilldown metadata locally so it can be reused later." FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="300"/>
+                            </StackPanel>
+                        </ToolTip>
+                    </Button.ToolTip>
+                </Button>
                 <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
             </StackPanel>
         </Border>

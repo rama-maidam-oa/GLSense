@@ -166,7 +166,7 @@ namespace GLSense.Helpers
                    "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
-                   "RibDDConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
+                   "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                    "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",
                    "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibUserConfig","RibHelp"
                  ]);
@@ -200,7 +200,7 @@ namespace GLSense.Helpers
                    "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
-                   "RibDDConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
+                   "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                    "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",
                    "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibUserConfig","RibHelp"
                  ]);
@@ -221,7 +221,7 @@ namespace GLSense.Helpers
                    "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
-                   "RibDDConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
+                   "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                    "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",
                    "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibUserConfig"
                  ]);
@@ -252,7 +252,7 @@ namespace GLSense.Helpers
                    "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
-                   "RibDDConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
+                   "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                    "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",
                    "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibHelp","RibUserConfig"
                  ]);
@@ -276,6 +276,16 @@ namespace GLSense.Helpers
         {
             try
             {
+                // RibUserConfig (User Preferences window) is deliberately excluded from both
+                // lists below - it's a login/cube-session-level settings window, not something
+                // tied to whichever sheet happens to be active, so it must not be toggled by
+                // per-sheet state changes at all. Previously it was disabled here whenever the
+                // active sheet was a drilldown result sheet (isDrilldown=true), so opening a
+                // drilldown result tab would grey out User Preferences even while fully logged
+                // in with a cube selected. Its enabled/disabled state is owned entirely by the
+                // login-state methods above (ApplyLoggedOutState/ApplyNoCubesState/
+                // ApplyPartialLoginState/ApplyLoggedInState) - enabled whenever logged in
+                // (with a cube selected), disabled when logged out, irrespective of sheet.
                 if (isDrilldown)
                 {
                     DisableControls(
@@ -286,7 +296,7 @@ namespace GLSense.Helpers
                        "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                        "RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                        "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",
-                       "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibHelp","RibUserConfig"
+                       "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibHelp"
                      ]);
                 }
                 else
@@ -297,9 +307,9 @@ namespace GLSense.Helpers
                        "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
                        "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                        "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
-                       "RibDDConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
+                       "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                        "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",
-                       "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibHelp","RibUserConfig"
+                       "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibHelp"
                      ]);
                 }
             }
@@ -412,9 +422,23 @@ namespace GLSense.Helpers
             ribbon.RibBalanceSubLedgerDD.Enabled = true;
             ribbon.RibJournalDD.Enabled = false;
             ribbon.RibSubledgerDD.Enabled = false;
-            ribbon.RibTotaDD.Enabled = true;
+            ribbon.RibTotaDD.Enabled = !IsViewBasedCube();
             ribbon.RibBalancesDDToSubLedger.Enabled = false;
             ribbon.RibBalancesDDToUnified.Enabled = false;
+        }
+
+        // Unified Drilldown (RibTotaDD, ddType "UF") and Balances Drilldown to Unified Drilldown
+        // (RibBalancesDDToUnified, ddType "BLDD_UF") both fail server-side for view-based/EBS
+        // cubes - the same restriction GLUserConfig.xaml.cs::IsViewBasedCube() already encodes
+        // for the "Run as Job" checkbox and for hiding the Unified Drilldown row in the
+        // preferences window ("view based cubes have limitations that prevent running unified
+        // drilldown as a job"). Named/implemented to match that same convention, reused here so
+        // these two ribbon buttons grey out up front for such cubes instead of only failing
+        // after the user clicks them.
+        private static bool IsViewBasedCube()
+        {
+            return (AppState.Instance.SelectedCube?.ViewBased ?? false)
+                || string.Equals(AppState.Instance.SelectedCube?.ErpType, "EBS", StringComparison.OrdinalIgnoreCase);
         }
 
         private void DisableAllDrilldownControls()
@@ -439,8 +463,8 @@ namespace GLSense.Helpers
             bool isJournalDrilldown = IsJournalDrilldownSheet(drilldownType, sheetName, markerSheetName);
             bool isSubledgerDrilldown = IsSubledgerDrilldownSheet(drilldownType, sheetName, markerSheetName);
 
-            _addinModule.RibBalancesDDToUnified.Enabled =
-            _addinModule.RibBalancesDDToSubLedger.Enabled =
+            _addinModule.RibBalancesDDToUnified.Enabled = isJournalDrilldown && !IsViewBasedCube();
+            _addinModule.RibBalancesDDToSubLedger.Enabled = isJournalDrilldown;
             _addinModule.RibJournalDD.Enabled = isJournalDrilldown;
             _addinModule.RibSubledgerDD.Enabled = isSubledgerDrilldown;
         }

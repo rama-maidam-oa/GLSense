@@ -134,7 +134,7 @@ namespace GLSense.ViewModels
             var searchTarget = string.Join(" ", new[]
             {
                 job.ProcessId,
-                job.Name,
+                job.JobDescription,
                 job.JobType,
                 job.Phase,
                 job.Status,
