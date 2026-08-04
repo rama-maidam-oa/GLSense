@@ -36,6 +36,16 @@ namespace GLSense
         /// </summary>
         public bool IsLoggedIn { get; private set; }
 
+        /// <summary>
+        /// Cached mirror of whether the currently selected cube is view-based/EBS (pushed from
+        /// Addin.Core's AppState.SelectedCube setter via SetCubeViewBased below), so host-side
+        /// drilldown ribbon-state methods (AddinModule.EnableBalanceDrilldownControls/
+        /// EnableDrilldownBasedOnSheetType) can gate Unified Drilldown / Balances-to-Unified
+        /// without taking a dependency on GLSense.Addin.Core.AppState - same reasoning as
+        /// IsLoggedIn above.
+        /// </summary>
+        public bool IsCubeViewBased { get; private set; }
+
         // EXISTING: Action registration system - KEEP AS IS
         private readonly Dictionary<string, Action> _actionMap;
 
@@ -434,6 +444,12 @@ namespace GLSense
             {
                 _logger?.LogError($"SetControlLabel failed for '{controlName}'", ex);
             }
+        }
+
+        public void SetCubeViewBased(bool isViewBased)
+        {
+            _logger?.LogDebug($"RibbonController.SetCubeViewBased: {isViewBased}");
+            IsCubeViewBased = isViewBased;
         }
 
         public void EnableControls(IEnumerable<string> controlNames)

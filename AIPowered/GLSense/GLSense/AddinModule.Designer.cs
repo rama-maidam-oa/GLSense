@@ -93,6 +93,7 @@ namespace GLSense
             this.RibTotaDD = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonMenuSeparator2 = new AddinExpress.MSO.ADXRibbonMenuSeparator(this.components);
             this.RibDDConfiguration = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibDDDeleteConfiguration = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonGroup8 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibDrillJobs = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonGroup9 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
@@ -769,6 +770,7 @@ namespace GLSense
             this.RibDrilldownMenu.Controls.Add(this.RibTotaDD);
             this.RibDrilldownMenu.Controls.Add(this.adxRibbonMenuSeparator2);
             this.RibDrilldownMenu.Controls.Add(this.RibDDConfiguration);
+            this.RibDrilldownMenu.Controls.Add(this.RibDDDeleteConfiguration);
             this.RibDrilldownMenu.Id = "adxRibbonMenu_647cafbbed4b401996054ee320437b0c";
             this.RibDrilldownMenu.Image = 28;
             this.RibDrilldownMenu.ImageList = this.ImageList_32X32;
@@ -890,7 +892,19 @@ namespace GLSense
             this.RibDDConfiguration.SuperTip = "Customize the drilldowns. Format the columns , add custom drilldown columns or ad" +
     "d custom formula (formulas supported by excel)";
             this.RibDDConfiguration.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibDDConfiguration_OnClick);
-            // 
+            //
+            // RibDDDeleteConfiguration
+            //
+            this.RibDDDeleteConfiguration.Caption = "Delete Customization";
+            this.RibDDDeleteConfiguration.Id = "adxRibbonButton_9a3e2f1c6b4d4e2f8a7c5d6e9b0f1a2c";
+            this.RibDDDeleteConfiguration.Image = 33;
+            this.RibDDDeleteConfiguration.ImageList = this.ImageList_32X32;
+            this.RibDDDeleteConfiguration.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibDDDeleteConfiguration.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibDDDeleteConfiguration.ScreenTip = "Drilldowns";
+            this.RibDDDeleteConfiguration.SuperTip = "Delete the drilldown customization saved locally for the current cube.";
+            this.RibDDDeleteConfiguration.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibDDDeleteConfiguration_OnClick);
+            //
             // adxRibbonGroup8
             // 
             this.adxRibbonGroup8.AutoScale = true;
@@ -1376,6 +1390,7 @@ namespace GLSense
         public AddinExpress.MSO.ADXRibbonButton RibTotaDD;
         public AddinExpress.MSO.ADXRibbonMenuSeparator adxRibbonMenuSeparator2;
         public AddinExpress.MSO.ADXRibbonButton RibDDConfiguration;
+        public AddinExpress.MSO.ADXRibbonButton RibDDDeleteConfiguration;
         public AddinExpress.MSO.ADXRibbonButton RibDrillJobs;
         public AddinExpress.MSO.ADXRibbonMenu RibFunctionsMenu;
         public AddinExpress.MSO.ADXRibbonMenuSeparator adxRibbonMenuSeparator3;

@@ -27,7 +27,9 @@ namespace GLSense.Addin.Core.Common
                 DrilldownType.SL => Color.FromArgb(255, 224, 192),
                 DrilldownType.BL_JL => Color.FromArgb(255, 255, 192),
                 DrilldownType.BL_SL => Color.FromArgb(255, 224, 192),
+                DrilldownType.BLDD_SL => Color.FromArgb(255, 224, 192),
                 DrilldownType.UF => Color.FromArgb(242, 206, 239),
+                DrilldownType.BLDD_UF => Color.FromArgb(242, 206, 239),
                 DrilldownType.CM => Color.FromArgb(228, 158, 221),
                 _ => Color.LightGray,
             };

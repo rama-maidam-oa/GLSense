@@ -39,11 +39,13 @@
 //   - CancellationHelper: used exactly as the original did (a short-lived `using var`
 //     local inside WebView_Loaded, not a field - this window has only one cancellable
 //     operation and no navigation retries like GLLogin's).
+using GLSense.Addin.Core.Common;
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using Microsoft.Web.WebView2.Core;
 using System;
 using System.IO;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -261,6 +263,148 @@ namespace GLSense.Addin.Core.Views
         private void CoreWebView2_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
         {
             ServiceLocator.Logger?.LogWarn($"WebView2 process failed. Kind={e.ProcessFailedKind}");
+        }
+
+        // ---------- Save Locally ----------
+        // Ported from GLSense\Views\GLDrilldownCustomization.xaml.cs (FinalWorkingCode)'s
+        // BtnSaveLocally_Click/HideBusyAndShow*Async/ValidateTransportResponse. Fetches this
+        // cube's drilldown metadata and stores it in a CustomXMLPart
+        // (Common\DrilldownMetadataXmlStore.cs) so Drilldowns\DDDatatoWorksheet.cs's
+        // ExtractMetadata can use it later when UserConfig.OverwriteDrilldownMetadata is enabled
+        // (Views\GLUserConfig.xaml's "Overwrite drilldown metadata with locally saved" checkbox).
+        private async void BtnSaveLocally_Click(object sender, RoutedEventArgs e)
+        {
+            ServiceLocator.Logger?.LogDebug("GLDrilldownCustomization.BtnSaveLocally_Click invoked");
+
+            if (AppState.Instance.SelectedCube == null)
+            {
+                ServiceLocator.Logger?.LogWarn("GLDrilldownCustomization.BtnSaveLocally_Click: no selected cube, aborting save.");
+                // Hide webView for the same reason HideBusyAndShowWarnAsync does below - see its
+                // comment. This path never starts the busy overlay, so webView is still visible
+                // going in; without hiding it here too, this toast would show the same
+                // WebView2-airspace symptom (only the header/footer dim, the WebView2 content
+                // stays fully visible and un-blurred on top of the toast).
+                webView.Visibility = Visibility.Hidden;
+                await AppOverlayControl.ShowWarningAsync("No cube selected. Please select a cube first.");
+                webView.Visibility = Visibility.Visible;
+                return;
+            }
+
+            long cubeId = AppState.Instance.SelectedCube.CubeId;
+            using var cancellationHelper = new CancellationHelper();
+            string response = string.Empty;
+
+            try
+            {
+                await ShowBusyOverlayAsync(cancellationHelper, "Saving drilldown metadata locally");
+
+                // drilldownType is left empty (not omitted) to get metadata for ALL drilldown
+                // types in one call. Omitting the query parameter entirely returned a 404
+                // ("No endpoint GET /reporting/rest/secure/finance/drilldown-metadata.") - the
+                // server's routing requires the drilldownType key to be present, even with an
+                // empty value, to match this endpoint.
+                string apiUrl = $"{AppState.Instance.LoginUrl.TrimEnd('/')}{AppConstants.RestSecure}drilldown-metadata?cubeId={cubeId}&drilldownType=";
+
+                ServiceLocator.Logger?.LogDebug($"GLDrilldownCustomization.BtnSaveLocally_Click: calling API {apiUrl}");
+                response = await ApiHelper.ServerAPI(apiUrl, "Form", "", "GET", cancellationHelper.GetToken())
+                    ?? string.Empty;
+
+                ValidateTransportResponse(response);
+
+                var parsed = ApiResponseHelper.Parse<JsonElement>(response, JsonGlobals.Options);
+
+                if (!parsed.IsSuccess)
+                {
+                    ServiceLocator.Logger?.LogWarn($"GLDrilldownCustomization.BtnSaveLocally_Click: API returned failure - {parsed.ErrorMessage}");
+                    await HideBusyAndShowErrorAsync(
+                        string.IsNullOrWhiteSpace(parsed.ErrorMessage) ? "Failed to fetch drilldown metadata." : parsed.ErrorMessage);
+                    return;
+                }
+
+                DrilldownMetadataXmlStore.Save(ServiceLocator.ExcelApp?.ActiveWorkbook, cubeId, response);
+
+                ServiceLocator.Logger?.LogDebug("GLDrilldownCustomization.BtnSaveLocally_Click: drilldown metadata saved locally successfully");
+                await HideBusyAndShowSuccessAsync("Drilldown metadata saved locally.");
+            }
+            catch (OperationCanceledException)
+            {
+                ServiceLocator.Logger?.LogWarn("GLDrilldownCustomization.BtnSaveLocally_Click: operation cancelled by user.");
+                await HideBusyAndShowWarnAsync("Save locally operation cancelled.");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "GLDrilldownCustomization.BtnSaveLocally_Click");
+                ServiceLocator.Logger?.LogRawJson("GLDrilldownCustomization.BtnSaveLocally_Click - error response", response);
+                await HideBusyAndShowErrorAsync($"Failed to save drilldown metadata: {ex.Message}");
+            }
+        }
+
+        // ShowBusyOverlayAsync hides the WebView2 control while the busy spinner is up (see
+        // its Dispatcher.InvokeAsync block above). WebView2 hosts its own native child HWND,
+        // which WPF's compositor always paints on top of everything in the WPF visual tree -
+        // including AppOverlayControl's blur/dim/Panel.ZIndex - regardless of Z-order (the
+        // classic WPF "airspace" limitation). So AppOverlayControl.ApplyBlurToSiblings() can
+        // only ever dim its WPF-drawn siblings (the header/footer Borders); it can never touch
+        // WebView2's own rendered pixels. The only real fix is what ShowBusyOverlayAsync
+        // already does: hide webView outright while anything needs to visually cover that
+        // area, and only show it again once nothing is covering it anymore.
+        //
+        // ShowErrorAsync/ShowSuccessAsync/ShowWarningAsync don't return until the toast itself
+        // has actually been dismissed (auto-timeout or the user clicking its own close button)
+        // - see AppOverlay.ShowToastAsync's TaskCompletionSource. So webView must stay hidden
+        // across BOTH the busy spinner AND the toast, and only come back after the toast
+        // await below completes - restoring it any earlier (e.g. right after HideBusyAsync,
+        // before the toast) would let webView repaint over the content area while the toast is
+        // still up, exactly reproducing the same partial-blur symptom.
+        private async Task HideBusyAndShowErrorAsync(string errorMsg)
+        {
+            await AppOverlayControl.HideBusyAsync();
+            if (!string.IsNullOrWhiteSpace(errorMsg))
+            {
+                await AppOverlayControl.ShowErrorAsync(errorMsg);
+            }
+            webView.Visibility = Visibility.Visible;
+        }
+
+        private async Task HideBusyAndShowSuccessAsync(string successMsg)
+        {
+            await AppOverlayControl.HideBusyAsync();
+            if (!string.IsNullOrWhiteSpace(successMsg))
+            {
+                await AppOverlayControl.ShowSuccessAsync(successMsg);
+            }
+            webView.Visibility = Visibility.Visible;
+        }
+
+        private async Task HideBusyAndShowWarnAsync(string warnMsg)
+        {
+            await AppOverlayControl.HideBusyAsync();
+            if (!string.IsNullOrWhiteSpace(warnMsg))
+            {
+                await AppOverlayControl.ShowWarningAsync(warnMsg);
+            }
+            webView.Visibility = Visibility.Visible;
+        }
+
+        // Mirrors GLUserConfig.ValidateTransportResponse - checks for empty/HTML/401/error
+        // strings that ApiResponseHelper.Parse would otherwise fail to explain clearly.
+        private static void ValidateTransportResponse(string response)
+        {
+            if (string.IsNullOrWhiteSpace(response))
+            {
+                throw new InvalidOperationException("Empty API response.");
+            }
+
+            if (response.IndexOf("(401)", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                throw new UnauthorizedAccessException("Session expired.");
+            }
+
+            if (response.StartsWith("Error", StringComparison.OrdinalIgnoreCase) ||
+                response.IndexOf("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                throw new InvalidOperationException(response);
+            }
         }
     }
 }

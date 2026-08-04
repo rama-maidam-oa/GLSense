@@ -804,6 +804,16 @@ namespace GLSense
             _ribbonController?.ExecuteAction("ShowDrilldownCustomization");
         }
 
+        private void RibDDDeleteConfiguration_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            GlobalsEx.Context?.Logger?.LogDebug($"RibDDDeleteConfiguration_OnClick fired (pressed={pressed})");
+            // FinalWorkingCode's RibDDDeleteConfiguration_OnClick does the delete + message
+            // inline (single-project monolith); here it's dispatched through to Addin.Core
+            // the same way RibDDConfiguration_OnClick above dispatches to
+            // ShowDrilldownCustomization() - see AddinEntry.DeleteDrilldownCustomization().
+            _ribbonController?.ExecuteAction("DeleteDrilldownCustomization");
+        }
+
         private void RibDrillJobs_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             GlobalsEx.Context?.Logger?.LogDebug($"RibDrillJobs_OnClick fired (pressed={pressed})");
@@ -1113,6 +1123,17 @@ namespace GLSense
         {
             try
             {
+                // RibUserConfig deliberately left OUT of this list. Ported fix from
+                // FinalWorkingCode\GLSense\Helpers\RibbonStateHelper.cs: it's a login/cube-
+                // session-level settings window, not something tied to whichever sheet happens
+                // to be active, so it must not be toggled by per-sheet state changes at all.
+                // Previously it was disabled here whenever the active sheet was a drilldown
+                // result sheet (isDrilldown=true), so opening a drilldown result tab would grey
+                // out User Preferences even while fully logged in with a cube selected. Its
+                // enabled/disabled state is owned entirely by RibbonControlIds.cs's login-state
+                // lists (already includes RibUserConfig in LoggedInEnabledControls and the
+                // various logged-out/disabled lists) - enabled whenever logged in, disabled when
+                // logged out, irrespective of sheet.
                 string[] controls =
                 {
                     "RibDBL1", "RibGetCube", "Ribledger", "RibAccount", "RibRollerGroup", "RibLOVs", "RibFSG", "RibHideRows", "RibUnHideRows",
@@ -1121,7 +1142,7 @@ namespace GLSense
                     "RibClearSheet", "RibClear", "RibHighlight", "RibCellHighlight", "RibSnapShot", "RibSnapWorksheet", "RibSnapWorkbook", "RibSnapSubmit",
                     "RibFunctionsMenu", "RibSegmentEnabledFlag", "RibSummaryFlag", "RibSegment", "RibNextSegment",
                     "RibPreviousSegment", "RibSegmentDFF", "RibPeriod", "RibPeriodbyDate", "RibPeriodbyYear", "RibPeriodNum", "RibPeriodQtr", "RibPeriodYear",
-                    "RibPeriodStart", "RibPeriodEnd", "RibDailyRate", "RibVersionCheck", "RibHelp", "RibUserConfig"
+                    "RibPeriodStart", "RibPeriodEnd", "RibDailyRate", "RibVersionCheck", "RibHelp"
                 };
 
                 if (isDrilldown)
@@ -1204,7 +1225,11 @@ namespace GLSense
             RibBalanceSubLedgerDD.Enabled = true;
             RibJournalDD.Enabled = false;
             RibSubledgerDD.Enabled = false;
-            RibTotaDD.Enabled = true;
+            // Ported gating from FinalWorkingCode\GLSense\Helpers\RibbonStateHelper.cs: Unified
+            // Drilldown fails server-side for view-based/EBS cubes, so grey it out up front
+            // instead of only failing after the user clicks it. _ribbonController.IsCubeViewBased
+            // is pushed from Addin.Core's AppState.SelectedCube setter (see RibbonController.cs).
+            RibTotaDD.Enabled = !(_ribbonController?.IsCubeViewBased ?? false);
             RibBalancesDDToSubLedger.Enabled = false;
             RibBalancesDDToUnified.Enabled = false;
         }
@@ -1230,7 +1255,9 @@ namespace GLSense
             bool isJournalDrilldown = IsBalancesDrilldown(a1Text, sheetName, markerSheetName);
             bool isSubledgerDrilldown = IsJournalsDrilldown(a1Text, sheetName, markerSheetName);
 
-            RibBalancesDDToUnified.Enabled = isJournalDrilldown;
+            // Same EBS/view-based gating as EnableBalanceDrilldownControls above - Balances
+            // Drilldown to Unified fails server-side for such cubes too.
+            RibBalancesDDToUnified.Enabled = isJournalDrilldown && !(_ribbonController?.IsCubeViewBased ?? false);
             RibBalancesDDToSubLedger.Enabled = isJournalDrilldown;
             RibJournalDD.Enabled = isJournalDrilldown;
             RibSubledgerDD.Enabled = isSubledgerDrilldown;

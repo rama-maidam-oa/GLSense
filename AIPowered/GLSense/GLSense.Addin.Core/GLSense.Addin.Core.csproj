@@ -124,6 +124,7 @@
     <Compile Include="AppState.cs" />
     <Compile Include="Caching\FormulaCache.cs" />
     <Compile Include="Common\DrilldownMetadata.cs" />
+    <Compile Include="Common\DrilldownMetadataXmlStore.cs" />
     <Compile Include="Common\DrilldownType.cs" />
     <Compile Include="Common\EnumExtensions.cs" />
     <Compile Include="Udf\UdfDispatcher.cs" />

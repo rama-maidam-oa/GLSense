@@ -116,6 +116,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <!-- 1.) No Data/Missing Row -->
                                 <Grid Grid.Row="0" Margin="0,0,0,12">
@@ -153,7 +154,15 @@
                                     </CheckBox.ToolTip>
                                 </CheckBox>
                                 <!-- 5.) Suppress zeroes Checkbox -->
-                                <CheckBox x:Name="ChkZeroes" Grid.Row="4" Content="Suppress zeroes in Balance Drilldown" Style="{StaticResource CompactCheckBox}" Margin="0,0,0,0" HorizontalAlignment="Left" Checked="ChkZeroes_Checked" Unchecked="ChkZeroes_Unchecked"/>
+                                <CheckBox x:Name="ChkZeroes" Grid.Row="4" Content="Suppress zeroes in Balance Drilldown" Style="{StaticResource CompactCheckBox}" Margin="0,0,0,12" HorizontalAlignment="Left" Checked="ChkZeroes_Checked" Unchecked="ChkZeroes_Unchecked"/>
+                                <!-- 6.) Overwrite drilldown metadata Checkbox - default unchecked -->
+                                <CheckBox x:Name="ChkOverwriteDrilldownMetadata" Grid.Row="5" Content="Overwrite drilldown metadata with locally saved" Style="{StaticResource CompactCheckBox}" Margin="0,0,0,0" HorizontalAlignment="Left" Checked="ChkOverwriteDrilldownMetadata_Checked" Unchecked="ChkOverwriteDrilldownMetadata_Unchecked">
+                                    <CheckBox.ToolTip>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <TextBlock Text="When enabled, drilldowns will use the drilldown metadata saved locally (via Save Locally) instead of fetching it fresh." FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="300"/>
+                                        </ToolTip>
+                                    </CheckBox.ToolTip>
+                                </CheckBox>
                             </Grid>
                         </Border>
                     </ScrollViewer>

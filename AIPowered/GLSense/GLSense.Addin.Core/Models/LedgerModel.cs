@@ -118,6 +118,15 @@ namespace GLSense.Addin.Core.Models
         [JsonConverter(typeof(StringToBoolConverter))]
         [JsonPropertyName("includeManualJournal")]
         public bool? IncludeManualJournal { get; set; }
+
+        // Ported from GLSense\Models\AllModels.cs (FinalWorkingCode): backs GLUserConfig's
+        // "Overwrite drilldown metadata with locally saved" checkbox (Utilities\UserConfig.cs::
+        // OverwriteDrilldownMetadata) - when enabled, Drilldowns\DDDatatoWorksheet.cs's
+        // ExtractMetadata uses the CustomXMLPart saved via GLDrilldownCustomization's "Save
+        // Locally" button (Common\DrilldownMetadataXmlStore.cs) instead of the server's metadata.
+        [JsonConverter(typeof(StringToBoolConverter))]
+        [JsonPropertyName("overwriteDrilldownMetadata")]
+        public bool? OverwriteDrilldownMetadata { get; set; }
     }
 
     public class UserConfigResetResponse

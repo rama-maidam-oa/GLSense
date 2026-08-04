@@ -210,7 +210,7 @@ namespace GLSense.Addin.Core.Drilldowns
                     return;
                 }
 
-                ApplyDataFormats(ws, lastRow, DisplayColumnName, DataTypeDict, FormatDict, SubTotalsDict);
+                ApplyDataFormats(ws, lastRow, DisplayColumnName, ActualColumnName, DataTypeDict, FormatDict, SubTotalsDict);
                 PopulateSheet(ws, sampleobj, lastRow, lastColumn, ActualColumnName);
                 ApplyFormatting(ws, lastRow, lastColumn, DD_TableObjname, metadataDict, DD_Type);
 
@@ -918,7 +918,15 @@ namespace GLSense.Addin.Core.Drilldowns
 
         private static bool ContainsDrilldownSheet(string xml, string sheetName)
         {
+            // Require the DRILLDOWNSHEET marker before falling back to the sheet-name substring
+            // check. Ported from GLSense\Drilldowns\DDDatatoWorksheet.cs (FinalWorkingCode): a raw
+            // substring match against the whole XML risked matching (and deleting) an unrelated
+            // CustomXMLPart whose payload happened to contain the sheet name as text - e.g. a
+            // DRILLDOWNMETADATA part (Common\DrilldownMetadataXmlStore.cs) storing a raw JSON blob
+            // that could contain any string. Both mechanisms are keyed by their own distinct root
+            // element, so requiring this one's marker first makes the two impossible to collide.
             return !string.IsNullOrEmpty(xml) &&
+                   xml.IndexOf("DRILLDOWNSHEET", StringComparison.OrdinalIgnoreCase) >= 0 &&
                    xml.IndexOf(sheetName, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
@@ -1064,6 +1072,7 @@ namespace GLSense.Addin.Core.Drilldowns
             Excel.Worksheet ws,
             long lastRow,
             List<string> displayColumnName,
+            List<string> actualColumnName,
             Dictionary<string, string> dataTypeDict,
             Dictionary<string, string> formatDict,
             Dictionary<string,string> subTotalsDict)
@@ -1081,22 +1090,29 @@ namespace GLSense.Addin.Core.Drilldowns
 
                 int columnIndex = 0;
 
-                foreach (var key in displayColumnName)
+                for (int i = 0; i < displayColumnName.Count; i++)
                 {
                     Dd_token.ThrowIfCancellationRequested();
                     columnIndex++;
 
-                    var dataType = GetDictionaryValueOrEmpty(dataTypeDict, key);
-                    var format = GetDictionaryValueOrEmpty(formatDict, key);
-                    var subTotalFunction = GetDictionaryValueOrEmpty(subTotalsDict, key);
+                    var displayKey = displayColumnName[i];
+                    // actualColumnName is built in lockstep with displayColumnName (both
+                    // FillColumnAndTypeInfo and IncludeMissingRecordKeys append to both lists
+                    // together for every column), so the same index gives the matching
+                    // actual/raw column name for this position.
+                    var actualKey = (actualColumnName != null && i < actualColumnName.Count) ? actualColumnName[i] : null;
+
+                    var dataType = GetDictionaryValueOrEmpty(dataTypeDict, displayKey, actualKey);
+                    var format = GetDictionaryValueOrEmpty(formatDict, displayKey, actualKey);
+                    var subTotalFunction = GetDictionaryValueOrEmpty(subTotalsDict, displayKey, actualKey);
 
                     var rng = GetColumnRange(ws, lastRow, columnIndex);
 
-                    ApplyColumnFormat(rng, key, dataType, format);
+                    ApplyColumnFormat(rng, displayKey, dataType, format);
 
-                    if (subTotalFunction != null && !string.IsNullOrWhiteSpace(subTotalFunction))
+                    if (!string.IsNullOrWhiteSpace(subTotalFunction))
                     {
-                        ApplyColumnSubTotals(rng, key, dataType, format, subTotalFunction);
+                        ApplyColumnSubTotals(rng, displayKey, dataType, format, subTotalFunction);
                     }
                 }
             }
@@ -1108,11 +1124,29 @@ namespace GLSense.Addin.Core.Drilldowns
             ServiceLocator.Logger.LogDebug("Applying data formats to excel completed.");
         }
 
+        // dataTypeDict/formatDict/subTotalsDict are keyed by whatever string FillColumnAndTypeInfo
+        // used as "header" (the metadata's displayName) - but the two column-name lists this method
+        // receives can be mismatched against that key for a given column (e.g. metadata gives
+        // columnName="BEGIN_BALANCE" but displayName="BEGIN BALANCE", so a lookup using only one of
+        // the two names can silently miss the dictionary entry and fall back to "General" format
+        // with no error). Checking displayKey first, then falling back to actualKey, means either
+        // name resolves correctly as long as ONE of them matches the dictionary's key.
         private static string GetDictionaryValueOrEmpty(
             Dictionary<string, string> dict,
-            string key)
+            string displayKey,
+            string actualKey)
         {
-            return dict.TryGetValue(key, out var value) ? value ?? string.Empty : string.Empty;
+            if (dict.TryGetValue(displayKey, out var value) && !string.IsNullOrEmpty(value))
+            {
+                return value;
+            }
+
+            if (!string.IsNullOrEmpty(actualKey) && dict.TryGetValue(actualKey, out var actualValue) && !string.IsNullOrEmpty(actualValue))
+            {
+                return actualValue;
+            }
+
+            return string.Empty;
         }
 
         private static Excel.Range GetColumnRange(
@@ -1691,14 +1725,16 @@ namespace GLSense.Addin.Core.Drilldowns
                     _ = DD_win.Dispatcher.InvokeAsync(() =>
                        DD_win.SetProcessMessage("Extracting meta data..."));
 
-                if (drillsData?.metadata == null)
+                var metadataSource = ResolveMetadataSource(drillsData);
+
+                if (metadataSource == null || metadataSource.Length == 0)
                 {
                     return new Dictionary<string, Dictionary<string, object>>(StringComparer.OrdinalIgnoreCase);
                 }
 
-                var metadataDict = BuildMetadataDictionary(drillsData.metadata);
+                var metadataDict = BuildMetadataDictionary(metadataSource);
                 FillColumnAndTypeInfo(metadataDict, dataTypeDict, formatDict, subTotalsDict, actualColumnName, displayColumnName);
-                IncludeMissingRecordKeys(drillsData.records, displayColumnName, actualColumnName);
+                IncludeMissingRecordKeys(drillsData?.records, displayColumnName, actualColumnName);
 
                 return metadataDict;
             }
@@ -1712,6 +1748,86 @@ namespace GLSense.Addin.Core.Drilldowns
                 ServiceLocator.Logger.LogDebug("Extracting meta data completed.");
             }
         }
+
+        // Ported from GLSense\Drilldowns\DDDatatoWorksheet.cs (FinalWorkingCode): when
+        // UserConfig.OverwriteDrilldownMetadata is enabled, prefer the drilldown metadata saved
+        // locally via GLDrilldownCustomization's "Save Locally" button
+        // (Common\DrilldownMetadataXmlStore.cs) over the server-provided drillsData.metadata for
+        // this same drilldown. Falls back to server metadata if no local copy exists (with a
+        // warning) or if the preference is off - everything downstream (BuildMetadataDictionary/
+        // FillColumnAndTypeInfo) is unchanged either way, since ExtractDrilldownTypeMetadata
+        // deserializes into the exact same Dictionary<string, object>[] shape.
+        private Dictionary<string, object>[] ResolveMetadataSource(DrillDownQueryData drillsData)
+        {
+            if (UserConfig.OverwriteDrilldownMetadata)
+            {
+                var localMetadata = TryGetLocalMetadata();
+                if (localMetadata != null && localMetadata.Length > 0)
+                {
+                    ServiceLocator.Logger.LogDebug($"DDDatatoWorksheet.ExtractMetadata: using locally saved drilldown metadata (DD_Type={DD_Type}).");
+                    return localMetadata;
+                }
+                ServiceLocator.Logger.LogWarn($"DDDatatoWorksheet.ExtractMetadata: 'Overwrite drilldown metadata with locally saved' is enabled, but no local drilldown metadata exists for the selected cube/drilldown type (DD_Type={DD_Type}). Falling back to server-provided metadata.");
+            }
+            return drillsData?.metadata;
+        }
+
+        private Dictionary<string, object>[] TryGetLocalMetadata()
+        {
+            try
+            {
+                var cube = AppState.Instance.SelectedCube;
+                if (cube == null)
+                {
+                    ServiceLocator.Logger.LogWarn("DDDatatoWorksheet.TryGetLocalMetadata: no selected cube, cannot look up local metadata.");
+                    return null;
+                }
+
+                var wb = DD_ExcelApp?.ActiveWorkbook;
+                if (wb == null)
+                {
+                    ServiceLocator.Logger.LogWarn("DDDatatoWorksheet.TryGetLocalMetadata: no active workbook, cannot look up local metadata.");
+                    return null;
+                }
+
+                if (!DrilldownMetadataXmlStore.TryRead(wb, cube.CubeId, out string rawJson))
+                {
+                    return null;
+                }
+
+                var ddEnum = DrilldownHelpers.ParseOrDefault(DD_Type, fallback: DrilldownType.BL);
+                string recordsKey = GetLocalMetadataRecordsKey(ddEnum);
+                return DrilldownMetadataXmlStore.ExtractDrilldownTypeMetadata(rawJson, recordsKey);
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger.LogException(ex, "DDDatatoWorksheet.TryGetLocalMetadata");
+                return null;
+            }
+        }
+
+        // DrilldownType -> drilldown-metadata API's "records" key mapping. Kept next to
+        // DD_Type/DrilldownHelpers since this is the one place that needs both. "Fourth"
+        // records key UNIFIED is only present in the API response for fusion-based cubes (see
+        // Common\DrilldownMetadataXmlStore.cs's header comment) - absent otherwise, which
+        // ExtractDrilldownTypeMetadata already handles by returning null.
+        private static string GetLocalMetadataRecordsKey(DrilldownType ddType)
+        {
+            return ddType switch
+            {
+                DrilldownType.BL => "BALANCE",
+                DrilldownType.JL => "JOURNAL",
+                DrilldownType.SL => "SUBLEDGER",
+                DrilldownType.BL_JL => "JOURNAL",
+                DrilldownType.BL_SL => "SUBLEDGER",
+                DrilldownType.BLDD_SL => "SUBLEDGER",
+                DrilldownType.BLDD_UF => "UNIFIED",
+                DrilldownType.UF => "UNIFIED",
+                DrilldownType.CM => "UNIFIED",
+                _ => "BALANCE"
+            };
+        }
+
         private Dictionary<string, Dictionary<string, object>> BuildMetadataDictionary(IEnumerable<Dictionary<string, object>> metadata)
         {
             var metadataDict = new Dictionary<string, Dictionary<string, object>>(StringComparer.OrdinalIgnoreCase);

@@ -112,6 +112,27 @@ namespace GLSense.Addin.Core
             {
                 _selectedCube = value;
                 ServiceLocator.Logger?.LogDebug($"AppState.SelectedCube changed to '{value?.CubeName ?? "<null>"}' (CubeId={value?.CubeId.ToString() ?? "<null>"})");
+
+                // Ported from FinalWorkingCode\GLSense\Helpers\RibbonStateHelper.cs's
+                // IsViewBasedCube() check (also duplicated in Views\GLUserConfig.xaml.cs): the
+                // host's AddinModule.cs (GLSense, not Addin.Core) needs to know whether the
+                // selected cube is view-based/EBS so it can grey out the Unified Drilldown /
+                // Balances-to-Unified ribbon buttons for such cubes - but the host must never
+                // take a compile-time dependency on GLSense.Addin.Core.AppState (would break the
+                // AppDomain hot-reload isolation this project is built around). So instead of the
+                // host reading this directly, push the flag through IRibbonController.
+                // SetCubeViewBased whenever it changes - mirrors how RibbonController.IsLoggedIn
+                // already lets the host ask "am I logged in" without reaching into Addin.Core.
+                try
+                {
+                    bool isViewBased = (value?.ViewBased ?? false)
+                        || string.Equals(value?.ErpType, "EBS", StringComparison.OrdinalIgnoreCase);
+                    ServiceLocator.RibbonController?.SetCubeViewBased(isViewBased);
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogException(ex, "AppState.SelectedCube setter: SetCubeViewBased push failed");
+                }
             }
         }
 

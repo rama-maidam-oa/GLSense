@@ -29,6 +29,15 @@ namespace GLSense.Contracts
         void EnableControls(IEnumerable<string> controlNames);
         void DisableControls(IEnumerable<string> controlNames);
 
+        // Ported from FinalWorkingCode's RibbonStateHelper.IsViewBasedCube() gating: the host
+        // (AddinModule.cs) needs to know whether the currently selected cube is view-based/EBS
+        // so it can grey out the Unified Drilldown / Balances-to-Unified ribbon buttons, but it
+        // must never take a compile-time dependency on GLSense.Addin.Core.AppState. Addin.Core
+        // pushes the flag through this whenever AppState.Instance.SelectedCube changes (see
+        // AppState.cs's SelectedCube setter), mirroring how RibbonController.IsLoggedIn already
+        // lets the host ask "am I logged in" without reaching into Addin.Core.
+        void SetCubeViewBased(bool isViewBased);
+
         // NEW: Combo/dropdown ribbon controls (e.g. Ribledger, RibSegS) - these hold a
         // list of ADXRibbonItem entries plus free-text. Addin.Core can't reference
         // AddinExpress.MSO/ADXRibbonItem directly, so the host implements this over

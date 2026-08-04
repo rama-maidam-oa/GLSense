@@ -1,5 +1,6 @@
 ﻿// GLSense.Addin.Core/AddinEntry.cs
 using GLSense.Addin.Core.Caching;
+using GLSense.Addin.Core.Common;
 using GLSense.Addin.Core.Controls;
 using GLSense.Addin.Core.Drilldowns;
 using GLSense.Addin.Core.Infrastructure;
@@ -302,6 +303,9 @@ namespace GLSense.Addin.Core
                     break;
                 case "ShowDrilldownCustomization":
                     ShowDrilldownCustomization();
+                    break;
+                case "DeleteDrilldownCustomization":
+                    DeleteDrilldownCustomization();
                     break;
 
                 // RibBalanceDD/RibBalanceJournalDD/RibBalanceSubLedgerDD/RibTotaDD - old
@@ -1153,6 +1157,51 @@ namespace GLSense.Addin.Core
         private void ShowDrilldownCustomization()
         {
             ShowGroupCWindow("ShowDrilldownCustomization", () => new GLDrilldownCustomization());
+        }
+
+        /// <summary>
+        /// Ported from FinalWorkingCode\GLSense\AddinModule.cs's RibDDDeleteConfiguration_OnClick
+        /// (single-project monolith, does everything inline there). Deletes the saved
+        /// DRILLDOWNMETADATA CustomXMLPart for the currently selected cube
+        /// (Common\DrilldownMetadataXmlStore.cs::Delete), letting the user remove a locally
+        /// saved drilldown customization (GLDrilldownCustomization's "Save Locally" button)
+        /// without having to save a new one in its place. Unlike ShowDrilldownCustomization
+        /// above, this doesn't open a window - it just performs the delete and reports the
+        /// result via CommonFunctions.GLSenseMessage, same as other simple ribbon actions.
+        /// </summary>
+        private void DeleteDrilldownCustomization()
+        {
+            ServiceLocator.Logger?.LogDebug("AddinEntry.DeleteDrilldownCustomization invoked");
+
+            if (AppState.Instance.SelectedCube == null)
+            {
+                CommonFunctions.GLSenseMessage("No cube selected. Please select a cube first.", MessageBoxImage.Exclamation, MessageBoxButton.OK);
+                return;
+            }
+
+            long cubeId = AppState.Instance.SelectedCube.CubeId;
+
+            try
+            {
+                var wb = ServiceLocator.ExcelApp?.ActiveWorkbook;
+                bool deleted = DrilldownMetadataXmlStore.Delete(wb, cubeId);
+
+                if (deleted)
+                {
+                    ServiceLocator.Logger?.LogDebug($"AddinEntry.DeleteDrilldownCustomization: deleted saved drilldown customization for cubeId={cubeId}.");
+                    CommonFunctions.GLSenseMessage("Saved drilldown customization deleted successfully.", MessageBoxImage.Information, MessageBoxButton.OK);
+                }
+                else
+                {
+                    ServiceLocator.Logger?.LogDebug($"AddinEntry.DeleteDrilldownCustomization: no saved drilldown customization found for cubeId={cubeId}.");
+                    CommonFunctions.GLSenseMessage("No saved drilldown customization exists for the current cube.", MessageBoxImage.Exclamation, MessageBoxButton.OK);
+                }
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "AddinEntry.DeleteDrilldownCustomization");
+                CommonFunctions.GLSenseMessage("Failed to delete the saved drilldown customization.", MessageBoxImage.Error, MessageBoxButton.OK);
+            }
         }
 
         /// <summary>

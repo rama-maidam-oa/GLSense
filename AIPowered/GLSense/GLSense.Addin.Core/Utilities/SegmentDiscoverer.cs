@@ -391,6 +391,7 @@ namespace GLSense.Addin.Core.Utilities
         {
             bool oneLevel = Action == Hierarchy1Level;
             const string DummyToken = "GLSDummy";
+            int totalExpanded = 0;
 
             try
             {
@@ -406,7 +407,21 @@ namespace GLSense.Addin.Core.Utilities
                         : ValidateAreaValuesAsync(area, DummyToken);
                     if (validatedValues.Count == 0) continue;
 
-                    await ExpandSummaryAccountsAsync(validatedValues, area, oneLevel, byColumns);
+                    totalExpanded += await ExpandSummaryAccountsAsync(validatedValues, area, oneLevel, byColumns);
+                }
+
+                if (totalExpanded == 0)
+                {
+                    // Ported from GLSense\Utilities\SegmentDiscoverer.cs (FinalWorkingCode):
+                    // mirrors ExplodeSegment's ValidateSummaryAccountAsync/IsSummaryAccount check
+                    // (below), which aborts with a message when the selected value isn't a
+                    // parent/summary account. Generate Hierarchy can run over a multi-cell/
+                    // multi-area selection rather than just a single active cell, so instead of
+                    // checking one value up front, this checks whether ANY value across the whole
+                    // selection turned out to be a parent - if none did (including the common
+                    // single-cell case), nothing was expanded at all, so the user gets the same
+                    // feedback Explode already gives instead of silently doing nothing.
+                    await ShowErrorMessage("Please select a parent or summary segment value");
                 }
             }
             catch (Exception ex)
@@ -478,13 +493,15 @@ namespace GLSense.Addin.Core.Utilities
 
             return listRangeValue;
         }
-        private static async Task ExpandSummaryAccountsAsync(
+        private static async Task<int> ExpandSummaryAccountsAsync(
             List<string> validatedValues,
             Excel.Range area,
             bool oneLevel,
             bool byColumns = false)
         {
-            if (area.Cells[1, 1] is not Excel.Range firstCell) return;
+            if (area.Cells[1, 1] is not Excel.Range firstCell) return 0;
+
+            int expandedCount = 0;
 
             if (byColumns)
             {
@@ -513,8 +530,9 @@ namespace GLSense.Addin.Core.Utilities
                     await InsertHierarchyExpansionByColumn(value, rowNum, startCol, rowCount, multiRow, oneLevel);
                     int insertedCount = await GetInsertedChildCountAsync(value, oneLevel);
                     startCol += insertedCount + 1;
+                    expandedCount++;
                 }
-                return;
+                return expandedCount;
             }
 
             int startRow = firstCell.Row;
@@ -542,7 +560,10 @@ namespace GLSense.Addin.Core.Utilities
                 await InsertHierarchyExpansion(value, startRow, columnNum, columnCount, multiColumn, oneLevel);
                 int insertedCount = await GetInsertedChildCountAsync(value, oneLevel);
                 startRow += insertedCount + 1;
+                expandedCount++;
             }
+
+            return expandedCount;
         }
         private static async Task InsertHierarchyExpansion(
         string value, int startRow, int columnNum, int columnCount,
