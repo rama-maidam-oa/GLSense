@@ -127,6 +127,8 @@ namespace GLSense.Views
                         Address = (string)x.Element("Address"),
                         DefaultURL = (bool?)x.Element("DefaultURL") ?? false
                     })
+                    .OrderByDescending(s => s.DefaultURL)  // true (DefaultURL) first
+                    .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)  // then sort by Name
                     .ToList();
 
                 cmbServer.ItemsSource = ServerList;
@@ -138,7 +140,6 @@ namespace GLSense.Views
                 {
                     AppOverlayControl.ShowWarning("Failed to load server list.");
                 });
-
             }
         }
         private async void WebView_Loaded(object sender, RoutedEventArgs e)

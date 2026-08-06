@@ -127,7 +127,7 @@ namespace GLSense.Utilities
                 }
 
                 Token.ThrowIfCancellationRequested();
-                string rngValue = CellActive.Value2.ToString();
+                string rngValue = CellActive.Value2.ToString().Trim();
 
                 var value1 = SegValueModel(rngValue);
                 Token.ThrowIfCancellationRequested();
@@ -500,8 +500,7 @@ namespace GLSense.Utilities
                         continue;
                     }
 
-                    await InsertHierarchyExpansionByColumn(value, rowNum, startCol, rowCount, multiRow, oneLevel);
-                    int insertedCount = await GetInsertedChildCountAsync(value, oneLevel);
+                    int insertedCount = await InsertHierarchyExpansionByColumn(value, rowNum, startCol, rowCount, multiRow, oneLevel);
                     startCol += insertedCount + 1;
                     expandedCount++;
                 }
@@ -530,45 +529,50 @@ namespace GLSense.Utilities
                     continue;
                 }
 
-                await InsertHierarchyExpansion(value, startRow, columnNum, columnCount, multiColumn, oneLevel);
-                int insertedCount = await GetInsertedChildCountAsync(value, oneLevel);
+                int insertedCount = await InsertHierarchyExpansion(value, startRow, columnNum, columnCount, multiColumn, oneLevel);
                 startRow += insertedCount + 1;
                 expandedCount++;
             }
 
             return expandedCount;
         }
-        private static async Task InsertHierarchyExpansion(
+        // Returns the number of children actually inserted, so callers can advance their
+        // row pointer directly from this single fetch instead of re-fetching (the
+        // re-fetch would be short-circuited by DataRepository's hierarchy cache, which
+        // this same call just populated, and would wrongly report 0 children).
+        private static async Task<int> InsertHierarchyExpansion(
         string value, int startRow, int columnNum, int columnCount,
         bool multiColumn, bool oneLevel)
         {
             Token.ThrowIfCancellationRequested();
             var children = await GetHierarchyChildrenAsync(value, oneLevel);
-            if (children?.Count == 0) return;
+            if (children == null || children.Count == 0) return 0;
 
             string title = AppState.Instance.DefaultSegment + " (" + value + ")";
             await MessageProgressWindowAsync($"Filling segment hierarchy values for segment {title}.");
             await Task.Yield();
 
             InsertRowsAndFillData(children, startRow, columnNum, columnCount, multiColumn);
+            return children.Count;
         }
 
         // Column-wise counterpart of InsertHierarchyExpansion: same child-fetch/progress
         // steps, but hands off to InsertColumnsAndFillData instead of
-        // InsertRowsAndFillData.
-        private static async Task InsertHierarchyExpansionByColumn(
+        // InsertRowsAndFillData. Also returns the inserted count for the same reason.
+        private static async Task<int> InsertHierarchyExpansionByColumn(
         string value, int rowNum, int startCol, int rowCount,
         bool multiRow, bool oneLevel)
         {
             Token.ThrowIfCancellationRequested();
             var children = await GetHierarchyChildrenAsync(value, oneLevel);
-            if (children?.Count == 0) return;
+            if (children == null || children.Count == 0) return 0;
 
             string title = AppState.Instance.DefaultSegment + " (" + value + ")";
             await MessageProgressWindowAsync($"Filling segment hierarchy values for segment {title}.");
             await Task.Yield();
 
             InsertColumnsAndFillData(children, rowNum, startCol, rowCount, multiRow);
+            return children.Count;
         }
 
         private static async Task<List<string>> GetHierarchyChildrenAsync(
@@ -577,7 +581,8 @@ namespace GLSense.Utilities
             try
             {
                 var match = SegmentValues.FirstOrDefault(sv =>
-                    sv.SegmentValue.Equals(value, StringComparison.OrdinalIgnoreCase));
+                    sv.SegmentValue.Equals(value, StringComparison.OrdinalIgnoreCase) &&
+                    sv.SummaryFlag != "RG" && sv.EnabledFlag != "RG");
                 return await LoadHierarchySegmentValuesAsync(match, oneLevel);
             }
             catch (Exception ex)
@@ -646,26 +651,6 @@ namespace GLSense.Utilities
                 copyRange?.Copy(pasteRange);
                 if (ExcelApp != null)
                     ExcelApp.CutCopyMode = (Excel.XlCutCopyMode)0;
-            }
-        }
-
-        // Renamed from GetInsertedRowCountAsync: orientation-agnostic (just returns how
-        // many children were inserted, whether as rows or as columns), reused by both the
-        // row-wise and column-wise ExpandSummaryAccountsAsync branches above.
-        private static async Task<int> GetInsertedChildCountAsync(string value, bool oneLevel)
-        {
-            try
-            {
-                var match = SegmentValues.FirstOrDefault(sv =>
-                    sv.SegmentValue.Equals(value, StringComparison.OrdinalIgnoreCase));
-
-                var children = await LoadHierarchySegmentValuesAsync(match, oneLevel);
-                return children?.Count ?? 0;
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, $"SegmentDiscoverer.GetInsertedChildCountAsync: value={value}");
-                return 0;
             }
         }
 
@@ -819,9 +804,10 @@ namespace GLSense.Utilities
                 ? Convert.ToString(segValObj)
                 : null;
         }
+
         private static async Task<string> HierarhyApiAsync(
-    SegmentValueModel selectedHierarchy,
-    CancellationToken token)
+                    SegmentValueModel selectedHierarchy,
+                    CancellationToken token)
         {
             try
             {
@@ -888,9 +874,11 @@ namespace GLSense.Utilities
                 if (sValue == null || string.IsNullOrWhiteSpace(sValue.Trim()))
                     return false;
 
-                sValue = sValue.Replace("--", "").Replace("~", "");
+                sValue = sValue.Trim().Replace("--", "").Replace("~", "");
 
-                var match = SegmentValues.FirstOrDefault(sv => sv.SegmentValue.Equals(sValue, StringComparison.OrdinalIgnoreCase));
+                var match = SegmentValues.FirstOrDefault(sv =>
+                    sv.SegmentValue.Equals(sValue, StringComparison.OrdinalIgnoreCase) &&
+                    sv.SummaryFlag != "RG" && sv.EnabledFlag != "RG");
 
                 if (match != null)
                 {
@@ -915,12 +903,12 @@ namespace GLSense.Utilities
                 if (sValue == null || string.IsNullOrWhiteSpace(sValue.Trim()))
                     return false;
 
-                sValue = sValue.Replace("--", "").Replace("~", "");
+                sValue = sValue.Trim().Replace("--", "").Replace("~", "");
 
                 var match = SegmentValues.FirstOrDefault(sv =>
-                            sv.SegmentName.Equals(AppState.Instance.DefaultSegment, StringComparison.OrdinalIgnoreCase) &&
-                            sv.SegmentValue.Equals(sValue, StringComparison.OrdinalIgnoreCase) &&
-                            !sv.SummaryFlag.Equals("RG", StringComparison.OrdinalIgnoreCase));
+                    sv.SegmentName.Equals(AppState.Instance.DefaultSegment, StringComparison.OrdinalIgnoreCase) &&
+                    sv.SegmentValue.Equals(sValue, StringComparison.OrdinalIgnoreCase) &&
+                    sv.SummaryFlag != "RG" && sv.EnabledFlag != "RG");
 
                 if (match != null && match.SummaryFlag == "Y")
                 {
@@ -1012,7 +1000,9 @@ namespace GLSense.Utilities
             try
             {
                 var match = SegmentValues
-                    .FirstOrDefault(sv => sv.SegmentValue.Equals(segmentValue, StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(sv =>
+                        sv.SegmentValue.Equals(segmentValue, StringComparison.OrdinalIgnoreCase) &&
+                        sv.SummaryFlag != "RG" && sv.EnabledFlag != "RG");
 
                 return await LoadHierarchySegmentValuesAsync(match, oneLevel);
             }
@@ -1154,12 +1144,12 @@ namespace GLSense.Utilities
             if (sValue == null || string.IsNullOrWhiteSpace(sValue.Trim()))
                 return new SegmentValueModel();
 
-            sValue = sValue.Replace("--", "").Replace("~", "");
+            sValue = sValue.Trim().Replace("--", "").Replace("~", "");
 
             return SegmentValues.FirstOrDefault(sv =>
                 sv.SegmentName.Equals(AppState.Instance.DefaultSegment, StringComparison.OrdinalIgnoreCase) &&
                 sv.SegmentValue.Equals(sValue, StringComparison.OrdinalIgnoreCase) &&
-                !sv.SummaryFlag.Equals("RG", StringComparison.OrdinalIgnoreCase));
+                sv.SummaryFlag != "RG" && sv.EnabledFlag != "RG");
         }
         private static async Task ShowErrorMessage(string message)
         {
@@ -1226,8 +1216,17 @@ namespace GLSense.Utilities
 
         private static Task InitializeProgressWindowAsync()
         {
-            // Basic guards
-            if (Win == null || Win.Dispatcher == null)
+            // Snapshot the static Win property into a local once, right after the guard.
+            // Win.Dispatcher.InvokeAsync only queues the lambda below - it does not run it
+            // synchronously - so by the time the lambda actually executes on the UI thread,
+            // another in-flight path (e.g. SafelyCloseWindowAsync's "Win = null;") can have
+            // already cleared the static property. Since a lambda that references "Win"
+            // directly re-reads that static property live at execution time rather than
+            // capturing its value at scheduling time, the null-check below would not
+            // actually protect it. Closing over the local "win" instead captures a fixed,
+            // already-null-checked reference that later concurrent writes to Win cannot affect.
+            var win = Win;
+            if (win == null || win.Dispatcher == null)
                 return Task.CompletedTask;
 
             try
@@ -1236,11 +1235,11 @@ namespace GLSense.Utilities
                 // thread with no captured SynchronizationContext, so awaiting the
                 // dispatch would risk resuming subsequent Excel COM calls on an
                 // arbitrary ThreadPool thread instead of the calling thread.
-                _ = Win.Dispatcher.InvokeAsync(
+                _ = win.Dispatcher.InvokeAsync(
                     () =>
                     {
-                        Win.SetProcessTitle(Title);
-                        Win.SetProcessMessage(Msg);
+                        win.SetProcessTitle(Title);
+                        win.SetProcessMessage(Msg);
                     },
                     DispatcherPriority.Normal);
 
@@ -1260,8 +1259,11 @@ namespace GLSense.Utilities
         }
         private static Task MessageProgressWindowAsync(string message)
         {
-            // Basic guards
-            if (Win == null || Win.Dispatcher == null)
+            // See InitializeProgressWindowAsync's comment above - same race, same fix:
+            // snapshot Win into a local so the deferred dispatcher lambda can't observe a
+            // concurrent "Win = null" that happens after this guard already passed.
+            var win = Win;
+            if (win == null || win.Dispatcher == null)
                 return Task.CompletedTask;
 
             try
@@ -1271,10 +1273,10 @@ namespace GLSense.Utilities
                 // caller resume on a different thread (e.g. a background worker
                 // with no captured SynchronizationContext), which is unsafe when
                 // the code right after the await touches Excel COM objects.
-                _ = Win.Dispatcher.InvokeAsync(
+                _ = win.Dispatcher.InvokeAsync(
                     () =>
                     {
-                        Win.SetProcessMessage(message);
+                        win.SetProcessMessage(message);
                     },
                     DispatcherPriority.Normal);
 

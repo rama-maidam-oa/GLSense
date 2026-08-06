@@ -4,7 +4,7 @@
 					  xmlns:utils="clr-namespace:GLSense.Utilities"
 					  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
 					  xmlns:local="clr-namespace:GLSense.Views" WindowStyle="None" WindowStartupLocation="CenterOwner"
-                      SizeToContent="WidthAndHeight" MinHeight="220" MaxHeight="320" MinWidth="420" MaxWidth="460"
+                      SizeToContent="WidthAndHeight" MinHeight="240" MaxHeight="320" MinWidth="420" MaxWidth="460"
 					  ResizeMode="CanResize" Background="#F8F9FA">
     <!-- New in this pass (ported alongside GLSense.Addin.Core's copy): replaces the old
          "Hierarchy" ribbon menu (RibSegmentExpand ADXRibbonMenu hosting the RibExpandAll /
@@ -88,7 +88,7 @@
                                 </ToolTip>
                             </RadioButton.ToolTip>
                         </RadioButton>
-                        <RadioButton x:Name="rbByColumns" Content="By Columns" Style="{StaticResource ModernRadioButton}" GroupName="OrientationGroup" Margin="20,0,0,0">
+                        <RadioButton x:Name="rbByColumns" Content="By Columns" Style="{StaticResource ModernRadioButton}" GroupName="OrientationGroup" Margin="35,0,0,0">
                             <RadioButton.ToolTip>
                                 <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                     <TextBlock Text="Reads the selected segment values left-to-right and inserts new columns for each expanded child" TextWrapping="Wrap"/>

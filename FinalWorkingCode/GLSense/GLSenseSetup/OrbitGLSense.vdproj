@@ -2707,7 +2707,7 @@
             }
             "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_1223A86871044FCB82F28F63D17AA70D"
             {
-            "SourcePath" = "8:..\\obj\\Release\\GLSense.dll"
+            "SourcePath" = "8:..\\obj\\Debug\\GLSense.dll"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"
