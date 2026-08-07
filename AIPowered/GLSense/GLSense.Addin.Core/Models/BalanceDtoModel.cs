@@ -291,21 +291,13 @@ namespace GLSense.Addin.Core.Models
                 jeCategoryName = NormalizeStrings(args[10])
             };
 
-            if (AppState.Instance.SelectedLedger != null)
-            {
-                balance.isFunctionalCurrency = AppState.Instance.SelectedLedger.CurrencyCode == balance.currencyCode;
-            }
-            else
-            {
-                balance.isFunctionalCurrency = true; // Default to true if no ledger selected
-            }
-
             //Ledger ID List - handle multiple ledger IDs separated by commas
             string ledgerName = args[1];
 
             var ledgerRecord = AppState.Instance.SelectedCube.Ledgers;
 
             long ledgerId = 0;
+            var matchedLedgerForCurrency = default(LedgerRecord);
 
             if (ledgerRecord == null || ledgerRecord.Count == 0)
             {
@@ -327,6 +319,24 @@ namespace GLSense.Addin.Core.Models
 
                 balance.coaid = matchingLedgers.FirstOrDefault()?.Coaid.ToString(); // Safe null check with ?.
                 ledgerId = matchingLedgers.FirstOrDefault()?.LedgerId ?? 0; // Default to 0 if no match
+                // Any one of the formula's own matched ledger(s) works here - ledgers named
+                // together in the same formula call share the same currency-code comparison
+                // outcome for this check.
+                matchedLedgerForCurrency = matchingLedgers.FirstOrDefault();
+            }
+
+            // isFunctionalCurrency must be derived from the ledger(s) named in this formula's
+            // own parameters (matchedLedgerForCurrency, resolved above from args[1]) - NOT
+            // from whatever ledger happens to be selected in the ribbon dropdown
+            // (AppState.Instance.SelectedLedger). The ribbon selection has no relationship to
+            // which ledger(s) this particular formula call is actually evaluating.
+            if (matchedLedgerForCurrency != null)
+            {
+                balance.isFunctionalCurrency = matchedLedgerForCurrency.CurrencyCode == balance.currencyCode;
+            }
+            else
+            {
+                balance.isFunctionalCurrency = true; // Default to true if no matching ledger found
             }
 
             EnsureLedgerDataLoaded(AppState.Instance.SelectedCube.CubeId, ledgerId);

@@ -296,7 +296,7 @@ namespace GLSense.Addin.Core.Views
 
             try
             {
-                await ShowBusyOverlayAsync(cancellationHelper, "Saving drilldown metadata locally");
+                await ShowBusyOverlayAsync(cancellationHelper, "Saving customizations to this workbook");
 
                 // drilldownType is left empty (not omitted) to get metadata for ALL drilldown
                 // types in one call. Omitting the query parameter entirely returned a 404
@@ -324,18 +324,18 @@ namespace GLSense.Addin.Core.Views
                 DrilldownMetadataXmlStore.Save(ServiceLocator.ExcelApp?.ActiveWorkbook, cubeId, response);
 
                 ServiceLocator.Logger?.LogDebug("GLDrilldownCustomization.BtnSaveLocally_Click: drilldown metadata saved locally successfully");
-                await HideBusyAndShowSuccessAsync("Drilldown metadata saved locally.");
+                await HideBusyAndShowSuccessAsync("Customizations saved to this workbook. They'll travel with it whenever it's shared or shipped.");
             }
             catch (OperationCanceledException)
             {
                 ServiceLocator.Logger?.LogWarn("GLDrilldownCustomization.BtnSaveLocally_Click: operation cancelled by user.");
-                await HideBusyAndShowWarnAsync("Save locally operation cancelled.");
+                await HideBusyAndShowWarnAsync("Save cancelled.");
             }
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "GLDrilldownCustomization.BtnSaveLocally_Click");
                 ServiceLocator.Logger?.LogRawJson("GLDrilldownCustomization.BtnSaveLocally_Click - error response", response);
-                await HideBusyAndShowErrorAsync($"Failed to save drilldown metadata: {ex.Message}");
+                await HideBusyAndShowErrorAsync($"Failed to save customizations: {ex.Message}");
             }
         }
 

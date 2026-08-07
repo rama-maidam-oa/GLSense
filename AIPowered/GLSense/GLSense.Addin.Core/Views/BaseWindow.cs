@@ -417,21 +417,39 @@ namespace GLSense.Addin.Core.Views
                     return;
                 }
 
-                var excelWidth = excelRect.Right - excelRect.Left;
-                var excelHeight = excelRect.Bottom - excelRect.Top;
+                // GetWindowRect returns Excel's window rect in physical pixels, but
+                // this.Left/Top/ActualWidth/ActualHeight are all WPF device-independent
+                // units (DIPs). Combining them directly (as this method previously did)
+                // treats the physical-pixel Excel coordinates as if they were already
+                // DIPs - on a monitor at 100% scaling that's harmless (physical pixels
+                // and DIPs are numerically identical there, which is exactly why this
+                // was never caught on a 100%-scaled dev machine), but at any other
+                // scaling (125%/150%, common on business laptops) it positions the
+                // window using inflated coordinates, producing the intermittent
+                // "window not properly centered/appears off" symptom reported for some
+                // users. Convert the physical Excel rect to DIPs using this window's
+                // own current DPI scale (already tracked in _currentScaleFactor, set in
+                // OnSourceInitialized before OnLoaded calls this method) before
+                // combining it with the window's own (already-DIP) width/height.
+                double scale = _currentScaleFactor > 0 ? _currentScaleFactor : 1.0;
+                double excelLeft = excelRect.Left / scale;
+                double excelTop = excelRect.Top / scale;
+                double excelWidth = (excelRect.Right - excelRect.Left) / scale;
+                double excelHeight = (excelRect.Bottom - excelRect.Top) / scale;
+
                 var windowWidth = this.ActualWidth > 0 ? this.ActualWidth : this.Width;
                 var windowHeight = this.ActualHeight > 0 ? this.ActualHeight : this.Height;
 
-                var left = excelRect.Left + (excelWidth - windowWidth) / 2;
-                var top = excelRect.Top + (excelHeight - windowHeight) / 2;
+                var left = excelLeft + (excelWidth - windowWidth) / 2;
+                var top = excelTop + (excelHeight - windowHeight) / 2;
 
-                left = Math.Max(excelRect.Left + 10, Math.Min(excelRect.Right - windowWidth - 10, left));
-                top = Math.Max(excelRect.Top + 10, Math.Min(excelRect.Bottom - windowHeight - 10, top));
+                left = Math.Max(excelLeft + 10, Math.Min(excelLeft + excelWidth - windowWidth - 10, left));
+                top = Math.Max(excelTop + 10, Math.Min(excelTop + excelHeight - windowHeight - 10, top));
 
                 this.Left = left;
                 this.Top = top;
 
-                ServiceLocator.Logger?.LogDebug($"Centered at Left={left}, Top={top}");
+                ServiceLocator.Logger?.LogDebug($"Centered at Left={left}, Top={top} (scale={scale})");
             }
             catch (Exception ex)
             {
