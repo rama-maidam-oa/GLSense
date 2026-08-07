@@ -12,6 +12,18 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="pack://application:,,,/GLSense;component/Themes/GlobalStyles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+            <!-- Info box style for the Save explanation label, matching the same
+                 colored-pill status-message convention used elsewhere (e.g.
+                 GLServerConfiguration's SuccessMessage/ErrorMessage styles), just with an
+                 "info" blue instead of success green, since this is a standing explanation
+                 rather than a transient result. -->
+            <Style x:Key="SaveInfoMessage" TargetType="Border">
+                <Setter Property="Background" Value="#D1ECF1"/>
+                <Setter Property="BorderBrush" Value="#BEE5EB"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="4"/>
+                <Setter Property="Padding" Value="12,8"/>
+            </Style>
         </ResourceDictionary>
     </utils:DpiAwareWindow.Resources>
     <Grid Margin="10">
@@ -42,18 +54,28 @@
         </Border>
         <!-- ================= Close Button Section ================= -->
         <Border Grid.Row="2" Background="Transparent" Margin="0,8,0,0">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <Button x:Name="btnSaveLocally" Content="Save Locally" Margin="0,0,8,0" Style="{StaticResource DynamicContentButton}" Click="BtnSaveLocally_Click">
-                    <Button.ToolTip>
-                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                            <StackPanel>
-                                <TextBlock Text="Fetch and store this cube's drilldown metadata locally so it can be reused later." FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="300"/>
-                            </StackPanel>
-                        </ToolTip>
-                    </Button.ToolTip>
-                </Button>
-                <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Style="{StaticResource SaveInfoMessage}" HorizontalAlignment="Right" Margin="0,0,10,0">
+                    <TextBlock Text="By clicking Save, these customizations are stored in this workbook's memory - they travel with the workbook whenever it is shared or shipped to other users."
+                               FontSize="12" FontWeight="SemiBold" Foreground="#0C5460" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="btnSaveLocally" Content="Save" Margin="0,0,8,0" Style="{StaticResource DynamicContentButton}" Click="BtnSaveLocally_Click">
+                        <Button.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <StackPanel>
+                                    <TextBlock Text="By clicking Save, these customizations are stored in this workbook's memory. They stay with the workbook - including when it's shared or shipped to other users." FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="300"/>
+                                </StackPanel>
+                            </ToolTip>
+                        </Button.ToolTip>
+                    </Button>
+                    <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
+                </StackPanel>
+            </Grid>
         </Border>
         <!-- Toast / Busy overlay -->
         <local:AppOverlay x:Name="AppOverlayControl" Margin="0" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="10"/>

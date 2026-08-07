@@ -289,6 +289,7 @@ namespace GLSense.Utilities
                 if (EnableExcelCentering && !_initialLayoutApplied)
                 {
                     _initialLayoutApplied = true;
+                    CenterOverOwnerOnce();
                 }
             }
             catch (Exception ex)
@@ -529,9 +530,7 @@ namespace GLSense.Utilities
             {
                 if (double.IsNaN(previousLeft) || double.IsNaN(previousTop) ||
                     double.IsNaN(previousWidth) || double.IsNaN(previousHeight) ||
-                    previousWidth <= 0 || previousHeight <= 0 ||
-                    double.IsNaN(Width) || double.IsNaN(Height) ||
-                    Width <= 0 || Height <= 0)
+                    previousWidth <= 0 || previousHeight <= 0)
                 {
                     return;
                 }
@@ -539,23 +538,91 @@ namespace GLSense.Utilities
                 double centerX = previousLeft + (previousWidth / 2.0);
                 double centerY = previousTop + (previousHeight / 2.0);
 
-                double newLeft = centerX - (Width / 2.0);
-                double newTop = centerY - (Height / 2.0);
-
-                // Clamp so recentering never pushes the window off the visible work area
-                // (e.g. if the old center point was near a screen edge).
-                var workArea = SystemParameters.WorkArea;
-                if (Width < workArea.Width)
-                    newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - Width));
-                if (Height < workArea.Height)
-                    newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - Height));
-
-                Left = newLeft;
-                Top = newTop;
+                PositionAroundCenter(centerX, centerY);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "DpiAwareWindow.RecenterAfterSizeChange");
+            }
+        }
+
+        /// <summary>
+        /// Positions the window so its own center lands on (centerX, centerY) - i.e.
+        /// Left/Top = center minus half of this window's own Width/Height - clamped so it
+        /// can't be pushed off the visible work area. Shared by RecenterAfterSizeChange
+        /// (recentering around the window's own previous center after a resize) and
+        /// CenterOverOwnerOnce (centering around the owner/work-area's center on first
+        /// layout). Centering must always subtract half of *this* window's size from the
+        /// target center point - using the center point directly as Left/Top (as
+        /// WindowStartupLocation effectively did here, since it ran before SizeToContent=
+        /// "Manual" plus MinWidth/MinHeight had resolved this window's real size) leaves
+        /// the window's left/top edge sitting at the center instead of the window's own
+        /// center landing there.
+        /// </summary>
+        private void PositionAroundCenter(double centerX, double centerY)
+        {
+            if (double.IsNaN(Width) || double.IsNaN(Height) || Width <= 0 || Height <= 0)
+                return;
+
+            double newLeft = centerX - (Width / 2.0);
+            double newTop = centerY - (Height / 2.0);
+
+            var workArea = SystemParameters.WorkArea;
+            if (Width < workArea.Width)
+                newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - Width));
+            if (Height < workArea.Height)
+                newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - Height));
+
+            Left = newLeft;
+            Top = newTop;
+        }
+
+        /// <summary>
+        /// Explicitly centers the window over its owner (or the work area, if there is no
+        /// owner) using this window's real, post-layout Width/Height - called exactly once,
+        /// right after the first FitToAvailableWorkArea pass has resolved the window's true
+        /// size. This is the fix for windows appearing off-center: WindowStartupLocation=
+        /// "CenterOwner" (set in XAML) already ran once by this point, but for a window
+        /// using SizeToContent="Manual" with only MinWidth/MinHeight/MaxWidth constraints
+        /// (no explicit Width/Height), WPF performs that positioning before layout has
+        /// resolved the window's real MinWidth/MinHeight-driven size - so it centers using
+        /// a placeholder width, leaving the window's left edge sitting near the owner's
+        /// center instead of the window's own center landing there. Re-centering here with
+        /// the now-final Width/Height corrects that, independent of whatever
+        /// WindowStartupLocation computed beforehand.
+        /// </summary>
+        private void CenterOverOwnerOnce()
+        {
+            try
+            {
+                double centerX;
+                double centerY;
+
+                IntPtr ownerHwnd = new WindowInteropHelper(this).Owner;
+                if (ownerHwnd != IntPtr.Zero && GetWindowRect(ownerHwnd, out Rect ownerRectPx) &&
+                    ownerRectPx.Width > 0 && ownerRectPx.Height > 0)
+                {
+                    double scale = GetCurrentScaleFactor();
+                    double ownerLeft = ownerRectPx.Left / scale;
+                    double ownerTop = ownerRectPx.Top / scale;
+                    double ownerWidth = ownerRectPx.Width / scale;
+                    double ownerHeight = ownerRectPx.Height / scale;
+
+                    centerX = ownerLeft + (ownerWidth / 2.0);
+                    centerY = ownerTop + (ownerHeight / 2.0);
+                }
+                else
+                {
+                    var workArea = SystemParameters.WorkArea;
+                    centerX = workArea.Left + (workArea.Width / 2.0);
+                    centerY = workArea.Top + (workArea.Height / 2.0);
+                }
+
+                PositionAroundCenter(centerX, centerY);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "DpiAwareWindow.CenterOverOwnerOnce");
             }
         }
 
@@ -607,6 +674,10 @@ namespace GLSense.Utilities
 
         [DllImport("user32.dll")]
         private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct Rect

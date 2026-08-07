@@ -78,27 +78,90 @@ namespace GLSense
             ApplyDpiAwareSizing(GetEffectiveDpi());
             this.DpiChanged += GLConfiguratorPane_DpiChanged;
 
-            // Create WPF control with task pane reference under per-monitor DPI context
+            // ---- REVERT NOTE (fix applied for "Balance Configurator appears zoomed in
+            // for some users" - see chat/CLAUDE.md history) -------------------------------
+            // Original code before this fix (kept here so this can be reverted exactly if
+            // the fix below ever needs to be backed out):
+            //
+            //     using (DpiAwarenessHelper.SetPerMonitorAware())
+            //     {
+            //         _wpfControl = new GLBalanceConfigurator(this);
+            //     }
+            //
+            //     _wpfControl.OnCloseRequested += () => this.Visible = false;
+            //
+            //     _host = new ElementHost
+            //     {
+            //         Dock = DockStyle.Fill,
+            //         MinimumSize = this.MinimumSize,
+            //         Child = _wpfControl
+            //     };
+            //
+            //     this.Controls.Add(_host);
+            //
+            // Why that was wrong: the WPF content's real native window (ElementHost's
+            // HwndSource) is NOT created when _wpfControl/_host are constructed (building
+            // a WPF object creates no HWND at all) - WinForms creates it lazily, only once
+            // the handle is actually needed (typically when this task pane's own handle is
+            // realized by Excel/ADX and the control tree cascades handle creation down to
+            // its children). The old "using" block only covered the WPF object's managed
+            // construction, so by the time the real ElementHost handle got created later,
+            // the thread's DPI context had already been reverted back to whatever it was
+            // before - the WPF content ended up rendering under whatever DPI awareness was
+            // ambient at that later, untimed moment instead of Per-Monitor-V2. That race is
+            // what caused the pane to intermittently render "zoomed in"/blurry - Windows
+            // falls back to bitmap-stretching the content to the monitor's actual DPI
+            // instead of it rendering natively - most visible on >100% display scaling
+            // and/or when Excel isn't on the primary monitor when the pane first loads.
+            // Note this is NOT the same fix as WpfAppManager.cs's "never revert" pattern:
+            // that dedicated WPF dispatcher thread only ever hosts WPF windows, so leaving
+            // it permanently Per-Monitor-V2 is safe. This task pane instead runs on
+            // Excel's own main UI thread (shared with the rest of Excel's UI), so the
+            // context here is always explicitly reverted afterward via "using" - we widen
+            // the scope to cover ElementHost creation, and also reapply it in
+            // HandleCreated below to cover the (normal, ADX-driven) case where this task
+            // pane's own handle - and so the ElementHost's cascade-created handle - isn't
+            // realized until after this constructor has already returned.
             using (DpiAwarenessHelper.SetPerMonitorAware())
             {
                 _wpfControl = new GLBalanceConfigurator(this);
+
+                // Host WPF control inside WinForms
+                _host = new ElementHost
+                {
+                    Dock = DockStyle.Fill,
+                    MinimumSize = this.MinimumSize,
+                    Child = _wpfControl
+                };
+
+                this.Controls.Add(_host);
             }
 
             _wpfControl.OnCloseRequested += () => this.Visible = false;
 
-            // Host WPF control inside WinForms
-            _host = new ElementHost
-            {
-                Dock = DockStyle.Fill,
-                MinimumSize = this.MinimumSize,
-                Child = _wpfControl
-            };
-
-            this.Controls.Add(_host);
+            // Covers the case where this task pane's own native handle - and therefore
+            // the ElementHost's cascade-created handle - is realized after this
+            // constructor returns (the normal case for an ADX-hosted task pane), so the
+            // WPF content's HwndSource still ends up created under Per-Monitor-V2.
+            this.HandleCreated += GLConfiguratorPane_HandleCreated;
 
             // Handle resize events
             this.Resize += GLConfiguratorPane_Resize;
 
+        }
+
+        private void GLConfiguratorPane_HandleCreated(object sender, EventArgs e)
+        {
+            using (DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                // Touching Handle forces WinForms to realize the ElementHost's native
+                // window now, while the per-monitor context is active, if it has not
+                // already been created by this point.
+                if (_host != null)
+                {
+                    _ = _host.Handle;
+                }
+            }
         }
         private void GLConfiguratorPane_DpiChanged(object sender, DpiChangedEventArgs e)
         {
