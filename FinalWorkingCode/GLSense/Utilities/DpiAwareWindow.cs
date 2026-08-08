@@ -55,12 +55,16 @@ namespace GLSense.Utilities
                 // e.g. the Balance Configurator task pane).
                 MouseWheelFocusHelper.EnableHoverToScroll(this);
 
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ctor: before WpfAppManager.EnsureApplication()");
                 WpfAppManager.EnsureApplication();
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ctor: after WpfAppManager.EnsureApplication()");
 
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ctor: before InvokeOnWpfThread (cross-thread boundary)");
                 WpfAppManager.InvokeOnWpfThread(() =>
                 {
                     try
                     {
+                        LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ctor: inside InvokeOnWpfThread callback, before SetPerMonitorAware");
                         using (DpiAwarenessHelper.SetPerMonitorAware())
                         {
                             this.UseLayoutRounding = true;
@@ -74,12 +78,14 @@ namespace GLSense.Utilities
                             this.Closed += OnClosedDebug;
                             this.Unloaded += OnUnloadedDebug;
                         }
+                        LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ctor: InvokeOnWpfThread callback complete");
                     }
                     catch (Exception ex)
                     {
                         LogUtility.LogException(ex, $"DpiAwareWindow constructor ({_windowName})");
                     }
                 });
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ctor: after InvokeOnWpfThread returned");
             }
             catch (Exception ex)
             {
@@ -233,8 +239,10 @@ namespace GLSense.Utilities
             try
             {
                 LogUtility.LogDebug($"[{_windowName}] source initialized");
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] OnSourceInitialized: start");
                 _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
                 _hwndSource?.AddHook(WndProc);
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] OnSourceInitialized: end (hwndSource={(_hwndSource != null)})");
             }
             catch (Exception ex)
             {
@@ -247,15 +255,17 @@ namespace GLSense.Utilities
             try
             {
                 LogUtility.LogDebug($"[{_windowName}] loaded - applying DPI adjustments");
-
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] OnLoaded: start (DisableAutoSizing={DisableAutoSizing})");
 
                 if (!DisableAutoSizing)
                 {
                     CaptureInitialWindowConstraints();
+                    LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] OnLoaded: constraints captured, queuing layout refresh");
                     QueueLayoutRefresh(System.Windows.Threading.DispatcherPriority.Loaded);
                 }
 
                 LogUtility.LogDebug($"[{_windowName}] load complete");
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] OnLoaded: end (synchronous part complete - ApplyLayoutRefresh runs later on the dispatcher)");
             }
             catch (Exception ex)
             {
@@ -280,17 +290,26 @@ namespace GLSense.Utilities
         {
             try
             {
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyLayoutRefresh: start (EnableAutoLayoutRefresh={EnableAutoLayoutRefresh}, DisableAutoSizing={DisableAutoSizing})");
+
                 if (!EnableAutoLayoutRefresh || DisableAutoSizing)
                     return;
 
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyLayoutRefresh: before AdjustForCurrentDpi");
                 AdjustForCurrentDpi();
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyLayoutRefresh: before FitToAvailableWorkArea");
                 FitToAvailableWorkArea();
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyLayoutRefresh: after FitToAvailableWorkArea");
 
                 if (EnableExcelCentering && !_initialLayoutApplied)
                 {
                     _initialLayoutApplied = true;
+                    LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyLayoutRefresh: before CenterOverOwnerOnce");
                     CenterOverOwnerOnce();
+                    LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyLayoutRefresh: after CenterOverOwnerOnce");
                 }
+
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyLayoutRefresh: end");
             }
             catch (Exception ex)
             {
@@ -334,7 +353,9 @@ namespace GLSense.Utilities
                 if (msg == WM_DPICHANGED && !DisableAutoSizing)
                 {
                     uint newDpi = (uint)wParam;
+                    LogUtility.LogWarn($"[DPI-DIAG] [{_windowName}] WndProc: WM_DPICHANGED received, newDpi={newDpi}");
                     AdjustForDpiChange(newDpi, lParam);
+                    LogUtility.LogWarn($"[DPI-DIAG] [{_windowName}] WndProc: AdjustForDpiChange (synchronous part) returned");
                     handled = true;
                 }
             }
@@ -363,21 +384,27 @@ namespace GLSense.Utilities
             try
             {
                 var scaleFactor = GetScaleFactorFromDpi(newDpi);
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] AdjustForDpiChange: start, newDpi={newDpi}, scaleFactor={scaleFactor}");
 
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] AdjustForDpiChange: before ApplyScaleTransform({scaleFactor})");
                 ApplyScaleTransform(scaleFactor);
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] AdjustForDpiChange: after ApplyScaleTransform");
 
                 if (lParam != IntPtr.Zero)
                 {
                     var rect = Marshal.PtrToStructure<Rect>(lParam);
+                    LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] AdjustForDpiChange: scheduling BeginInvoke, suggested rect L={rect.Left} T={rect.Top} W={rect.Width} H={rect.Height}");
 
                     this.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         try
                         {
+                            LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] AdjustForDpiChange callback: start");
                             this.Left = rect.Left / scaleFactor;
                             this.Top = rect.Top / scaleFactor;
                             this.Width = rect.Width / scaleFactor;
                             this.Height = rect.Height / scaleFactor;
+                            LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] AdjustForDpiChange callback: Left/Top/Width/Height set (W={this.Width}, H={this.Height})");
 
                             // Windows' suggested rect (above) only keeps the window under the
                             // cursor/at the same relative position during a DPI change - it has
@@ -387,7 +414,9 @@ namespace GLSense.Utilities
                             // area. Re-run the same clamp+recenter pass OnLoaded already does, so
                             // a live cross-monitor drag ends up exactly as constrained as a fresh
                             // open on that same monitor would be.
+                            LogUtility.LogWarn($"[DPI-DIAG] [{_windowName}] AdjustForDpiChange callback: before FitToAvailableWorkArea");
                             FitToAvailableWorkArea();
+                            LogUtility.LogWarn($"[DPI-DIAG] [{_windowName}] AdjustForDpiChange callback: after FitToAvailableWorkArea (returned OK)");
                         }
                         catch (Exception ex)
                         {
@@ -395,6 +424,8 @@ namespace GLSense.Utilities
                         }
                     }));
                 }
+
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] AdjustForDpiChange: end (synchronous part - BeginInvoke callback runs later)");
             }
             catch (Exception ex)
             {
@@ -404,24 +435,35 @@ namespace GLSense.Utilities
 
         private void ApplyScaleTransform(double scaleFactor)
         {
+            LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyScaleTransform: start, scaleFactor={scaleFactor}, _currentScaleFactor={_currentScaleFactor}");
+
             if (Content is not FrameworkElement element)
+            {
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyScaleTransform: Content is not FrameworkElement, returning");
                 return;
+            }
 
             if (Math.Abs(scaleFactor - 1.0) < 0.001)
             {
                 element.LayoutTransform = Transform.Identity;
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyScaleTransform: scaleFactor~=1.0, set Identity transform, returning");
                 return;
             }
 
             if (Math.Abs(scaleFactor - _currentScaleFactor) < 0.001)
+            {
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyScaleTransform: scaleFactor~=_currentScaleFactor (unchanged), returning early");
                 return;
+            }
 
             try
             {
                 _dpiScaleTransform.ScaleX = scaleFactor;
                 _dpiScaleTransform.ScaleY = scaleFactor;
                 element.LayoutTransform = _dpiScaleTransform;
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyScaleTransform: before InvalidateMeasure()");
                 element.InvalidateMeasure();
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] ApplyScaleTransform: end (InvalidateMeasure returned OK)");
             }
             catch (Exception ex)
             {
@@ -431,13 +473,18 @@ namespace GLSense.Utilities
 
         private void FitToAvailableWorkArea()
         {
+            LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: start (AutoClampToWorkArea={AutoClampToWorkArea}, DisableAutoSizing={DisableAutoSizing})");
+
             if (!AutoClampToWorkArea || DisableAutoSizing)
                 return;
 
             try
             {
                 if (Content is not FrameworkElement root)
+                {
+                    LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: Content is not FrameworkElement, returning");
                     return;
+                }
 
                 var workArea = SystemParameters.WorkArea;
                 var availableWidth = Math.Max(0, workArea.Width - (WorkAreaMargin * 2));
@@ -453,9 +500,12 @@ namespace GLSense.Utilities
                 if (MaxHeightCap.HasValue)
                     availableHeight = Math.Min(availableHeight, MaxHeightCap.Value);
 
+                LogUtility.LogWarn($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: before root.Measure(Infinity,Infinity) - workArea={workArea.Width}x{workArea.Height}, availableWidth={availableWidth}, availableHeight={availableHeight}");
                 root.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                LogUtility.LogWarn($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: after root.Measure returned OK");
                 var desiredWidth = root.DesiredSize.Width;
                 var desiredHeight = root.DesiredSize.Height;
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: desiredWidth={desiredWidth}, desiredHeight={desiredHeight}");
 
                 // If an initial MinHeight was specified on the window, treat it as
                 // a logical minimum content height when calculating fit and scale.
@@ -479,7 +529,9 @@ namespace GLSense.Utilities
                     fitScale = MinContentScale;
                 }
 
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: rawScale={rawScale}, fitScale={fitScale}, before nested ApplyScaleTransform");
                 ApplyScaleTransform(fitScale);
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: after nested ApplyScaleTransform");
 
                 var targetWidth = Math.Min(desiredWidth * fitScale, availableWidth);
                 var targetHeight = Math.Min(desiredHeight * fitScale, availableHeight);
@@ -511,7 +563,13 @@ namespace GLSense.Utilities
                 MaxHeight = availableHeight;
 
                 if (sizeChanged)
+                {
+                    LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: sizeChanged=true, before RecenterAfterSizeChange");
                     RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
+                    LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: after RecenterAfterSizeChange");
+                }
+
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] FitToAvailableWorkArea: end");
             }
             catch (Exception ex)
             {
@@ -603,12 +661,14 @@ namespace GLSense.Utilities
         /// </summary>
         private void CenterOverOwnerOnce()
         {
+            LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] CenterOverOwnerOnce: start");
             try
             {
                 double centerX;
                 double centerY;
 
                 IntPtr ownerHwnd = new WindowInteropHelper(this).Owner;
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] CenterOverOwnerOnce: ownerHwnd={ownerHwnd}, before GetWindowRect");
                 if (ownerHwnd != IntPtr.Zero && GetWindowRect(ownerHwnd, out Rect ownerRectPx) &&
                     ownerRectPx.Width > 0 && ownerRectPx.Height > 0)
                 {
@@ -628,7 +688,9 @@ namespace GLSense.Utilities
                     centerY = workArea.Top + (workArea.Height / 2.0);
                 }
 
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] CenterOverOwnerOnce: before PositionAroundCenter({centerX},{centerY})");
                 PositionAroundCenter(centerX, centerY);
+                LogUtility.LogInfo($"[DPI-DIAG] [{_windowName}] CenterOverOwnerOnce: end");
             }
             catch (Exception ex)
             {

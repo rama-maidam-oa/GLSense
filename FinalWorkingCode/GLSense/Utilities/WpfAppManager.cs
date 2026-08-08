@@ -11,14 +11,19 @@ namespace GLSense.Utilities
 
         public static void EnsureApplication()
         {
+            LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.EnsureApplication: start");
             if (Application.Current != null)
+            {
+                LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.EnsureApplication: Application.Current already set, returning early");
                 return;
+            }
 
             lock (_lock)
             {
                 if (Application.Current == null)
                 {
                     LogUtility.LogDebug("WpfAppManager.EnsureApplication: no Application.Current, creating dedicated WPF Application on this thread.");
+                    LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.EnsureApplication: acquired lock, no Application.Current, creating dedicated thread/Application");
                     Dispatcher _wpfDispatcher;
 
                     // Set this thread's DPI awareness context to Per-Monitor-V2 and leave it set.
@@ -33,11 +38,13 @@ namespace GLSense.Utilities
                     // Keeping the context active for the life of this thread ensures every window
                     // ever created on it is genuinely Per-Monitor-V2 DPI aware from HWND creation on.
                     DpiAwarenessHelper.SetPerMonitorAware();
+                    LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.EnsureApplication: SetPerMonitorAware done, before new Application()");
 
                     var app = new Application
                     {
                         ShutdownMode = ShutdownMode.OnExplicitShutdown
                     };
+                    LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.EnsureApplication: Application created");
 
                     // Store the dispatcher for later use
                     _wpfDispatcher = app.Dispatcher;
@@ -45,16 +52,19 @@ namespace GLSense.Utilities
                     // Initialize dispatcher properly
                     if (!_dispatcherInitialized)
                     {
+                        LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.EnsureApplication: before dummy-control dispatcher.Invoke (cross-thread boundary)");
                         // Create a dummy control on the UI thread to initialize dispatcher
                         _wpfDispatcher.Invoke(() =>
                         {
                             var dummy = new System.Windows.Controls.Control();
                         });
+                        LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.EnsureApplication: dummy-control dispatcher.Invoke returned OK");
                         _dispatcherInitialized = true;
                     }
 
                     app.DispatcherUnhandledException += OnDispatcherUnhandledException;
                     LogUtility.LogDebug("WpfAppManager.EnsureApplication: WPF Application created and dispatcher initialized.");
+                    LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.EnsureApplication: end");
                 }
             }
         }
@@ -75,18 +85,27 @@ namespace GLSense.Utilities
 
         public static void InvokeOnWpfThread(Action action)
         {
+            LogUtility.LogInfo($"[DPI-DIAG] WpfAppManager.InvokeOnWpfThread: start, callingThread={System.Threading.Thread.CurrentThread.ManagedThreadId}");
             if (Application.Current != null)
             {
                 var dispatcher = Application.Current.Dispatcher;
                 if (dispatcher.CheckAccess())
                 {
+                    LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.InvokeOnWpfThread: already on dispatcher thread, calling SafeExecute directly");
                     SafeExecute(action);
                 }
                 else
                 {
+                    LogUtility.LogWarn($"[DPI-DIAG] WpfAppManager.InvokeOnWpfThread: before BLOCKING dispatcher.Invoke (cross-thread boundary, dispatcherThread={dispatcher.Thread?.ManagedThreadId})");
                     dispatcher.Invoke(() => SafeExecute(action));
+                    LogUtility.LogWarn("[DPI-DIAG] WpfAppManager.InvokeOnWpfThread: dispatcher.Invoke returned OK");
                 }
             }
+            else
+            {
+                LogUtility.LogWarn("[DPI-DIAG] WpfAppManager.InvokeOnWpfThread: Application.Current is null, action NOT executed");
+            }
+            LogUtility.LogInfo("[DPI-DIAG] WpfAppManager.InvokeOnWpfThread: end");
         }
         public static T InvokeOnWpfThread<T>(Func<T> func)
         {

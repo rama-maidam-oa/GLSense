@@ -70,12 +70,16 @@ namespace GLSense
         }
         public GLConfiguratorPane()
         {
+            LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane ctor: start");
             InitializeComponent();
+            LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane ctor: InitializeComponent done");
 
             // Enable DPI-aware sizing for the WinForms host
             this.AutoScaleMode = AutoScaleMode.Dpi;
 
+            LogUtility.LogInfo($"[DPI-DIAG] GLConfiguratorPane ctor: before ApplyDpiAwareSizing, GetEffectiveDpi={GetEffectiveDpi()}");
             ApplyDpiAwareSizing(GetEffectiveDpi());
+            LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane ctor: ApplyDpiAwareSizing done");
             this.DpiChanged += GLConfiguratorPane_DpiChanged;
 
             // ---- REVERT NOTE (fix applied for "Balance Configurator appears zoomed in
@@ -122,9 +126,11 @@ namespace GLSense
             // HandleCreated below to cover the (normal, ADX-driven) case where this task
             // pane's own handle - and so the ElementHost's cascade-created handle - isn't
             // realized until after this constructor has already returned.
+            LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane ctor: before SetPerMonitorAware/new GLBalanceConfigurator/ElementHost block");
             using (DpiAwarenessHelper.SetPerMonitorAware())
             {
                 _wpfControl = new GLBalanceConfigurator(this);
+                LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane ctor: new GLBalanceConfigurator(this) done");
 
                 // Host WPF control inside WinForms
                 _host = new ElementHost
@@ -133,9 +139,12 @@ namespace GLSense
                     MinimumSize = this.MinimumSize,
                     Child = _wpfControl
                 };
+                LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane ctor: ElementHost created, before Controls.Add");
 
                 this.Controls.Add(_host);
+                LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane ctor: Controls.Add(_host) done");
             }
+            LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane ctor: SetPerMonitorAware/ElementHost block complete");
 
             _wpfControl.OnCloseRequested += () => this.Visible = false;
 
@@ -152,6 +161,7 @@ namespace GLSense
 
         private void GLConfiguratorPane_HandleCreated(object sender, EventArgs e)
         {
+            LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane.HandleCreated: start");
             using (DpiAwarenessHelper.SetPerMonitorAware())
             {
                 // Touching Handle forces WinForms to realize the ElementHost's native
@@ -159,17 +169,23 @@ namespace GLSense
                 // already been created by this point.
                 if (_host != null)
                 {
+                    LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane.HandleCreated: before touching _host.Handle");
                     _ = _host.Handle;
+                    LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane.HandleCreated: _host.Handle touched OK");
                 }
             }
+            LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane.HandleCreated: end");
         }
         private void GLConfiguratorPane_DpiChanged(object sender, DpiChangedEventArgs e)
         {
+            LogUtility.LogWarn($"[DPI-DIAG] GLConfiguratorPane.DpiChanged: start, DeviceDpiOld={e.DeviceDpiOld}, DeviceDpiNew={e.DeviceDpiNew}");
             ApplyDpiAwareSizing(e.DeviceDpiNew);
+            LogUtility.LogWarn("[DPI-DIAG] GLConfiguratorPane.DpiChanged: ApplyDpiAwareSizing returned OK, end");
         }
 
         private void ApplyDpiAwareSizing(float dpiX)
         {
+            LogUtility.LogInfo($"[DPI-DIAG] GLConfiguratorPane.ApplyDpiAwareSizing: start, dpiX={dpiX}");
             var scale = dpiX / 96f;
             int minWidthPx = (int)Math.Round(_minWidthDip * scale);
             int minHeightPx = (int)Math.Round(_minHeightDip * scale);
@@ -181,6 +197,7 @@ namespace GLSense
             }
 
             this.Size = new Size(Math.Max(this.Width, minWidthPx), Math.Max(this.Height, minHeightPx));
+            LogUtility.LogInfo($"[DPI-DIAG] GLConfiguratorPane.ApplyDpiAwareSizing: end, MinimumSize={this.MinimumSize}, Size={this.Size}");
         }
         private void GLConfiguratorPane_Resize(object sender, EventArgs e)
         {
