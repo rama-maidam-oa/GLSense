@@ -156,13 +156,13 @@
                     <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
-                                <Image Source="/GLSense;component/Images/ExcelCell_14x14.png" 
-                                       Width="12" 
-                                       Height="12" 
-                                       Margin="0,0,6,0" 
-                                       VerticalAlignment="Center" 
-                                       Stretch="Uniform"/>
-                                <TextBlock Text="Select Excel Cell" 
+                                <iconPacks:PackIconFontAwesome Kind="TableCellsSolid"
+                                                                Width="12"
+                                                                Height="12"
+                                                                Foreground="{StaticResource GLAccentBrush}"
+                                                                Margin="0,0,6,0"
+                                                                VerticalAlignment="Center"/>
+                                <TextBlock Text="Select Excel Cell"
                                            FontWeight="SemiBold"/>
                             </StackPanel>
                             <TextBlock Text="Click to select excel cell as a reference." 
@@ -171,11 +171,10 @@
                         </StackPanel>
                     </ToolTip>
                 </Button.ToolTip>
-                <Image Source="/GLSense;component/Images/ExcelCell_14x14.png" 
-                       Width="16" 
-                       Height="16" 
-                       Margin="0,1,0,0" 
-                       Stretch="Uniform"/>
+                <iconPacks:PackIconFontAwesome Kind="TableCellsSolid"
+                                                Width="16"
+                                                Height="16"
+                                                Margin="0,1,0,0"/>
             </Button>
 
             <!-- Clear Button -->

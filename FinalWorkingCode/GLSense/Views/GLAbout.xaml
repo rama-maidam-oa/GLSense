@@ -108,7 +108,7 @@
                         </Grid.ColumnDefinitions>
                         <!-- Company Logo Placeholder -->
                         <Border Grid.Column="0" Width="200" Height="100" Background="White" CornerRadius="8" Margin="0,0,16,0">
-                            <Image Source="/GLSense;component/Images/orbit_logo.png" Stretch="Fill"/>
+                            <Image Source="/GLSense;component/Images/orbit_logo.png" Stretch="Uniform"/>
                         </Border>
                         <!-- Product Details -->
                         <StackPanel Grid.Column="1" Orientation="Vertical">

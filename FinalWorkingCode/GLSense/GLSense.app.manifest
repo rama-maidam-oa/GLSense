@@ -15,7 +15,18 @@
 	</dependency>
 	<application xmlns="urn:schemas-microsoft-com:asm.v3">
 		<windowsSettings>
-			<!-- Use Per Monitor v1 (not v2) for Office compatibility -->
+			<!-- This manifest is embedded in GLSense.dll (a COM add-in Library, not an
+			     executable), so this dpiAware entry does NOT govern the host process's DPI
+			     awareness mode - that's owned by EXCEL.EXE's own manifest, which this add-in
+			     has no way to change. The actual, effective per-monitor DPI awareness for
+			     every WPF window/control in this add-in comes from
+			     DpiAwarenessHelper.SetPerMonitorAware() (SetThreadDpiAwarenessContext with
+			     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2), called at runtime on each UI
+			     thread right before its windows'/controls' native handles are created - see
+			     Utilities\DpiAwarenessHelper.cs, Utilities\WpfAppManager.cs, and
+			     GLConfiguratorPane.cs. This entry is left here as a harmless declaration in
+			     case it's ever picked up by a hosting context that does honor it, but do not
+			     rely on it, and do not assume it is the reason DPI scaling works. -->
 			<dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true</dpiAware>
 		</windowsSettings>
 	</application>

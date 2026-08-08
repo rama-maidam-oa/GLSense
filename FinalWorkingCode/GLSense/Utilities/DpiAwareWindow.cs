@@ -378,6 +378,16 @@ namespace GLSense.Utilities
                             this.Top = rect.Top / scaleFactor;
                             this.Width = rect.Width / scaleFactor;
                             this.Height = rect.Height / scaleFactor;
+
+                            // Windows' suggested rect (above) only keeps the window under the
+                            // cursor/at the same relative position during a DPI change - it has
+                            // no idea about our own MaxWidthCap/content-fit rules, so a window
+                            // dragged from a large, high-res monitor onto a smaller/lower-res one
+                            // at a different scale can land larger than the new monitor's work
+                            // area. Re-run the same clamp+recenter pass OnLoaded already does, so
+                            // a live cross-monitor drag ends up exactly as constrained as a fresh
+                            // open on that same monitor would be.
+                            FitToAvailableWorkArea();
                         }
                         catch (Exception ex)
                         {
