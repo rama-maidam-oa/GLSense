@@ -31,6 +31,34 @@ namespace GLSense.Views
             webView.Loaded += WebView_Loaded;
 
             webView.NavigationCompleted += WebView_NavigationCompleted;
+
+            Closed += GLDrilldownCustomization_Closed;
+        }
+
+        // See GLLogin.GLLogin_Closed for the full reasoning: WebView2 spins up a real
+        // Chromium browser-process tree per environment, and nothing else in this app's
+        // lifecycle ever tears it down without this - confirmed via Task Manager showing
+        // dozens of orphaned msedgewebview2.exe processes accumulating across sessions.
+        private void GLDrilldownCustomization_Closed(object? sender, EventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug("GLDrilldownCustomization.GLDrilldownCustomization_Closed: disposing WebView2 control");
+
+                webView.NavigationCompleted -= WebView_NavigationCompleted;
+
+                if (webView.CoreWebView2 != null)
+                {
+                    webView.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
+                    webView.CoreWebView2.ProcessFailed -= CoreWebView2_ProcessFailed;
+                }
+
+                webView.Dispose();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLDrilldownCustomization.GLDrilldownCustomization_Closed: WebView2 dispose failed");
+            }
         }
         private async void WebView_Loaded(object sender, RoutedEventArgs e)
         {

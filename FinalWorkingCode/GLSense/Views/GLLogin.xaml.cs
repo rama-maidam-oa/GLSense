@@ -73,6 +73,35 @@ namespace GLSense.Views
 
             Loaded += GLLogin_Loaded;
             webView.Loaded += WebView_Loaded;
+            Closed += GLLogin_Closed;
+        }
+
+        // WebView2 spins up a real Chromium browser-process tree (browser + GPU + network
+        // service + renderer(s) + crashpad handler) per environment - without disposing the
+        // control, that whole tree is orphaned every time this window closes, since nothing
+        // else in this app's lifecycle ever tears it down. Confirmed via Task Manager: dozens
+        // of stray msedgewebview2.exe processes accumulate across sessions with this missing.
+        // Unsubscribing the CoreWebView2 event handlers first avoids them firing against a
+        // control that's mid-disposal.
+        private void GLLogin_Closed(object? sender, EventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug("GLLogin.GLLogin_Closed: disposing WebView2 control");
+
+                if (webView.CoreWebView2 != null)
+                {
+                    webView.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
+                    webView.CoreWebView2.ProcessFailed -= CoreWebView2_ProcessFailed;
+                    webView.CoreWebView2.NavigationCompleted -= WebView_NavigationCompleted;
+                }
+
+                webView.Dispose();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLLogin.GLLogin_Closed: WebView2 dispose failed");
+            }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
