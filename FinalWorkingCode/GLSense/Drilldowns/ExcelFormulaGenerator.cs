@@ -429,8 +429,9 @@ namespace GLSense.Drilldowns
                 }
                 return value;
             }
-            catch
+            catch (Exception ex)
             {
+                LogUtility.LogWarn($"ExcelFormulaGenerator.ConvertToDecimalString: failed to parse \"{value}\" as a number, returning it unchanged: {ex.Message}");
                 return value;
             }
         }

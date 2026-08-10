@@ -3274,7 +3274,7 @@ namespace GLSense
             {
                 return _win.Dispatcher.InvokeAsync(() => { _win.SetProcessTitle(title); _win.SetProcessMessage(message); }, DispatcherPriority.Normal).Task;
             }
-            catch (TaskCanceledException) { return Task.CompletedTask; }
+            catch (TaskCanceledException) { /* dispatcher shutting down mid-invoke - can be ignored as expected */ return Task.CompletedTask; }
             catch (Exception ex) { LogUtility.LogException(ex); return Task.CompletedTask; }
         }
 
@@ -3296,7 +3296,7 @@ namespace GLSense
             {
                 return _win.Dispatcher.InvokeAsync(() => _win.SetProcessMessage(message), DispatcherPriority.Normal).Task;
             }
-            catch (TaskCanceledException) { return Task.CompletedTask; }
+            catch (TaskCanceledException) { /* dispatcher shutting down mid-invoke - can be ignored as expected */ return Task.CompletedTask; }
             catch (Exception ex) { LogUtility.LogException(ex); return Task.CompletedTask; }
         }
 

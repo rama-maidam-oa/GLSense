@@ -1441,6 +1441,7 @@ namespace GLSense.Drilldowns
             }
             catch (TaskCanceledException)
             {
+                // Dispatcher was shutting down mid-invoke (e.g. window closing) - can be ignored as expected.
                 return Task.CompletedTask;
             }
             catch (Exception ex)

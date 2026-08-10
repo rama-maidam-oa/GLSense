@@ -194,6 +194,7 @@ namespace GLSense.Utilities
             }
             catch
             {
+                // Malformed URI - can be ignored as expected; callers treat an empty host as no match.
                 return string.Empty;
             }
         }
