@@ -22,11 +22,43 @@ namespace GLSense.Utilities
 
                 LogCertificate(cert2, chain, sslPolicyErrors);
 
-                // 🔒 Absolute rule: ANY SSL policy error = FAIL
+                // 🔒 Absolute rule: ANY SSL policy error = FAIL, with the same one
+                // exception as the stricter chain check below - if the *only* reason
+                // the framework's own automatic chain build flagged an error is that
+                // revocation status couldn't be determined, that's not evidence the
+                // certificate itself is bad. Always logged at ERROR (not gated behind
+                // Debug mode) with the specific chain status, not just the coarse
+                // SslPolicyErrors flag, so the actual cause (untrusted root, partial
+                // chain, name mismatch, revocation-lookup-incomplete, etc.) is visible
+                // in the log without needing to reproduce with Debug logging enabled.
                 if (sslPolicyErrors != SslPolicyErrors.None)
                 {
-                    LogUtility.LogError($"TLS validation failed: {sslPolicyErrors}");
-                    return false;
+                    var frameworkStatuses = chain?.ChainStatus;
+
+                    if (frameworkStatuses != null && frameworkStatuses.Length > 0)
+                    {
+                        foreach (var status in frameworkStatuses)
+                        {
+                            LogUtility.LogError(
+                                $"TLS validation failed ({sslPolicyErrors}): {status.Status} - {status.StatusInformation}");
+                        }
+                    }
+                    else
+                    {
+                        LogUtility.LogError($"TLS validation failed: {sslPolicyErrors}");
+                    }
+
+                    // Only revocation-incompleteness is forgiven, and only when it's the
+                    // sole policy error - a name mismatch or unavailable certificate
+                    // alongside it still fails regardless of what the chain says.
+                    bool onlyChainErrorFlag = sslPolicyErrors == SslPolicyErrors.RemoteCertificateChainErrors;
+                    if (!onlyChainErrorFlag || !IsOnlyRevocationCheckIncomplete(frameworkStatuses))
+                        return false;
+
+                    LogUtility.LogWarn(
+                        "TLS validation: the framework's own chain build flagged only a " +
+                        "revocation-status-unknown condition - proceeding anyway; the " +
+                        "certificate itself is otherwise valid.");
                 }
 
                 // 🔒 Force Windows chain validation with revocation
