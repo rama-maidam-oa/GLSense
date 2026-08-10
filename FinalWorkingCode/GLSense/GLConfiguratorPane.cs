@@ -174,6 +174,19 @@ namespace GLSense
                     LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane.HandleCreated: _host.Handle touched OK");
                 }
             }
+
+            // GetEffectiveDpi() in the constructor ran before this.IsHandleCreated was
+            // true, so it always fell back to the stale Control.DeviceDpi (96) instead
+            // of the monitor's real DPI - permanently locking MinimumSize/_host.MinimumSize
+            // to the un-scaled 600x300px floor regardless of actual display scaling. That
+            // let a user shrink the pane (and the ElementHost/WPF content inside it) well
+            // below the size GLBalanceConfigurator's own MinWidth actually needs at the
+            // real DPI, causing a layout squeeze/ghosting artifact while dragging the
+            // pane's resize corner. Now that this pane's own handle exists, GetEffectiveDpi()
+            // can return the real per-monitor DPI, so recompute the sizing here to correct
+            // that floor.
+            LogUtility.LogInfo($"[DPI-DIAG] GLConfiguratorPane.HandleCreated: before re-applying ApplyDpiAwareSizing, GetEffectiveDpi={GetEffectiveDpi()}");
+            ApplyDpiAwareSizing(GetEffectiveDpi());
             LogUtility.LogInfo("[DPI-DIAG] GLConfiguratorPane.HandleCreated: end");
         }
         private void GLConfiguratorPane_DpiChanged(object sender, DpiChangedEventArgs e)
