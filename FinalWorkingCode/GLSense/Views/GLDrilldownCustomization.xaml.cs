@@ -3,6 +3,7 @@ using GLSense.Helpers;
 using GLSense.Utilities;
 using Microsoft.Web.WebView2.Core;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -18,6 +19,7 @@ namespace GLSense.Views
     public partial class GLDrilldownCustomization : DpiAwareWindow
     {
         private Task? _webViewInitTask;
+        private WebView2NavigationResilience? _resilience;
         public GLDrilldownCustomization()
         {
             LogUtility.LogDebug("GLDrilldownCustomization.ctor invoked");
@@ -49,8 +51,8 @@ namespace GLSense.Views
 
                 if (webView.CoreWebView2 != null)
                 {
+                    _resilience?.Detach(webView.CoreWebView2);
                     webView.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
-                    webView.CoreWebView2.ProcessFailed -= CoreWebView2_ProcessFailed;
                 }
 
                 webView.Dispose();
@@ -94,7 +96,12 @@ namespace GLSense.Views
 
                 // 5) Hook device permission handler and diagnostics after CoreWebView2 is ready
                 webView.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
-                webView.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
+
+                // Cert-error bypass (scoped to this window's own server), retry-once, and
+                // managed popup handling - see
+                // docs/superpowers/specs/2026-08-10-webview2-navigation-resilience-design.md
+                _resilience = new WebView2NavigationResilience(nameof(GLDrilldownCustomization), this);
+                _resilience.Attach(webView.CoreWebView2, GetTrustedHosts);
 
                 // Optional: turn on DevTools during development
                 webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
@@ -112,10 +119,29 @@ namespace GLSense.Views
 
                     LogUtility.LogDebug($"GLDrilldownCustomization.WebView_Loaded: navigating to drilldown launcher for cubeId={AppState.Instance.SelectedCube.CubeId}");
                     using var cancellationHelper = new CancellationHelper();
-                    webView.CoreWebView2.Navigate(finalUrl);
                     webView.Visibility = Visibility.Hidden;
                     await ShowBusyOverlayAsync(cancellationHelper, "Loading Drilldown Customization");
 
+                    try
+                    {
+                        var result = await _resilience!.NavigateWithRetryAsync(webView.CoreWebView2, finalUrl, cancellationHelper.GetToken());
+                        if (!result.IsSuccess)
+                        {
+                            LogUtility.LogWarn($"GLDrilldownCustomization.WebView_Loaded: navigation to drilldown launcher failed after retry ({result.WebErrorStatus}).");
+                            await AppOverlayControl.HideBusyAsync();
+                            webView.Visibility = Visibility.Visible;
+                            await AppOverlayControl.ShowErrorAsync("Unable to load the page. Please try again.");
+                        }
+                        // On success, the always-on WebView_NavigationCompleted handler below
+                        // hides the busy overlay and restores visibility once
+                        // document.readyState is complete.
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        LogUtility.LogWarn("GLDrilldownCustomization.WebView_Loaded: navigation was cancelled.");
+                        await AppOverlayControl.HideBusyAsync();
+                        webView.Visibility = Visibility.Visible;
+                    }
                 }
                 else
                 {
@@ -154,7 +180,10 @@ namespace GLSense.Views
 
             if (!e.IsSuccess)
             {
-                LogUtility.LogWarn($"Navigation failed: {e.WebErrorStatus}");
+                // Logging for a failed navigation is now owned end-to-end by
+                // WebView2NavigationResilience.NavigateWithRetryAsync and the failure
+                // handling around it in WebView_Loaded - logging it again here as well
+                // would just double it.
                 await AppOverlayControl.HideBusyAsync();
                 webView.Visibility = Visibility.Visible;
                 return;
@@ -219,9 +248,23 @@ namespace GLSense.Views
                 e.Handled = true;
             }
         }
-        private void CoreWebView2_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+        // Trusted-host set for WebView2NavigationResilience's certificate-error bypass - this
+        // window always talks to the same, already-authenticated server (AppState.Instance.LoginUrl).
+        private IReadOnlyCollection<string> GetTrustedHosts()
         {
-            LogUtility.LogWarn($"WebView2 process failed. Kind={e.ProcessFailedKind}");
+            try
+            {
+                var loginUrl = AppState.Instance.LoginUrl;
+                if (string.IsNullOrWhiteSpace(loginUrl))
+                    return Array.Empty<string>();
+
+                return new[] { new Uri(loginUrl, UriKind.Absolute).Host };
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"GLDrilldownCustomization.GetTrustedHosts: could not resolve host from '{AppState.Instance.LoginUrl}': {ex.Message}");
+                return Array.Empty<string>();
+            }
         }
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
