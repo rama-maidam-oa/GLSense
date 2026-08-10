@@ -89,17 +89,32 @@ namespace GLSense.Utilities
         private async void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
         {
             var deferral = e.GetDeferral();
+            WebView2PopupWindow? popup = null;
             try
             {
-                var popup = new WebView2PopupWindow();
+                popup = new WebView2PopupWindow();
                 if (_ownerWindow != null)
                     popup.Owner = _ownerWindow;
+
+                // Show BEFORE EnsureCoreWebView2Async (inside InitializeAsync): the WPF
+                // WebView2 control's native handle is only realized once the window's
+                // visual tree actually loads, which requires the window to already be
+                // shown - calling EnsureCoreWebView2Async first hangs forever waiting on
+                // a precondition nothing will ever satisfy, since we're awaiting it
+                // before the one call that would satisfy it. That hang also holds this
+                // deferral open indefinitely, which backs up into the browser process
+                // and can make the *parent* window's renderer look unresponsive too -
+                // confirmed via a live test: [WebView2PopupWindow] logged
+                // "constructing window"/"initialized" and then nothing else, ever,
+                // followed 14s later by the parent's renderer reporting
+                // RenderProcessUnresponsive. The popup briefly shows blank chrome until
+                // its content finishes initializing - expected and harmless.
+                popup.Show();
 
                 await popup.InitializeAsync(_core!.Environment, _trustedHostsProvider!);
 
                 e.NewWindow = popup.CoreWebView2;
                 e.Handled = true;
-                popup.Show();
 
                 LogUtility.LogDebug($"[{_windowName}] Hosted popup window for {e.Uri}");
             }
@@ -107,7 +122,10 @@ namespace GLSense.Utilities
             {
                 LogUtility.LogException(ex, $"[{_windowName}] Failed to host popup window for {e.Uri}");
                 // Fall back to WebView2's own default (unmanaged) popup rather than leaving
-                // the new-window navigation stuck - only stop if it truly has to.
+                // the new-window navigation stuck - only stop if it truly has to. Close our
+                // own (already-shown, now-broken) popup first so it doesn't linger alongside
+                // WebView2's default one.
+                try { popup?.Close(); } catch { /* best-effort cleanup - can be ignored as expected */ }
                 e.Handled = false;
             }
             finally
