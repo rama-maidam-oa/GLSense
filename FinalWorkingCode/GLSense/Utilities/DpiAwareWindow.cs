@@ -44,6 +44,19 @@ namespace GLSense.Utilities
                 _windowName = GetType().Name;
                 LogUtility.LogDebug($"[{_windowName}] constructing window");
 
+                // Hidden until the first layout pass has actually positioned/sized this
+                // window (see RevealWindow, called from every exit path of
+                // ApplyLayoutRefresh/OnLoaded below) - WindowStartupLocation="CenterOwner"
+                // positions the window once, immediately, using its pre-layout placeholder
+                // size, and only the later corrective pass (CenterOverOwnerOnce/
+                // FitToAvailableWorkArea) moves it to the real, correct position. Without
+                // this, that correction happens visibly, after the window is already on
+                // screen - the window appears pinned near the top of the screen for a
+                // frame or two, then visibly drops into place. Set before Show()/
+                // ShowDialog() is ever called, so the window is never rendered at full
+                // opacity in the wrong spot in the first place.
+                this.Opacity = 0;
+
                 AddHandler(UIElement.PreviewMouseDownEvent, new MouseButtonEventHandler(OnWindowPreviewMouseDown), true);
                 AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(OnWindowPreviewKeyDown), true);
                 AddHandler(UIElement.PreviewTextInputEvent, new TextCompositionEventHandler(OnWindowPreviewTextInput), true);
@@ -253,13 +266,31 @@ namespace GLSense.Utilities
                     CaptureInitialWindowConstraints();
                     QueueLayoutRefresh(System.Windows.Threading.DispatcherPriority.Loaded);
                 }
+                else
+                {
+                    // No auto-layout pass will run for this window (e.g. a message box that
+                    // wants to respect user resizing), so there's nothing to wait for -
+                    // reveal it now rather than leaving it invisible forever.
+                    RevealWindow();
+                }
 
                 LogUtility.LogDebug($"[{_windowName}] load complete");
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, $"DpiAwareWindow.OnLoaded ({_windowName})");
+                RevealWindow();
             }
+        }
+
+        // Undoes the Opacity=0 set at construction, once (and only once) the window has
+        // actually been positioned - see the constructor comment. Idempotent and called
+        // from every exit path that could be "done positioning" (including error paths),
+        // so a window is never left permanently invisible.
+        private void RevealWindow()
+        {
+            if (Opacity < 1)
+                Opacity = 1;
         }
 
         private void QueueLayoutRefresh(System.Windows.Threading.DispatcherPriority priority)
@@ -280,7 +311,10 @@ namespace GLSense.Utilities
             try
             {
                 if (!EnableAutoLayoutRefresh || DisableAutoSizing)
+                {
+                    RevealWindow();
                     return;
+                }
 
                 AdjustForCurrentDpi();
                 FitToAvailableWorkArea();
@@ -290,10 +324,13 @@ namespace GLSense.Utilities
                     _initialLayoutApplied = true;
                     CenterOverOwnerOnce();
                 }
+
+                RevealWindow();
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "DpiAwareWindow.ApplyLayoutRefresh");
+                RevealWindow();
             }
         }
 
