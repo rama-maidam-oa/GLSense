@@ -37,7 +37,11 @@ namespace GLSense.Utilities
                         RevocationMode = X509RevocationMode.Online,
                         RevocationFlag = X509RevocationFlag.ExcludeRoot,
                         VerificationFlags = X509VerificationFlags.NoFlag,
-                        UrlRetrievalTimeout = TimeSpan.FromSeconds(300)
+                        // Was 300s - long enough to make a soft-failed revocation lookup
+                        // (see IsOnlyRevocationCheckIncomplete below) look exactly like a
+                        // hang. The online check is a best-effort signal now, so it
+                        // doesn't need anywhere near that long before giving up on it.
+                        UrlRetrievalTimeout = TimeSpan.FromSeconds(15)
                     };
 
                     strictChain.ChainPolicy.ApplicationPolicy.Add(
@@ -45,13 +49,36 @@ namespace GLSense.Utilities
 
                     if (!strictChain.Build(cert2))
                     {
-                        foreach (var status in strictChain.ChainStatus)
+                        var statuses = strictChain.ChainStatus;
+
+                        foreach (var status in statuses)
                         {
                             LogUtility.LogError(
                                 $"Chain validation error: {status.Status} - {status.StatusInformation}");
                         }
 
-                        return false;
+                        // A genuinely bad certificate (revoked, expired, untrusted root,
+                        // wrong key usage, etc.) still fails here exactly as before. The
+                        // one condition this does NOT hard-fail on is the revocation
+                        // check itself being unable to complete (DNS/firewall/timeout
+                        // reaching the CA's OCSP/CRL endpoint - not the customer's own
+                        // server). A browser wouldn't hard-fail on that either (OCSP
+                        // stapling + soft-fail is the default there), and a corporate
+                        // firewall that only allow-lists the app server, not arbitrary
+                        // CA infrastructure, otherwise makes this validator fail for
+                        // reasons that have nothing to do with whether the certificate
+                        // is actually trustworthy.
+                        if (IsOnlyRevocationCheckIncomplete(statuses))
+                        {
+                            LogUtility.LogWarn(
+                                "TLS chain validation: revocation status could not be " +
+                                "determined (offline/unreachable OCSP or CRL endpoint) - " +
+                                "proceeding anyway; the certificate itself is otherwise valid.");
+                        }
+                        else
+                        {
+                            return false;
+                        }
                     }
                 }
 
@@ -72,6 +99,23 @@ namespace GLSense.Utilities
                 return false;
             }
         }
+        private static bool IsOnlyRevocationCheckIncomplete(X509ChainStatus[] statuses)
+        {
+            if (statuses == null || statuses.Length == 0)
+                return false;
+
+            const X509ChainStatusFlags revocationIncomplete =
+                X509ChainStatusFlags.RevocationStatusUnknown | X509ChainStatusFlags.OfflineRevocation;
+
+            foreach (var status in statuses)
+            {
+                if ((status.Status & revocationIncomplete) == 0)
+                    return false;
+            }
+
+            return true;
+        }
+
         private static string TryGetRequestTarget(object sender)
         {
             try
