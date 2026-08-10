@@ -99,24 +99,9 @@ namespace GLSense.Views
             {
                 LogUtility.LogException(ex, "WebView2PopupWindow.WebView2PopupWindow_Closed: WebView2 dispose failed");
             }
-            finally
-            {
-                // Show() (non-modal), unlike ShowDialog(), does not automatically
-                // reactivate the owner when this window closes - the OS just falls
-                // through to whatever window is next in its own activation history,
-                // which can be a completely unrelated application (confirmed via a live
-                // test: focus landed on a background terminal window, not Excel).
-                // Explicitly hand focus back to whichever window owns this popup
-                // (GLLogin/GLDrilldownCustomization, and transitively Excel).
-                try
-                {
-                    Owner?.Activate();
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "WebView2PopupWindow.WebView2PopupWindow_Closed: failed to reactivate owner");
-                }
-            }
+
+            // Owner reactivation on close is handled generically by
+            // DpiAwareWindow.RestoreOwnerFocusOnClosed for every window in this app.
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)

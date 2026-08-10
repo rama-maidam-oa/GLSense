@@ -9,7 +9,11 @@ namespace GLSense.Utilities
 {
     public class DpiAwareWindow : Window
     {
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
         private HwndSource _hwndSource;
+        private IntPtr _excelOwnerHwnd = IntPtr.Zero;
         private double _currentScaleFactor = 1.0;
         private readonly ScaleTransform _dpiScaleTransform = new ScaleTransform(1.0, 1.0);
         private readonly string _windowName;
@@ -72,6 +76,7 @@ namespace GLSense.Utilities
                             this.Loaded += OnLoaded;
                             this.ContentRendered += OnContentRenderedDebug;
                             this.Closed += OnClosedDebug;
+                            this.Closed += RestoreOwnerFocusOnClosed;
                             this.Unloaded += OnUnloadedDebug;
                         }
                     }
@@ -106,6 +111,7 @@ namespace GLSense.Utilities
             {
                 var helper = new WindowInteropHelper(this);
                 helper.Owner = excelHwnd;
+                _excelOwnerHwnd = excelHwnd;
             }
             catch (Exception ex)
             {
@@ -838,6 +844,40 @@ namespace GLSense.Utilities
             catch
             {
                 // swallow
+            }
+        }
+
+        // Show() (non-modal), unlike ShowDialog(), does not automatically reactivate
+        // the owner when a window closes - the OS just falls through to whatever
+        // window is next in its own activation history, which can be a completely
+        // unrelated application (confirmed via a live test with WebView2PopupWindow:
+        // focus landed on a background terminal window, not Excel). Centralized here
+        // so every DpiAwareWindow-derived window (dialogs, popups, message/wait
+        // windows) gets this for free on any close - normal, programmatic, or forced -
+        // rather than each window needing its own copy of this fix.
+        private void RestoreOwnerFocusOnClosed(object sender, EventArgs e)
+        {
+            try
+            {
+                if (Owner != null)
+                {
+                    // Owned by another WPF window (e.g. a popup owned by GLLogin) -
+                    // reactivating it is enough; that window's own native ownership
+                    // chain (set via SetExcelOwner) takes care of Excel in turn.
+                    Owner.Activate();
+                }
+                else if (_excelOwnerHwnd != IntPtr.Zero)
+                {
+                    // Owned directly by Excel's native HWND (SetExcelOwner /
+                    // ShowWithOwner / ShowDialogWithOwner) - Window.Owner is never set
+                    // for this path since Excel isn't a WPF Window, so force Excel's
+                    // own window back to the foreground explicitly.
+                    SetForegroundWindow(_excelOwnerHwnd);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"DpiAwareWindow.RestoreOwnerFocusOnClosed ({_windowName})");
             }
         }
 
