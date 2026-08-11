@@ -55,6 +55,13 @@ namespace GLSense
 
         public AddinModule()
         {
+            // No handler anywhere previously caught a truly unhandled exception outside
+            // the WPF dispatcher thread (WpfAppManager.OnDispatcherUnhandledException
+            // only covers that one thread) - a background Task or COM callback thread
+            // throwing unhandled would just silently crash/vanish with nothing in the
+            // log. Registered as early as possible, before anything else can throw.
+            AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+
             System.Windows.Forms.Application.EnableVisualStyles();
 
             InitializeComponent();
@@ -439,10 +446,39 @@ namespace GLSense
             if (ex == null) return;
             LogUtility.LogException(ex, context);
         }
+        // Last-resort catch for an exception unhandled anywhere outside the WPF
+        // dispatcher thread (see the registration comment in the constructor). Flushes
+        // every still-open action buffer first, so the debug trace leading up to the
+        // crash survives even though the buffer's own owning LogScope will never
+        // Dispose() normally after this.
+        private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            try
+            {
+                var ex = e.ExceptionObject as Exception;
+                if (ex != null)
+                {
+                    LogUtility.LogException(ex, "AppDomain.UnhandledException", forceLog: true);
+                }
+                else
+                {
+                    LogUtility.LogError($"AppDomain.UnhandledException with non-Exception payload: {e.ExceptionObject}");
+                }
+
+                LogUtility.FlushAllOpenBuffers("unhandled exception");
+            }
+            catch
+            {
+                // This handler must never itself throw - there's nothing left to catch it.
+            }
+        }
+
         private void AddinModule_AddinBeginShutdown(object sender, EventArgs e)
         {
             try
             {
+                LogUtility.FlushAllOpenBuffers("add-in shutting down");
+
                 // Unsubscribe from all Excel events
                 UnsubscribeFromAllExcelEvents();
 
@@ -599,10 +635,59 @@ namespace GLSense
         }
 
 
+        // Logged once, unconditionally (regardless of the Debug checkbox), right after
+        // the logger and ExcelApp both become available. Goal: enough environment
+        // context is on disk from the very first log line of every session that
+        // customer-site issues can be root-caused from the log alone, without needing a
+        // round-trip to ask "what Excel/OS/version were you on".
+        private static void LogEnvironmentSnapshot()
+        {
+            try
+            {
+                string excelVersion = "unknown";
+                try
+                {
+                    excelVersion = AppState.Instance.ExcelApp?.Version ?? "unknown";
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}");
+                }
+
+                double dpi = 96d;
+                try
+                {
+                    using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
+                    {
+                        dpi = g.DpiX;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}");
+                }
+
+                LogUtility.LogInfo("===== Environment Snapshot =====");
+                LogUtility.LogInfo($"GLSense version: {AppConstants.DefaultVersion} (released {AppConstants.DefaultCommitDate})");
+                LogUtility.LogInfo($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
+                LogUtility.LogInfo($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
+                LogUtility.LogInfo($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+                LogUtility.LogInfo($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
+                LogUtility.LogInfo($"Culture: {CultureInfo.CurrentCulture.Name} (UI: {CultureInfo.CurrentUICulture.Name})");
+                LogUtility.LogInfo($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
+                LogUtility.LogInfo("=================================");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "LogEnvironmentSnapshot", forceLog: true);
+            }
+        }
+
         private static void AddinModule_OnRibbonLoaded(object sender, IRibbonUI Ribbon)
         {
             AppState.Instance.ExcelApp = (Excel.Application)AddinModule.CurrentInstance.HostApplication;
             LogHelper.InitializeLogger();
+            LogEnvironmentSnapshot();
 
             _ribbonHelper = new RibbonStateHelper(AddinModule.CurrentInstance, Ribbon);
             RibbonHelper = _ribbonHelper; // Expose it globally
@@ -2071,7 +2156,11 @@ namespace GLSense
             }
             else
             {
-                LogUtility.FlushDebugLogs("Debug session ended");
+                // DebugLogs is already false at this point, so any action currently
+                // mid-flight would otherwise never write its buffered lines (LogDebug
+                // checks DebugMode on every call) - flush whatever's accumulated so far
+                // instead of losing it.
+                LogUtility.FlushAllOpenBuffers("Debug session ended");
             }
         }
 

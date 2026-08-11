@@ -35,7 +35,17 @@ namespace GLSense.Helpers
                         Header = HdrText,  // NLog will write this header when creating new files
                         AutoFlush = true,
                         Layout = "${longdate}|${level:uppercase=true}|${message:withException=true:exceptionSeparator=|}",
-                        KeepFileOpen = false,
+                        // Was false: with per-line writes that meant every single log call
+                        // opened, wrote, flushed, and closed the file handle - expensive
+                        // under verbose Debug-mode tracing. Now that LogUtility batches
+                        // Debug-mode logging per action (see its own header comment) and
+                        // writes are infrequent-but-large instead of one-line-per-call,
+                        // keeping the handle open for the session avoids repeating that
+                        // open/close overhead on every flush too. AutoFlush=true still
+                        // guarantees each write reaches disk immediately - nothing here
+                        // trades durability for speed, only removes redundant open/close
+                        // cycles.
+                        KeepFileOpen = true,
                         DeleteOldFileOnStartup = false,
                         ArchiveAboveSize = AppConstants.LogMaxFileSizeBytes,  // 20MB archive size
                         MaxArchiveFiles = AppConstants.LogMaxArchiveFiles,
