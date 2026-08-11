@@ -205,7 +205,7 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Instance" Binding="{Binding Instance}" Width="Auto">
+                        <DataGridTextColumn Header="Instance" Binding="{Binding Instance}" Width="*">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                     <Setter Property="ToolTip">
