@@ -840,26 +840,36 @@ namespace GLSense.Addin.Core.Views
                 ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnClosed error");
             }
 
-            // Closing a window owned via WindowInteropHelper (native HWND ownership -
-            // see OnSourceInitialized/ShowDialog above; this app has no WPF
-            // Window-to-Window ownership chains) does not reliably return focus to
-            // Excel - the OS can just as easily hand it to whatever unrelated
-            // application is next in its own activation history. This is the same
-            // "focus drifts away from Excel" bug ExcelWindowHelper.ActivateExcelMainWindow
-            // already fixes for long-running-operation completion (see its own
-            // comment) - reuse that same AttachThreadInput-fallback helper here so
-            // every BaseWindow-derived window gets it for free on close too, instead
-            // of relying on Windows' own (unreliable) owned-window activation.
+            // Closing a window does not reliably return focus to its owner - the OS can
+            // just as easily hand it to whatever unrelated application is next in its own
+            // activation history. This is the same "focus drifts away from Excel" bug
+            // ExcelWindowHelper.ActivateExcelMainWindow already fixes for long-running-
+            // operation completion (see its own comment) - reuse that same
+            // AttachThreadInput-fallback helper here so every BaseWindow-derived window
+            // gets it for free on close too, instead of relying on Windows' own
+            // (unreliable) owned-window activation.
             try
             {
-                if (_ownerSet)
+                if (Owner != null)
                 {
+                    // Owned by another WPF window (e.g. a WebView2PopupWindow owned by
+                    // GLLogin/GLDrilldownCustomization - see
+                    // WebView2NavigationResilience.OnNewWindowRequested) - reactivating it
+                    // is enough; that window's own native ownership chain (set via
+                    // SetExcelOwner) takes care of Excel in turn.
+                    Owner.Activate();
+                }
+                else if (_ownerSet)
+                {
+                    // Owned directly by Excel's native HWND (SetExcelOwner/ShowDialog) -
+                    // Window.Owner is never set for this path since Excel isn't a WPF
+                    // Window, so force Excel's own window back to the foreground explicitly.
                     ExcelWindowHelper.ActivateExcelMainWindow();
                 }
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnClosed: failed to reactivate Excel");
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnClosed: failed to reactivate owner");
             }
 
             base.OnClosed(e);

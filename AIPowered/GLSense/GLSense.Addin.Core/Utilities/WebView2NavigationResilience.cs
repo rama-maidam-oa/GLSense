@@ -1,27 +1,29 @@
 // WebView2NavigationResilience.cs in GLSense.Addin.Core
-// Trimmed port of GLSense\Utilities\WebView2NavigationResilience.cs (FinalWorkingCode).
+// Port of GLSense\Utilities\WebView2NavigationResilience.cs (FinalWorkingCode).
 //
 // Ported: ServerCertificateErrorDetected soft-fail (bypass cert errors only for the
 // customer's own trusted/configured host), ProcessFailed recovery (reload on a
-// recoverable renderer crash), and NavigateWithRetryAsync (retry-once navigation
-// helper).
+// recoverable renderer crash), NavigateWithRetryAsync (retry-once navigation helper),
+// and NewWindowRequested/popup-hosting via Views.WebView2PopupWindow (added once that
+// class existed in this project - see its own header comment). OnNewWindowRequested
+// shows the popup BEFORE awaiting InitializeAsync (EnsureCoreWebView2Async), matching
+// FinalWorkingCode's fix for the deadlock that reordering avoids: the WPF WebView2
+// control's native handle is only realized once the window's visual tree actually
+// loads, which requires the window to already be shown - awaiting
+// EnsureCoreWebView2Async first hangs forever waiting on a precondition nothing will
+// ever satisfy, and holds the NewWindowRequested deferral open indefinitely, which can
+// make the *parent* window's renderer look unresponsive too.
 //
-// NOT ported: NewWindowRequested/popup-hosting. FinalWorkingCode's version also hosts
-// WebView2 popups (via WebView2PopupWindow) for identity-provider MFA/step-up-auth
-// flows that call window.open() - this app has no such popup-hosting mechanism yet,
-// and building it is new infrastructure, not a port. Until that exists, this class
-// leaves NewWindowRequested unhooked, so WebView2's own default (unmanaged) popup
-// handling applies exactly as it did before this port.
-//
-// Changes: LogUtility.* (static) -> ServiceLocator.Logger?.*. Constructor drops the
-// ownerWindow parameter (only needed for popup hosting).
+// Changes: LogUtility.* (static) -> ServiceLocator.Logger?.*.
 using GLSense.Addin.Core.Infrastructure;
+using GLSense.Addin.Core.Views;
 using Microsoft.Web.WebView2.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace GLSense.Addin.Core.Utilities
 {
@@ -37,18 +39,20 @@ namespace GLSense.Addin.Core.Utilities
         private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);
 
         private readonly string _windowName;
+        private readonly Window? _ownerWindow;
         private Func<IReadOnlyCollection<string>>? _trustedHostsProvider;
         private CoreWebView2? _core;
 
-        public WebView2NavigationResilience(string windowName)
+        public WebView2NavigationResilience(string windowName, Window? ownerWindow = null)
         {
             _windowName = windowName;
+            _ownerWindow = ownerWindow;
         }
 
         /// <summary>
-        /// Hooks ServerCertificateErrorDetected and wraps ProcessFailed with a recovery
-        /// step. Does not touch any pre-existing NavigationCompleted handler - those keep
-        /// reacting to every completed navigation exactly as before.
+        /// Hooks ServerCertificateErrorDetected, NewWindowRequested, and wraps ProcessFailed
+        /// with a recovery step. Does not touch any pre-existing NavigationCompleted handler -
+        /// those keep reacting to every completed navigation exactly as before.
         /// </summary>
         public void Attach(CoreWebView2 core, Func<IReadOnlyCollection<string>> trustedHostsProvider)
         {
@@ -56,6 +60,7 @@ namespace GLSense.Addin.Core.Utilities
             _trustedHostsProvider = trustedHostsProvider;
 
             core.ServerCertificateErrorDetected += OnServerCertificateErrorDetected;
+            core.NewWindowRequested += OnNewWindowRequested;
             core.ProcessFailed += OnProcessFailed;
         }
 
@@ -65,6 +70,7 @@ namespace GLSense.Addin.Core.Utilities
                 return;
 
             core.ServerCertificateErrorDetected -= OnServerCertificateErrorDetected;
+            core.NewWindowRequested -= OnNewWindowRequested;
             core.ProcessFailed -= OnProcessFailed;
         }
 
@@ -94,6 +100,45 @@ namespace GLSense.Addin.Core.Utilities
             {
                 ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] ServerCertificateErrorDetected handler error");
                 e.Action = CoreWebView2ServerCertificateErrorAction.Default;
+            }
+        }
+
+        private async void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+        {
+            var deferral = e.GetDeferral();
+            WebView2PopupWindow? popup = null;
+            try
+            {
+                popup = new WebView2PopupWindow();
+                if (_ownerWindow != null)
+                    popup.Owner = _ownerWindow;
+
+                // Show BEFORE EnsureCoreWebView2Async (inside InitializeAsync) - see this
+                // class's own header comment for the full reasoning. The popup briefly
+                // shows blank chrome until its content finishes initializing - expected
+                // and harmless.
+                popup.Show();
+
+                await popup.InitializeAsync(_core!.Environment, _trustedHostsProvider!);
+
+                e.NewWindow = popup.CoreWebView2;
+                e.Handled = true;
+
+                ServiceLocator.Logger?.LogDebug($"[{_windowName}] Hosted popup window for {e.Uri}");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] Failed to host popup window for {e.Uri}");
+                // Fall back to WebView2's own default (unmanaged) popup rather than leaving
+                // the new-window navigation stuck - only stop if it truly has to. Close our
+                // own (already-shown, now-broken) popup first so it doesn't linger alongside
+                // WebView2's default one.
+                try { popup?.Close(); } catch { /* best-effort cleanup - can be ignored as expected */ }
+                e.Handled = false;
+            }
+            finally
+            {
+                deferral.Complete();
             }
         }
 
