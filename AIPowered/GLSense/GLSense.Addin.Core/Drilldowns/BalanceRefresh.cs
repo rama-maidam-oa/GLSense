@@ -103,6 +103,8 @@ namespace GLSense.Addin.Core.Drilldowns
 
         private async Task SubmitSnapshotInternalAsync(string RefreshMode)
         {
+            using (ServiceLocator.Logger?.BeginLogScope($"SubmitSnapshotInternalAsync ({RefreshMode})"))
+            {
             ServiceLocator.Logger?.LogDebug($"BalanceRefresh.SubmitSnapshotInternalAsync started. RefreshMode={RefreshMode}");
             await InitializeAsync("Snapshot", RefreshMode);
 
@@ -155,6 +157,7 @@ namespace GLSense.Addin.Core.Drilldowns
             finally
             {
                 await CleanupAsync();
+            }
             }
         }
 
@@ -385,6 +388,8 @@ namespace GLSense.Addin.Core.Drilldowns
 
         public async Task RefreshBalancesInternalAsync(string RefreshType, string RefreshMode)
         {
+            using (ServiceLocator.Logger?.BeginLogScope($"RefreshBalancesInternalAsync ({RefreshType}, {RefreshMode})"))
+            {
             bool showMessage = false;
             string completionMessage = string.Empty;
 
@@ -477,6 +482,7 @@ namespace GLSense.Addin.Core.Drilldowns
 
                     return Task.CompletedTask;
                 });
+            }
             }
         }
 
