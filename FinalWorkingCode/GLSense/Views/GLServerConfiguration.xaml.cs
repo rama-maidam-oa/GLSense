@@ -342,7 +342,7 @@ namespace GLSense.Views
                         // If there's no message, collapse the status area to avoid showing an empty colored box.
                         if (string.IsNullOrWhiteSpace(message))
                         {
-                            try { txtStatus.Text = string.Empty; txtStatus.Style = null; txtStatus.Visibility = Visibility.Collapsed; } catch { }
+                            try { txtStatus.Text = string.Empty; txtStatus.Style = null; txtStatus.Visibility = Visibility.Collapsed; } catch { /* txtStatus not ready - can be ignored as expected */ }
                         }
                         else
                         {
@@ -358,7 +358,7 @@ namespace GLSense.Views
                     else
                     {
                         // Hide inline status for warnings/errors so empty background isn't shown
-                        try { txtStatus.Text = string.Empty; txtStatus.Style = null; txtStatus.Visibility = Visibility.Collapsed; } catch { }
+                        try { txtStatus.Text = string.Empty; txtStatus.Style = null; txtStatus.Visibility = Visibility.Collapsed; } catch { /* txtStatus not ready - can be ignored as expected */ }
 
                         try
                         {
@@ -378,7 +378,7 @@ namespace GLSense.Views
                 {
                     // Best-effort: ensure exceptions here don't crash UI
                     LogUtility.LogWarn($"GLServerConfiguration.UpdateStatus: exception updating status UI (ignored): {ex.Message}");
-                    try { txtStatus.Text = message; } catch { }
+                    try { txtStatus.Text = message; } catch { /* txtStatus not ready - can be ignored as expected */ }
                 }
             }));
         }

@@ -12,7 +12,9 @@ namespace GLSense.Utilities
         public static void EnsureApplication()
         {
             if (Application.Current != null)
+            {
                 return;
+            }
 
             lock (_lock)
             {

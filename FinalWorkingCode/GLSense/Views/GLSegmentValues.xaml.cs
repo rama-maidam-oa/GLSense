@@ -25,7 +25,6 @@ namespace GLSense.Views
             LogUtility.LogDebug("GLSegmentValues.ctor invoked");
             InitializeComponent();
             EnhancedDragDropHelper.EnableWindowDrag(this);
-            EnableExcelCentering = false;
             vm = new SegmentSelectorViewModel(Dispatcher, "val", string.Empty)
             {
                 ExcelApp = AppState.Instance.ExcelApp.Application, // Pass the Excel application instance to the ViewModel

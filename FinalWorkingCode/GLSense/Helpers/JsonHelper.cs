@@ -1,4 +1,5 @@
-﻿using System;
+﻿using GLSense.Utilities;
+using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -107,8 +108,9 @@ namespace GLSense.Helpers
             {
                 return reader.GetString() ?? "0";
             }
-            catch
+            catch (Exception ex)
             {
+                LogUtility.LogWarn($"FlexibleStringConverter: all string-extraction strategies failed for token {reader.TokenType}, returning \"0\": {ex.Message}");
                 return "0";
             }
         }

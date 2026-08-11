@@ -30,6 +30,7 @@ namespace GLSense.Views
         private bool xlEdgePermission;
         private Task? _webViewInitTask;
         private CancellationHelper? _activeCancellation;
+        private WebView2NavigationResilience? _resilience;
 
         // Backing field
         private ServerInfo? _selectedServer;
@@ -73,6 +74,35 @@ namespace GLSense.Views
 
             Loaded += GLLogin_Loaded;
             webView.Loaded += WebView_Loaded;
+            Closed += GLLogin_Closed;
+        }
+
+        // WebView2 spins up a real Chromium browser-process tree (browser + GPU + network
+        // service + renderer(s) + crashpad handler) per environment - without disposing the
+        // control, that whole tree is orphaned every time this window closes, since nothing
+        // else in this app's lifecycle ever tears it down. Confirmed via Task Manager: dozens
+        // of stray msedgewebview2.exe processes accumulate across sessions with this missing.
+        // Unsubscribing the CoreWebView2 event handlers first avoids them firing against a
+        // control that's mid-disposal.
+        private void GLLogin_Closed(object? sender, EventArgs e)
+        {
+            try
+            {
+                LogUtility.LogDebug("GLLogin.GLLogin_Closed: disposing WebView2 control");
+
+                if (webView.CoreWebView2 != null)
+                {
+                    _resilience?.Detach(webView.CoreWebView2);
+                    webView.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
+                    webView.CoreWebView2.NavigationCompleted -= WebView_NavigationCompleted;
+                }
+
+                webView.Dispose();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLLogin.GLLogin_Closed: WebView2 dispose failed");
+            }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -180,8 +210,13 @@ namespace GLSense.Views
 
                     // 5) Hook device permission handler and diagnostics after CoreWebView2 is ready
                     webView.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
-                    webView.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
                     webView.CoreWebView2.NavigationCompleted += WebView_NavigationCompleted;
+
+                    // Cert-error bypass (scoped to the customer's own configured server),
+                    // retry-once, and managed popup handling for SSO/SAML/OIDC redirects -
+                    // see docs/superpowers/specs/2026-08-10-webview2-navigation-resilience-design.md
+                    _resilience = new WebView2NavigationResilience(nameof(GLLogin), this);
+                    _resilience.Attach(webView.CoreWebView2, GetTrustedHosts);
 
                     // Optional: turn on DevTools during development
                     webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
@@ -238,10 +273,6 @@ namespace GLSense.Views
                     e.Handled = true;
                 }
             }
-        }
-        private void CoreWebView2_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
-        {
-            LogUtility.LogWarn($"WebView2 process failed. Kind={e.ProcessFailedKind}");
         }
         private async Task NavigateToBlankPageAsync()
         {
@@ -320,23 +351,16 @@ namespace GLSense.Views
                 {
                     await EnsureWebViewInitializedAsync();
 
-                    var tcs = new TaskCompletionSource<bool>();
-
-                    void Handler(object sender, CoreWebView2NavigationCompletedEventArgs e)
-                    {
-                        webView.CoreWebView2.NavigationCompleted -= Handler;
-                        tcs.TrySetResult(true);
-                    }
-
-                    webView.CoreWebView2.NavigationCompleted += Handler;
-
                     try
                     {
-                        webView.CoreWebView2.Navigate(address.Trim() + "?finance_excel=Y");
+                        var result = await _resilience!.NavigateWithRetryAsync(
+                            webView.CoreWebView2, address.Trim() + "?finance_excel=Y", cts.GetToken());
 
-                        using (cts.GetToken().Register(() => tcs.TrySetCanceled()))
+                        if (!result.IsSuccess)
                         {
-                            await tcs.Task;
+                            LogUtility.LogWarn($"Login: navigation to '{address}' failed after retry ({result.WebErrorStatus}).");
+                            await NavigateToBlankPageAsync();
+                            await AppOverlayControl.ShowErrorAsync("Unable to load the page. Please try again.");
                         }
                     }
                     catch (TaskCanceledException)
@@ -364,6 +388,26 @@ namespace GLSense.Views
                 });
             }
         }
+
+        // Trusted-host set for WebView2NavigationResilience's certificate-error bypass -
+        // re-read at bypass time, so switching the server dropdown selection updates it
+        // without needing to re-attach anything.
+        private IReadOnlyCollection<string> GetTrustedHosts()
+        {
+            try
+            {
+                var address = SelectedServer?.Address;
+                if (string.IsNullOrWhiteSpace(address))
+                    return Array.Empty<string>();
+
+                return new[] { new Uri(address, UriKind.Absolute).Host };
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogDebug($"GLLogin.GetTrustedHosts: could not resolve host from '{SelectedServer?.Address}': {ex.Message}");
+                return Array.Empty<string>();
+            }
+        }
         private async Task EnsureWebViewInitializedAsync()
         {
             if (_webViewInitTask != null)
@@ -380,7 +424,10 @@ namespace GLSense.Views
 
             if (!e.IsSuccess)
             {
-                LogUtility.LogWarn("Navigation failed: " + e.WebErrorStatus + " | Source : " + webView.Source?.ToString() ?? string.Empty);
+                // Logging for a failed navigation is now owned end-to-end by
+                // WebView2NavigationResilience.NavigateWithRetryAsync (attempt-level LogWarn
+                // during the retry, final LogWarn on the caller side after it gives up) -
+                // logging it again here as well would just double it.
                 return;
             }
 
@@ -616,19 +663,17 @@ namespace GLSense.Views
                     AppState.Instance.LoginToken = null;
                     await EnsureWebViewInitializedAsync();
 
-                    var tcs = new TaskCompletionSource<bool>();
-
-                    void Handler(object sender, CoreWebView2NavigationCompletedEventArgs e)
-                    {
-                        webView.CoreWebView2.NavigationCompleted -= Handler;
-                        tcs.TrySetResult(true);
-                    }
-
-                    webView.CoreWebView2.NavigationCompleted += Handler;
-
                     try
                     {
-                        webView.CoreWebView2.Navigate(AppState.Instance.LoginUrl + "?finance_excel=Y");
+                        var result = await _resilience!.NavigateWithRetryAsync(
+                            webView.CoreWebView2, AppState.Instance.LoginUrl + "?finance_excel=Y", CancellationToken.None);
+
+                        if (!result.IsSuccess)
+                        {
+                            LogUtility.LogWarn($"Login: navigation to '{AppState.Instance.LoginUrl}' failed after retry ({result.WebErrorStatus}).");
+                            await NavigateToBlankPageAsync();
+                            await AppOverlayControl.ShowErrorAsync("Unable to load the page. Please try again.");
+                        }
                     }
                     catch (TaskCanceledException)
                     {

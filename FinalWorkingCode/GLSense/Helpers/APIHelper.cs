@@ -195,6 +195,8 @@ namespace GLSense.Helpers
             }
             catch
             {
+                // Missing/invalid charset header - can be ignored as expected, already
+                // defaulted to UTF8 above.
                 encoding = Encoding.UTF8;
             }
 

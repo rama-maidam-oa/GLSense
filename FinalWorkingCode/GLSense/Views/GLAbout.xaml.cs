@@ -184,16 +184,6 @@ namespace GLSense.Views
             LogUtility.LogDebug($"GLAbout.CheckUrlCompatibility invoked - url={url}");
             try
             {
-                var handler = new HttpClientHandler()
-                {
-                    SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
-                    ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate
-                };
-
-                using var httpClient = new HttpClient(handler);
-                httpClient.Timeout = Timeout.InfiniteTimeSpan;
-                httpClient.DefaultRequestHeaders.ExpectContinue = false;
-
                 var ReqURL = url.Trim();
 
                 var patterns = new string[] { "/bypass-saml-login-flow", "/bypass-sso-login-flow" };
@@ -203,96 +193,36 @@ namespace GLSense.Views
                     ReqURL = Regex.Replace(ReqURL, Regex.Escape(pattern), "", RegexOptions.IgnoreCase);
                 }
 
-                try
+                // Bounded timeout + one retry on a transient failure, matching the
+                // resilience ApiHelper.ServerAPI already has for the main API path -
+                // this check previously had neither (Timeout.InfiniteTimeSpan, no
+                // retry), so any transient blip showed up identically to a genuinely
+                // incompatible/unreachable instance.
+                const int maxAttempts = 2;
+                for (int attempt = 1; attempt <= maxAttempts; attempt++)
                 {
-                    // Log request
-                    LogUtility.LogDebug($"Sending request: {ReqURL}");
-
-                    // Create request object
-                    var request = new HttpRequestMessage(HttpMethod.Get, $"{ReqURL}/rest/public/orbit-version");
-
-                    // Send request and get response
-                    var responseMessage = await httpClient.SendAsync(request).ConfigureAwait(false);
-
-                    // Capture status code and headers
-                    var statusCode = (int)responseMessage.StatusCode;
-                    var responseHeaders = responseMessage.Headers.ToString();
-
-                    // Read full response body
-                    var responseBody = await responseMessage.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-                    // Log detailed response
-                    LogUtility.LogDebug($"Response from: {ReqURL}/rest/public/orbit-version");
-                    LogUtility.LogDebug($"Status Code: {statusCode}");
-                    LogUtility.LogDebug($"Headers: {responseHeaders}");
-                    LogUtility.LogDebug($"Response Body: {responseBody}");
-
-                    // Parse JSON (with additional logging for unexpected structures)
                     try
                     {
-                        if (string.IsNullOrWhiteSpace(responseBody))
-                        {
-                            LogUtility.LogError($"Empty response body from {ReqURL}");
-                            return false;
-                        }
-
-                        using var doc = JsonDocument.Parse(responseBody);
-                        var root = doc.RootElement;
-
-                        LogUtility.LogDebug($"Parsed JSON: {root.GetRawText()}");
-
-                        var glSenseVersion = root
-                            .EnumerateObject()
-                            .FirstOrDefault(p =>
-                                string.Equals(p.Name, "verionInfo",
-                                              StringComparison.OrdinalIgnoreCase))
-                            .Value
-                            .EnumerateObject()
-                            .FirstOrDefault(p =>
-                                string.Equals(p.Name, "glSenseVersion",
-                                              StringComparison.OrdinalIgnoreCase))
-                            .Value
-                            .GetString();
-
-                        if (string.Equals(glSenseVersion,
-                                          AppConstants.DefaultVersion,
-                                          StringComparison.Ordinal))
-                        {
-                            return true;
-                        }
-
-                        LogUtility.LogDebug(
-                            $"Version mismatch or missing: Expected='{AppConstants.DefaultVersion}', " +
-                            $"Received='{glSenseVersion ?? "(null)"}'");
-
-                        return false;
+                        return await SendCompatibilityCheckAsync(ReqURL).ConfigureAwait(false);
                     }
-                    catch (JsonException jsonEx)
+                    catch (HttpRequestException ex) when (attempt < maxAttempts)
                     {
-                        LogUtility.LogError(
-                            $"JSON Parsing Error at {ReqURL}: {jsonEx.Message} | Raw Response: {responseBody}");
-                        return false;
+                        LogUtility.LogWarn($"Network error for {ReqURL} (attempt {attempt}/{maxAttempts}) - retrying in 1s: {ex.Message}");
+                        await Task.Delay(1000).ConfigureAwait(false);
                     }
-                    catch (Exception ex)
+                    catch (TaskCanceledException ex) when (attempt < maxAttempts)
                     {
-                        LogUtility.LogError(
-                            $"Unexpected error parsing response from {ReqURL}: {ex.Message} | Raw Response: {responseBody}");
-                        return false;
+                        LogUtility.LogWarn($"Timeout for {ReqURL} (attempt {attempt}/{maxAttempts}) - retrying in 1s: {ex.Message}");
+                        await Task.Delay(1000).ConfigureAwait(false);
                     }
-
-
-                }
-                catch (HttpRequestException ex)
-                {
-                    LogUtility.LogError($"Network error for {ReqURL}: {ex.Message} | InnerException: {ex.InnerException?.Message} | StackTrace: {ex.StackTrace}");
-                }
-                catch (TaskCanceledException ex)
-                {
-                    LogUtility.LogError($"Request Timeout for {ReqURL}: {ex.Message} | StackTrace: {ex.StackTrace}");
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogError($"General Exception for {ReqURL}: {ex.Message} | StackTrace: {ex.StackTrace}");
+                    catch (HttpRequestException ex)
+                    {
+                        LogUtility.LogError($"Network error for {ReqURL}: {ex.Message} | InnerException: {ex.InnerException?.Message} | StackTrace: {ex.StackTrace}");
+                    }
+                    catch (TaskCanceledException ex)
+                    {
+                        LogUtility.LogError($"Request Timeout for {ReqURL}: {ex.Message} | StackTrace: {ex.StackTrace}");
+                    }
                 }
 
                 return false;
@@ -300,6 +230,94 @@ namespace GLSense.Views
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "GLAbout.CheckUrlCompatibility - outer");
+                return false;
+            }
+        }
+
+        private static async Task<bool> SendCompatibilityCheckAsync(string reqUrl)
+        {
+            var handler = new HttpClientHandler()
+            {
+                SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate
+            };
+
+            using var httpClient = new HttpClient(handler);
+            httpClient.Timeout = TimeSpan.FromSeconds(30);
+            httpClient.DefaultRequestHeaders.ExpectContinue = false;
+
+            // Log request
+            LogUtility.LogDebug($"Sending request: {reqUrl}");
+
+            // Create request object
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{reqUrl}/rest/public/orbit-version");
+
+            // Send request and get response
+            var responseMessage = await httpClient.SendAsync(request).ConfigureAwait(false);
+
+            // Capture status code and headers
+            var statusCode = (int)responseMessage.StatusCode;
+            var responseHeaders = responseMessage.Headers.ToString();
+
+            // Read full response body
+            var responseBody = await responseMessage.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+            // Log detailed response
+            LogUtility.LogDebug($"Response from: {reqUrl}/rest/public/orbit-version");
+            LogUtility.LogDebug($"Status Code: {statusCode}");
+            LogUtility.LogDebug($"Headers: {responseHeaders}");
+            LogUtility.LogDebug($"Response Body: {responseBody}");
+
+            // Parse JSON (with additional logging for unexpected structures)
+            try
+            {
+                if (string.IsNullOrWhiteSpace(responseBody))
+                {
+                    LogUtility.LogError($"Empty response body from {reqUrl}");
+                    return false;
+                }
+
+                using var doc = JsonDocument.Parse(responseBody);
+                var root = doc.RootElement;
+
+                LogUtility.LogDebug($"Parsed JSON: {root.GetRawText()}");
+
+                var glSenseVersion = root
+                    .EnumerateObject()
+                    .FirstOrDefault(p =>
+                        string.Equals(p.Name, "verionInfo",
+                                      StringComparison.OrdinalIgnoreCase))
+                    .Value
+                    .EnumerateObject()
+                    .FirstOrDefault(p =>
+                        string.Equals(p.Name, "glSenseVersion",
+                                      StringComparison.OrdinalIgnoreCase))
+                    .Value
+                    .GetString();
+
+                if (string.Equals(glSenseVersion,
+                                  AppConstants.DefaultVersion,
+                                  StringComparison.Ordinal))
+                {
+                    return true;
+                }
+
+                LogUtility.LogDebug(
+                    $"Version mismatch or missing: Expected='{AppConstants.DefaultVersion}', " +
+                    $"Received='{glSenseVersion ?? "(null)"}'");
+
+                return false;
+            }
+            catch (JsonException jsonEx)
+            {
+                LogUtility.LogError(
+                    $"JSON Parsing Error at {reqUrl}: {jsonEx.Message} | Raw Response: {responseBody}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError(
+                    $"Unexpected error parsing response from {reqUrl}: {ex.Message} | Raw Response: {responseBody}");
                 return false;
             }
         }

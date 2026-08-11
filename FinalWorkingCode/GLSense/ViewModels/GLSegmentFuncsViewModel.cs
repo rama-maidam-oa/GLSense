@@ -886,6 +886,7 @@ namespace GLSense.ViewModels
             }
             catch
             {
+                // refText isn't a resolvable range (e.g. still mid-typing) - can be ignored as expected.
                 return null;
             }
         }

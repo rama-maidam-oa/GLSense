@@ -216,6 +216,7 @@
     <Compile Include="Utilities\ShutdownLogger.cs" />
     <Compile Include="Utilities\StrictCertificateValidator.cs" />
     <Compile Include="Utilities\UserConfig.cs" />
+    <Compile Include="Utilities\WebView2NavigationResilience.cs" />
     <Compile Include="Utilities\WpfAppManager.cs" />
     <Compile Include="ViewModels\GLConfiguratorViewModel.cs" />
     <Compile Include="ViewModels\GLDailyRatesViewModel.cs" />
@@ -312,6 +313,9 @@
     </Compile>
     <Compile Include="Views\GLWaitWindow.xaml.cs">
       <DependentUpon>GLWaitWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\WebView2PopupWindow.xaml.cs">
+      <DependentUpon>WebView2PopupWindow.xaml</DependentUpon>
     </Compile>
   </ItemGroup>
   <ItemGroup>
@@ -448,6 +452,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Views\GLWaitWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\WebView2PopupWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

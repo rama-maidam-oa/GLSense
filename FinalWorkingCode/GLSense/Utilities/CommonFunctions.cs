@@ -600,8 +600,9 @@ namespace GLSense.Utilities
                 {
                     return (bool)area.HasFormula ? area : null;
                 }
-                catch (System.Runtime.InteropServices.COMException)
+                catch (System.Runtime.InteropServices.COMException ex)
                 {
+                    LogUtility.LogWarn($"GetFormulaCellsWithinArea: HasFormula threw for a single-cell area, treating as not-a-formula-cell: {ex.Message}");
                     return null;
                 }
             }
