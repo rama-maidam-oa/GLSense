@@ -620,6 +620,17 @@ namespace GLSense.Addin.Core.Views
                             {
                                 this.Width = rect.Width / scaleFactor;
                                 this.Height = rect.Height / scaleFactor;
+
+                                // Windows' suggested rect (above) only keeps the window under
+                                // the cursor/at the same relative position during a DPI change
+                                // - it has no idea about our own MaxWidthCap/content-fit rules,
+                                // so a window dragged from a large, high-res monitor onto a
+                                // smaller/lower-res one at a different scale can land larger
+                                // than the new monitor's work area. Re-run the same clamp pass
+                                // OnLoaded already does, so a live cross-monitor drag ends up
+                                // exactly as constrained as a fresh open on that monitor would
+                                // be. Ported from FinalWorkingCode's identical fix.
+                                FitToAvailableWorkArea();
                             }
                             else
                             {
@@ -828,6 +839,29 @@ namespace GLSense.Addin.Core.Views
             {
                 ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnClosed error");
             }
+
+            // Closing a window owned via WindowInteropHelper (native HWND ownership -
+            // see OnSourceInitialized/ShowDialog above; this app has no WPF
+            // Window-to-Window ownership chains) does not reliably return focus to
+            // Excel - the OS can just as easily hand it to whatever unrelated
+            // application is next in its own activation history. This is the same
+            // "focus drifts away from Excel" bug ExcelWindowHelper.ActivateExcelMainWindow
+            // already fixes for long-running-operation completion (see its own
+            // comment) - reuse that same AttachThreadInput-fallback helper here so
+            // every BaseWindow-derived window gets it for free on close too, instead
+            // of relying on Windows' own (unreliable) owned-window activation.
+            try
+            {
+                if (_ownerSet)
+                {
+                    ExcelWindowHelper.ActivateExcelMainWindow();
+                }
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnClosed: failed to reactivate Excel");
+            }
+
             base.OnClosed(e);
         }
 

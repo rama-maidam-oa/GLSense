@@ -26,11 +26,44 @@ namespace GLSense.Addin.Core.Helpers
 
                 LogCertificate(cert2, chain, sslPolicyErrors);
 
-                // Absolute rule: ANY SSL policy error = FAIL
+                // Absolute rule: ANY SSL policy error = FAIL, with the same one
+                // exception as the stricter chain check below - if the *only* reason
+                // the framework's own automatic chain build flagged an error is that
+                // revocation status couldn't be determined, that's not evidence the
+                // certificate itself is bad. Always logged at Error (not gated behind
+                // Debug mode) with the specific chain status, not just the coarse
+                // SslPolicyErrors flag, so the actual cause (untrusted root, partial
+                // chain, name mismatch, revocation-lookup-incomplete, etc.) is visible
+                // in the log without needing to reproduce with Debug logging enabled.
+                // Ported from FinalWorkingCode's identical fix.
                 if (sslPolicyErrors != SslPolicyErrors.None)
                 {
-                    ServiceLocator.Logger?.LogError($"TLS validation failed: {sslPolicyErrors}");
-                    return false;
+                    var frameworkStatuses = chain?.ChainStatus;
+
+                    if (frameworkStatuses != null && frameworkStatuses.Length > 0)
+                    {
+                        foreach (var status in frameworkStatuses)
+                        {
+                            ServiceLocator.Logger?.LogError(
+                                $"TLS validation failed ({sslPolicyErrors}): {status.Status} - {status.StatusInformation}");
+                        }
+                    }
+                    else
+                    {
+                        ServiceLocator.Logger?.LogError($"TLS validation failed: {sslPolicyErrors}");
+                    }
+
+                    // Only revocation-incompleteness is forgiven, and only when it's the
+                    // sole policy error - a name mismatch or unavailable certificate
+                    // alongside it still fails regardless of what the chain says.
+                    bool onlyChainErrorFlag = sslPolicyErrors == SslPolicyErrors.RemoteCertificateChainErrors;
+                    if (!onlyChainErrorFlag || !IsOnlyRevocationCheckIncomplete(frameworkStatuses))
+                        return false;
+
+                    ServiceLocator.Logger?.LogWarn(
+                        "TLS validation: the framework's own chain build flagged only a " +
+                        "revocation-status-unknown condition - proceeding anyway; the " +
+                        "certificate itself is otherwise valid.");
                 }
 
                 // Force Windows chain validation with revocation
@@ -41,7 +74,11 @@ namespace GLSense.Addin.Core.Helpers
                         RevocationMode = X509RevocationMode.Online,
                         RevocationFlag = X509RevocationFlag.ExcludeRoot,
                         VerificationFlags = X509VerificationFlags.NoFlag,
-                        UrlRetrievalTimeout = TimeSpan.FromSeconds(300)
+                        // Was 300s - long enough to make a soft-failed revocation lookup
+                        // (see IsOnlyRevocationCheckIncomplete below) look exactly like a
+                        // hang. The online check is a best-effort signal now, so it
+                        // doesn't need anywhere near that long before giving up on it.
+                        UrlRetrievalTimeout = TimeSpan.FromSeconds(15)
                     };
 
                     strictChain.ChainPolicy.ApplicationPolicy.Add(
@@ -49,13 +86,36 @@ namespace GLSense.Addin.Core.Helpers
 
                     if (!strictChain.Build(cert2))
                     {
-                        foreach (var status in strictChain.ChainStatus)
+                        var statuses = strictChain.ChainStatus;
+
+                        foreach (var status in statuses)
                         {
                             ServiceLocator.Logger?.LogError(
                                 $"Chain validation error: {status.Status} - {status.StatusInformation}");
                         }
 
-                        return false;
+                        // A genuinely bad certificate (revoked, expired, untrusted root,
+                        // wrong key usage, etc.) still fails here exactly as before. The
+                        // one condition this does NOT hard-fail on is the revocation
+                        // check itself being unable to complete (DNS/firewall/timeout
+                        // reaching the CA's OCSP/CRL endpoint - not the customer's own
+                        // server). A browser wouldn't hard-fail on that either (OCSP
+                        // stapling + soft-fail is the default there), and a corporate
+                        // firewall that only allow-lists the app server, not arbitrary
+                        // CA infrastructure, otherwise makes this validator fail for
+                        // reasons that have nothing to do with whether the certificate
+                        // is actually trustworthy.
+                        if (IsOnlyRevocationCheckIncomplete(statuses))
+                        {
+                            ServiceLocator.Logger?.LogWarn(
+                                "TLS chain validation: revocation status could not be " +
+                                "determined (offline/unreachable OCSP or CRL endpoint) - " +
+                                "proceeding anyway; the certificate itself is otherwise valid.");
+                        }
+                        else
+                        {
+                            return false;
+                        }
                     }
                 }
 
@@ -75,6 +135,23 @@ namespace GLSense.Addin.Core.Helpers
                 ServiceLocator.Logger?.LogError($"Fatal TLS validation exception: {ex}");
                 return false;
             }
+        }
+
+        private static bool IsOnlyRevocationCheckIncomplete(X509ChainStatus[] statuses)
+        {
+            if (statuses == null || statuses.Length == 0)
+                return false;
+
+            const X509ChainStatusFlags revocationIncomplete =
+                X509ChainStatusFlags.RevocationStatusUnknown | X509ChainStatusFlags.OfflineRevocation;
+
+            foreach (var status in statuses)
+            {
+                if ((status.Status & revocationIncomplete) == 0)
+                    return false;
+            }
+
+            return true;
         }
 
         private static string TryGetRequestTarget(object sender)

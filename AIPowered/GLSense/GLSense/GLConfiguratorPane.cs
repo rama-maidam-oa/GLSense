@@ -131,6 +131,16 @@ namespace GLSense
         {
             GlobalsEx.Context?.Logger?.LogDebug("GLConfiguratorPane_HandleCreated fired - embedding content.");
             EmbedContent();
+
+            // GetEffectiveDpi() in the constructor ran before this.IsHandleCreated was
+            // true, so it always fell back to the stale DeviceDpi (96) instead of the
+            // monitor's real DPI - permanently locking MinimumSize to the un-scaled
+            // 600x300px floor regardless of actual display scaling, letting the pane (and
+            // its embedded content) be shrunk below the size it actually needs at the real
+            // DPI. Now that this pane's own handle exists, GetEffectiveDpi() can return the
+            // real per-monitor DPI, so recompute the sizing here to correct that floor.
+            // Ported from FinalWorkingCode's identical fix in GLConfiguratorPane.cs.
+            ApplyDpiAwareSizing(GetEffectiveDpi());
         }
 
         private void GLConfiguratorPane_HandleDestroyed(object sender, EventArgs e)

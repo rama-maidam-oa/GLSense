@@ -358,8 +358,9 @@ namespace GLSense.Addin.Core.Utilities
                 {
                     return (bool)area.HasFormula ? area : null;
                 }
-                catch (COMException)
+                catch (COMException ex)
                 {
+                    ServiceLocator.Logger?.LogWarn($"GetFormulaCellsWithinArea: HasFormula threw for a single-cell area, treating as not-a-formula-cell: {ex.Message}");
                     return null;
                 }
             }
