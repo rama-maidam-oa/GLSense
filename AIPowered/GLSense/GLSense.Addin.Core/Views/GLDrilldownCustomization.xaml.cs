@@ -42,8 +42,10 @@
 using GLSense.Addin.Core.Common;
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
+using GLSense.Addin.Core.Utilities;
 using Microsoft.Web.WebView2.Core;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -60,6 +62,7 @@ namespace GLSense.Addin.Core.Views
     public partial class GLDrilldownCustomization : BaseWindow
     {
         private Task? _webViewInitTask;
+        private WebView2NavigationResilience? _resilience;
 
         public GLDrilldownCustomization()
         {
@@ -74,6 +77,35 @@ namespace GLSense.Addin.Core.Views
             webView.Loaded += WebView_Loaded;
 
             webView.NavigationCompleted += WebView_NavigationCompleted;
+
+            Closed += GLDrilldownCustomization_Closed;
+        }
+
+        // See GLLogin.GLLogin_Closed for the full reasoning: WebView2 spins up a real
+        // Chromium browser-process tree per environment, and nothing else in this app's
+        // lifecycle ever tears it down without this - confirmed via Task Manager (see
+        // FinalWorkingCode's identical fix) showing dozens of orphaned msedgewebview2.exe
+        // processes accumulating across sessions.
+        private void GLDrilldownCustomization_Closed(object? sender, EventArgs e)
+        {
+            try
+            {
+                ServiceLocator.Logger?.LogDebug("GLDrilldownCustomization.GLDrilldownCustomization_Closed: disposing WebView2 control");
+
+                webView.NavigationCompleted -= WebView_NavigationCompleted;
+
+                if (webView.CoreWebView2 != null)
+                {
+                    _resilience?.Detach(webView.CoreWebView2);
+                    webView.CoreWebView2.PermissionRequested -= CoreWebView2_PermissionRequested;
+                }
+
+                webView.Dispose();
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "GLDrilldownCustomization.GLDrilldownCustomization_Closed: WebView2 dispose failed");
+            }
         }
 
         // ---------- Title bar (drag / close) ----------
@@ -135,7 +167,12 @@ namespace GLSense.Addin.Core.Views
 
                 // 5) Hook device permission handler and diagnostics after CoreWebView2 is ready
                 webView.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
-                webView.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
+
+                // Cert-error bypass (scoped to this window's own server) and retry-once
+                // navigation. Ported from FinalWorkingCode's WebView2NavigationResilience
+                // (popup-hosting piece excluded - see that class's header comment).
+                _resilience = new WebView2NavigationResilience(nameof(GLDrilldownCustomization));
+                _resilience.Attach(webView.CoreWebView2, GetTrustedHosts);
 
                 // Optional: turn on DevTools during development
                 webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
@@ -152,9 +189,29 @@ namespace GLSense.Addin.Core.Views
 
                     ServiceLocator.Logger?.LogDebug($"GLDrilldownCustomization.WebView_Loaded: navigating to {drilldownUrl}<token redacted>");
                     using var cancellationHelper = new CancellationHelper();
-                    webView.CoreWebView2.Navigate(finalUrl);
                     webView.Visibility = Visibility.Hidden;
                     await ShowBusyOverlayAsync(cancellationHelper, "Loading Drilldown Customization");
+
+                    try
+                    {
+                        var result = await _resilience!.NavigateWithRetryAsync(webView.CoreWebView2, finalUrl, cancellationHelper.GetToken());
+                        if (!result.IsSuccess)
+                        {
+                            ServiceLocator.Logger?.LogWarn($"GLDrilldownCustomization.WebView_Loaded: navigation to drilldown launcher failed after retry ({result.WebErrorStatus}).");
+                            await AppOverlayControl.HideBusyAsync();
+                            webView.Visibility = Visibility.Visible;
+                            await AppOverlayControl.ShowErrorAsync("Unable to load the page. Please try again.");
+                        }
+                        // On success, the always-on WebView_NavigationCompleted handler below
+                        // hides the busy overlay and restores visibility once
+                        // document.readyState is complete.
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        ServiceLocator.Logger?.LogWarn("GLDrilldownCustomization.WebView_Loaded: navigation was cancelled.");
+                        await AppOverlayControl.HideBusyAsync();
+                        webView.Visibility = Visibility.Visible;
+                    }
                 }
                 else
                 {
@@ -260,9 +317,24 @@ namespace GLSense.Addin.Core.Views
             }
         }
 
-        private void CoreWebView2_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+        // Trusted-host set for WebView2NavigationResilience's certificate-error bypass -
+        // this window always talks to the same, already-authenticated server
+        // (AppState.Instance.LoginUrl).
+        private IReadOnlyCollection<string> GetTrustedHosts()
         {
-            ServiceLocator.Logger?.LogWarn($"WebView2 process failed. Kind={e.ProcessFailedKind}");
+            try
+            {
+                var loginUrl = AppState.Instance.LoginUrl;
+                if (string.IsNullOrWhiteSpace(loginUrl))
+                    return Array.Empty<string>();
+
+                return new[] { new Uri(loginUrl, UriKind.Absolute).Host };
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogDebug($"GLDrilldownCustomization.GetTrustedHosts: could not resolve host from '{AppState.Instance.LoginUrl}': {ex.Message}");
+                return Array.Empty<string>();
+            }
         }
 
         // ---------- Save Locally ----------

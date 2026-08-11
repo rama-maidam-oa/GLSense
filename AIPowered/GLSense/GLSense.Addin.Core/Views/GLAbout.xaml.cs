@@ -290,7 +290,10 @@ namespace GLSense.Addin.Core.Views
                 };
 
                 using var httpClient = new HttpClient(handler);
-                httpClient.Timeout = Timeout.InfiniteTimeSpan;
+                // Was Timeout.InfiniteTimeSpan - bounded so a transient blip triggers the
+                // retry below instead of hanging indefinitely. Ported from
+                // FinalWorkingCode's identical fix.
+                httpClient.Timeout = TimeSpan.FromSeconds(30);
                 httpClient.DefaultRequestHeaders.ExpectContinue = false;
 
                 var ReqURL = url.Trim();
@@ -302,6 +305,14 @@ namespace GLSense.Addin.Core.Views
                     ReqURL = Regex.Replace(ReqURL, Regex.Escape(pattern), "", RegexOptions.IgnoreCase);
                 }
 
+                // Bounded timeout + one retry on a transient failure, matching the
+                // resilience ApiHelper.ServerAPI already has for the main API path -
+                // this check previously had neither, so any transient blip showed up
+                // identically to a genuinely incompatible/unreachable instance. Ported
+                // from FinalWorkingCode's identical fix.
+                const int maxAttempts = 2;
+                for (int attempt = 1; attempt <= maxAttempts; attempt++)
+                {
                 try
                 {
                     // Log request
@@ -379,16 +390,26 @@ namespace GLSense.Addin.Core.Views
                         return false;
                     }
                 }
+                catch (HttpRequestException ex) when (attempt < maxAttempts)
+                {
+                    ServiceLocator.Logger?.LogWarn($"Network error for {ReqURL} (attempt {attempt}/{maxAttempts}) - retrying in 1s: {ex.Message}");
+                    await Task.Delay(1000).ConfigureAwait(false);
+                }
+                // HttpClient throws this same exception type both for a genuine request
+                // timeout AND for an explicit CancellationToken cancellation - only retry
+                // the former (a user-cancelled check should stop immediately, not retry).
+                catch (TaskCanceledException ex) when (attempt < maxAttempts && !ex.CancellationToken.IsCancellationRequested)
+                {
+                    ServiceLocator.Logger?.LogWarn($"Timeout for {ReqURL} (attempt {attempt}/{maxAttempts}) - retrying in 1s: {ex.Message}");
+                    await Task.Delay(1000).ConfigureAwait(false);
+                }
                 catch (HttpRequestException ex)
                 {
                     LogInstanceCheckFailure(ReqURL, ex);
+                    return false;
                 }
                 catch (TaskCanceledException ex)
                 {
-                    // HttpClient throws this same exception type both for a genuine
-                    // request timeout AND for an explicit CancellationToken cancellation -
-                    // distinguish them so a user-cancelled check isn't logged as if the
-                    // instance were unreachable.
                     if (ex.CancellationToken.IsCancellationRequested)
                     {
                         ServiceLocator.Logger?.LogWarn($"Instance check for {ReqURL} was cancelled: {ex.Message}");
@@ -397,10 +418,13 @@ namespace GLSense.Addin.Core.Views
                     {
                         ServiceLocator.Logger?.LogError($"Instance not reachable (request timed out) for {ReqURL}: {ex.Message} | StackTrace: {ex.StackTrace}");
                     }
+                    return false;
                 }
                 catch (Exception ex)
                 {
                     ServiceLocator.Logger?.LogError($"Unexpected error checking instance {ReqURL}: {ex.GetType().Name}: {ex.Message} | StackTrace: {ex.StackTrace}");
+                    return false;
+                }
                 }
 
                 return false;
