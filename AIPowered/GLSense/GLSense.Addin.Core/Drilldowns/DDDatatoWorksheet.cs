@@ -191,6 +191,16 @@ namespace GLSense.Addin.Core.Drilldowns
 
                 if (lastColumn == -1)
                 {
+                    // Ported from FinalWorkingCode's identical hardening: every other
+                    // early-exit in this method (no records, row-limit exceeded,
+                    // array-copy failure, worksheet-prep failure) tells the user something
+                    // via HandleNoRecords - this one used to just return with nothing
+                    // logged and nothing shown, which is exactly what made the underlying
+                    // metadata-empty bug above so hard to notice. Kept as a defensive
+                    // fallback in case column detection ever comes back empty for some
+                    // other reason.
+                    ServiceLocator.Logger.LogWarn($"DDDatatoWorksheet.DD_DatetoWorksheet: no columns could be determined from metadata or record keys (DD_Type={DD_Type}) - nothing to write.");
+                    HandleNoRecords(DD_Type, "Unable to determine columns for this drilldown. Refer Excel logs for more information.");
                     return;
                 }
 
@@ -1727,13 +1737,25 @@ namespace GLSense.Addin.Core.Drilldowns
 
                 var metadataSource = ResolveMetadataSource(drillsData);
 
-                if (metadataSource == null || metadataSource.Length == 0)
+                // Root cause of "data comes back but nothing writes to Excel" (no error,
+                // no log line explaining why) - ported fix from FinalWorkingCode's
+                // DDDatatoWorksheet.cs: this used to return here whenever metadataSource
+                // was empty, which skipped IncludeMissingRecordKeys below - the ONLY thing
+                // that populates displayColumnName/actualColumnName when the server sends
+                // no metadata for a drilldown (a real, valid response shape - "metadata":[]
+                // with real "records" alongside it, confirmed for journal drilldowns).
+                // With those lists left empty, DD_DatetoWorksheet's lastColumn ends up -1
+                // and it bails out silently. metadataDict itself is allowed to be empty;
+                // what must NOT be skipped is deriving columns from the records' own keys.
+                var metadataDict = (metadataSource != null && metadataSource.Length > 0)
+                    ? BuildMetadataDictionary(metadataSource)
+                    : new Dictionary<string, Dictionary<string, object>>(StringComparer.OrdinalIgnoreCase);
+
+                if (metadataDict.Count > 0)
                 {
-                    return new Dictionary<string, Dictionary<string, object>>(StringComparer.OrdinalIgnoreCase);
+                    FillColumnAndTypeInfo(metadataDict, dataTypeDict, formatDict, subTotalsDict, actualColumnName, displayColumnName);
                 }
 
-                var metadataDict = BuildMetadataDictionary(metadataSource);
-                FillColumnAndTypeInfo(metadataDict, dataTypeDict, formatDict, subTotalsDict, actualColumnName, displayColumnName);
                 IncludeMissingRecordKeys(drillsData?.records, displayColumnName, actualColumnName);
 
                 return metadataDict;
