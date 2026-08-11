@@ -171,7 +171,7 @@ namespace GLSense.Addin.Core.Views
                 // Cert-error bypass (scoped to this window's own server) and retry-once
                 // navigation. Ported from FinalWorkingCode's WebView2NavigationResilience
                 // (popup-hosting piece excluded - see that class's header comment).
-                _resilience = new WebView2NavigationResilience(nameof(GLDrilldownCustomization));
+                _resilience = new WebView2NavigationResilience(nameof(GLDrilldownCustomization), this);
                 _resilience.Attach(webView.CoreWebView2, GetTrustedHosts);
 
                 // Optional: turn on DevTools during development

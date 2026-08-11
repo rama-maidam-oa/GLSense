@@ -258,7 +258,7 @@ namespace GLSense.Addin.Core.Views
                 // retry-once navigation for SSO/SAML/OIDC redirects. Ported from
                 // FinalWorkingCode's WebView2NavigationResilience (popup-hosting piece
                 // excluded - see that class's header comment).
-                _resilience = new WebView2NavigationResilience(nameof(GLLogin));
+                _resilience = new WebView2NavigationResilience(nameof(GLLogin), this);
                 _resilience.Attach(webView.CoreWebView2, GetTrustedHosts);
 
                 // Optional: turn on DevTools during development

@@ -91,6 +91,24 @@ namespace GLSense.Addin.Core
                 AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
                 {
                     var assemblyName = new AssemblyName(args.Name);
+
+                    // Satellite resource assemblies (e.g. GLSense.Addin.Core.resources,
+                    // MahApps.Metro.IconPacks.FontAwesome.resources) are proactively probed
+                    // by the CLR's culture-fallback mechanism for every assembly that could
+                    // have localized resources, regardless of whether one actually ships -
+                    // neither this project nor its third-party packages ship any, so this
+                    // always "fails" here, which is expected and harmless (the CLR falls
+                    // back to the assembly's own embedded default resources).
+                    // RemoteLoader.ResolveAssemblyInDomain already logs this once at Debug -
+                    // skip re-logging a misleading "could not resolve" line here for the
+                    // same expected non-event, so it doesn't look like a real failure in
+                    // the log.
+                    if (assemblyName.Name.EndsWith(".resources", StringComparison.OrdinalIgnoreCase) ||
+                        assemblyName.Name.EndsWith(".g.resources", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return null;
+                    }
+
                     var assemblyPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"{assemblyName.Name}.dll");
 
                     if (File.Exists(assemblyPath))
