@@ -22,6 +22,15 @@ namespace GLSense
 
         public AddinModule()
         {
+            // No handler anywhere previously caught a truly unhandled exception in THIS
+            // (host/ADX-shell) AppDomain - only WPF-dispatcher-thread exceptions are
+            // covered elsewhere. Addin.Core's AppDomain has an identical hook registered
+            // separately in AddinEntry.Initialize - exceptions in either domain need
+            // their own hook, since UnhandledException does not cross AppDomain
+            // boundaries. Registered before anything else so it's active for the
+            // earliest possible failure.
+            AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+
             Application.EnableVisualStyles();
             InitializeComponent();
             // Please add any initialization code to the AddinInitialize event handler
@@ -49,7 +58,22 @@ namespace GLSense
             // on the next launch).
             this.AddinBeginShutdown += AddinModule_AddinBeginShutdown;
         }
- 
+
+        private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            try
+            {
+                var ex = e.ExceptionObject as Exception;
+                if (ex != null)
+                    GlobalsEx.Context?.Logger?.LogException(ex, "AppDomain.UnhandledException (host)");
+                else
+                    GlobalsEx.Context?.Logger?.LogError($"AppDomain.UnhandledException (host) with non-Exception payload: {e.ExceptionObject}");
+
+                GlobalsEx.Context?.Logger?.FlushDebugLogs("unhandled exception");
+            }
+            catch { /* This handler must never itself throw */ }
+        }
+
         #region Add-in Express automatic code
  
         // Required by Add-in Express - do not modify
@@ -344,6 +368,7 @@ namespace GLSense
             try
             {
                 GlobalsEx.Context?.Logger?.LogDebug("AddinModule_AddinBeginShutdown fired - tearing down GLSense.Addin.Core before Excel exits.");
+                GlobalsEx.Context?.Logger?.FlushDebugLogs("add-in shutting down");
 
                 // Defensive: stop forwarding any further Excel events into the add-in
                 // while it's mid-teardown. AddinModule/adxExcelAppEvents1 are never

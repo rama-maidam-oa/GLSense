@@ -74,6 +74,17 @@ namespace GLSense.Addin.Core
                 // Initialize ServiceLocator - this is the ONLY place where context is set
                 ServiceLocator.Initialize(_ctx);
 
+                // No handler anywhere previously caught a truly unhandled exception in
+                // THIS AppDomain (only WPF-dispatcher-thread exceptions are covered
+                // elsewhere) - a background Task or COM callback thread throwing
+                // unhandled here would just silently crash/vanish with nothing in the
+                // log. Registered as early as possible. The ADX shell's own AppDomain
+                // has an identical hook registered separately in its AddinModule
+                // constructor - exceptions in either domain need their own hook.
+                AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+
+                LogEnvironmentSnapshot();
+
                 //Initializing SQLite database
                 // 1. Ensure DB file + tables exist
 
@@ -151,6 +162,82 @@ namespace GLSense.Addin.Core
                 try { _ctx?.Logger?.LogException(ex, "AddinEntry.Initialize: Error"); } catch { /* logging itself must never throw */ }
             }
         }
+
+        // Last-resort catch for an exception unhandled anywhere else in this AppDomain.
+        // Flushes every still-open action buffer first, so the debug trace leading up to
+        // the crash survives even though the buffer's own owning LogScope will never
+        // Dispose() normally after this.
+        private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            try
+            {
+                var ex = e.ExceptionObject as Exception;
+                if (ex != null)
+                {
+                    ServiceLocator.Logger?.LogException(ex, "AppDomain.UnhandledException");
+                }
+                else
+                {
+                    ServiceLocator.Logger?.LogError($"AppDomain.UnhandledException with non-Exception payload: {e.ExceptionObject}");
+                }
+
+                ServiceLocator.Logger?.FlushDebugLogs("unhandled exception");
+            }
+            catch
+            {
+                // This handler must never itself throw - there's nothing left to catch it.
+            }
+        }
+
+        // Logged once at startup, unconditionally (regardless of the Debug checkbox),
+        // right after ServiceLocator (and so ExcelApp/Logger) become available. Goal:
+        // enough environment context is on disk from the very first log line of every
+        // session that customer-site issues can be root-caused from the log alone,
+        // without needing a round-trip to ask what environment they're on. Ported from
+        // FinalWorkingCode's AddinModule.LogEnvironmentSnapshot.
+        private void LogEnvironmentSnapshot()
+        {
+            try
+            {
+                string excelVersion = "unknown";
+                try
+                {
+                    excelVersion = ServiceLocator.ExcelApp?.Version ?? "unknown";
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogDebug($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}");
+                }
+
+                double dpi = 96d;
+                try
+                {
+                    using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
+                    {
+                        dpi = g.DpiX;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogDebug($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}");
+                }
+
+                ServiceLocator.Logger?.LogInfo("===== Environment Snapshot =====");
+                ServiceLocator.Logger?.LogInfo($"GLSense version: {ServiceLocator.Context?.Version} (released {ServiceLocator.Context?.ReleaseDate})");
+                ServiceLocator.Logger?.LogInfo($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
+                ServiceLocator.Logger?.LogInfo($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
+                ServiceLocator.Logger?.LogInfo($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+                ServiceLocator.Logger?.LogInfo($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
+                ServiceLocator.Logger?.LogInfo($"Culture: {System.Globalization.CultureInfo.CurrentCulture.Name} (UI: {System.Globalization.CultureInfo.CurrentUICulture.Name})");
+                ServiceLocator.Logger?.LogInfo($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
+                ServiceLocator.Logger?.LogInfo("=================================");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "LogEnvironmentSnapshot");
+            }
+        }
+
         private bool LoggedIn()
         {
             if (!AppState.Instance.IsLoginCompleted)
@@ -1847,6 +1934,7 @@ namespace GLSense.Addin.Core
             try
             {
                 ServiceLocator.Logger?.LogDebug("AddinEntry.Shutdown invoked.");
+                ServiceLocator.Logger?.FlushDebugLogs("add-in shutting down");
 
                 try
                 {

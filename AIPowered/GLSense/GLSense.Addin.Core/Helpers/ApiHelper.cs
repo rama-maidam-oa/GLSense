@@ -152,6 +152,8 @@ namespace GLSense.Addin.Core.Helpers
         {
             ServiceLocator.Logger?.LogDebug($"API Request - URL: {url}");
             ServiceLocator.Logger?.LogDebug($"Method: {method}, ContentType: {contentType}, Timeout: {timeout}");
+            bool hasAuthToken = !string.IsNullOrWhiteSpace(AppState.Instance.LoginToken);
+            ServiceLocator.Logger?.LogDebug($"Authorization: Bearer present={hasAuthToken}");
 
             if (!string.IsNullOrWhiteSpace(payload))
             {
@@ -359,6 +361,8 @@ namespace GLSense.Addin.Core.Helpers
                             };
 
                             using var client = new HttpClient(handler);
+                            bool hasAuthToken = !string.IsNullOrWhiteSpace(AppState.Instance.LoginToken);
+                            ServiceLocator.Logger?.LogDebug($"Authorization: Bearer present={hasAuthToken}");
                             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
                             client.Timeout = TimeSpan.FromMinutes(10);
                             client.DefaultRequestHeaders.ConnectionClose = true;
