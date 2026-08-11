@@ -134,10 +134,14 @@ namespace GLSense.Helpers
 
         private static void LogRequestDetails(string url, string method, string contentType, string payload, TimeSpan timeout)
         {
+            // Bearer token itself must never be logged - only whether one will be sent.
+            bool hasAuthToken = !string.IsNullOrWhiteSpace(AppState.Instance.LoginToken);
+
             LogUtility.LogDebug($"┌─ API Request ─────────────────");
             LogUtility.LogDebug($"│ URL: {url}");
             LogUtility.LogDebug($"│ Method: {method}");
             LogUtility.LogDebug($"│ ContentType: {contentType}");
+            LogUtility.LogDebug($"│ Authorization: Bearer present={hasAuthToken}");
             LogUtility.LogDebug($"│ Timeout: {timeout}");
 
             if (!string.IsNullOrWhiteSpace(payload))
@@ -355,6 +359,8 @@ namespace GLSense.Helpers
                             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
                             client.Timeout = TimeSpan.FromMinutes(10);
                             client.DefaultRequestHeaders.ConnectionClose = true;
+
+                            LogUtility.LogDebug($"Method: POST, ContentType: application/zip, Authorization: Bearer present={!string.IsNullOrWhiteSpace(AppState.Instance.LoginToken)}");
 
                             cancellationToken.ThrowIfCancellationRequested();
 

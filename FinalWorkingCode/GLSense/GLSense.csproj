@@ -206,7 +206,6 @@
     <Compile Include="Utilities\CommonMethods.cs" />
     <Compile Include="Utilities\DpiAwarenessHelper.cs" />
     <Compile Include="Utilities\DpiAwareWindow.cs" />
-    <Compile Include="Utilities\LogScope.cs" />
     <Compile Include="Utilities\LogUtility.cs" />
     <Compile Include="Utilities\MahAppsBootstrapper.cs" />
     <Compile Include="Utilities\MouseWheelFocusHelper.cs" />
