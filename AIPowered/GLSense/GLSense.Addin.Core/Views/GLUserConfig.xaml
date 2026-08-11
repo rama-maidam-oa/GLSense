@@ -78,7 +78,7 @@
                                 </Style>
                             </DataGrid.RowStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="DrillDowns" Binding="{Binding Name}" Width="Auto" IsReadOnly="True">
+                                <DataGridTextColumn Header="DrillDowns" Binding="{Binding Name}" Width="*" IsReadOnly="True">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
                                     </DataGridTextColumn.ElementStyle>

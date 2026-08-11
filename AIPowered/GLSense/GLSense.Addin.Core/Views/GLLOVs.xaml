@@ -178,7 +178,7 @@
                         </Style>
                     </DataGrid.CellStyle>
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Available LOVs" Binding="{Binding Name}" Width="Auto">
+                        <DataGridTextColumn Header="Available LOVs" Binding="{Binding Name}" Width="2*">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                     <Setter Property="ToolTip">
@@ -194,7 +194,7 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <DataGridTextColumn Header="Items Count" Binding="{Binding ItemsCount}" Width="Auto">
+                        <DataGridTextColumn Header="Items Count" Binding="{Binding ItemsCount}" Width="1*">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                     <Setter Property="ToolTip">
@@ -214,7 +214,7 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="Auto" Visibility="Collapsed"/>
+                        <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="1*" Visibility="Collapsed"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </Border>

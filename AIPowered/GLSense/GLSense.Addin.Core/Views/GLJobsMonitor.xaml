@@ -242,7 +242,7 @@
                     <DataGridTextColumn Header="Process ID"
                         IsReadOnly="True"
                         Binding="{Binding ProcessId}"
-                        Width="Auto">
+                        Width="1.2*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
@@ -260,7 +260,7 @@
                     <DataGridTextColumn Header="Name"
                                         IsReadOnly="True"
                                         Binding="{Binding Name}"
-                                        Width="Auto"
+                                        Width="3*"
                                         MinWidth="230">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
@@ -279,7 +279,7 @@
                     <DataGridTextColumn Header="Type"
                             IsReadOnly="True"
                             Binding="{Binding JobType}"
-                            Width="Auto">
+                            Width="2*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
                         </DataGridTextColumn.ElementStyle>
@@ -289,7 +289,7 @@
                     <DataGridTextColumn Header="Phase"
                             IsReadOnly="True"
                             Binding="{Binding Phase}"
-                            Width="Auto">
+                            Width="1.5*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding PhaseColor}"/>
@@ -302,7 +302,7 @@
                     <DataGridTextColumn Header="Status"
                             IsReadOnly="True"
                             Binding="{Binding Status}"
-                            Width="Auto">
+                            Width="1.5*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding StatusColor}"/>
@@ -315,14 +315,14 @@
                     <DataGridTextColumn Header="Date"
                             IsReadOnly="True"
                             Binding="{Binding DisplayDate}"
-                            Width="Auto">
+                            Width="2*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
                     <!-- Download Icon -->
-                    <DataGridTemplateColumn Header="Download" Width="Auto" IsReadOnly="True">
+                    <DataGridTemplateColumn Header="Download" Width="1.1*" IsReadOnly="True">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <iconPacks:PackIconFontAwesome Kind="{Binding DownloadIconKind}"

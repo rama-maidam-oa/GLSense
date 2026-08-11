@@ -186,7 +186,7 @@
                                 </Style>
                             </DataGrid.CellStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Value" Width="Auto">
+                                <DataGridTextColumn Header="Value" Width="*">
                                     <DataGridTextColumn.Binding>
                                         <MultiBinding Converter="{StaticResource TitleRowValueConverter}">
                                             <Binding/>
@@ -207,7 +207,7 @@
                                         </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
-                                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="Auto" IsReadOnly="True">
+                                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*" IsReadOnly="True">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Padding" Value="12,8"/>
@@ -286,7 +286,7 @@
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
-                                <DataGridTextColumn Header="Segment" Binding="{Binding Segment}" Width="Auto">
+                                <DataGridTextColumn Header="Segment" Binding="{Binding Segment}" Width="*">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
                                     </DataGridTextColumn.ElementStyle>
