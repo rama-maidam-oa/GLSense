@@ -23,6 +23,8 @@ namespace GLSense.Drilldowns
         /// </summary>
         public static async Task RibCellHighlight_OnClick()
         {
+            using (new LogUtility.LogScope("DrillCellHighlighter.RibCellHighlight_OnClick"))
+            {
             LogUtility.LogDebug("DrillCellHighlighter.RibCellHighlight_OnClick started.");
             _ctsHelper = new CancellationHelper();
             var excelApp = AppState.Instance.ExcelApp;
@@ -155,6 +157,7 @@ namespace GLSense.Drilldowns
 
                 LogUtility.LogDebug("Selecting cells which have reference to balance formula(s) completed.");
                 await SafelyCloseWindowAsync();
+            }
             }
         }
         private static async Task<Excel.Range> fRange(Excel.Worksheet ws)
