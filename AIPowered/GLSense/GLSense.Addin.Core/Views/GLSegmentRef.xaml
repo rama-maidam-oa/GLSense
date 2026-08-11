@@ -216,7 +216,7 @@
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
-                                <DataGridTextColumn Header="Description" IsReadOnly="True" Binding="{Binding Description}" Width="Auto">
+                                <DataGridTextColumn Header="Description" IsReadOnly="True" Binding="{Binding Description}" Width="*">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
                                     </DataGridTextColumn.ElementStyle>
@@ -315,7 +315,7 @@
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
-                                <DataGridTextColumn Header="Segment" Binding="{Binding Segment}" Width="Auto" IsReadOnly="True">
+                                <DataGridTextColumn Header="Segment" Binding="{Binding Segment}" Width="*" IsReadOnly="True">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
                                     </DataGridTextColumn.ElementStyle>

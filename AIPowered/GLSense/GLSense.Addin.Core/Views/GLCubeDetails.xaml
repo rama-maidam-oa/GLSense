@@ -178,7 +178,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Ledger Name" Width="Auto">
+                    <DataGridTemplateColumn Header="Ledger Name" Width="2*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding LedgerName}" Padding="12,8" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
@@ -191,7 +191,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Last Refreshed Date" Width="Auto">
+                    <DataGridTemplateColumn Header="Last Refreshed Date" Width="2.1*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding LastRefreshedDate}" Padding="12,8" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
@@ -204,7 +204,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Time Zone" Width="Auto">
+                    <DataGridTemplateColumn Header="Time Zone" Width="1.4*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding TimeZone}" Padding="12,8" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
