@@ -47,6 +47,8 @@ namespace GLSense.Drilldowns
         }
         public async Task DD_DatetoWorksheet()
         {
+            using (new LogUtility.LogScope($"DD_DatetoWorksheet ({DD_Type})"))
+            {
             LogUtility.LogDebug($"DDDatatoWorksheet.DD_DatetoWorksheet started. DD_Type={DD_Type}, DD_Parts={DD_Parts}");
             bool snapshotTaken = false;
             bool originalScreenUpdating = true;
@@ -185,6 +187,7 @@ namespace GLSense.Drilldowns
             }
 
             await Task.CompletedTask;
+            }
         }
         private void FinalizeSheet(Excel.Worksheet ws, int lastColumn, string ddType, object objStr)
         {

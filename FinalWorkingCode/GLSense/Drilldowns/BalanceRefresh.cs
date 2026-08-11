@@ -62,6 +62,8 @@ namespace GLSense.Drilldowns
 
         private async Task SubmitSnapshotInternalAsync(string RefreshMode)
         {
+            using (new LogUtility.LogScope($"SubmitSnapshotInternalAsync ({RefreshMode})"))
+            {
             LogUtility.LogDebug($"BalanceRefresh.SubmitSnapshotInternalAsync started. RefreshMode={RefreshMode}");
             await InitializeAsync("Snapshot", RefreshMode);
 
@@ -114,6 +116,7 @@ namespace GLSense.Drilldowns
             finally
             {
                 await CleanupAsync();
+            }
             }
         }
 
@@ -344,6 +347,8 @@ namespace GLSense.Drilldowns
 
         public async Task RefreshBalancesInternalAsync(string RefreshType, string RefreshMode)
         {
+            using (new LogUtility.LogScope($"RefreshBalancesInternalAsync ({RefreshType}, {RefreshMode})"))
+            {
             bool showMessage = false;
             string completionMessage = string.Empty;
 
@@ -436,6 +441,7 @@ namespace GLSense.Drilldowns
 
                     return Task.CompletedTask;
                 });
+            }
             }
         }
 

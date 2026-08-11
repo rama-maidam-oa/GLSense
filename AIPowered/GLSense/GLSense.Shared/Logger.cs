@@ -418,7 +418,13 @@ namespace GLSense.Shared
             LogDebug($"Exiting {methodName}");
         }
 
-        public class LogScope : IDisposable
+        // MarshalByRefObject so a LogScope created here (inside the host AppDomain, by
+        // BeginLogScope below) crosses back to GLSense.Addin.Core's AppDomain as a
+        // remoting proxy rather than being marshaled by value - Dispose() on the
+        // Addin.Core side needs to call back into THIS instance's fields (_logger,
+        // _ownedBuffer) to correctly close the same buffer it opened, which a
+        // by-value copy in the other AppDomain could never do.
+        public class LogScope : MarshalByRefObject, IDisposable
         {
             private readonly string _scopeName;
             private readonly Logger _logger;
@@ -453,7 +459,16 @@ namespace GLSense.Shared
                     _disposed = true;
                 }
             }
+
+            public override object InitializeLifetimeService() => null;
         }
+
+        /// <summary>
+        /// ILogger-facing entry point for opening a buffered action scope from
+        /// GLSense.Addin.Core code, which only ever holds an ILogger reference (never a
+        /// concrete Logger) - see ILogger.BeginLogScope's doc comment.
+        /// </summary>
+        public IDisposable BeginLogScope(string scopeName) => new LogScope(this, scopeName);
 
         #endregion
 

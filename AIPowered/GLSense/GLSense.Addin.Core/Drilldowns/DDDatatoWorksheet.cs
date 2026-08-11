@@ -112,6 +112,8 @@ namespace GLSense.Addin.Core.Drilldowns
         }
         public async Task DD_DatetoWorksheet()
         {
+            using (ServiceLocator.Logger.BeginLogScope($"DD_DatetoWorksheet ({DD_Type})"))
+            {
             ServiceLocator.Logger.LogDebug($"DDDatatoWorksheet.DD_DatetoWorksheet started. DD_Type={DD_Type}, DD_Parts={DD_Parts}");
 
             bool snapshotTaken = false;
@@ -250,6 +252,7 @@ namespace GLSense.Addin.Core.Drilldowns
             }
 
             await Task.CompletedTask;
+            }
         }
         private void FinalizeSheet(Excel.Worksheet ws, int lastColumn, string ddType, object objStr)
         {

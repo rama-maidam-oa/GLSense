@@ -38,6 +38,8 @@ namespace GLSense.Addin.Core.Drilldowns
         /// </summary>
         public static async Task RibCellHighlight_OnClick()
         {
+            using (ServiceLocator.Logger.BeginLogScope("DrillCellHighlighter.RibCellHighlight_OnClick"))
+            {
             _ctsHelper = new CancellationHelper();
             var excelApp = ServiceLocator.ExcelApp;
             bool snapshotTaken = false;
@@ -169,6 +171,7 @@ namespace GLSense.Addin.Core.Drilldowns
 
                 ServiceLocator.Logger.LogDebug("Selecting cells which have reference to balance formula(s) completed.");
                 await SafelyCloseWindowAsync();
+            }
             }
         }
 
