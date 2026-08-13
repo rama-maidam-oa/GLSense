@@ -102,13 +102,45 @@ namespace GLSense.Addin.Core.Views
         private async void BtnSubmit_Click(object sender, RoutedEventArgs e)
         {
             ServiceLocator.Logger?.LogDebug("GLSegmentDiscovery.BtnSubmit_Click invoked");
+
+            // btnSubmit is disabled for the whole duration of a write below, but a click
+            // already queued on the message loop right before that happens (e.g. an
+            // impatient double-click) would still reach this handler a second time. Bail
+            // out rather than starting a second overlapping write into a range that
+            // already has formulas from the first write - see the Calculation-Manual
+            // comment below for why an overlapping second write is what actually crashes/
+            // freezes Excel (ported from FinalWorkingCode's identical fix for this file -
+            // see that repo's CLAUDE.md).
+            if (!btnSubmit.IsEnabled)
+            {
+                ServiceLocator.Logger?.LogDebug("GLSegmentDiscovery.BtnSubmit_Click: ignored - a write is already in progress");
+                return;
+            }
+
             if (!ValidatePrerequisites())
                 return;
 
             bool busyShown = false;
+            var originalCalculation = Excel.XlCalculation.xlCalculationAutomatic;
+            bool calculationSaved = false;
             try
             {
                 CommonMethods.DisableExcelSettings();
+
+                // DisableExcelSettings() only toggles ScreenUpdating/DisplayAlerts/EnableEvents
+                // - it leaves Calculation on Automatic. Each formula this writes (BuildFormula,
+                // below) references the PREVIOUS cell in the chain, so on a cell range that's
+                // already been written once before (e.g. clicking Insert a second time), every
+                // single cell.Value assignment in the write loop dirties and immediately
+                // recalculates its own entire downstream suffix of the chain - an O(n^2)
+                // recalculation storm that's indistinguishable from a permanent freeze/crash,
+                // with DisplayAlerts=false hiding any dialog that might otherwise have hinted
+                // Excel was still (uselessly) working. Go Manual for the write, then do exactly
+                // one Calculate() pass at the end (O(n) instead of O(n^2)).
+                originalCalculation = ServiceLocator.ExcelApp.Calculation;
+                calculationSaved = true;
+                ServiceLocator.ExcelApp.Calculation = Excel.XlCalculation.xlCalculationManual;
+
                 LoadSegmentData();
 
                 if (!ValidateOperationSelected() || ValueArray == null || ValueArray.Length == 0)
@@ -136,10 +168,14 @@ namespace GLSense.Addin.Core.Views
                 // throughout, not just before the first cell is written.
                 AppOverlayControl.ShowBusyasyn("Writing segment values...");
                 busyShown = true;
+                btnSubmit.IsEnabled = false;
                 await Dispatcher.Yield(DispatcherPriority.Render);
 
                 ServiceLocator.Logger?.LogDebug($"GLSegmentDiscovery.BtnSubmit_Click: writing {ValueArray.Length} values to Excel");
                 await WriteValuesToExcelAsync();
+
+                // Single, deliberate recalculation pass now that every formula is in place.
+                ServiceLocator.ExcelApp.Calculate();
             }
             catch (Exception ex)
             {
@@ -147,6 +183,11 @@ namespace GLSense.Addin.Core.Views
             }
             finally
             {
+                btnSubmit.IsEnabled = true;
+                if (calculationSaved)
+                {
+                    ServiceLocator.ExcelApp.Calculation = originalCalculation;
+                }
                 CommonMethods.TryEnableExcelSettings("GLSegmentDiscovery.BtnSubmit_Click");
                 if (busyShown)
                     await AppOverlayControl.HideBusyAsync();

@@ -4196,6 +4196,43 @@ be re-verified once merged in an environment that has it).
 
 ---
 
+## 37. Excel crash/freeze double-clicking Insert in the Hierarchy Discoverer (ported from FinalWorkingCode's `11.1.0` - fixed in **both** codebases)
+
+`11.1.0_NewUI` had already independently hit and fixed this same bug in its
+`GLSegmentDiscovery.xaml.cs`; that fix was then ported into `11.1.0` (see
+FinalWorkingCode's `CLAUDE.md`), and from there into this codebase's
+`Views\GLSegmentDiscovery.xaml.cs`.
+
+Root cause: `BtnSubmit_Click` had no re-entry guard, so a second "Insert" click queued on
+the message loop while the first write was still running (`WriteValuesToExcelAsync`
+awaits between synchronous, in-process Excel COM writes, but never actually blocks
+`BtnSubmit_Click` from being re-entered) could start a second overlapping write into a
+cell range that already had formulas from the first write. `DisableExcelSettings()` only
+ever toggled `ScreenUpdating`/`DisplayAlerts`/`EnableEvents`, leaving `Calculation` on
+Automatic - each formula written (`BuildFormula`) references the previous cell in the
+chain, so every single `cell.Value` assignment in the write loop dirtied and immediately
+recalculated its own entire downstream suffix: an O(n^2) recalculation storm
+indistinguishable from a permanent freeze/crash, with `DisplayAlerts=false` hiding any
+dialog that might otherwise have hinted Excel was still (uselessly) working.
+
+This codebase's busy-overlay mechanism (an async, `Dispatcher.Yield`-based approach that
+keeps the spinner animating on large writes - see the "Testing feedback" comments already
+in this file) was already reliable and did **not** need the `PumpDispatcherFrame`/
+`PumpEveryNWrites` machinery FinalWorkingCode needed for its own, fully-synchronous
+write path - only the re-entry guard and the Calculation fix were actually missing here.
+
+Fixed by adding, in `BtnSubmit_Click`: an early return if `btnSubmit.IsEnabled` is
+already `false` (a write in progress); `btnSubmit.IsEnabled = false` for the duration of
+the write (restored in `finally`); saving `ServiceLocator.ExcelApp.Calculation`, setting
+it to `xlCalculationManual` before the write, doing one `Calculate()` pass immediately
+after `WriteValuesToExcelAsync()` completes, and restoring the original `Calculation` in
+`finally` regardless of outcome.
+
+**Status: build-verified** (`GLSense.Addin.Core` builds clean with `/p:SignAssembly=false`
+as a verification-only override, same caveat as section 36 above).
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
