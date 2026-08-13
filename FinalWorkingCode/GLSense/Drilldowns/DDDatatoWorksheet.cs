@@ -803,20 +803,17 @@ namespace GLSense.Drilldowns
             }
         }
 
+        private static readonly HashSet<string> InternalHeaders = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase)
+            {
+                "DRILL_DOWN1", "DRILLDOWN1", "DRILL_DOWN2", "DRILLDOWN2",
+                "DRILL_DOWN3", "DRILLDOWN3", "SUBLEDGER_VIEW"
+            };
+
         private static bool IsInternalHeader(string headerText)
         {
-            if (string.IsNullOrEmpty(headerText))
-            {
-                return false;
-            }
-
-            return headerText == "DRILL_DOWN1" ||
-                   headerText == "DRILLDOWN1" ||
-                   headerText == "DRILL_DOWN2" ||
-                   headerText == "DRILLDOWN2" ||
-                   headerText == "DRILL_DOWN3" ||
-                   headerText == "DRILLDOWN3" ||
-                   headerText == "SUBLEDGER_VIEW";
+            return !string.IsNullOrEmpty(headerText) &&
+                   InternalHeaders.Contains(headerText);
         }
 
 

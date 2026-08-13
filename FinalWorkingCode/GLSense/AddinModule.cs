@@ -651,7 +651,7 @@ namespace GLSense
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}");
+                    LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}");
                 }
 
                 double dpi = 96d;
@@ -664,7 +664,7 @@ namespace GLSense
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}");
+                    LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}");
                 }
 
                 LogUtility.LogInfo("===== Environment Snapshot =====");

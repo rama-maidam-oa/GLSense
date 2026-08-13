@@ -4,19 +4,16 @@ using GLSense.Repositories;
 using GLSense.Service;
 using GLSense.Utilities;
 using GLSense.Views;
-using MahApps.Metro.Controls;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Net;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Windows.Interop;
 using Excel = Microsoft.Office.Interop.Excel;
 
 namespace GLSense.Drilldowns
