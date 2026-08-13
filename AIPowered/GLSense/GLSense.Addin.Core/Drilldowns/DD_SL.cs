@@ -67,7 +67,8 @@ namespace GLSense.Addin.Core.Drilldowns
 
             SlWorksheet = ExternalResolveResult.Worksheet;
 
-            CommonMethods.DisableExcelSettings();
+            if (!CommonMethods.TryDisableExcelSettings("DrilldownSl.ProcessSLDrilldown"))
+                return;
 
             if (!IsValidSingleColumnSelection(SlRange))
                 return;
@@ -120,7 +121,7 @@ namespace GLSense.Addin.Core.Drilldowns
                     ServiceLocator.Logger?.LogWarn($"DrilldownSl.ProcessSLDrilldown: exception disposing CancellationHelper (ignored): {ex.Message}");
                 }
                 await SafelyCloseWindowAsync();
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("DrilldownSl.ProcessSLDrilldown");
             }
         }
 

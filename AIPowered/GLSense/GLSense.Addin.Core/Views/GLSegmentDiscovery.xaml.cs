@@ -147,7 +147,7 @@ namespace GLSense.Addin.Core.Views
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("GLSegmentDiscovery.BtnSubmit_Click");
                 if (busyShown)
                     await AppOverlayControl.HideBusyAsync();
             }

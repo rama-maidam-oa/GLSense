@@ -130,7 +130,7 @@ namespace GLSense.Addin.Core.Utilities
                     ServiceLocator.Logger?.LogWarn($"FillPeriods: failed disposing CancellationHelper (non-fatal): {ex.Message}");
                 }
                 await SafelyCloseWindowAsync();
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("PeriodsDiscoverer.FillPeriods");
             }
         }
         private static async Task RunPeriodDiscovery()

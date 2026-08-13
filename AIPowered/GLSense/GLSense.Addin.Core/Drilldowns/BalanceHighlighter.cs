@@ -58,10 +58,12 @@ namespace GLSense.Addin.Core.Drilldowns
                 return;
 
             Excel.Range adaptiveBalanceRange = null;
-            CommonMethods.DisableExcelSettings();
             GLWaitWindow win = null;
             using var ctsHelper = new CancellationHelper();
             CancellationToken token = ctsHelper.GetToken();
+
+            if (!CommonMethods.TryDisableExcelSettings("BalanceHighlighter.RibHighlight_OnClick"))
+                return;
 
             try
             {
@@ -90,7 +92,7 @@ namespace GLSense.Addin.Core.Drilldowns
             {
                 await SafelyCloseWaitWindowAsync(win);
                 SelectAdaptiveBalanceRange(adaptiveBalanceRange);
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("BalanceHighlighter.RibHighlight_OnClick");
             }
         }
 

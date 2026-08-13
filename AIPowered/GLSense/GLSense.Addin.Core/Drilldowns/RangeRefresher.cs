@@ -51,10 +51,12 @@ namespace GLSense.Addin.Core.Drilldowns
                 return;
             }
 
-            CommonMethods.DisableExcelSettings();
             GLWaitWindow win = null;
             using var ctsHelper = new CancellationHelper();
             CancellationToken token = ctsHelper.GetToken();
+
+            if (!CommonMethods.TryDisableExcelSettings("RangeRefresher.RibRefreshRange_OnClick"))
+                return;
 
             try
             {
@@ -83,7 +85,7 @@ namespace GLSense.Addin.Core.Drilldowns
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("RangeRefresher.RibRefreshRange_OnClick");
                 await SafelyCloseWaitWindowAsync(win);
             }
         }

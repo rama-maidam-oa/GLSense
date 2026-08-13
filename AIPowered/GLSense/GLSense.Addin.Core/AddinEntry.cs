@@ -1826,7 +1826,8 @@ namespace GLSense.Addin.Core
                 }
 
                 AppState.Instance.ResetFormulas = true;
-                CommonMethods.DisableExcelSettings();
+                if (!CommonMethods.TryDisableExcelSettings("AddinEntry.ResetBalances"))
+                    return;
 
                 WpfAppManager.InvokeOnWpfThread(() =>
                 {
@@ -1881,7 +1882,7 @@ namespace GLSense.Addin.Core
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("AddinEntry.ResetBalances");
                 AppState.Instance.ResetFormulas = false;
                 if (win != null)
                 {
