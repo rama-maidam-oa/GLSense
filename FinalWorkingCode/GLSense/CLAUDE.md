@@ -144,3 +144,50 @@ looked like) - it applies here verbatim.
   against) the `LoadSegmentValuesAsync()` call already firing for the newly selected
   segment - clearing the field directly and raising `OnPropertyChanged` avoids that.
   **Status: confirmed working, ported to AIPowered.** See AIPowered's `CLAUDE.md` section 35.
+
+## `AddinModule.cs` / `Utilities\CommonMethods.cs`
+
+- **Add-in crash on drilldown hyperlink click** (found while triaging a colleague's
+  `GLSense_Logs_13-Aug-2026.log`): `CommonMethods.EnableExcelSettings()`/
+  `DisableExcelSettings()` deliberately log-and-`throw;` on failure (e.g. a transient
+  `COMException 0x800A03EC` toggling `DisplayAlerts` while Excel is busy/closing). That's
+  fine for callers inside a `try` with their own `catch`, but 5 call sites in
+  `AddinModule.cs` invoked them completely unguarded - either before the enclosing `try`
+  even starts, or bare inside a `finally` block - in methods reachable from `async void`
+  Excel-event/ribbon-click handlers (`adxExcelAppEvents1_SheetFollowHyperlink`,
+  `RibHighlight_OnClick`, `RibRefreshRange_OnClick`, `ResetBalances` fire-and-forgotten
+  from `RibClear(Sheet)_OnClick`, `RowProcessor.ExecuteAsync` awaited from
+  `RibHideRows_OnClick`/`RibUnHideRows_OnClick`). An exception escaping an `async void`
+  method (or a `finally` block) has no catch to land in - it reaches
+  `AppDomain.UnhandledException` and takes the whole add-in down. Confirmed in the log:
+  the very last thing before a ~52s gap and an add-in restart was exactly this - a
+  drilldown's own `finally` caught its own restore failure locally (see
+  `Drilldowns\DDDatatoWorksheet.cs`'s `DD_DatetoWorksheet`, which already guards this
+  correctly), but the outer `SheetFollowHyperlink` handler's own `finally` calling
+  `EnableExcelSettings()` was unguarded and crashed.
+  Fixed by adding `CommonMethods.TryDisableExcelSettings(context)` /
+  `TryEnableExcelSettings(context)` - non-throwing wrappers that log and swallow instead -
+  and switching all 5 vulnerable call sites in `AddinModule.cs` to use them (pre-`try`
+  `Disable` calls now `return` early if it fails, instead of proceeding as if Excel were
+  actually in the disabled state). `CommonMethods.EnableExcelSettings()`/
+  `DisableExcelSettings()` themselves are unchanged, since their other callers (e.g.
+  `Drilldowns\BalanceRefresh.cs`, `DD_BL.cs`/`DD_JL.cs`/`DD_SL.cs`,
+  `Utilities\SegmentDiscoverer.cs`/`PeriodsDiscoverer.cs`) already run inside a `try` with
+  a real `catch`, so the throw-on-failure contract is still exactly what they need.
+  **Status: fixed in FinalWorkingCode only so far** - the same 5-call-site shape likely
+  exists in AIPowered's `AddinModule.cs` too; port once confirmed there.
+
+- **Separately (not yet root-caused): continuous `GetRangeValueSafe` COM exceptions**.
+  The same log had 5941 occurrences of `GLConfiguratorViewModel.GetRangeValueSafe`
+  failing to resolve `Excel.Application.Range["AABCJ!..."]` (4 distinct cell refs on a
+  sheet named `AABCJ`) - literally every time it was attempted, for the entire ~5 hour
+  session. `LogException`'s 5-second dedupe window (see `Utilities\LogUtility.cs`) is why
+  the log shows a clean ~5s cadence per message instead of the true call frequency - the
+  underlying re-validation (`IsJournalValidationSatisfied`/`GetFieldValue`, triggered via
+  `FieldBinding.IsComboEnabled`/`IsRefEnabled` getters) runs far more often than that.
+  Not a crash - `GetRangeValueSafe` already catches and returns `null` - but it means
+  some Balance Configurator field (Activity/BalanceType/CurrencyType/AccountAssignment)
+  had its `RefValue` pointing at a sheet reference that never resolves in that user's
+  workbook (renamed/deleted sheet, or wrong active workbook at read time are the two
+  likely causes). Needs the reporting colleague's workbook/repro steps to pin down which
+  field and why `AABCJ` doesn't resolve - not fixed yet.
