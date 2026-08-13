@@ -140,7 +140,43 @@ namespace GLSense.Utilities
                 }
             }
         }
-        
+
+        // Non-throwing counterparts to Disable/EnableExcelSettings, for call sites that
+        // have no caller able to catch (async void ribbon/Excel-event handlers, or a
+        // finally block, where an escaping exception becomes an unhandled AppDomain
+        // exception and crashes the add-in/Excel - as happened in practice when
+        // EnableExcelSettings threw restoring DisplayAlerts after a drilldown). Logs and
+        // swallows instead of throwing.
+        public static bool TryDisableExcelSettings(string? context = null)
+        {
+            try
+            {
+                DisableExcelSettings();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, string.IsNullOrEmpty(context)
+                    ? "Failed to disable Excel settings"
+                    : $"Failed to disable Excel settings before {context}");
+                return false;
+            }
+        }
+
+        public static void TryEnableExcelSettings(string? context = null)
+        {
+            try
+            {
+                EnableExcelSettings();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, string.IsNullOrEmpty(context)
+                    ? "Failed to restore Excel settings"
+                    : $"Failed to restore Excel settings after {context}");
+            }
+        }
+
         public static void BalanceFormulas_Updation(Dictionary<string, string> BalancesDict)
         {
             using (new LogUtility.LogScope("BalanceFormulas_Updation"))

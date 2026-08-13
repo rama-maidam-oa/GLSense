@@ -151,7 +151,7 @@ namespace GLSense.Drilldowns
         {
             await SafelyCloseWindowAsync();
             CancelAndDisposeTokenSource();
-            CommonMethods.EnableExcelSettings();
+            CommonMethods.TryEnableExcelSettings("DrilldownXlPrecedents.ProcessEPDrilldown");
         }
         private static async Task SafelyCloseWindowAsync()
         {

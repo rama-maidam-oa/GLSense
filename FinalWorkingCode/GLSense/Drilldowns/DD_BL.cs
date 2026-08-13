@@ -4,19 +4,16 @@ using GLSense.Repositories;
 using GLSense.Service;
 using GLSense.Utilities;
 using GLSense.Views;
-using MahApps.Metro.Controls;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Net;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Windows.Interop;
 using Excel = Microsoft.Office.Interop.Excel;
 
 namespace GLSense.Drilldowns
@@ -187,7 +184,7 @@ namespace GLSense.Drilldowns
                     // Swallow dispose exceptions (Excel COM weirdness) but still log for diagnostics.
                     LogUtility.LogWarn($"DrilldownBl.ProcessBLDrilldown: exception disposing CancellationHelper (ignored): {ex.Message}");
                 }
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("DrilldownBl.ProcessBLDrilldown");
                 await SafelyCloseWindowAsync();
             }
         }

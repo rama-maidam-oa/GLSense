@@ -94,7 +94,8 @@ namespace GLSense.Addin.Core.Drilldowns
             using var ctsHelper = new CancellationHelper();
             CancellationToken token = ctsHelper.GetToken();
 
-            CommonMethods.DisableExcelSettings();
+            if (!CommonMethods.TryDisableExcelSettings("JournalAttachments.RunJournalAttachmentFlow"))
+                return;
 
             try
             {
@@ -110,7 +111,7 @@ namespace GLSense.Addin.Core.Drilldowns
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("JournalAttachments.RunJournalAttachmentFlow");
             }
         }
 

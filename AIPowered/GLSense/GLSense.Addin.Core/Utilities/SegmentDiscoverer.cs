@@ -204,7 +204,7 @@ namespace GLSense.Addin.Core.Utilities
                 }
 
                 await SafelyCloseWindowAsync();
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings($"SegmentDiscoverer.SegmentAction(ActionType='{ActionType}')");
             }
         }
         //Helper to fill segment properties

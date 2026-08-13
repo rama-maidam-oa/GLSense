@@ -4140,6 +4140,99 @@ porting here.
 
 ---
 
+## 36. Add-in crash/unobserved-exception risk on drilldown hyperlink click and every other Disable/EnableExcelSettings call site (ported from FinalWorkingCode - fixed in **both** codebases)
+
+Found while triaging a colleague's `GLSense_Logs_13-Aug-2026.log` against
+FinalWorkingCode: `CommonMethods.EnableExcelSettings()`/`DisableExcelSettings()`
+deliberately log-and-`throw` on failure (e.g. a transient `COMException 0x800A03EC`
+toggling `DisplayAlerts` while Excel is busy/closing). In FinalWorkingCode's
+monolithic `AddinModule.cs`, 5 call sites invoked these unguarded - either before the
+enclosing `try`, or bare inside a `finally` - in methods reachable from real `async void`
+Excel-event/ribbon handlers, so the exception had no catch to land in and reached
+`AppDomain.UnhandledException`, taking the whole add-in down. Confirmed in that log: the
+very last thing before a ~52s gap and an add-in restart was exactly this, in
+`adxExcelAppEvents1_SheetFollowHyperlink`'s own `finally`.
+
+This codebase's architecture is different (drilldown logic lives in `GLSense.Addin.Core`,
+a separate AppDomain, invoked from the host's `AddinModule.cs` via
+`OnExcelEvent`/`OnRibbonAction` - both fire-and-forget, `_ = SomeAsyncMethod()`) so an
+escaping exception here typically becomes an *unobserved Task exception* rather than an
+immediate `async void` crash - a materially different (usually less catastrophic) failure
+mode, but the exact same underlying defect: an exception the code clearly intended to be
+logged and handled instead escapes uncaught, contradicting this AppDomain's own stated
+design goal ("never let an exception escape back across the AppDomain boundary into
+AddinModule" - see `AddinEntry.OnExcelEvent`'s doc comment) and, in the one genuinely
+`async void` case found (`GLSegmentDiscovery.xaml.cs`'s `BtnSubmit_Click`, a real WPF
+button-click handler), carries the identical crash risk FinalWorkingCode hit. The same
+call shape (unguarded `Disable` before a `try`, or bare `Enable` in a `finally`) was found
+in 16 files across `GLSense.Addin.Core`: `AddinEntry.ResetBalances`,
+`Drilldowns\BalanceHighlighter.RibHighlight_OnClick`, `BalanceRefresh.InitializeAsync`/
+`CleanupAsync`, `CustomDrilldown.RunCustomDrilldown` and `JournalAttachments.
+RunJournalAttachmentFlow` (both reachable from the same `SheetFollowHyperlink` dispatch
+that crashed in FinalWorkingCode), `DD_BL.ProcessBLDrilldown`, `DD_JL.ProcessJLDrilldown`,
+`DD_SL.ProcessSLDrilldown`, `DD_EP.ProcessEPDrilldown` (via `ExecuteDrilldownProcess`/
+`CleanupResources`), `DrillCellHighlighter.RibCellHighlight_OnClick`,
+`RangeRefresher.RibRefreshRange_OnClick`, `RowVisibilityProcessor.RowProcessor.
+ExecuteAsync`, `Utilities\PeriodsDiscoverer.FillPeriods`, `SegmentDiscoverer.
+SegmentAction`, and `Views\GLSegmentDiscovery.xaml.cs`'s `BtnSubmit_Click`.
+
+Fixed by adding the same `CommonMethods.TryDisableExcelSettings(context)`/
+`TryEnableExcelSettings(context)` non-throwing wrappers (log-and-swallow) used in
+FinalWorkingCode, and switching every vulnerable call site above to use them (pre-`try`
+`Disable` calls now `return` early instead of proceeding as if Excel were actually in the
+disabled state). Left every `DisableExcelSettings()` call that was already safely inside
+its own enclosing `try`/`catch` untouched (e.g. `DD_BL.cs`, `DD_JL.cs`, `DD_SL.cs`'s inner
+try, `DrillCellHighlighter.cs`, `PeriodsDiscoverer.cs`, `SegmentDiscoverer.cs`,
+`GLSegmentDiscovery.xaml.cs` - all confirmed by reading the surrounding try/catch before
+touching anything). `CommonMethods.EnableExcelSettings()`/`DisableExcelSettings()`
+themselves are unchanged - their still-guarded callers keep relying on the
+throw-on-failure contract.
+
+**Status: build-verified in both codebases** (FinalWorkingCode: normal build; this
+codebase: `GLSense.Addin.Core` builds clean with `/p:SignAssembly=false` as a
+verification-only override - this sandbox has no access to the real
+`GLSense.Contracts.pfx` signing key, unrelated to this fix - the real signed build should
+be re-verified once merged in an environment that has it).
+
+---
+
+## 37. Excel crash/freeze double-clicking Insert in the Hierarchy Discoverer (ported from FinalWorkingCode's `11.1.0` - fixed in **both** codebases)
+
+`11.1.0_NewUI` had already independently hit and fixed this same bug in its
+`GLSegmentDiscovery.xaml.cs`; that fix was then ported into `11.1.0` (see
+FinalWorkingCode's `CLAUDE.md`), and from there into this codebase's
+`Views\GLSegmentDiscovery.xaml.cs`.
+
+Root cause: `BtnSubmit_Click` had no re-entry guard, so a second "Insert" click queued on
+the message loop while the first write was still running (`WriteValuesToExcelAsync`
+awaits between synchronous, in-process Excel COM writes, but never actually blocks
+`BtnSubmit_Click` from being re-entered) could start a second overlapping write into a
+cell range that already had formulas from the first write. `DisableExcelSettings()` only
+ever toggled `ScreenUpdating`/`DisplayAlerts`/`EnableEvents`, leaving `Calculation` on
+Automatic - each formula written (`BuildFormula`) references the previous cell in the
+chain, so every single `cell.Value` assignment in the write loop dirtied and immediately
+recalculated its own entire downstream suffix: an O(n^2) recalculation storm
+indistinguishable from a permanent freeze/crash, with `DisplayAlerts=false` hiding any
+dialog that might otherwise have hinted Excel was still (uselessly) working.
+
+This codebase's busy-overlay mechanism (an async, `Dispatcher.Yield`-based approach that
+keeps the spinner animating on large writes - see the "Testing feedback" comments already
+in this file) was already reliable and did **not** need the `PumpDispatcherFrame`/
+`PumpEveryNWrites` machinery FinalWorkingCode needed for its own, fully-synchronous
+write path - only the re-entry guard and the Calculation fix were actually missing here.
+
+Fixed by adding, in `BtnSubmit_Click`: an early return if `btnSubmit.IsEnabled` is
+already `false` (a write in progress); `btnSubmit.IsEnabled = false` for the duration of
+the write (restored in `finally`); saving `ServiceLocator.ExcelApp.Calculation`, setting
+it to `xlCalculationManual` before the write, doing one `Calculate()` pass immediately
+after `WriteValuesToExcelAsync()` completes, and restoring the original `Calculation` in
+`finally` regardless of outcome.
+
+**Status: build-verified** (`GLSense.Addin.Core` builds clean with `/p:SignAssembly=false`
+as a verification-only override, same caveat as section 36 above).
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

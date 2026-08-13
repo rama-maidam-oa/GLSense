@@ -66,10 +66,11 @@ namespace GLSense.Addin.Core.Drilldowns
             {
                 ServiceLocator.Logger?.LogDebug($"RowVisibilityProcessor.ExecuteAsync started. operationName='{operationName}'.");
 
-                CommonMethods.DisableExcelSettings();
                 GLWaitWindow win = null;
                 using var ctsHelper = new CancellationHelper();
                 CancellationToken token = ctsHelper.GetToken();
+                if (!CommonMethods.TryDisableExcelSettings($"RowVisibilityProcessor.ExecuteAsync ({operationName})"))
+                    return;
                 try
                 {
                     if (!GuardLoginAndExcel()) return;
@@ -94,7 +95,7 @@ namespace GLSense.Addin.Core.Drilldowns
                 finally
                 {
                     await SafelyCloseWaitWindowAsync(win);
-                    CommonMethods.EnableExcelSettings();
+                    CommonMethods.TryEnableExcelSettings($"RowVisibilityProcessor.ExecuteAsync ({operationName})");
                     ServiceLocator.Logger?.LogDebug($"RowVisibilityProcessor.ExecuteAsync completed. operationName='{operationName}'.");
                 }
             }

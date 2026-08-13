@@ -144,3 +144,103 @@ looked like) - it applies here verbatim.
   against) the `LoadSegmentValuesAsync()` call already firing for the newly selected
   segment - clearing the field directly and raising `OnPropertyChanged` avoids that.
   **Status: confirmed working, ported to AIPowered.** See AIPowered's `CLAUDE.md` section 35.
+
+## `AddinModule.cs` / `Utilities\CommonMethods.cs`
+
+- **Add-in crash on drilldown hyperlink click** (found while triaging a colleague's
+  `GLSense_Logs_13-Aug-2026.log`): `CommonMethods.EnableExcelSettings()`/
+  `DisableExcelSettings()` deliberately log-and-`throw;` on failure (e.g. a transient
+  `COMException 0x800A03EC` toggling `DisplayAlerts` while Excel is busy/closing). That's
+  fine for callers inside a `try` with their own `catch`, but 5 call sites in
+  `AddinModule.cs` invoked them completely unguarded - either before the enclosing `try`
+  even starts, or bare inside a `finally` block - in methods reachable from `async void`
+  Excel-event/ribbon-click handlers (`adxExcelAppEvents1_SheetFollowHyperlink`,
+  `RibHighlight_OnClick`, `RibRefreshRange_OnClick`, `ResetBalances` fire-and-forgotten
+  from `RibClear(Sheet)_OnClick`, `RowProcessor.ExecuteAsync` awaited from
+  `RibHideRows_OnClick`/`RibUnHideRows_OnClick`). An exception escaping an `async void`
+  method (or a `finally` block) has no catch to land in - it reaches
+  `AppDomain.UnhandledException` and takes the whole add-in down. Confirmed in the log:
+  the very last thing before a ~52s gap and an add-in restart was exactly this - a
+  drilldown's own `finally` caught its own restore failure locally (see
+  `Drilldowns\DDDatatoWorksheet.cs`'s `DD_DatetoWorksheet`, which already guards this
+  correctly), but the outer `SheetFollowHyperlink` handler's own `finally` calling
+  `EnableExcelSettings()` was unguarded and crashed.
+  Fixed by adding `CommonMethods.TryDisableExcelSettings(context)` /
+  `TryEnableExcelSettings(context)` - non-throwing wrappers that log and swallow instead -
+  and switching all 5 vulnerable call sites in `AddinModule.cs` to use them (pre-`try`
+  `Disable` calls now `return` early if it fails, instead of proceeding as if Excel were
+  actually in the disabled state).
+  **Correction (same pass, caught on a second look prompted by "is that really all the
+  call sites?")**: the note above originally claimed every *other* `Disable`/
+  `EnableExcelSettings()` caller in this codebase was already safely inside a `try`/
+  `catch`. That was only checked for the `Disable` half - the `Enable` half (almost always
+  bare in a `finally`) was not actually re-checked file-by-file at the time, and turned out
+  to have the exact same unguarded-in-`finally` shape in **8 more files**:
+  `Drilldowns\BalanceRefresh.cs` (`InitializeAsync`'s pre-try `Disable` and
+  `CleanupAsync`'s `Enable`, both inside a `RunExcelAsync` marshaling lambda),
+  `DD_BL.cs`/`DD_JL.cs`/`DD_ExcelPrecedents.cs`/`DrillCellHighlighter.cs`/
+  `Utilities\PeriodsDiscoverer.cs`/`SegmentDiscoverer.cs`/`Views\GLSegmentDiscovery.xaml.cs`
+  (`Enable` bare in each one's outer `finally`), and `DD_SL.cs` specifically also had its
+  `Disable` call sitting at the very top of the method with **no enclosing `try` at all**
+  (matching `AddinModule.cs`'s worst case exactly). All 9 fixed the same way. Found by
+  auditing AIPowered's equivalents first (see that repo's `CLAUDE.md` section 36) and
+  finding the identical shape there, which is what prompted re-checking these
+  FinalWorkingCode originals rather than assuming the first pass had been exhaustive.
+  **Status: fixed in FinalWorkingCode (build-verified) and ported to AIPowered.**
+
+- **Separately (not yet root-caused): continuous `GetRangeValueSafe` COM exceptions**.
+  The same log had 5941 occurrences of `GLConfiguratorViewModel.GetRangeValueSafe`
+  failing to resolve `Excel.Application.Range["AABCJ!..."]` (4 distinct cell refs on a
+  sheet named `AABCJ`) - literally every time it was attempted, for the entire ~5 hour
+  session. `LogException`'s 5-second dedupe window (see `Utilities\LogUtility.cs`) is why
+  the log shows a clean ~5s cadence per message instead of the true call frequency - the
+  underlying re-validation (`IsJournalValidationSatisfied`/`GetFieldValue`, triggered via
+  `FieldBinding.IsComboEnabled`/`IsRefEnabled` getters) runs far more often than that.
+  Not a crash - `GetRangeValueSafe` already catches and returns `null` - but it means
+  some Balance Configurator field (Activity/BalanceType/CurrencyType/AccountAssignment)
+  had its `RefValue` pointing at a sheet reference that never resolves in that user's
+  workbook (renamed/deleted sheet, or wrong active workbook at read time are the two
+  likely causes). Needs the reporting colleague's workbook/repro steps to pin down which
+  field and why `AABCJ` doesn't resolve - not fixed yet.
+
+## `Views\GLSegmentDiscovery.xaml.cs`
+
+- **Excel crash/freeze double-clicking Insert (Hierarchy Discoverer)**: ported from
+  `11.1.0_NewUI`'s already-fixed version of this same file (that branch had already hit
+  and fixed this independently). Root cause: `BtnSubmit_Click` was a plain synchronous
+  method with no re-entry guard and no busy overlay - a second "Insert" click queued on
+  the message loop while the first write was still running (`WriteValuesToExcel` is a
+  long, fully synchronous run of Excel COM calls) reached the handler a second time and
+  started a second overlapping write into a cell range that already had formulas from the
+  first write. With Calculation left on Automatic (the code only ever toggled
+  ScreenUpdating/DisplayAlerts/EnableEvents via `DisableExcelSettings()`), each formula
+  written references the previous cell in the chain, so every single `cell.Value`
+  assignment in the write loop dirtied and immediately recalculated its own entire
+  downstream suffix - an O(n^2) recalculation storm (525 cells measured as ~275,000 UDF
+  calls elsewhere in this codebase for the identical class of bug) indistinguishable from
+  a permanent freeze, with `DisplayAlerts=false` hiding any dialog that might have hinted
+  Excel was still (uselessly) working. Separately, the busy overlay wasn't reliably
+  showing before the freeze either, since nothing forced WPF to paint it before the
+  synchronous write loop blocked the UI thread.
+  Fixed by porting `11.1.0_NewUI`'s version of `BtnSubmit_Click` (now `async void`):
+  bails out immediately if `btnSubmit.IsEnabled` is already `false` (a write in
+  progress); disables `btnSubmit` and shows the busy overlay before the write, calling a
+  new `PumpDispatcherFrame()` helper (WPF's "DoEvents" equivalent - pushes a nested
+  dispatcher frame processed at Background priority) to force that overlay to actually
+  paint first; switches `Excel.Calculation` to Manual for the duration of the write and
+  does exactly one `Calculate()` pass afterward (O(n) instead of O(n^2)); restores
+  `Calculation`/`btnSubmit.IsEnabled`/the busy overlay in `finally` regardless of outcome.
+  Also added a `PumpEveryNWrites` helper (pumps the dispatcher every 20 writes) hooked
+  into all four write loops (`WriteVerticalForward`/`WriteHorizontalForward`/
+  `WriteVerticalBackward`/`WriteHorizontalBackward`) so the busy overlay's spinner/"Time
+  Elapsed" counter keeps visibly animating during a large write instead of freezing on
+  whatever frame was current when the loop started.
+  `PumpDispatcherFrame()` didn't exist anywhere in this codebase (it lives on
+  `11.1.0_NewUI`'s `BaseWindow.cs`, a shared base class this branch's `GLSegmentDiscovery`
+  doesn't have - it derives from `DpiAwareWindow` instead), so it was added as a private
+  method scoped to this one file rather than added to `DpiAwareWindow.cs` itself, to avoid
+  changing behavior for the ~15 other windows that derive from it.
+  **Status: build-verified on `11.1.0`.** Also needs the equivalent port into AIPowered's
+  `GLSense.Addin.Core\Views\GLSegmentDiscovery.xaml.cs`, which has a different (already
+  reliable, async-yielding) busy-overlay mechanism but is missing both the re-entry guard
+  and the Calculation-manual/single-`Calculate()`-pass fix - see AIPowered's `CLAUDE.md`.

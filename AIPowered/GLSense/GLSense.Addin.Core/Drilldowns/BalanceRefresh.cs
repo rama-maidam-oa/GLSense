@@ -168,7 +168,7 @@ namespace GLSense.Addin.Core.Drilldowns
 
             await RunExcelAsync(() =>
             {
-                CommonMethods.DisableExcelSettings();
+                CommonMethods.TryDisableExcelSettings("BalanceRefresh.InitializeAsync");
                 ExcelApp = ServiceLocator.ExcelApp;
                 BrWorbook = ExcelApp?.ActiveWorkbook;
                 BrWorksheet = ExcelApp?.ActiveSheet as Excel.Worksheet;
@@ -194,7 +194,7 @@ namespace GLSense.Addin.Core.Drilldowns
 
             await ClearFiles();
             await SafelyCloseWindowAsync();
-            await RunExcelAsync(() => CommonMethods.EnableExcelSettings());
+            await RunExcelAsync(() => CommonMethods.TryEnableExcelSettings("BalanceRefresh.CleanupAsync"));
 
             if (postCleanup != null)
             {

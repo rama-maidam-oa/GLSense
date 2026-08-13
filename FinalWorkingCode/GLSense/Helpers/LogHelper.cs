@@ -81,7 +81,7 @@ namespace GLSense.Helpers
 
             var sb = new StringBuilder();
 
-            string header = $"Orbit GLSense(version : {AppConstants.DefaultVersion} Released on : {AppConstants.DefaultCommitDate}). Logs As On {DateTime.Now:dddd, dd MMMM yyyy}. Time Zone: {TimeZoneInfo.Local.DisplayName}";
+            string header = $"Orbit GLSense logs generated on : {AppConstants.DefaultCommitDate}). Logs As On {DateTime.Now:dddd, dd MMMM yyyy}. Time Zone: {TimeZoneInfo.Local.DisplayName}";
             sb.AppendLine(header);
 
             // Add underline that exactly matches the header length in characters

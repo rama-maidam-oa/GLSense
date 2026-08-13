@@ -651,7 +651,7 @@ namespace GLSense
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}");
+                    LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}");
                 }
 
                 double dpi = 96d;
@@ -664,7 +664,7 @@ namespace GLSense
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.LogDebug($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}");
+                    LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}");
                 }
 
                 LogUtility.LogInfo("===== Environment Snapshot =====");
@@ -1006,7 +1006,8 @@ namespace GLSense
             using var ctsHelper = new CancellationHelper();
             CancellationToken token = ctsHelper.GetToken();
 
-            CommonMethods.DisableExcelSettings();
+            if (!CommonMethods.TryDisableExcelSettings("SheetFollowHyperlink"))
+                return;
 
             try
             {
@@ -1038,7 +1039,7 @@ namespace GLSense
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("SheetFollowHyperlink");
             }
         }
 
@@ -1399,10 +1400,12 @@ namespace GLSense
                 return;
 
             Excel.Range adaptiveBalanceRange = null;
-            CommonMethods.DisableExcelSettings();
             GLWaitWindow win = null;
             using var ctsHelper = new CancellationHelper();
             CancellationToken token = ctsHelper.GetToken();
+
+            if (!CommonMethods.TryDisableExcelSettings("RibHighlight_OnClick"))
+                return;
 
             try
             {
@@ -1431,7 +1434,7 @@ namespace GLSense
             {
                 await SafelyCloseWaitWindowAsync(win);
                 SelectAdaptiveBalanceRange(adaptiveBalanceRange);
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("RibHighlight_OnClick");
             }
         }
         private static bool ValidateHighlightPreconditions(Excel.Worksheet wrkSheet)
@@ -1758,10 +1761,12 @@ namespace GLSense
                 return;
             }
 
-            CommonMethods.DisableExcelSettings();
             GLWaitWindow win = null;
             using var ctsHelper = new CancellationHelper();
             CancellationToken token = ctsHelper.GetToken();
+
+            if (!CommonMethods.TryDisableExcelSettings("RibRefreshRange_OnClick"))
+                return;
 
             try
             {
@@ -1790,7 +1795,7 @@ namespace GLSense
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("RibRefreshRange_OnClick");
                 await SafelyCloseWaitWindowAsync(win);
             }
         }
@@ -2489,7 +2494,8 @@ namespace GLSense
                 }
 
                 AppState.Instance.ResetFormulas = true;
-                CommonMethods.DisableExcelSettings();
+                if (!CommonMethods.TryDisableExcelSettings("ResetBalances"))
+                    return;
 
                 win = CreateAndShowWaitWindow(ctsHelper);
                 await InitializeWaitWindowAsync(win, "Reset Balance Formulas", "Resetting balances...");
@@ -2532,7 +2538,7 @@ namespace GLSense
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("ResetBalances");
                 AppState.Instance.ResetFormulas = false;
                 await SafelyCloseWaitWindowAsync(win);
             }
@@ -3175,10 +3181,11 @@ namespace GLSense
             public async Task ExecuteAsync(string operationName)
             {
                 LogUtility.LogDebug($"RowProcessor.ExecuteAsync started. Operation={operationName}");
-                CommonMethods.DisableExcelSettings();
                 GLWaitWindow win = null;
                 using var ctsHelper = new CancellationHelper();
                 CancellationToken token = ctsHelper.GetToken();
+                if (!CommonMethods.TryDisableExcelSettings($"RowProcessor.ExecuteAsync ({operationName})"))
+                    return;
                 try
                 {
                     if (!GuardLoginAndExcel()) return;
@@ -3201,7 +3208,7 @@ namespace GLSense
                 finally
                 {
                     await SafelyCloseWaitWindowAsync(win);
-                    CommonMethods.EnableExcelSettings();
+                    CommonMethods.TryEnableExcelSettings($"RowProcessor.ExecuteAsync ({operationName})");
                 }
             }
             protected abstract Task ProcessRowsCoreAsync(Excel.Worksheet sheet, Excel.Range selection, GLWaitWindow win, CancellationToken token);

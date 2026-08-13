@@ -326,5 +326,43 @@ namespace GLSense.Addin.Core.Utilities
                 throw;
             }
         }
+
+        // Non-throwing counterparts to Disable/EnableExcelSettings, for call sites that
+        // have no caller able to observe the exception (fire-and-forget drilldown/ribbon
+        // entry points - `_ = SomeAsyncMethod()` - or a finally block), where an escaping
+        // exception either becomes an unobserved Task exception or, worse, an unhandled
+        // exception in this AppDomain - exactly what FinalWorkingCode's identical
+        // unguarded call sites did in practice (COMException 0x800A03EC restoring
+        // DisplayAlerts after a drilldown hyperlink click crashed the whole add-in there;
+        // see FinalWorkingCode's CLAUDE.md). Logs and swallows instead of throwing.
+        public static bool TryDisableExcelSettings(string context = null)
+        {
+            try
+            {
+                DisableExcelSettings();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, string.IsNullOrEmpty(context)
+                    ? "Failed to disable Excel settings"
+                    : $"Failed to disable Excel settings before {context}");
+                return false;
+            }
+        }
+
+        public static void TryEnableExcelSettings(string context = null)
+        {
+            try
+            {
+                EnableExcelSettings();
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, string.IsNullOrEmpty(context)
+                    ? "Failed to restore Excel settings"
+                    : $"Failed to restore Excel settings after {context}");
+            }
+        }
     }
 }

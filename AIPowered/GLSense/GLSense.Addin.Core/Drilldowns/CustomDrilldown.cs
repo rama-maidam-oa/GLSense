@@ -108,7 +108,8 @@ namespace GLSense.Addin.Core.Drilldowns
             using var ctsHelper = new CancellationHelper();
             CancellationToken token = ctsHelper.GetToken();
 
-            CommonMethods.DisableExcelSettings();
+            if (!CommonMethods.TryDisableExcelSettings("CustomDrilldown.RunCustomDrilldown"))
+                return;
 
             try
             {
@@ -153,7 +154,7 @@ namespace GLSense.Addin.Core.Drilldowns
             finally
             {
                 await SafelyCloseWaitWindowAsync(win);
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("CustomDrilldown.RunCustomDrilldown");
             }
         }
 

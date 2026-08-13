@@ -68,16 +68,52 @@ namespace GLSense.Views
             LogUtility.LogDebug("GLSegmentDiscovery.BtnClose_Click invoked");
             Close();
         }
-        private void BtnSubmit_Click(object sender, RoutedEventArgs e)
+        private async void BtnSubmit_Click(object sender, RoutedEventArgs e)
         {
             LogUtility.LogDebug("GLSegmentDiscovery.BtnSubmit_Click invoked");
+
+            // btnSubmit is disabled for the whole duration of a write below, but a click
+            // already queued on the message loop right before that happens (e.g. an
+            // impatient double-click) would still reach this handler a second time. Bail
+            // out rather than starting a second overlapping write: WriteValuesToExcel is a
+            // long, fully synchronous run of Excel COM calls (with "As Formula" on, each
+            // written cell is itself a UDF formula Excel may recalculate mid-write, calling
+            // back into this same add-in on this same STA thread) - a second write starting
+            // while the first is still in flight is exactly what produced the unrecoverable
+            // Excel+window freeze reported here.
+            if (!btnSubmit.IsEnabled)
+            {
+                LogUtility.LogDebug("GLSegmentDiscovery.BtnSubmit_Click: ignored - a write is already in progress");
+                return;
+            }
 
             if (!ValidatePrerequisites())
                 return;
 
+            bool busyShown = false;
+            var originalCalculation = Excel.XlCalculation.xlCalculationAutomatic;
+            bool calculationSaved = false;
             try
             {
                 CommonMethods.DisableExcelSettings();
+
+                // DisableExcelSettings() only toggles ScreenUpdating/DisplayAlerts/EnableEvents
+                // - it leaves Calculation on Automatic. Each formula this writes (BuildFormula,
+                // below) references the PREVIOUS cell in the chain, so on a cell range that's
+                // already been written once before (e.g. clicking Insert a second time), every
+                // single cell.Value assignment in the loop below dirties and immediately
+                // recalculates its own entire downstream suffix of the chain - an O(n^2)
+                // recalculation storm (n=525 measured as ~275,000 UDF calls) that's
+                // indistinguishable from a permanent freeze, with DisplayAlerts=false hiding
+                // any dialog that might otherwise have hinted Excel was still (uselessly)
+                // working. Matches the same fix already applied elsewhere in this codebase for
+                // the identical class of bulk-write hang (DDDatatoWorksheet.cs,
+                // BulkRefreshProcess.cs, DrillCellHighlighter.cs): go Manual for the write,
+                // then do exactly one Calculate() pass at the end.
+                originalCalculation = AppState.Instance.ExcelApp.Calculation;
+                calculationSaved = true;
+                AppState.Instance.ExcelApp.Calculation = Excel.XlCalculation.xlCalculationManual;
+
                 LoadSegmentData();
 
                 if (!ValidateOperationSelected() || ValueArray == null || ValueArray.Length == 0)
@@ -86,8 +122,23 @@ namespace GLSense.Views
                     return;
                 }
 
+                // WriteValuesToExcel writes one cell at a time via synchronous Excel COM
+                // calls, so it can take a noticeable amount of time for a large ValueArray -
+                // show a busy overlay so the window doesn't look frozen while it runs.
+                // PumpDispatcherFrame() forces that overlay to actually paint before the
+                // write loop blocks this thread - Excel Interop calls have to run on this
+                // same (STA) thread, so the work itself can't be moved to a background Task.
+                AppOverlayControl.ShowBusyasyn($"Writing {ValueArray.Length} value(s) to Excel...");
+                busyShown = true;
+                btnSubmit.IsEnabled = false;
+                PumpDispatcherFrame();
+
                 WriteValuesToExcel();
                 LogUtility.LogDebug("GLSegmentDiscovery.BtnSubmit_Click: WriteValuesToExcel completed successfully");
+
+                // Single, deliberate recalculation pass now that every formula is in place -
+                // O(n) UDF calls total instead of the O(n^2) cascade above.
+                AppState.Instance.ExcelApp.Calculate();
             }
             catch (Exception ex)
             {
@@ -95,7 +146,37 @@ namespace GLSense.Views
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                btnSubmit.IsEnabled = true;
+                if (calculationSaved)
+                {
+                    AppState.Instance.ExcelApp.Calculation = originalCalculation;
+                }
+                CommonMethods.TryEnableExcelSettings("GLSegmentDiscovery.BtnSubmit_Click");
+                if (busyShown)
+                {
+                    await AppOverlayControl.HideBusyAsync();
+                }
+            }
+        }
+
+        // WPF's classic "DoEvents" equivalent: pushes a nested dispatcher frame that
+        // processes every pending operation at Background priority and above until the
+        // frame is told to stop. Used to force the busy overlay (and its
+        // spinner/"Time Elapsed" animation) to actually paint/tick before/during the long,
+        // fully synchronous Excel COM write loop below, which otherwise blocks this (STA,
+        // WPF-animation-driving) thread without ever yielding.
+        private void PumpDispatcherFrame()
+        {
+            try
+            {
+                var frame = new System.Windows.Threading.DispatcherFrame();
+                this.Dispatcher.BeginInvoke(new Action(() => frame.Continue = false),
+                    System.Windows.Threading.DispatcherPriority.Background);
+                System.Windows.Threading.Dispatcher.PushFrame(frame);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLSegmentDiscovery.PumpDispatcherFrame");
             }
         }
         private bool ValidatePrerequisites()
@@ -257,6 +338,7 @@ namespace GLSense.Views
             {
                 var targetCell = GetVerticalCell(i);
                 WriteCellValue(targetCell.Offset[1, 0], config, ValueArray[i], targetCell, DirectionType.Down);
+                PumpEveryNWrites(i);
             }
         }
 
@@ -266,6 +348,7 @@ namespace GLSense.Views
             {
                 var targetCell = GetHorizontalCell(i);
                 WriteCellValue(targetCell.Offset[0, 1], config, ValueArray[i], targetCell, DirectionType.Right);
+                PumpEveryNWrites(i);
             }
         }
 
@@ -276,6 +359,7 @@ namespace GLSense.Views
                 var targetCell = GetVerticalCell(-(i + 1));
                 var formulaRef = targetCell.Offset[1, 0];
                 WriteCellValue(targetCell, config, ValueArray[i], formulaRef, DirectionType.Up);
+                PumpEveryNWrites(i);
             }
         }
 
@@ -286,10 +370,28 @@ namespace GLSense.Views
                 var targetCell = GetHorizontalCell(-(i + 1));
                 var formulaRef = targetCell.Offset[0, 1];
                 WriteCellValue(targetCell, config, ValueArray[i], formulaRef, DirectionType.Left);
+                PumpEveryNWrites(i);
             }
         }
         private Excel.Range GetVerticalCell(int rowOffset) => OrbActCell.Offset[rowOffset, 0];
         private Excel.Range GetHorizontalCell(int colOffset) => OrbActCell.Offset[0, colOffset];
+
+        // Every cell write here is its own synchronous Excel COM call, so a large
+        // ValueArray runs as one long, fully non-yielding block on the UI thread - which is
+        // also the thread WPF's Storyboard/DispatcherTimer animations tick on. Without ever
+        // yielding, the busy overlay's spinner and "Time Elapsed" counter just freeze on
+        // whatever frame they were on when the loop started, even though the write itself is
+        // still progressing (reported as "busy overlay shown but no animation"). Pumping
+        // the dispatcher every few writes lets one paint/timer-tick pass run in between,
+        // so both visibly update, and gives Excel's own message queue periodic chances to
+        // drain instead of piling up for the loop's entire duration.
+        private void PumpEveryNWrites(int index)
+        {
+            if (index % 20 == 0)
+            {
+                PumpDispatcherFrame();
+            }
+        }
 
         private static void WriteCellValue(Excel.Range cell, WriteConfig config, string value, Excel.Range formulaRef, DirectionType direction)
         {
