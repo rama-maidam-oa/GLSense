@@ -111,7 +111,7 @@ namespace GLSense.Drilldowns
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("DrilldownJl.ProcessJLDrilldown");
             }
         }
 

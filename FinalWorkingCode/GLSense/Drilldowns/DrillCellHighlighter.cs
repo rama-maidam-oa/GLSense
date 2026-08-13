@@ -136,7 +136,7 @@ namespace GLSense.Drilldowns
                     // Swallow dispose exceptions (Excel COM weirdness) but still log for diagnostics.
                     LogUtility.LogWarn($"DrillCellHighlighter.RibCellHighlight_OnClick: exception disposing CancellationHelper (ignored): {ex.Message}");
                 }
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("DrillCellHighlighter.RibCellHighlight_OnClick");
 
                 if (snapshotTaken && excelApp != null)
                 {

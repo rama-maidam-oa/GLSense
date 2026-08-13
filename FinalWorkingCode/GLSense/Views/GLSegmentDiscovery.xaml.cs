@@ -95,7 +95,7 @@ namespace GLSense.Views
             }
             finally
             {
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("GLSegmentDiscovery.BtnSubmit_Click");
             }
         }
         private bool ValidatePrerequisites()

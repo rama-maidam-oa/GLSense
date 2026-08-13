@@ -184,7 +184,7 @@ namespace GLSense.Drilldowns
                     // Swallow dispose exceptions (Excel COM weirdness) but still log for diagnostics.
                     LogUtility.LogWarn($"DrilldownBl.ProcessBLDrilldown: exception disposing CancellationHelper (ignored): {ex.Message}");
                 }
-                CommonMethods.EnableExcelSettings();
+                CommonMethods.TryEnableExcelSettings("DrilldownBl.ProcessBLDrilldown");
                 await SafelyCloseWindowAsync();
             }
         }

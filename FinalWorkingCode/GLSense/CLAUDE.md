@@ -169,13 +169,24 @@ looked like) - it applies here verbatim.
   `TryEnableExcelSettings(context)` - non-throwing wrappers that log and swallow instead -
   and switching all 5 vulnerable call sites in `AddinModule.cs` to use them (pre-`try`
   `Disable` calls now `return` early if it fails, instead of proceeding as if Excel were
-  actually in the disabled state). `CommonMethods.EnableExcelSettings()`/
-  `DisableExcelSettings()` themselves are unchanged, since their other callers (e.g.
-  `Drilldowns\BalanceRefresh.cs`, `DD_BL.cs`/`DD_JL.cs`/`DD_SL.cs`,
-  `Utilities\SegmentDiscoverer.cs`/`PeriodsDiscoverer.cs`) already run inside a `try` with
-  a real `catch`, so the throw-on-failure contract is still exactly what they need.
-  **Status: fixed in FinalWorkingCode only so far** - the same 5-call-site shape likely
-  exists in AIPowered's `AddinModule.cs` too; port once confirmed there.
+  actually in the disabled state).
+  **Correction (same pass, caught on a second look prompted by "is that really all the
+  call sites?")**: the note above originally claimed every *other* `Disable`/
+  `EnableExcelSettings()` caller in this codebase was already safely inside a `try`/
+  `catch`. That was only checked for the `Disable` half - the `Enable` half (almost always
+  bare in a `finally`) was not actually re-checked file-by-file at the time, and turned out
+  to have the exact same unguarded-in-`finally` shape in **8 more files**:
+  `Drilldowns\BalanceRefresh.cs` (`InitializeAsync`'s pre-try `Disable` and
+  `CleanupAsync`'s `Enable`, both inside a `RunExcelAsync` marshaling lambda),
+  `DD_BL.cs`/`DD_JL.cs`/`DD_ExcelPrecedents.cs`/`DrillCellHighlighter.cs`/
+  `Utilities\PeriodsDiscoverer.cs`/`SegmentDiscoverer.cs`/`Views\GLSegmentDiscovery.xaml.cs`
+  (`Enable` bare in each one's outer `finally`), and `DD_SL.cs` specifically also had its
+  `Disable` call sitting at the very top of the method with **no enclosing `try` at all**
+  (matching `AddinModule.cs`'s worst case exactly). All 9 fixed the same way. Found by
+  auditing AIPowered's equivalents first (see that repo's `CLAUDE.md` section 36) and
+  finding the identical shape there, which is what prompted re-checking these
+  FinalWorkingCode originals rather than assuming the first pass had been exhaustive.
+  **Status: fixed in FinalWorkingCode (build-verified) and ported to AIPowered.**
 
 - **Separately (not yet root-caused): continuous `GetRangeValueSafe` COM exceptions**.
   The same log had 5941 occurrences of `GLConfiguratorViewModel.GetRangeValueSafe`
