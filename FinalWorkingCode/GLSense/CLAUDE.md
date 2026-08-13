@@ -202,3 +202,45 @@ looked like) - it applies here verbatim.
   workbook (renamed/deleted sheet, or wrong active workbook at read time are the two
   likely causes). Needs the reporting colleague's workbook/repro steps to pin down which
   field and why `AABCJ` doesn't resolve - not fixed yet.
+
+## `Views\GLSegmentDiscovery.xaml.cs`
+
+- **Excel crash/freeze double-clicking Insert (Hierarchy Discoverer)**: ported from
+  `11.1.0_NewUI`'s already-fixed version of this same file (that branch had already hit
+  and fixed this independently). Root cause: `BtnSubmit_Click` was a plain synchronous
+  method with no re-entry guard and no busy overlay - a second "Insert" click queued on
+  the message loop while the first write was still running (`WriteValuesToExcel` is a
+  long, fully synchronous run of Excel COM calls) reached the handler a second time and
+  started a second overlapping write into a cell range that already had formulas from the
+  first write. With Calculation left on Automatic (the code only ever toggled
+  ScreenUpdating/DisplayAlerts/EnableEvents via `DisableExcelSettings()`), each formula
+  written references the previous cell in the chain, so every single `cell.Value`
+  assignment in the write loop dirtied and immediately recalculated its own entire
+  downstream suffix - an O(n^2) recalculation storm (525 cells measured as ~275,000 UDF
+  calls elsewhere in this codebase for the identical class of bug) indistinguishable from
+  a permanent freeze, with `DisplayAlerts=false` hiding any dialog that might have hinted
+  Excel was still (uselessly) working. Separately, the busy overlay wasn't reliably
+  showing before the freeze either, since nothing forced WPF to paint it before the
+  synchronous write loop blocked the UI thread.
+  Fixed by porting `11.1.0_NewUI`'s version of `BtnSubmit_Click` (now `async void`):
+  bails out immediately if `btnSubmit.IsEnabled` is already `false` (a write in
+  progress); disables `btnSubmit` and shows the busy overlay before the write, calling a
+  new `PumpDispatcherFrame()` helper (WPF's "DoEvents" equivalent - pushes a nested
+  dispatcher frame processed at Background priority) to force that overlay to actually
+  paint first; switches `Excel.Calculation` to Manual for the duration of the write and
+  does exactly one `Calculate()` pass afterward (O(n) instead of O(n^2)); restores
+  `Calculation`/`btnSubmit.IsEnabled`/the busy overlay in `finally` regardless of outcome.
+  Also added a `PumpEveryNWrites` helper (pumps the dispatcher every 20 writes) hooked
+  into all four write loops (`WriteVerticalForward`/`WriteHorizontalForward`/
+  `WriteVerticalBackward`/`WriteHorizontalBackward`) so the busy overlay's spinner/"Time
+  Elapsed" counter keeps visibly animating during a large write instead of freezing on
+  whatever frame was current when the loop started.
+  `PumpDispatcherFrame()` didn't exist anywhere in this codebase (it lives on
+  `11.1.0_NewUI`'s `BaseWindow.cs`, a shared base class this branch's `GLSegmentDiscovery`
+  doesn't have - it derives from `DpiAwareWindow` instead), so it was added as a private
+  method scoped to this one file rather than added to `DpiAwareWindow.cs` itself, to avoid
+  changing behavior for the ~15 other windows that derive from it.
+  **Status: build-verified on `11.1.0`.** Also needs the equivalent port into AIPowered's
+  `GLSense.Addin.Core\Views\GLSegmentDiscovery.xaml.cs`, which has a different (already
+  reliable, async-yielding) busy-overlay mechanism but is missing both the re-entry guard
+  and the Calculation-manual/single-`Calculate()`-pass fix - see AIPowered's `CLAUDE.md`.
