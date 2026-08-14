@@ -472,6 +472,12 @@
         "Entry"
         {
         "MsmKey" = "8:_UNDEFINED"
+        "OwnerKey" = "8:_B94FAF4497844135A5610274427E5E12"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_UNDEFINED"
         "OwnerKey" = "8:_4C82CA6173A4797A211DEC2423C55B09"
         "MsmSig" = "8:_UNDEFINED"
         }
@@ -1711,6 +1717,11 @@
             "AssemblyAsmDisplayName" = "8:MahApps.Metro.resources, Version=2.0.0.0, Culture=de, PublicKeyToken=51482d6f650b2b3f, processorArchitecture=MSIL"
                 "ScatterAssemblies"
                 {
+                    "_B94FAF4497844135A5610274427E5E12"
+                    {
+                    "Name" = "8:MahApps.Metro.resources.dll"
+                    "Attributes" = "3:512"
+                    }
                 }
             "SourcePath" = "8:..\\bin\\Release\\de\\MahApps.Metro.resources.dll"
             "TargetName" = "8:"
@@ -2653,7 +2664,7 @@
             }
             "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_1223A86871044FCB82F28F63D17AA70D"
             {
-            "SourcePath" = "8:..\\obj\\Debug\\GLSense.dll"
+            "SourcePath" = "8:..\\obj\\Release\\GLSense.dll"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"
