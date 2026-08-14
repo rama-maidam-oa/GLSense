@@ -709,6 +709,7 @@ namespace GLSense
             MahAppsBootstrapper.Init(AppConstants.GLAccentHex, AppConstants.GLTheme);
             MahAppsBootstrapper.PreloadResources();
             WpfWarmup.WarmUpInBackground();
+            WebView2Warmup.WarmUpInBackground();
         }
 
         private static void AddinModule_AddinInitialize(object sender, EventArgs e)

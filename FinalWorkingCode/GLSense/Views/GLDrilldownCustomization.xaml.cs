@@ -67,34 +67,24 @@ namespace GLSense.Views
             LogUtility.LogDebug("GLDrilldownCustomization.WebView_Loaded invoked");
             webView.Loaded -= WebView_Loaded; // prevent double init
 
+            // CoreWebView2Environment creation spins up a real Chromium process tree and can
+            // take several seconds cold; previously nothing was shown while it ran here either
+            // (same gap as GLLogin - see WebView2Warmup for the full explanation). The
+            // environment is shared/pre-warmed via WebView2Warmup (kicked off at ribbon load),
+            // and both this window and GLLogin already pointed at the exact same
+            // AppPaths.LoginBrowserLogsPath/options, so sharing one instance is also strictly
+            // less wasteful than each window spinning up its own.
+            using var initCancellation = new CancellationHelper();
+            await ShowBusyOverlayAsync(initCancellation, "Initializing browser component...");
             try
             {
-                // 1) Ensure a writable user data folder (logs/profile)
-                string logDir = AppPaths.LoginBrowserLogsPath;
-                DirectoryInfo di = new(logDir);
-                if (!di.Exists)
-                    di.Create();
+                var env = await WebView2Warmup.GetEnvironmentAsync();
 
-                string webViewLogsPath = di.FullName;
-
-                // 2) Create environment options FIRST
-                var envOptions = new CoreWebView2EnvironmentOptions
-                {
-                    // Enable SSO if your scenario needs it
-                    AllowSingleSignOnUsingOSPrimaryAccount = true
-                };
-
-                // 3) Create the environment with options + user data folder
-                var env = await CoreWebView2Environment.CreateAsync(
-                    browserExecutableFolder: null,
-                    userDataFolder: webViewLogsPath,
-                    options: envOptions);
-
-                // 4) Initialize WebView2 with that environment
+                // Initialize WebView2 with that environment
                 _webViewInitTask = webView.EnsureCoreWebView2Async(env);
                 await _webViewInitTask;
 
-                // 5) Hook device permission handler and diagnostics after CoreWebView2 is ready
+                // Hook device permission handler and diagnostics after CoreWebView2 is ready
                 webView.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
 
                 // Cert-error bypass (scoped to this window's own server), retry-once, and
@@ -106,11 +96,9 @@ namespace GLSense.Views
                 // Optional: turn on DevTools during development
                 webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-                // 6) Diagnostics: log WebView2 runtime and SSO setting
+                // Diagnostics: log WebView2 runtime
                 var version = webView.CoreWebView2.Environment.BrowserVersionString;
                 LogUtility.LogDebug($"WebView2 BrowserVersion={version}");
-                LogUtility.LogDebug($"AllowSingleSignOnUsingOSPrimaryAccount={envOptions.AllowSingleSignOnUsingOSPrimaryAccount}");
-
 
                 if (AppState.Instance.SelectedCube != null)
                 {
@@ -146,12 +134,16 @@ namespace GLSense.Views
                 else
                 {
                     LogUtility.LogDebug("GLDrilldownCustomization.WebView_Loaded: no selected cube, skipping navigation");
+                    await AppOverlayControl.HideBusyAsync();
+                    webView.Visibility = Visibility.Visible;
                 }
 
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "WebView2 initialization failed in GLDrilldownCustomization");
+                await AppOverlayControl.HideBusyAsync();
+                webView.Visibility = Visibility.Visible;
             }
         }
         private async Task ShowBusyOverlayAsync(CancellationHelper helper, string message)
