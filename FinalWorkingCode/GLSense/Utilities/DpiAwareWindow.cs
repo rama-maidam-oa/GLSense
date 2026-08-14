@@ -121,6 +121,8 @@ namespace GLSense.Utilities
 
         public bool? ShowDialogWithOwner(IntPtr excelHwnd)
         {
+            int placeholderGen = WindowLoadingPlaceholder.ShowNear(excelHwnd);
+            HookPlaceholderDismissal(placeholderGen);
             try
             {
                 SetExcelOwner(excelHwnd);
@@ -150,6 +152,8 @@ namespace GLSense.Utilities
 
         public void ShowWithOwner(IntPtr excelHwnd)
         {
+            int placeholderGen = WindowLoadingPlaceholder.ShowNear(excelHwnd);
+            HookPlaceholderDismissal(placeholderGen);
             try
             {
                 SetExcelOwner(excelHwnd);
@@ -174,6 +178,28 @@ namespace GLSense.Utilities
                     LogUtility.LogException(innerEx, "DpiAwareWindow.ShowWithOwner (critical, retry failed)");
                 }
             }
+        }
+
+        // Dismisses the shared WindowLoadingPlaceholder once this window's own first real
+        // frame is ready (ContentRendered), or immediately if it closes before that ever
+        // happens (e.g. an exception during load) - the placeholder's own 3-second safety
+        // timer covers any path that hits neither. Hooked once per Show/ShowDialog call
+        // rather than in the constructor, since the placeholder should only be up for the
+        // span between "user asked to see this window" and "this window is actually ready."
+        private void HookPlaceholderDismissal(int generation)
+        {
+            if (generation < 0)
+                return;
+
+            void Dismiss(object sender, EventArgs e)
+            {
+                this.ContentRendered -= Dismiss;
+                this.Closed -= Dismiss;
+                WindowLoadingPlaceholder.Hide(generation);
+            }
+
+            this.ContentRendered += Dismiss;
+            this.Closed += Dismiss;
         }
 
         private void OnWindowPreviewMouseDown(object sender, MouseButtonEventArgs e)

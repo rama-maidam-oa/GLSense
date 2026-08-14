@@ -219,6 +219,7 @@
     <Compile Include="Utilities\WpfAppManager.cs" />
     <Compile Include="Utilities\WpfWarmup.cs" />
     <Compile Include="Utilities\WebView2Warmup.cs" />
+    <Compile Include="Utilities\WindowLoadingPlaceholder.cs" />
     <Compile Include="ViewModels\GLConfiguratorViewModel.cs" />
     <Compile Include="ViewModels\GLDailyRatesViewModel.cs" />
     <Compile Include="ViewModels\GLGetPeriodByYearModel.cs" />
