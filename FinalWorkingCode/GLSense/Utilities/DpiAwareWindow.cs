@@ -15,11 +15,20 @@ namespace GLSense.Utilities
         [DllImport("user32.dll")]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
+        [DllImport("user32.dll")]
+        private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOSIZE = 0x0001;
         private const uint SWP_NOZORDER = 0x0004;
         private const uint SWP_NOACTIVATE = 0x0010;
         private const uint SWP_FRAMECHANGED = 0x0020;
+
+        private const uint RDW_INVALIDATE = 0x0001;
+        private const uint RDW_ERASE = 0x0004;
+        private const uint RDW_FRAME = 0x0400;
+        private const uint RDW_ALLCHILDREN = 0x0080;
+        private const uint RDW_UPDATENOW = 0x0100;
 
         private HwndSource _hwndSource;
         private IntPtr _excelOwnerHwnd = IntPtr.Zero;
@@ -606,13 +615,20 @@ namespace GLSense.Utilities
                 double previousHeight = Height;
                 bool sizeChanged = false;
 
-                if (targetWidth > 0 && Math.Abs(targetWidth - previousWidth) > 0.5)
+                // NaN-safe: Math.Abs(x - NaN) is NaN, and NaN > 0.5 is always false, so a
+                // window that never had an explicit Width/Height set in XAML (only
+                // MinWidth/MaxWidth, e.g. GLLOVs/GLCubeDetails) had this comparison
+                // silently never trigger on its very first layout pass - Width/Height
+                // stayed NaN forever, and this window rendered at bare MinWidth/MinHeight
+                // via WPF's own fallback sizing instead of this method's actual
+                // content-fit target. Treat "was never set" as "changed."
+                if (targetWidth > 0 && (double.IsNaN(previousWidth) || Math.Abs(targetWidth - previousWidth) > 0.5))
                 {
                     Width = targetWidth;
                     sizeChanged = true;
                 }
 
-                if (targetHeight > 0 && Math.Abs(targetHeight - previousHeight) > 0.5)
+                if (targetHeight > 0 && (double.IsNaN(previousHeight) || Math.Abs(targetHeight - previousHeight) > 0.5))
                 {
                     Height = targetHeight;
                     sizeChanged = true;
@@ -634,13 +650,19 @@ namespace GLSense.Utilities
         }
 
         // WindowStyle="None" windows still get a DWM-drawn drop shadow around their real
-        // client area. Resizing programmatically (Width/Height set from code, not a user
-        // drag) can leave a stale shadow remnant at the old edge - a dark rectangle that
-        // doesn't get erased until something forces Windows to recompute the non-client
-        // area. SWP_FRAMECHANGED (with NOMOVE/NOSIZE/NOZORDER/NOACTIVATE so this doesn't
-        // actually move/resize/activate anything itself - Width/Height/Left/Top are
-        // already set separately) does exactly that. Harmless to call before the window
-        // is shown (SourceInitialized time) - there's nothing to redraw yet.
+        // client area, and resizing programmatically (Width/Height set from code, not a
+        // user drag) can leave stale rendering behind at the old edge - confirmed via a
+        // screenshot on GLLOVs (whose grid growing from empty to 20+ rows after async
+        // load triggers a real resize here) showing a large solid-black rectangle, too
+        // big to be just a shadow line - a torn/stale backbuffer region, not erased when
+        // the window narrowed. SWP_FRAMECHANGED alone only recomputes the non-client
+        // frame/shadow, not the client area, so it wasn't enough on its own.
+        // RedrawWindow with INVALIDATE|ERASE|FRAME|ALLCHILDREN|UPDATENOW forces an
+        // immediate full erase-and-repaint of the whole window regardless of the exact
+        // cause. NOMOVE/NOSIZE/NOZORDER/NOACTIVATE on the SetWindowPos call mean neither
+        // call itself moves/resizes/activates anything - Width/Height/Left/Top are
+        // already set separately. Harmless to call before the window is shown
+        // (SourceInitialized time) - there's nothing to redraw yet.
         private void ForceFrameRedraw()
         {
             try
@@ -651,6 +673,8 @@ namespace GLSense.Utilities
 
                 SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                RedrawWindow(hwnd, IntPtr.Zero, IntPtr.Zero,
+                    RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
             }
             catch (Exception ex)
             {
