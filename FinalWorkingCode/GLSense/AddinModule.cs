@@ -2744,10 +2744,32 @@ namespace GLSense
         private void RibLOVs_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             LogUtility.LogDebug("RibLOVs_OnClick clicked.");
-            SafeInvokeWpf(() =>
+            SafeInvokeWpf(async () =>
             {
-                var win = new GLLOVs();
-                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                try
+                {
+                    var win = new GLLOVs();
+                    // Awaited before ShowDialogWithOwner (not on the Loaded event like
+                    // most other windows) so the window's first frame already has the
+                    // LOV grid data in it - see GLLOVs.PrepareAsync for why.
+                    await win.PrepareAsync();
+
+                    // PrepareAsync's internal awaits (LoadDataAsync -> repository/SQLite
+                    // calls) can resume on a different thread than the one that
+                    // constructed win, since this VSTO add-in's WPF thread doesn't
+                    // guarantee automatic await-continuation marshaling back to itself
+                    // (the same reason every other UI touch-point in this codebase
+                    // re-marshals explicitly via Dispatcher.InvokeAsync after an await -
+                    // see GLLOVs.PrepareAsync/ShowBusyAction/HideBusyAsyncAction).
+                    // ShowDialogWithOwner touches win's HWND (a DispatcherObject), so it
+                    // must run back on win's own Dispatcher thread explicitly.
+                    win.Dispatcher.Invoke(() =>
+                        win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd));
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "RibLOVs_OnClick");
+                }
             });
         }
 

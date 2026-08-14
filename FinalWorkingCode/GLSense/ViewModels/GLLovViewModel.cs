@@ -101,16 +101,27 @@ namespace GLSense.ViewModels
                 {
                     Ledgers.Add(l);
                 }
-                if (AppState.Instance.SelectedLedger != null)
-                {
-                    LOV_SelectedLedger = AppState.Instance.SelectedLedger;
-                }
-                else
-                {
-                    LOV_SelectedLedger = Ledgers.FirstOrDefault(x => x.LedgerId == defaultLedgerId);
-                }
 
+                // Sets the backing field directly (not the LOV_SelectedLedger property)
+                // specifically to skip its setter's LoadLovRows() call - that call is
+                // fire-and-forget (Task.Run, never awaited by its caller), which meant
+                // this method previously returned as soon as the ledger dropdown was
+                // populated while the actual grid content (LoadLovRowsAsync - the
+                // per-category SQLite counts, the busy overlay) kept loading in the
+                // background *after* PrepareAsync/RibLOVs_OnClick had already gone on to
+                // call ShowDialogWithOwner. Explicitly awaiting LoadLovRowsAsync() below
+                // instead makes this method genuinely block until the grid has real data,
+                // which is what PrepareAsync needs. A later user-driven ledger change
+                // (window already open) still goes through the normal property setter
+                // further down in this file, so that fire-and-forget-with-busy-overlay UX
+                // is unaffected.
+                _lOV_SelectedLedger = AppState.Instance.SelectedLedger != null
+                    ? AppState.Instance.SelectedLedger
+                    : Ledgers.FirstOrDefault(x => x.LedgerId == defaultLedgerId);
+                OnPropertyChanged(nameof(LOV_SelectedLedger));
             });
+
+            await LoadLovRowsAsync();
         }
 
         private void LoadLovRows()

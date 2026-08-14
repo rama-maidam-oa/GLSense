@@ -39,9 +39,20 @@ namespace GLSense.Views
             };
             this.DataContext = vm;
         }
-        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Loads the active-cell reference and the LOV grid data. Called by
+        /// RibLOVs_OnClick and awaited *before* ShowDialogWithOwner() - not wired to
+        /// the Loaded event like most other windows - so the window's very first
+        /// frame already has the real content in it instead of appearing blank and
+        /// filling in a moment later. Nothing here depends on the window actually
+        /// being on-screen (excelRefEdit and cmbLedgers are already constructed via
+        /// InitializeComponent(), and ActiveCell comes from Excel's COM object, not
+        /// from this window), so running it earlier changes nothing except when the
+        /// window becomes visible.
+        /// </summary>
+        public async Task PrepareAsync()
         {
-            LogUtility.LogDebug("GLLOVs.Window_Loaded invoked");
+            LogUtility.LogDebug("GLLOVs.PrepareAsync invoked");
             try
             {
                 Excel.Range rng = AppState.Instance.ExcelApp.ActiveCell;
@@ -50,7 +61,7 @@ namespace GLSense.Views
                 string addr = $"'{sheetName}'!{cellAddress}";
 
                 excelRefEdit.Text = addr;
-                LogUtility.LogDebug($"GLLOVs.Window_Loaded: active cell reference={addr}");
+                LogUtility.LogDebug($"GLLOVs.PrepareAsync: active cell reference={addr}");
 
                 if (AppState.Instance.SelectedCube != null && AppState.Instance.SelectedLedger != null)
                 {
@@ -60,16 +71,16 @@ namespace GLSense.Views
                     {
                         cmbLedgers.Text = vm.LOV_SelectedLedger.LedgerName;
                     });
-                    LogUtility.LogDebug("GLLOVs.Window_Loaded: LOV data loaded successfully");
+                    LogUtility.LogDebug("GLLOVs.PrepareAsync: LOV data loaded successfully");
                 }
                 else
                 {
-                    LogUtility.LogDebug("GLLOVs.Window_Loaded: validation failed - no cube/ledger selected, skipping load");
+                    LogUtility.LogDebug("GLLOVs.PrepareAsync: validation failed - no cube/ledger selected, skipping load");
                 }
             }
             catch (Exception ex)
             {
-                LogUtility.LogException(ex, "GLLOVs.Window_Loaded");
+                LogUtility.LogException(ex, "GLLOVs.PrepareAsync");
             }
         }
         public void CellSelectionWarning(string message)
