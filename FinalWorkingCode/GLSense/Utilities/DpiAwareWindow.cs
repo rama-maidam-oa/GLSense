@@ -297,11 +297,8 @@ namespace GLSense.Utilities
                 // before the window has ever been shown, which is the same thing any WPF
                 // app does when it sizes/positions a window up front.
                 //
-                // OnLoaded's own QueueLayoutRefresh call still runs afterward as a
-                // harmless, idempotent safety re-check (e.g. in case DPI/content weren't
-                // fully resolved yet at this earlier point) - it should no-op in the
-                // common case since FitToAvailableWorkArea/CenterOverOwnerOnce already
-                // did the real work here.
+                // OnLoaded no longer re-runs this after the window is shown (removed - see
+                // its own comment for why a second pass there wasn't actually safe).
                 if (!DisableAutoSizing)
                 {
                     CaptureInitialWindowConstraints();
@@ -363,11 +360,18 @@ namespace GLSense.Utilities
             {
                 LogUtility.LogDebug($"[{_windowName}] loaded - applying DPI adjustments");
 
-                if (!DisableAutoSizing)
-                {
-                    CaptureInitialWindowConstraints();
-                    QueueLayoutRefresh(System.Windows.Threading.DispatcherPriority.Loaded);
-                }
+                // Used to queue a second ApplyLayoutRefresh() here via
+                // Dispatcher.BeginInvoke(..., DispatcherPriority.Loaded) as a "harmless
+                // idempotent safety re-check" - but that callback runs *after* Show() has
+                // already made the window visible, and isn't actually idempotent if real
+                // content (a WebView2 control, a DataGrid) settles its size between
+                // SourceInitialized and Loaded: FitToAvailableWorkArea can compute a
+                // different target and visibly resize/reposition the already-shown
+                // window - reported as the window "dancing"/repositioning to center right
+                // before its busy overlay appears. OnSourceInitialized's synchronous pass
+                // already does this correctly before the window is ever shown, so this
+                // second pass is removed rather than gated - it was never confirmed
+                // necessary in the first place.
 
                 LogUtility.LogDebug($"[{_windowName}] load complete");
             }
