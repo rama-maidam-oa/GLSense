@@ -148,10 +148,10 @@ namespace GLSense.Utilities
 
             var ring = new Ellipse
             {
-                Width = 28,
-                Height = 28,
+                Width = 48,
+                Height = 48,
                 Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString(AppConstants.GLAccentHex)),
-                StrokeThickness = 3,
+                StrokeThickness = 5,
                 StrokeDashArray = new DoubleCollection { 2.4, 1.6 },
                 RenderTransformOrigin = new Point(0.5, 0.5),
                 RenderTransform = new RotateTransform(0)
@@ -166,9 +166,9 @@ namespace GLSense.Utilities
             var text = new TextBlock
             {
                 Text = "Loading...",
-                Margin = new Thickness(0, 10, 0, 0),
+                Margin = new Thickness(0, 16, 0, 0),
                 HorizontalAlignment = HorizontalAlignment.Center,
-                FontSize = 13,
+                FontSize = 18,
                 Foreground = Brushes.White
             };
 
@@ -191,8 +191,8 @@ namespace GLSense.Utilities
             _window = new Window
             {
                 Content = border,
-                Width = 200,
-                Height = 110,
+                Width = 340,
+                Height = 190,
                 WindowStyle = WindowStyle.None,
                 AllowsTransparency = false,
                 ResizeMode = ResizeMode.NoResize,
