@@ -881,6 +881,8 @@ namespace GLSense.Utilities
             public readonly int Height => Bottom - Top;
         }
 
+        private System.Windows.Threading.DispatcherTimer _resizeSettleTimer;
+
         protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
         {
             base.OnRenderSizeChanged(sizeInfo);
@@ -889,14 +891,30 @@ namespace GLSense.Utilities
             if (DisableAutoSizing || !AutoClampToWorkArea)
                 return;
 
-            try
+            // Content (e.g. a DataGrid) can grow across several back-to-back
+            // RenderSizeChanged events as rows populate - reacting to every single one
+            // made an already-visible window visibly resize/reposition more than once in
+            // quick succession ("dancing"). Debounce into one settled call instead of
+            // reacting immediately - restarts on every event, so EnsureFitsWorkArea only
+            // actually runs once rendering has been quiet for 120ms.
+            _resizeSettleTimer?.Stop();
+            _resizeSettleTimer = new System.Windows.Threading.DispatcherTimer
             {
-                EnsureFitsWorkArea();
-            }
-            catch (Exception ex)
+                Interval = TimeSpan.FromMilliseconds(120)
+            };
+            _resizeSettleTimer.Tick += (s, e) =>
             {
-                LogUtility.LogException(ex, "DpiAwareWindow.OnRenderSizeChanged (clamp)");
-            }
+                _resizeSettleTimer.Stop();
+                try
+                {
+                    EnsureFitsWorkArea();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "DpiAwareWindow.OnRenderSizeChanged (debounced clamp)");
+                }
+            };
+            _resizeSettleTimer.Start();
         }
 
         protected void EnsureFitsWorkArea(double? marginOverride = null)
