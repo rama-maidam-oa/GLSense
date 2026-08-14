@@ -241,6 +241,32 @@ namespace GLSense.Utilities
                 LogUtility.LogDebug($"[{_windowName}] source initialized");
                 _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
                 _hwndSource?.AddHook(WndProc);
+
+                // Run the DPI/fit/center pass now, synchronously, while the window still
+                // has no on-screen presence at all (SourceInitialized fires once the HWND
+                // exists but strictly before Show()/ShowDialog() calls ShowWindow) - not
+                // later via OnLoaded's deferred Dispatcher callback, which used to run
+                // after the window was already visible at its placeholder
+                // WindowStartupLocation="CenterOwner" position/size (computed before
+                // layout resolved the window's real content size), producing a visible
+                // resize/reposition "pop" right on top of the window's first frame. Doing
+                // the exact same math here instead means Show() paints the correct final
+                // size/position on the very first frame - there is nothing left to
+                // visibly correct afterward. This does NOT touch Opacity/Visibility/
+                // Position of an already-visible window - it only sets these properties
+                // before the window has ever been shown, which is the same thing any WPF
+                // app does when it sizes/positions a window up front.
+                //
+                // OnLoaded's own QueueLayoutRefresh call still runs afterward as a
+                // harmless, idempotent safety re-check (e.g. in case DPI/content weren't
+                // fully resolved yet at this earlier point) - it should no-op in the
+                // common case since FitToAvailableWorkArea/CenterOverOwnerOnce already
+                // did the real work here.
+                if (!DisableAutoSizing)
+                {
+                    CaptureInitialWindowConstraints();
+                    ApplyLayoutRefresh();
+                }
             }
             catch (Exception ex)
             {
