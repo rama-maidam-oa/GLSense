@@ -6,7 +6,7 @@
 					  xmlns:ctrls="clr-namespace:GLSense.Controls" 
 					  xmlns:conv="clr-namespace:GLSense.Converters" 
 					  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome" 
-					  Background="#F8F9FA" SizeToContent="Manual" MinWidth="500" MaxWidth="750" MinHeight="500" MaxHeight="650" 
+					  Background="#F8F9FA" SizeToContent="Manual" MinWidth="800" MaxWidth="950" MinHeight="500" MaxHeight="650" 
 					  WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterOwner"  Loaded="Window_Loaded">
     <utils:DpiAwareWindow.Resources>
         <ResourceDictionary>
