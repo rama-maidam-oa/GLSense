@@ -185,14 +185,17 @@ namespace GLSense.Utilities
             {
                 Background = new SolidColorBrush(Color.FromArgb(235, 45, 45, 48)),
                 CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(28),
                 Child = panel
             };
 
             _window = new Window
             {
                 Content = border,
-                Width = 340,
-                Height = 190,
+                // Sized to whatever the ring+text actually need plus the Border's Padding,
+                // instead of a hardcoded box that has to be kept in sync by hand if either
+                // one ever changes.
+                SizeToContent = SizeToContent.WidthAndHeight,
                 WindowStyle = WindowStyle.None,
                 AllowsTransparency = false,
                 ResizeMode = ResizeMode.NoResize,
@@ -244,8 +247,11 @@ namespace GLSense.Utilities
                     centerY = workArea.Top + (workArea.Height / 2.0);
                 }
 
-                _window.Left = centerX - (_window.Width / 2.0);
-                _window.Top = centerY - (_window.Height / 2.0);
+                // Width/Height are NaN under SizeToContent - ActualWidth/ActualHeight hold
+                // the real size instead, and are already resolved by the warm-up Show()+
+                // Hide() cycle in EnsureCreated() by the time this runs.
+                _window.Left = centerX - (_window.ActualWidth / 2.0);
+                _window.Top = centerY - (_window.ActualHeight / 2.0);
             }
             catch (Exception ex)
             {
