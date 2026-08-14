@@ -12,6 +12,15 @@ namespace GLSense.Utilities
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_FRAMECHANGED = 0x0020;
+
         private HwndSource _hwndSource;
         private IntPtr _excelOwnerHwnd = IntPtr.Zero;
         private double _currentScaleFactor = 1.0;
@@ -121,8 +130,6 @@ namespace GLSense.Utilities
 
         public bool? ShowDialogWithOwner(IntPtr excelHwnd)
         {
-            int placeholderGen = WindowLoadingPlaceholder.ShowNear(excelHwnd);
-            HookPlaceholderDismissal(placeholderGen);
             try
             {
                 SetExcelOwner(excelHwnd);
@@ -152,8 +159,6 @@ namespace GLSense.Utilities
 
         public void ShowWithOwner(IntPtr excelHwnd)
         {
-            int placeholderGen = WindowLoadingPlaceholder.ShowNear(excelHwnd);
-            HookPlaceholderDismissal(placeholderGen);
             try
             {
                 SetExcelOwner(excelHwnd);
@@ -293,11 +298,54 @@ namespace GLSense.Utilities
                     CaptureInitialWindowConstraints();
                     ApplyLayoutRefresh();
                 }
+
+                // Show the shared loading placeholder sized/positioned to match this
+                // window's own resolved geometry - not a generic small box - so the
+                // transition feels like "the window was already there, its content just
+                // finished loading" instead of a small unrelated indicator jumping to a
+                // differently-sized/positioned real window. Done here (after
+                // ApplyLayoutRefresh) rather than in ShowDialogWithOwner/ShowWithOwner,
+                // since Left/Top/Width/Height are only final once that pass has run.
+                // Falls back to a small generic box near Excel (inside
+                // WindowLoadingPlaceholder itself) if this window's size isn't resolved
+                // yet, e.g. DisableAutoSizing dialogs.
+                int placeholderGen = WindowLoadingPlaceholder.ShowMatching(
+                    Left, Top, ResolveExpectedWidth(), ResolveExpectedHeight(), _excelOwnerHwnd);
+                HookPlaceholderDismissal(placeholderGen);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, $"DpiAwareWindow.OnSourceInitialized ({_windowName})");
             }
+        }
+
+        // Clamps the resolved Width/Height against this window's own Min/Max constraints,
+        // since FitToAvailableWorkArea's Width/Height assignment (based on measuring
+        // Content before any async data has loaded) can land under MinWidth/MinHeight at
+        // this early point even though WPF will enforce those floors on the real,
+        // eventually-visible window regardless. Returns NaN if Width/Height aren't usable
+        // (e.g. DisableAutoSizing windows that never ran FitToAvailableWorkArea) so the
+        // placeholder can fall back to its own generic sizing instead of a bogus target.
+        private double ResolveExpectedWidth()
+        {
+            if (double.IsNaN(Width) || double.IsInfinity(Width))
+                return double.NaN;
+
+            double w = Width;
+            if (!double.IsNaN(MinWidth)) w = Math.Max(w, MinWidth);
+            if (!double.IsPositiveInfinity(MaxWidth)) w = Math.Min(w, MaxWidth);
+            return w;
+        }
+
+        private double ResolveExpectedHeight()
+        {
+            if (double.IsNaN(Height) || double.IsInfinity(Height))
+                return double.NaN;
+
+            double h = Height;
+            if (!double.IsNaN(MinHeight)) h = Math.Max(h, MinHeight);
+            if (!double.IsPositiveInfinity(MaxHeight)) h = Math.Min(h, MaxHeight);
+            return h;
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
@@ -576,11 +624,37 @@ namespace GLSense.Utilities
                 if (sizeChanged)
                 {
                     RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
+                    ForceFrameRedraw();
                 }
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "DpiAwareWindow.FitToAvailableWorkArea");
+            }
+        }
+
+        // WindowStyle="None" windows still get a DWM-drawn drop shadow around their real
+        // client area. Resizing programmatically (Width/Height set from code, not a user
+        // drag) can leave a stale shadow remnant at the old edge - a dark rectangle that
+        // doesn't get erased until something forces Windows to recompute the non-client
+        // area. SWP_FRAMECHANGED (with NOMOVE/NOSIZE/NOZORDER/NOACTIVATE so this doesn't
+        // actually move/resize/activate anything itself - Width/Height/Left/Top are
+        // already set separately) does exactly that. Harmless to call before the window
+        // is shown (SourceInitialized time) - there's nothing to redraw yet.
+        private void ForceFrameRedraw()
+        {
+            try
+            {
+                var hwnd = _hwndSource?.Handle ?? IntPtr.Zero;
+                if (hwnd == IntPtr.Zero)
+                    return;
+
+                SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "DpiAwareWindow.ForceFrameRedraw");
             }
         }
 
@@ -867,7 +941,10 @@ namespace GLSense.Utilities
                 // user drag-resize (ResizeMode="CanResize") stays within Min/MaxWidth/Height
                 // and never reaches here, so ordinary manual resizing is left untouched.
                 if (sizeChanged)
+                {
                     RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
+                    ForceFrameRedraw();
+                }
             }
             catch (Exception ex)
             {

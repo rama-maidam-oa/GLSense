@@ -24,14 +24,15 @@ namespace GLSense.Utilities
     // and once before it in this repo's history (commit cdd1168/caa346c). This takes a
     // different approach entirely: never touch the real window's Opacity/Position/
     // Visibility. Instead, show one small, deliberately trivial, reused loading indicator
-    // window near where the real window will appear, and hide it once the real window's
-    // own ContentRendered fires. Reusing a single instance (Hide(), never Close()) means
-    // its own one-time per-instance cost is paid once, off-screen, at ribbon load - every
-    // later ShowNear() just toggles visibility of an HWND that already exists and has
-    // already painted, which is fast. This also avoids the ghost Task-View-tile mechanism
-    // that hit the old per-window-type warm-up: that came from constructing+Show()ing+
-    // Close()ing 16 *different* window types back-to-back in a tight startup loop, not
-    // from a single window being shown/hidden sparingly across a session.
+    // window sized/positioned to match where the real window will appear, and hide it once
+    // the real window's own ContentRendered fires. Reusing a single instance (Hide(), never
+    // Close()) means its own one-time per-instance cost is paid once, off-screen, at ribbon
+    // load - every later ShowMatching() call just toggles visibility (and resizes/repositions)
+    // an HWND that already exists and has already painted, which is fast. This also avoids
+    // the ghost Task-View-tile mechanism that hit the old per-window-type warm-up: that came
+    // from constructing+Show()ing+Close()ing 16 *different* window types back-to-back in a
+    // tight startup loop, not from a single window being shown/hidden sparingly across a
+    // session.
     public static class WindowLoadingPlaceholder
     {
         [DllImport("user32.dll")]
@@ -86,19 +87,44 @@ namespace GLSense.Utilities
         }
 
         /// <summary>
-        /// Shows the reused loading indicator near excelOwnerHwnd (falls back to the
-        /// primary screen's work area if unavailable). Returns a generation token - pass
-        /// it to Hide(generation) so a stale dismissal (e.g. from a window that's still
-        /// loading after a newer one already took over the placeholder) can't hide a
-        /// placeholder that a different, later ShowNear() call is now responsible for.
+        /// Shows the reused loading indicator matching the real window's own resolved
+        /// Left/Top/Width/Height, so the transition reads as "the window was already
+        /// there, its content just finished loading" instead of a small, unrelated box
+        /// appearing somewhere else and then jumping to a differently-sized/positioned
+        /// real window. Falls back to a small generic box centered near excelOwnerHwnd
+        /// (or the primary screen's work area) when width/height aren't usable (NaN,
+        /// infinite, or &lt;= 0) - e.g. a DisableAutoSizing dialog whose size was never
+        /// resolved by DpiAwareWindow's own fit-to-content pass. Returns a generation
+        /// token - pass it to Hide(generation) so a stale dismissal (e.g. from a window
+        /// that's still loading after a newer one already took over the placeholder)
+        /// can't hide a placeholder a different, later call is now responsible for.
         /// </summary>
-        public static int ShowNear(IntPtr excelOwnerHwnd)
+        public static int ShowMatching(double left, double top, double width, double height, IntPtr excelOwnerHwnd)
         {
             int myGeneration;
             try
             {
                 EnsureCreated();
-                PositionNear(excelOwnerHwnd);
+
+                bool hasTarget = !double.IsNaN(left) && !double.IsNaN(top) &&
+                                 !double.IsNaN(width) && !double.IsNaN(height) &&
+                                 !double.IsInfinity(width) && !double.IsInfinity(height) &&
+                                 width > 0 && height > 0;
+
+                if (hasTarget)
+                {
+                    _window.SizeToContent = SizeToContent.Manual;
+                    _window.Width = width;
+                    _window.Height = height;
+                    _window.Left = left;
+                    _window.Top = top;
+                }
+                else
+                {
+                    _window.SizeToContent = SizeToContent.WidthAndHeight;
+                    _window.UpdateLayout();
+                    PositionGenericNear(excelOwnerHwnd);
+                }
 
                 lock (_lock)
                 {
@@ -114,7 +140,7 @@ namespace GLSense.Utilities
             }
             catch (Exception ex)
             {
-                LogUtility.LogException(ex, "WindowLoadingPlaceholder.ShowNear");
+                LogUtility.LogException(ex, "WindowLoadingPlaceholder.ShowMatching");
                 myGeneration = -1;
             }
 
@@ -128,7 +154,7 @@ namespace GLSense.Utilities
                 lock (_lock)
                 {
                     if (generation != _generation)
-                        return; // superseded by a newer ShowNear() - not ours to hide
+                        return; // superseded by a newer ShowMatching() - not ours to hide
                 }
 
                 _safetyTimer?.Stop();
@@ -181,6 +207,10 @@ namespace GLSense.Utilities
             panel.Children.Add(ring);
             panel.Children.Add(text);
 
+            // Padding only matters in the SizeToContent (generic-box) fallback path -
+            // when an explicit target Width/Height is set instead, the panel's own
+            // Center/Center alignment still centers ring+text within whatever larger
+            // area the window ends up being, matched to the real window it precedes.
             var border = new Border
             {
                 Background = new SolidColorBrush(Color.FromArgb(235, 45, 45, 48)),
@@ -192,9 +222,6 @@ namespace GLSense.Utilities
             _window = new Window
             {
                 Content = border,
-                // Sized to whatever the ring+text actually need plus the Border's Padding,
-                // instead of a hardcoded box that has to be kept in sync by hand if either
-                // one ever changes.
                 SizeToContent = SizeToContent.WidthAndHeight,
                 WindowStyle = WindowStyle.None,
                 AllowsTransparency = false,
@@ -208,12 +235,12 @@ namespace GLSense.Utilities
             };
 
             // Pay the one-time per-instance HWND-creation/first-paint cost right here,
-            // off-screen, instead of on whichever real window first triggers ShowNear().
+            // off-screen, instead of on whichever real window first triggers ShowMatching().
             _window.Show();
             _window.Hide();
         }
 
-        private static void PositionNear(IntPtr excelOwnerHwnd)
+        private static void PositionGenericNear(IntPtr excelOwnerHwnd)
         {
             try
             {
@@ -248,14 +275,13 @@ namespace GLSense.Utilities
                 }
 
                 // Width/Height are NaN under SizeToContent - ActualWidth/ActualHeight hold
-                // the real size instead, and are already resolved by the warm-up Show()+
-                // Hide() cycle in EnsureCreated() by the time this runs.
+                // the real size instead, resolved by the UpdateLayout() call just before this.
                 _window.Left = centerX - (_window.ActualWidth / 2.0);
                 _window.Top = centerY - (_window.ActualHeight / 2.0);
             }
             catch (Exception ex)
             {
-                LogUtility.LogException(ex, "WindowLoadingPlaceholder.PositionNear");
+                LogUtility.LogException(ex, "WindowLoadingPlaceholder.PositionGenericNear");
             }
         }
     }
