@@ -195,7 +195,7 @@ namespace GLSense.Utilities
                 Margin = new Thickness(0, 16, 0, 0),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 FontSize = 18,
-                Foreground = Brushes.White
+                Foreground = new SolidColorBrush(Color.FromRgb(0x21, 0x25, 0x29))
             };
 
             var panel = new StackPanel
@@ -213,7 +213,9 @@ namespace GLSense.Utilities
             // area the window ends up being, matched to the real window it precedes.
             var border = new Border
             {
-                Background = new SolidColorBrush(Color.FromArgb(235, 45, 45, 48)),
+                Background = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xD1, 0xD5, 0xDB)),
+                BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(10),
                 Padding = new Thickness(28),
                 Child = panel

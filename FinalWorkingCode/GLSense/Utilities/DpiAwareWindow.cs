@@ -734,17 +734,26 @@ namespace GLSense.Utilities
         /// </summary>
         private void PositionAroundCenter(double centerX, double centerY)
         {
-            if (double.IsNaN(Width) || double.IsNaN(Height) || Width <= 0 || Height <= 0)
+            // Width/Height (the DP) stays NaN for a SizeToContent="WidthAndHeight" window
+            // (e.g. GLMessageWindow) until WPF resolves it from content during a real
+            // layout pass - explicitly assigning Width from FitToAvailableWorkArea doesn't
+            // stick for these, since SizeToContent governs that dimension instead.
+            // ActualWidth/ActualHeight hold the true resolved size regardless of which
+            // sizing mode is in play, so prefer those and only fall back to Width/Height.
+            double effectiveWidth = ActualWidth > 0 ? ActualWidth : Width;
+            double effectiveHeight = ActualHeight > 0 ? ActualHeight : Height;
+
+            if (double.IsNaN(effectiveWidth) || double.IsNaN(effectiveHeight) || effectiveWidth <= 0 || effectiveHeight <= 0)
                 return;
 
-            double newLeft = centerX - (Width / 2.0);
-            double newTop = centerY - (Height / 2.0);
+            double newLeft = centerX - (effectiveWidth / 2.0);
+            double newTop = centerY - (effectiveHeight / 2.0);
 
             var workArea = SystemParameters.WorkArea;
-            if (Width < workArea.Width)
-                newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - Width));
-            if (Height < workArea.Height)
-                newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - Height));
+            if (effectiveWidth < workArea.Width)
+                newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - effectiveWidth));
+            if (effectiveHeight < workArea.Height)
+                newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - effectiveHeight));
 
             Left = newLeft;
             Top = newTop;
@@ -768,6 +777,15 @@ namespace GLSense.Utilities
         {
             try
             {
+                // Forces a synchronous layout pass so ActualWidth/ActualHeight are
+                // resolved from content before this window has ever been shown - valid
+                // to call here since _hwndSource already exists (SourceInitialized has
+                // already run), giving the visual tree a real PresentationSource to lay
+                // out against. Without this, a SizeToContent="WidthAndHeight" window's
+                // ActualWidth could still be 0 at this point, and PositionAroundCenter
+                // would have nothing to center with.
+                UpdateLayout();
+
                 double centerX;
                 double centerY;
 
