@@ -244,3 +244,73 @@ looked like) - it applies here verbatim.
   `GLSense.Addin.Core\Views\GLSegmentDiscovery.xaml.cs`, which has a different (already
   reliable, async-yielding) busy-overlay mechanism but is missing both the re-entry guard
   and the Calculation-manual/single-`Calculate()`-pass fix - see AIPowered's `CLAUDE.md`.
+
+## Blank window on open (release-blocking, reported via video + screenshots showing all 3 stages of one sample window, `GLLOVs`)
+
+Two distinct root causes, both fixed together per the user's request:
+
+- **Universal, every window - WPF cold-start blank first frame.** The very first time WPF
+  ever shows a `Window`/`DataGrid`/custom control of a given type in this process, it pays
+  a one-time cost to parse XAML, apply styles/`ControlTemplate`s, and JIT-compile the
+  generated code behind them - and the native HWND becomes visible (`Show()`/
+  `ShowDialog()` returns control to Windows) before that first frame is actually
+  composited, so the user sees a completely blank/white rectangle (confirmed in the first
+  of the three shared screenshots - no title text, no static "Ledger:" label, nothing at
+  all, not even elements that don't depend on any data binding) until WPF catches up. This
+  is a well-known, generic WPF effect, not specific to `GLLOVs` or any one window - every
+  `DpiAwareWindow`-derived window shares the same `DataGrid`/`ExcelRefEditControl`/
+  `AppOverlay` controls that pay this cost.
+  Fixed with a new `Utilities\WpfWarmup.cs`: `WpfWarmup.WarmUpInBackground()`, called once
+  from `AddinModule.cs`'s `AddinModule_OnRibbonLoaded` right after
+  `MahAppsBootstrapper.PreloadResources()` (the only prior "warm-up" in this codebase, and
+  it only forces XAML *resource dictionaries* to parse - never instantiates an actual
+  `Window`/`DataGrid`, so it never touched the JIT/template-application/first-composite
+  costs that actually cause this). Dispatches at `DispatcherPriority.ApplicationIdle` (so
+  it never blocks ribbon load or Excel's responsiveness) to construct a throwaway `Window`
+  containing a `DataGrid` (with sample rows so its row/cell templates actually get
+  exercised), an `ExcelRefEditControl`, and an `AppOverlay` - the controls shared by nearly
+  every real window - positioned far off-screen with `Opacity=0`, `ShowActivated=false`,
+  `ShowInTaskbar=false` so the user never perceives it, then `Show()`s and immediately
+  `Close()`s it once `ContentRendered` fires. This pays the entire one-time JIT/style cost
+  silently in the background before the user ever opens a real window, instead of it being
+  visible on whichever window they happen to open first. `ExcelRefEditControl`'s own
+  `Loaded` handler looks for an `IWarningHost` ancestor and finds none in the throwaway
+  window, so `ExcelRefManager.SetupControl` is never called - no side effects from the
+  warm-up itself. New file needed an explicit `<Compile Include>` entry in `GLSense.csproj`
+  (old-style project format, no implicit globbing).
+
+- **Per-window - initial data load runs with no loading indicator.** Separately from the
+  above, `GLLOVs` (the second/third screenshots - static chrome rendered, but the LOVs
+  `DataGrid` sitting empty for a further, unbounded stretch) and 10 other windows do a
+  non-trivial data load in `Window_Loaded` where the busy overlay either never shows at
+  all, or only covers a *later* phase of the load, leaving a real gap with zero loading
+  feedback:
+  - `GLLovViewModel.LoadLovRowsAsync`: busy overlay was gated on `!ledgerDataExist` (only
+    shown on a cache-miss remote fetch) - in the common case (data already cached), the 8+
+    local SQLite queries this method runs (SEGMENTS/ACTIVITY/BUDGETS/CURRENCIES/etc.) had
+    no indicator at all. Also never hid the overlay in an exception path (no `finally`).
+  - `GLGetPeriodModel`/`GLPeriodByDateModel`/`GLGetPeriodByYearModel`/`GLPeriodDetails`
+    (shared by `GLGetPeriodDetails`/`GLGetPeriodStartEnd`) - all four `LoadDataAsync`
+    methods fetch the initial ledger list (`GetConfiguratorLedgers`) with no overlay; the
+    overlay only starts once `LoadPeriodsForLedger` runs afterward.
+  - `SegmentSelectorViewModel.LoadSegmentsAsync` (`GLSegmentValues`/`GLSegmentRef`) - the
+    initial `GetSegments` call had no overlay at all, unlike the hierarchy-loading path
+    elsewhere in the same class which already does this correctly.
+  - `SimpleSegmentViewModel.LoadSegmentsAsync` (`GLRollerGroups`) - this ViewModel had no
+    `ShowBusyAction`/`HideBusyAsyncAction` properties at all; added them and wired them up
+    in `GLRollerGroups.xaml.cs`'s constructor to match every other window's pattern.
+  - `GLDailyRatesViewModel.LoadDataAsync` (`GLDailyRates`) - same as above, no busy-overlay
+    mechanism existed on this ViewModel at all; added and wired up.
+  - `GLCubeDetails.xaml.cs`: `LoadUserPreferencesForCube` (a real network API call) ran
+    before `LoadCubeData`'s own `ShowBusyOverlayAsync` - overlay shown before it now (left
+    up rather than shown-then-hidden-then-reshown, so `LoadCubeData`'s own call just
+    updates the message with no flicker); added a safety-net `HideBusyAsync()` call in the
+    outer `finally` at both call sites (`Window_Loaded` and `CmbCubes_SelectionCommitted`)
+    in case `LoadUserPreferencesForCube` throws (cancellation) before `LoadCubeData` ever
+    gets a chance to run its own hide.
+  Fixed each by showing the busy overlay unconditionally for the actual full duration of
+  the load (not gated on a cache-existence check), hiding in a `finally` so it can't get
+  stuck showing on an exception path either. `GLUserConfig`/`GLJobsMonitor`/
+  `GLSegmentFunctions`/`GLBalanceConfigurator`/`GLLogin`/`GLDrilldownCustomization`/`GLAbout`
+  already did this correctly and needed no changes.
+  **Status: build-verified (full solution).**

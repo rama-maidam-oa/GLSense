@@ -28,6 +28,8 @@ namespace GLSense.ViewModels
             });
         }
         public Action<string>? ShowWarningAction { get; set; }
+        public Func<string, Func<Task>?, Task>? ShowBusyAction { get; set; }
+        public Func<Task>? HideBusyAsyncAction { get; set; }
         private readonly Dispatcher? _dispatcher;
 
         private ObservableCollection<SegmentModel>? _segments;
@@ -266,6 +268,18 @@ namespace GLSense.ViewModels
         public async Task LoadSegmentsAsync(long cubeId, long ledgerId)
         {
             LogUtility.LogDebug($"SimpleSegmentViewModel.LoadSegmentsAsync: CubeId={cubeId}, LedgerId={ledgerId}");
+
+            // This initial segment fetch used to run with no busy overlay mechanism at
+            // all (ShowBusyAction/HideBusyAsyncAction didn't even exist on this
+            // ViewModel) - the window sat blank with no loading indicator for however
+            // long GetSegments took.
+            bool busyShown = false;
+            if (ShowBusyAction != null)
+            {
+                busyShown = true;
+                await ShowBusyAction.Invoke("Loading segments...", null);
+            }
+
             try
             {
                 await Task.Run(() =>
@@ -297,6 +311,11 @@ namespace GLSense.ViewModels
             catch (Exception ex)
             {
                 LogError(ex);
+            }
+            finally
+            {
+                if (busyShown && HideBusyAsyncAction != null)
+                    await HideBusyAsyncAction.Invoke();
             }
         }
 

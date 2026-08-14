@@ -31,7 +31,11 @@ namespace GLSense.Views
             vm = new SimpleSegmentViewModel(Dispatcher)
             {
                 ExcelApp = AppState.Instance.ExcelApp.Application, // Pass the Excel application instance to the ViewModel
-                ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg))
+                ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
+                ShowBusyAction = async (txt, cancel) =>
+                        await Dispatcher.InvokeAsync(async () =>
+                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
+                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync())
             };
             DataContext = vm;
 

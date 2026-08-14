@@ -146,6 +146,15 @@ namespace GLSense.Views
 
                     try
                     {
+                        // LoadUserPreferencesForCube is a real API call with no busy
+                        // overlay of its own - previously nothing showed at all until
+                        // LoadCubeData's own ShowBusyOverlayAsync ran, leaving the window
+                        // blank with no loading indicator for however long the API call
+                        // took. Shown here and left up (LoadCubeData's own call just
+                        // updates the message while already visible) so there's no
+                        // hide-then-reshow flicker between the two phases - LoadCubeData's
+                        // own finally still hides it once at the true end.
+                        await ShowBusyOverlayAsync(cts, "Loading user preferences...");
                         await LoadUserPreferencesForCube(cube.CubeId, cts.GetToken());
                         UpdateValidationControls(cube);
 
@@ -162,6 +171,13 @@ namespace GLSense.Views
                     }
                     finally
                     {
+                        // Safety net: if LoadUserPreferencesForCube threw (e.g.
+                        // cancellation) before LoadCubeData ever ran, its own
+                        // hide-in-finally never executed, leaving the overlay shown from
+                        // ShowBusyOverlayAsync above stuck up. Harmless no-op if
+                        // LoadCubeData already hid it.
+                        await AppOverlayControl.HideBusyAsync();
+
                         if (_activeCancellation == cts)
                         {
                             _activeCancellation = null;
@@ -221,6 +237,10 @@ namespace GLSense.Views
             try
             {
                 _currentCube = selected;
+                // See the matching comment in Window_Loaded - shown here and left up so
+                // LoadCubeData's own overlay call just updates the message with no
+                // hide-then-reshow flicker between the two phases.
+                await ShowBusyOverlayAsync(cts, "Loading user preferences...");
                 await LoadUserPreferencesForCube(selected.CubeId, cts.GetToken());
                 UpdateValidationControls(selected);
 
@@ -237,6 +257,11 @@ namespace GLSense.Views
             }
             finally
             {
+                // Safety net: see the matching comment in Window_Loaded - hides the
+                // overlay if LoadUserPreferencesForCube threw before LoadCubeData's own
+                // hide-in-finally ever ran. Harmless no-op if it already hid it.
+                await AppOverlayControl.HideBusyAsync();
+
                 if (_activeCancellation == cts)
                 {
                     _activeCancellation = null;

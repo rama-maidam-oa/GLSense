@@ -708,6 +708,7 @@ namespace GLSense
             AddinModule.CurrentInstance.SyncRibbonSelectionWithAppState();
             MahAppsBootstrapper.Init(AppConstants.GLAccentHex, AppConstants.GLTheme);
             MahAppsBootstrapper.PreloadResources();
+            WpfWarmup.WarmUpInBackground();
         }
 
         private static void AddinModule_AddinInitialize(object sender, EventArgs e)
