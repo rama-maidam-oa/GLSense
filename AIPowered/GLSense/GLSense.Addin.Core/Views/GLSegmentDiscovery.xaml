@@ -14,10 +14,7 @@
                   MinWidth="660" MaxWidth="700"
                   MinHeight="345" MaxHeight="520"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True">
-
-    <Window.Resources>
+                  WindowStyle="None">    <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />

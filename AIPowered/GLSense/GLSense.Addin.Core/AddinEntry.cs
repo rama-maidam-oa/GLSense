@@ -135,6 +135,8 @@ namespace GLSense.Addin.Core
                 // Ensure WPF Application exists - ONLY CALL THIS ONCE
                 WpfAppManager.EnsureApplication();
                 AppThemeBootstrapper.Initialize();
+                WebView2Warmup.WarmUpInBackground();
+                WindowLoadingPlaceholder.WarmUpInBackground();
 
                 // Check if ribbon controller is already available
                 if (ServiceLocator.RibbonController != null)

@@ -15,8 +15,7 @@
                   MinWidth="340" MaxWidth="600"
                   MinHeight="400" MaxHeight="700"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
                   ShowInTaskbar="False"
                   Loaded="Window_Loaded">
 

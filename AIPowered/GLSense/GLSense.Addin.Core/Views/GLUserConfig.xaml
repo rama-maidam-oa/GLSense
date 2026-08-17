@@ -16,8 +16,7 @@
                   MinWidth="500" MaxWidth="600"
                   MinHeight="400" MaxHeight="560"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
                   Loaded="Window_Loaded">
 
     <Window.Resources>

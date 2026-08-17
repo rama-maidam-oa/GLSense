@@ -15,8 +15,7 @@
                   SizeToContent="WidthAndHeight"
                   MinHeight="165" MaxHeight="500"
                   MinWidth="400" MaxWidth="620"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
                   ShowInTaskbar="False">
 
     <!--

@@ -13,8 +13,7 @@
                   MinWidth="420" MaxWidth="460"
                   MinHeight="220" MaxHeight="320"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True">
+                  WindowStyle="None">
 
     <!-- New in this pass: replaces the old "Hierarchy" ribbon menu (RibSegmentExpand
          ADXRibbonMenu hosting the RibExpandAll / RibbonExpand1Level ADXRibbonButton menu

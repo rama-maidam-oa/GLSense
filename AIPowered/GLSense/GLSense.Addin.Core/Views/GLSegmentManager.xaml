@@ -17,9 +17,7 @@
                   MinWidth="940" MaxWidth="1100"
                   MinHeight="750" MaxHeight="900"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
-                  Loaded="Window_Loaded">
+                  WindowStyle="None"                   Loaded="Window_Loaded">
 
     <!--
         GLSegmentManager - master-detail redesign of GLSegmentRef, trialed side by side
