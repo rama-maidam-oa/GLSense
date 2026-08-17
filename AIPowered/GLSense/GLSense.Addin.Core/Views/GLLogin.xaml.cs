@@ -223,34 +223,23 @@ namespace GLSense.Addin.Core.Views
         {
             webView.Loaded -= WebView_Loaded; // prevent double init
 
+            // CoreWebView2Environment creation spins up a real Chromium process tree and
+            // can take several seconds cold; previously nothing was shown while it ran, so
+            // this whole area just sat blank. The environment is now shared/pre-warmed via
+            // WebView2Warmup (kicked off at AddinEntry.Initialize), so this mostly just
+            // awaits an already-in-flight or already-completed task. Ported from
+            // FinalWorkingCode's identical GLLogin.xaml.cs fix.
+            webView.Visibility = Visibility.Collapsed;
+            AppOverlayControl.ShowBusyasyn("Initializing browser component...");
             try
             {
-                // 1) Ensure a writable user data folder (logs/profile)
-                string logDir = ServiceLocator.Paths.LoginBrowserPath;
-                DirectoryInfo di = new(logDir);
-                if (!di.Exists)
-                    di.Create();
+                var env = await WebView2Warmup.GetEnvironmentAsync();
 
-                string webViewLogsPath = di.FullName;
-
-                // 2) Create environment options FIRST
-                var envOptions = new CoreWebView2EnvironmentOptions
-                {
-                    // Enable SSO if your scenario needs it
-                    AllowSingleSignOnUsingOSPrimaryAccount = true
-                };
-
-                // 3) Create the environment with options + user data folder
-                var env = await CoreWebView2Environment.CreateAsync(
-                    browserExecutableFolder: null,
-                    userDataFolder: webViewLogsPath,
-                    options: envOptions);
-
-                // 4) Initialize WebView2 with that environment
+                // Initialize WebView2 with that environment
                 _webViewInitTask = webView.EnsureCoreWebView2Async(env);
                 await _webViewInitTask;
 
-                // 5) Hook device permission handler and diagnostics after CoreWebView2 is ready
+                // Hook device permission handler and diagnostics after CoreWebView2 is ready
                 webView.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
                 webView.CoreWebView2.NavigationCompleted += WebView_NavigationCompleted;
 
@@ -264,15 +253,19 @@ namespace GLSense.Addin.Core.Views
                 // Optional: turn on DevTools during development
                 webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-                // 6) Diagnostics: log WebView2 runtime and SSO setting
+                // Diagnostics: log WebView2 runtime
                 var version = webView.CoreWebView2.Environment.BrowserVersionString;
                 ServiceLocator.Logger?.LogDebug($"WebView2 BrowserVersion={version}");
-                ServiceLocator.Logger?.LogDebug($"AllowSingleSignOnUsingOSPrimaryAccount={envOptions.AllowSingleSignOnUsingOSPrimaryAccount}");
             }
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "WebView2 initialization failed in GLLogin");
                 Close();
+            }
+            finally
+            {
+                await AppOverlayControl.HideBusyAsync();
+                webView.Visibility = Visibility.Visible;
             }
         }
 
