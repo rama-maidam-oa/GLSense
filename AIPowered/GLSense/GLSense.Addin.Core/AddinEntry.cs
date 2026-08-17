@@ -553,7 +553,7 @@ namespace GLSense.Addin.Core
                 // "ShowLOVs"/"ShowRollerGroups"/"ShowSegmentValues") and needed no further
                 // changes once these 3 cases were wired up here.
                 case "ShowLOVs":
-                    ShowGroupCWindow("ShowLOVs", () => new GLLOVs());
+                    ShowLovsWindow();
                     break;
                 case "ShowRollerGroups":
                     ShowGroupCWindow("ShowRollerGroups", () => new GLRollerGroups());
@@ -977,6 +977,54 @@ namespace GLSense.Addin.Core
                         win.ShowInTaskbar = false;
 
                         win.ShowDialog();
+
+                        ServiceLocator.Logger?.LogDebug($"{actionLabel}: Dialog closed.");
+                    }
+                    catch (Exception ex)
+                    {
+                        ServiceLocator.Logger?.LogException(ex, $"{actionLabel}: ShowDialog error");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, $"{actionLabel}: Error");
+            }
+        }
+
+        /// <summary>
+        /// GLLOVs needs its own show-method (not the shared ShowGroupCWindow) because its
+        /// data load must be awaited BEFORE ShowDialog() - see GLLOVs.PrepareAsync's own
+        /// comment for why - unlike every other Group C/H window, which loads its data from
+        /// its own Loaded event after the window is already shown. Ported from
+        /// FinalWorkingCode's AddinModule.RibLOVs_OnClick.
+        /// </summary>
+        private void ShowLovsWindow()
+        {
+            const string actionLabel = "ShowLOVs";
+            try
+            {
+                ServiceLocator.Logger?.LogDebug($"{actionLabel}: Opening window...");
+
+                WpfAppManager.InvokeOnWpfThread(async () =>
+                {
+                    try
+                    {
+                        var win = new GLLOVs();
+                        win.CenterInExcel = true;
+                        win.ModalToExcel = true;
+                        win.ShowInTaskbar = false;
+
+                        // Awaited before ShowDialog (not on the Loaded event like most other
+                        // windows) so the window's first frame already has the LOV grid data
+                        // in it - see GLLOVs.PrepareAsync for why.
+                        await win.PrepareAsync();
+
+                        // PrepareAsync's internal awaits (LoadDataAsync -> repository/SQLite
+                        // calls) can resume on a different thread than the one that
+                        // constructed win. ShowDialog touches win's HWND (a DispatcherObject),
+                        // so it must run back on win's own Dispatcher thread explicitly.
+                        win.Dispatcher.Invoke(() => win.ShowDialog());
 
                         ServiceLocator.Logger?.LogDebug($"{actionLabel}: Dialog closed.");
                     }

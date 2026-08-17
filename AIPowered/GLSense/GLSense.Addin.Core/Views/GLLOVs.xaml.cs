@@ -84,9 +84,16 @@ namespace GLSense.Addin.Core.Views
             }
         }
 
-        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Loads the active-cell reference and the LOV grid data. Called by
+        /// AddinEntry.ShowLovsWindow and awaited *before* ShowDialog() - not wired to the
+        /// Loaded event like most other windows - so the window's very first frame already
+        /// has the real content in it instead of appearing blank and filling in a moment
+        /// later. Ported from FinalWorkingCode's identical GLLOVs.xaml.cs fix.
+        /// </summary>
+        public async Task PrepareAsync()
         {
-            ServiceLocator.Logger?.LogDebug("GLLOVs.Window_Loaded invoked");
+            ServiceLocator.Logger?.LogDebug("GLLOVs.PrepareAsync invoked");
             try
             {
                 Excel.Range rng = ServiceLocator.ExcelApp.ActiveCell;
@@ -98,7 +105,7 @@ namespace GLSense.Addin.Core.Views
 
                 if (AppState.Instance.SelectedCube != null && AppState.Instance.SelectedLedger != null)
                 {
-                    ServiceLocator.Logger?.LogDebug($"GLLOVs.Window_Loaded: loading data for cubeId={AppState.Instance.SelectedCube.CubeId}, ledgerId={AppState.Instance.SelectedLedger.LedgerId}");
+                    ServiceLocator.Logger?.LogDebug($"GLLOVs.PrepareAsync: loading data for cubeId={AppState.Instance.SelectedCube.CubeId}, ledgerId={AppState.Instance.SelectedLedger.LedgerId}");
                     await vm.LoadDataAsync(AppState.Instance.SelectedCube.CubeId, AppState.Instance.SelectedLedger.LedgerId);
 
                     await Dispatcher.InvokeAsync(() =>
@@ -109,7 +116,7 @@ namespace GLSense.Addin.Core.Views
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, "GLLOVs.Window_Loaded");
+                ServiceLocator.Logger?.LogException(ex, "GLLOVs.PrepareAsync");
             }
         }
         public void CellSelectionWarning(string message)

@@ -132,24 +132,36 @@ namespace GLSense.Addin.Core.ViewModels
                     {
                         Ledgers.Add(l);
                     }
+
+                    // Sets the backing field directly (not the LOV_SelectedLedger property)
+                    // specifically to skip its setter's LoadLovRows() call - that call is
+                    // fire-and-forget (Task.Run, never awaited by its caller), which meant
+                    // this method previously returned as soon as the ledger dropdown was
+                    // populated while the actual grid content kept loading in the background
+                    // *after* PrepareAsync had already gone on to call ShowDialog. Explicitly
+                    // awaiting LoadLovRowsAsync() below instead makes this method genuinely
+                    // block until the grid has real data. A later user-driven ledger change
+                    // (window already open) still goes through the normal property setter
+                    // further down in this class, so that fire-and-forget-with-busy-overlay
+                    // UX is unaffected. Ported from FinalWorkingCode's identical fix.
                     if (AppState.Instance.SelectedLedger != null)
                     {
-                        LOV_SelectedLedger = AppState.Instance.SelectedLedger;
+                        _lOV_SelectedLedger = AppState.Instance.SelectedLedger;
                         ServiceLocator.Logger?.LogDebug($"GLLovViewModel.LoadDataAsync: using AppState.SelectedLedger \"{LOV_SelectedLedger?.LedgerName}\" (LedgerId={LOV_SelectedLedger?.LedgerId}).");
                     }
                     else
                     {
-                        LOV_SelectedLedger = Ledgers.FirstOrDefault(x => x.LedgerId == defaultLedgerId);
+                        _lOV_SelectedLedger = Ledgers.FirstOrDefault(x => x.LedgerId == defaultLedgerId);
                         if (LOV_SelectedLedger == null)
-                        {
                             ServiceLocator.Logger?.LogWarn($"GLLovViewModel.LoadDataAsync: no ledger found matching defaultLedgerId={defaultLedgerId} among {Ledgers.Count} loaded ledger(s).");
-                        }
                         else
-                        {
                             ServiceLocator.Logger?.LogDebug($"GLLovViewModel.LoadDataAsync: defaulted to ledger \"{LOV_SelectedLedger.LedgerName}\" (LedgerId={LOV_SelectedLedger.LedgerId}).");
-                        }
                     }
+                    OnPropertyChanged(nameof(LOV_SelectedLedger));
                 });
+
+                await LoadLovRowsAsync();
+
                 ServiceLocator.Logger?.LogDebug("GLLovViewModel.LoadDataAsync: completed.");
             }
             catch (Exception ex)
