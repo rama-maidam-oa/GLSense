@@ -213,6 +213,7 @@
     <Compile Include="Utilities\WebView2Warmup.cs" />
     <Compile Include="Utilities\WpfAppManager.cs" />
     <Compile Include="Utilities\WpfUiBootstrapper.cs" />
+    <Compile Include="Utilities\WindowLoadingPlaceholder.cs" />
     <Compile Include="Views\AppOverlay.xaml.cs">
       <DependentUpon>AppOverlay.xaml</DependentUpon>
     </Compile>
