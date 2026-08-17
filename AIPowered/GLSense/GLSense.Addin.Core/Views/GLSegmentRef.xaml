@@ -16,7 +16,9 @@
                   MinWidth="760" MaxWidth="900"
                   MinHeight="750" MaxHeight="900"
                   ResizeMode="CanResize"
-                  WindowStyle="None"                   Loaded="Window_Loaded">
+                  WindowStyle="None"
+                  
+                  Loaded="Window_Loaded">
 
     <Window.Resources>
         <ResourceDictionary>

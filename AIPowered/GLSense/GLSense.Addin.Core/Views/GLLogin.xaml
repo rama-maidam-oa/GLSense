@@ -16,7 +16,10 @@
                   MinWidth="450" MaxWidth="450"
                   MinHeight="750" MaxHeight="900"
                   ResizeMode="CanResize"
-                  WindowStyle="None">    <Window.Resources>
+                  WindowStyle="None"
+                  >
+
+    <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />

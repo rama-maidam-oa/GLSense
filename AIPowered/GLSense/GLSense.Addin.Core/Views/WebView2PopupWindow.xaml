@@ -12,7 +12,10 @@
                   SizeToContent="Manual"
                   Width="500" Height="650" MinWidth="380" MinHeight="480"
                   ResizeMode="CanResize"
-                  WindowStyle="None">    <Window.Resources>
+                  WindowStyle="None"
+                  >
+
+    <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
