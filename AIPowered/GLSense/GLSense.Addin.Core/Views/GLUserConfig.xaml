@@ -13,7 +13,7 @@
                   WindowCaption="GLSense User Preferences"
                   IconSymbol="GearSolid"
                   SizeToContent="WidthAndHeight"
-                  MinWidth="500" MaxWidth="600"
+                  MinWidth="550" MaxWidth="630"
                   MinHeight="400" MaxHeight="560"
                   ResizeMode="CanResize"
                   WindowStyle="None"
