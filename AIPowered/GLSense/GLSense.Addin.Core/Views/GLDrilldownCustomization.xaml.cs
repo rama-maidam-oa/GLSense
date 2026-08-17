@@ -138,34 +138,24 @@ namespace GLSense.Addin.Core.Views
             ServiceLocator.Logger?.LogDebug("GLDrilldownCustomization.WebView_Loaded invoked");
             webView.Loaded -= WebView_Loaded; // prevent double init
 
+            // CoreWebView2Environment creation spins up a real Chromium process tree and can
+            // take several seconds cold; previously nothing was shown while it ran here
+            // either (same gap as GLLogin). The environment is shared/pre-warmed via
+            // WebView2Warmup (kicked off at AddinEntry.Initialize), and both this window and
+            // GLLogin already point at the exact same ServiceLocator.Paths.LoginBrowserPath
+            // user data folder, so sharing one instance is also strictly less wasteful than
+            // each window spinning up its own. Ported from FinalWorkingCode's identical fix.
+            using var initCancellation = new CancellationHelper();
+            await ShowBusyOverlayAsync(initCancellation, "Initializing browser component...");
             try
             {
-                // 1) Ensure a writable user data folder (logs/profile)
-                string logDir = ServiceLocator.Paths.LoginBrowserPath;
-                DirectoryInfo di = new(logDir);
-                if (!di.Exists)
-                    di.Create();
+                var env = await WebView2Warmup.GetEnvironmentAsync();
 
-                string webViewLogsPath = di.FullName;
-
-                // 2) Create environment options FIRST
-                var envOptions = new CoreWebView2EnvironmentOptions
-                {
-                    // Enable SSO if your scenario needs it
-                    AllowSingleSignOnUsingOSPrimaryAccount = true
-                };
-
-                // 3) Create the environment with options + user data folder
-                var env = await CoreWebView2Environment.CreateAsync(
-                    browserExecutableFolder: null,
-                    userDataFolder: webViewLogsPath,
-                    options: envOptions);
-
-                // 4) Initialize WebView2 with that environment
+                // Initialize WebView2 with that environment
                 _webViewInitTask = webView.EnsureCoreWebView2Async(env);
                 await _webViewInitTask;
 
-                // 5) Hook device permission handler and diagnostics after CoreWebView2 is ready
+                // Hook device permission handler and diagnostics after CoreWebView2 is ready
                 webView.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
 
                 // Cert-error bypass (scoped to this window's own server) and retry-once
@@ -177,10 +167,9 @@ namespace GLSense.Addin.Core.Views
                 // Optional: turn on DevTools during development
                 webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-                // 6) Diagnostics: log WebView2 runtime and SSO setting
+                // Diagnostics: log WebView2 runtime
                 var version = webView.CoreWebView2.Environment.BrowserVersionString;
                 ServiceLocator.Logger?.LogDebug($"WebView2 BrowserVersion={version}");
-                ServiceLocator.Logger?.LogDebug($"AllowSingleSignOnUsingOSPrimaryAccount={envOptions.AllowSingleSignOnUsingOSPrimaryAccount}");
 
                 if (AppState.Instance.SelectedCube != null)
                 {
@@ -216,11 +205,15 @@ namespace GLSense.Addin.Core.Views
                 else
                 {
                     ServiceLocator.Logger?.LogWarn("GLDrilldownCustomization.WebView_Loaded: no cube selected, skipping navigation");
+                    await AppOverlayControl.HideBusyAsync();
+                    webView.Visibility = Visibility.Visible;
                 }
             }
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "WebView2 initialization failed in GLDrilldownCustomization");
+                await AppOverlayControl.HideBusyAsync();
+                webView.Visibility = Visibility.Visible;
             }
         }
 
