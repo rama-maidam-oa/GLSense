@@ -1648,39 +1648,23 @@ namespace GLSense.Addin.Core.Drilldowns
         private static object ProtectExcelFormulaLikeText(object rawValue)
         {
             var text = SafeToString(rawValue);
-            var equalsCount = CountEqualsSafely(text, rawValue);
 
-            if (equalsCount > 1)
+            if (StartsWithEqualsSign(text))
             {
-                // Ensure we write as text for Excel
+                // A leading "=" is what makes Excel interpret a pasted value as a live
+                // formula (the actual injection vector) - prefix with an apostrophe so it's
+                // written as text instead. Ported from FinalWorkingCode's identical fix.
                 return "'" + text;
             }
 
             return rawValue;
         }
 
-        private static string SafeToString(object value)
-        {
-            return value?.ToString() ?? string.Empty;
-        }
+        private static string SafeToString(object value) => value?.ToString() ?? string.Empty;
 
-        private static int CountEqualsSafely(string text, object rawValue)
+        private static bool StartsWithEqualsSign(string text)
         {
-            if (string.IsNullOrWhiteSpace(text) || !text.Contains("="))
-            {
-                return 0;
-            }
-
-            try
-            {
-                return text.Count(c => c == '=');
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger.LogError(
-                    $"There are multiple '=' symbols in string value: {rawValue}. Exception: {ex.Message}");
-                return 0;
-            }
+            return !string.IsNullOrEmpty(text) && text.TrimStart().StartsWith("=", StringComparison.Ordinal);
         }
         private string JavaDateConv(string javaLongStr)
         {
