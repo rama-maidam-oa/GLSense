@@ -6,7 +6,9 @@ using NLog.Targets;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -160,7 +162,69 @@ namespace GLSense.Shared
             sb.AppendLine(header);
             sb.AppendLine(new string('-', header.Length));
 
+            AppendEnvironmentSnapshot(sb, defaultVersion, defaultCommitDate);
+
             return sb.ToString();
+        }
+
+        // Moved here from AddinEntry.LogEnvironmentSnapshot, which used to log this as a
+        // regular LogInfo call from AddinEntry.Initialize - that method fires once per
+        // Excel session, but the log file itself is per-day (GLSense_Logs_{date}.log), so
+        // every subsequent Excel open on the same day re-appended an identical snapshot
+        // into that day's file instead of writing it once. NLog's FileTarget.Header is
+        // only written when the target actually creates a new file, so folding this into
+        // the header instead makes it genuinely once-per-file (once-per-day) for free,
+        // with no new file-existence tracking needed here.
+        //
+        // Runs from this Logger's own constructor (see above), BEFORE LogManager.Configuration
+        // is assigned and before ServiceLocator is initialized - LogUtility/ServiceLocator.Logger
+        // calls are not usable yet here, so failures are swallowed silently with a safe
+        // fallback value instead of being logged, unlike the original method's LogWarn calls.
+        // _context.ExcelApp is already assigned by GLSenseContext's constructor before it
+        // creates this Logger instance, so it's available here - read via reflection (not a
+        // static Excel.Application cast) since GLSense.Shared deliberately has no reference
+        // to the Excel interop assembly (ExcelApp is typed `object` on IGLSenseContext for
+        // exactly this reason).
+        private void AppendEnvironmentSnapshot(StringBuilder sb, string version, string releaseDate)
+        {
+            string excelVersion = "unknown";
+            try
+            {
+                var excelApp = _context?.ExcelApp;
+                if (excelApp != null)
+                {
+                    excelVersion = excelApp.GetType().InvokeMember(
+                        "Version", BindingFlags.GetProperty, null, excelApp, null) as string ?? "unknown";
+                }
+            }
+            catch
+            {
+                // ExcelApp may not be assigned yet depending on call order - "unknown" is
+                // an acceptable fallback for a one-time header line.
+            }
+
+            double dpi = 96d;
+            try
+            {
+                using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
+                {
+                    dpi = g.DpiX;
+                }
+            }
+            catch
+            {
+                // Fall back to the 96 DPI (100% scale) default set above.
+            }
+
+            sb.AppendLine("===== Environment Snapshot =====");
+            sb.AppendLine($"GLSense version: {version} (released {releaseDate})");
+            sb.AppendLine($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
+            sb.AppendLine($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
+            sb.AppendLine($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+            sb.AppendLine($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
+            sb.AppendLine($"Culture: {CultureInfo.CurrentCulture.Name} (UI: {CultureInfo.CurrentUICulture.Name})");
+            sb.AppendLine($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
+            sb.AppendLine("=================================");
         }
 
         private static void EnsureSafetyNetTimerStarted()

@@ -13,8 +13,8 @@
                   WindowCaption="Segment Rollup Groups"
                   IconSymbol="CubesSolid"
                   SizeToContent="WidthAndHeight"
-                  MinWidth="700" MaxWidth="900"
-                  MinHeight="700" MaxHeight="850"
+                  MinWidth="800" MaxWidth="940"
+                  MinHeight="740" MaxHeight="890"
                   ResizeMode="CanResize"
                   WindowStyle="SingleBorderWindow"
                   ExtendsContentIntoTitleBar="True"
@@ -301,25 +301,53 @@
         <!-- Footer -->
         <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="8,6">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <CheckBox x:Name="chkMultipleRows" Content="Insert as Multiple Rows" Style="{StaticResource ModernCheckBox}" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="{Binding IsMultipleRowsChecked, Mode=TwoWay}" Margin="0,0,10,0" VerticalAlignment="Center">
+
+                <!-- Row 0: Write to Multiple Rows/Columns Checkbox + Overwrite/Insert + By Rows/By Columns, one line -->
+                <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <CheckBox x:Name="chkMultipleRows" Content="Write to Multiple Rows/Columns" Style="{StaticResource ModernCheckBox}" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="{Binding IsMultipleRowsChecked, Mode=TwoWay}" VerticalAlignment="Center">
                         <CheckBox.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Checked: each item in a separate Excel row. Unchecked: all items in a single Excel cell." TextWrapping="Wrap"/>
+                                <TextBlock Text="✓ Checked: Each item in its own cell (By Rows/By Columns below). ✗ Unchecked: All items in single Excel cell." TextWrapping="Wrap" MaxWidth="260"/>
                             </ToolTip>
                         </CheckBox.ToolTip>
                     </CheckBox>
+
+                    <!-- Overwrite / Insert - disabled together with the Multiple Rows checkbox
+                         above (bound to the same IsMultipleRowsEnabled), forced back to Overwrite
+                         whenever that happens (see Vm_PropertyChanged in code-behind). Ported from
+                         FinalWorkingCode's identical GLRollerGroups.xaml. -->
+                    <RadioButton x:Name="rbOverwrite" Content="Overwrite" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" VerticalAlignment="Center" Margin="28,0,0,0"/>
+                    <RadioButton x:Name="rbInsert" Content="Insert" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" VerticalAlignment="Center">
+                        <RadioButton.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Inserts new row(s) at the cell reference, shifting existing content down, instead of overwriting it." TextWrapping="Wrap" MaxWidth="260"/>
+                            </ToolTip>
+                        </RadioButton.ToolTip>
+                    </RadioButton>
+
+                    <!-- By Rows / By Columns - orientation for the multi-cell write path only.
+                         Ported from FinalWorkingCode's identical GLRollerGroups.xaml. -->
+                    <RadioButton x:Name="rbByRows" Content="By Rows" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" VerticalAlignment="Center" Margin="28,0,0,0"/>
+                    <RadioButton x:Name="rbByColumns" Content="By Columns" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+
+                <!-- Row 1, left corner: Cell Reference -->
+                <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,15,0,0">
                     <TextBlock Text="Reference:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
                     <local:ExcelRefEditControl x:Name="excelRefEdit" TagName="Roller Groups Cell Reference" Height="30" Width="180" VerticalAlignment="Center" Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                 </StackPanel>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+
+                <!-- Row 1, right corner: Action Buttons -->
+                <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,15,0,0">
                     <Button x:Name="btnOK" Style="{StaticResource InsertButtonStyle}" Click="BtnOK_Click" Margin="0,0,8,0">
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
