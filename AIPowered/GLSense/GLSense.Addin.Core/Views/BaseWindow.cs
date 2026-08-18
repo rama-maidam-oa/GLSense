@@ -776,9 +776,9 @@ namespace GLSense.Addin.Core.Views
             try
             {
                 var scaleFactor = newDpi / 96.0;
-                _currentScaleFactor = scaleFactor;
 
                 ApplyScaleTransform(scaleFactor);
+                _currentScaleFactor = scaleFactor;
 
                 if (lParam != IntPtr.Zero)
                 {
