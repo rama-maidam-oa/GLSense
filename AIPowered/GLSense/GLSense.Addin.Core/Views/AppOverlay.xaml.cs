@@ -342,9 +342,27 @@ namespace GLSense.Addin.Core.Views
             await HideBusyAsync();
         }
 
+        // If a genuinely fast operation (e.g. a SQLite query that now finishes in under
+        // 100ms thanks to the warm-up/load-before-show fixes) shows the busy overlay and
+        // hides it again almost immediately, that reads as a flicker/splash rather than a
+        // smooth load - reported as the window looking like it's "dancing" together with an
+        // "inner blink." Holding the overlay up to this minimum is imperceptible for any
+        // operation that's actually slow enough to need a loading indicator in the first
+        // place, but turns a sub-100ms flash into a calm, readable state. Ported from
+        // FinalWorkingCode's identical AppOverlay.xaml.cs fix.
+        private const int MinBusyDurationMs = 400;
+
         public async Task HideBusyAsync()
         {
             ServiceLocator.Logger?.LogDebug("AppOverlay.HideBusyAsync invoked");
+
+            if (_busyStart.HasValue)
+            {
+                var remaining = TimeSpan.FromMilliseconds(MinBusyDurationMs) - (DateTime.UtcNow - _busyStart.Value);
+                if (remaining > TimeSpan.Zero)
+                    await Task.Delay(remaining);
+            }
+
             var tcs = new TaskCompletionSource<bool>();
 
             await Dispatcher.InvokeAsync(() =>
