@@ -7,7 +7,6 @@
                   xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
                   xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
                   xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
-                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   mc:Ignorable="d"
                   WindowCaption="GLSense Processed Jobs"
@@ -17,7 +16,6 @@
                   MinHeight="700" MaxHeight="850"
                   ResizeMode="CanResize"
                   WindowStyle="None"
-                  
                   Loaded="Window_Loaded">
 
     <Window.Resources>

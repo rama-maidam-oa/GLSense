@@ -8,7 +8,6 @@
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
                   xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
-                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                   mc:Ignorable="d"
                   WindowCaption="Segment Values Configurator"
                   IconSymbol="FilterSolid"
@@ -18,7 +17,6 @@
                   MinHeight="650" MaxHeight="720"
                   ResizeMode="CanResize"
                   WindowStyle="None"
-                  
                   Loaded="Window_Loaded">
 
     <Window.Resources>

@@ -9,7 +9,6 @@
                   xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
                   xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
                   xmlns:sys="clr-namespace:System;assembly=mscorlib"
-                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                   mc:Ignorable="d"
                   WindowCaption="GLSense Daily Rates"
                   IconSymbol="MoneyBillWaveSolid"
@@ -17,8 +16,7 @@
                   MinWidth="640" MaxWidth="660"
                   MinHeight="350" MaxHeight="450"
                   ResizeMode="CanResize"
-                  WindowStyle="None"
-                  >
+                  WindowStyle="None">
 
     <Window.Resources>
         <ResourceDictionary>

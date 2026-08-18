@@ -5,7 +5,6 @@
                   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                   xmlns:local="clr-namespace:GLSense.Addin.Core.Views"
                   xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
-                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   mc:Ignorable="d"
                   WindowCaption="Instance Configuration"
@@ -14,8 +13,7 @@
                   MinWidth="640" MaxWidth="720"
                   MinHeight="410" MaxHeight="650"
                   ResizeMode="CanResize"
-                  WindowStyle="None"
-                  >
+                  WindowStyle="None">
 
     <Window.Resources>
         <ResourceDictionary>
