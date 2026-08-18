@@ -635,59 +635,21 @@ namespace GLSense
         }
 
 
-        // Logged once, unconditionally (regardless of the Debug checkbox), right after
-        // the logger and ExcelApp both become available. Goal: enough environment
-        // context is on disk from the very first log line of every session that
-        // customer-site issues can be root-caused from the log alone, without needing a
-        // round-trip to ask "what Excel/OS/version were you on".
-        private static void LogEnvironmentSnapshot()
-        {
-            try
-            {
-                string excelVersion = "unknown";
-                try
-                {
-                    excelVersion = AppState.Instance.ExcelApp?.Version ?? "unknown";
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}");
-                }
-
-                double dpi = 96d;
-                try
-                {
-                    using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
-                    {
-                        dpi = g.DpiX;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}");
-                }
-
-                LogUtility.LogInfo("===== Environment Snapshot =====");
-                LogUtility.LogInfo($"GLSense version: {AppConstants.DefaultVersion} (released {AppConstants.DefaultCommitDate})");
-                LogUtility.LogInfo($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
-                LogUtility.LogInfo($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
-                LogUtility.LogInfo($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
-                LogUtility.LogInfo($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
-                LogUtility.LogInfo($"Culture: {CultureInfo.CurrentCulture.Name} (UI: {CultureInfo.CurrentUICulture.Name})");
-                LogUtility.LogInfo($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
-                LogUtility.LogInfo("=================================");
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "LogEnvironmentSnapshot", forceLog: true);
-            }
-        }
-
         private static void AddinModule_OnRibbonLoaded(object sender, IRibbonUI Ribbon)
         {
             AppState.Instance.ExcelApp = (Excel.Application)AddinModule.CurrentInstance.HostApplication;
+            // Environment snapshot (GLSense/Excel/OS/DPI/culture/machine info) now lives in
+            // LogHelper.BuildLogHeader, written once per log FILE (per day) via NLog's own
+            // Header mechanism, instead of once per Excel session here - see that method's
+            // header comment for why. AppState.Instance.ExcelApp is already assigned above,
+            // before this call, so it's available for the header's Excel-version line.
             LogHelper.InitializeLogger();
-            LogEnvironmentSnapshot();
+            // NLog's FileTarget only creates the physical file (and writes Header) on its
+            // first actual log write - InitializeLogger only builds the configuration, it
+            // never writes anything itself. This line guarantees that first write happens
+            // on every Excel open, so the file (and, once per day, the header) always gets
+            // created even if nothing else logs during the session.
+            LogUtility.LogInfo("GLSense session started.");
 
             _ribbonHelper = new RibbonStateHelper(AddinModule.CurrentInstance, Ribbon);
             RibbonHelper = _ribbonHelper; // Expose it globally

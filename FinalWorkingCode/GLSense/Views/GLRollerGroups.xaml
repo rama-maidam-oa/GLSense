@@ -10,8 +10,8 @@
         Background="#F8F9FA" 
         SizeToContent="Manual"
         ResizeMode="CanResize"
-        MinWidth="700" MaxWidth="800"
-        MinHeight="750"
+        MinWidth="800" MaxWidth="840"
+        MinHeight="790"
         WindowStyle="None" 
         WindowStartupLocation="CenterOwner"
         Loaded="Window_Loaded">
@@ -418,20 +418,25 @@
             </Border>
         </Grid>
         <!-- Footer Section 1: Options -->
-        <Border Grid.Row="2" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,6,0,0" Padding="8,4">
+        <Border Grid.Row="2" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,6,0,0" Padding="8,6">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <!-- Multiple Rows Checkbox -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <CheckBox x:Name="chkMultipleRows" Content="Insert as Multiple Rows" 
+
+                <!-- Row 0: Write to Multiple Rows/Columns Checkbox + Overwrite/Insert + By Rows/By Columns, one line -->
+                <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <CheckBox x:Name="chkMultipleRows" Content="Write to Multiple Rows/Columns"
                               Style="{StaticResource ModernCheckBox}"
-                              IsEnabled="{Binding IsMultipleRowsEnabled}" 
-                              IsChecked="{Binding IsMultipleRowsChecked, Mode=TwoWay}" 
-                              Margin="0,2,10,0" VerticalAlignment="Center" FontWeight="SemiBold" 
+                              IsEnabled="{Binding IsMultipleRowsEnabled}"
+                              IsChecked="{Binding IsMultipleRowsChecked, Mode=TwoWay}"
+                              VerticalAlignment="Center" FontWeight="SemiBold"
                               Foreground="#2E86AB" >
                         <CheckBox.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
@@ -439,17 +444,14 @@
                                     <TextBlock Text="Controls how roller groups are inserted into Excel" TextWrapping="Wrap"/>
                                     <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
                                         <StackPanel Orientation="Horizontal">
-                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
                                   Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             <StackPanel>
-                                                <TextBlock Text="✓ Checked: Each item in separate Excel row" 
-                                     FontSize="11" FontStyle="Italic" Foreground="Black"/>
-                                                <TextBlock Text="✗ Unchecked: All items in single Excel cell" 
+                                                <TextBlock Text="✓ Checked: Each item in its own cell (By Rows/By Columns below)"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black" TextWrapping="Wrap" MaxWidth="220"/>
+                                                <TextBlock Text="✗ Unchecked: All items in single Excel cell"
                                      FontSize="11" FontStyle="Italic" Foreground="Black"
                                      Margin="0,2,0,0"/>
-                                                <TextBlock Text="For roller groups, consider using multiple rows" 
-                                     FontSize="11" FontStyle="Italic" Foreground="Black"
-                                     Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
@@ -457,51 +459,75 @@
                             </ToolTip>
                         </CheckBox.ToolTip>
                     </CheckBox>
+
+                    <!-- Overwrite / Insert - disabled together with the Multiple Rows checkbox
+                         above (bound to the same IsMultipleRowsEnabled), forced back to Overwrite
+                         whenever that happens (see Vm_PropertyChanged in code-behind). Overwrite
+                         (default) matches this window's original behavior: write directly into
+                         the existing cells. Insert opens space for the incoming values first by
+                         shifting existing content down, mirroring GLSegmentDiscovery's
+                         Overwrite/Insert radio pair. Label style matches the checkbox above
+                         (FontWeight/Foreground) for visual consistency. -->
+                    <RadioButton x:Name="rbOverwrite" Content="Overwrite" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center" Margin="28,0,0,0"/>
+                    <RadioButton x:Name="rbInsert" Content="Insert" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center">
+                        <RadioButton.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Inserts new row(s) at the cell reference, shifting existing content down, instead of overwriting it." TextWrapping="Wrap" MaxWidth="260"/>
+                            </ToolTip>
+                        </RadioButton.ToolTip>
+                    </RadioButton>
+
+                    <!-- By Rows / By Columns - orientation for the multi-cell write path only
+                         (same enablement/reset pattern as Overwrite/Insert above; has nothing to
+                         act on when chkMultipleRows is unchecked, since that path always writes
+                         a single concatenated cell regardless of orientation). By Rows (default)
+                         matches this window's original vertical behavior. By Columns writes each
+                         value into its own column, left-to-right from the reference cell,
+                         mirroring GLExpandOptions.xaml's By Rows/By Columns pair (same short
+                         label style, to keep this row compact). -->
+                    <RadioButton x:Name="rbByRows" Content="By Rows" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center" Margin="28,0,0,0"/>
+                    <RadioButton x:Name="rbByColumns" Content="By Columns" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center"/>
                 </StackPanel>
-                <!-- Cell Reference -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
-                    <TextBlock Text="Reference:" Style="{StaticResource HeaderTextBlock}" Margin="20,0,8,0"/>
+
+                <!-- Row 1, left corner: Cell Reference -->
+                <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,15,0,0">
+                    <TextBlock Text="Reference:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
                     <local:ExcelRefEditControl x:Name="excelRefEdit" Tag="Roller Groups Cell Reference" Height="30" Margin="8,0,0,0" Width="175" VerticalAlignment="Center"/>
                 </StackPanel>
-                <!-- Action Buttons -->
-                <Grid Grid.Column="2" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="btnOK" Style="{StaticResource InsertButtonStyle}" Width="90" 
-                            Click="BtnOK_Click" Margin="0,0,8,0" >
-                            <Button.ToolTip>
-                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                    <StackPanel>
-                                        <TextBlock Text="Insert selected roller groups into Excel at specified cell reference" TextWrapping="Wrap"/>
-                                        <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
-                                            <StackPanel Orientation="Horizontal">
-                                                <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+
+                <!-- Row 1, right corner: Action Buttons -->
+                <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,15,0,0">
+                    <Button x:Name="btnOK" Style="{StaticResource InsertButtonStyle}" Width="90"
+                        Click="BtnOK_Click" Margin="0,0,8,0" >
+                        <Button.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <StackPanel>
+                                    <TextBlock Text="Insert selected roller groups into Excel at specified cell reference" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
                                   Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                                <StackPanel>
-                                                    <TextBlock Text="Will insert:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
-                                                    <TextBlock Text="• Selected roller group items" 
+                                            <StackPanel>
+                                                <TextBlock Text="Will insert:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Selected roller group items"
                                      FontSize="11" FontStyle="Italic" Foreground="Black"
                                      Margin="0,2,0,0"/>
-                                                    <TextBlock Text="• Based on multiple rows checkbox setting" 
+                                                <TextBlock Text="• Based on multiple rows checkbox setting"
                                      FontSize="11" FontStyle="Italic" Foreground="Black"
                                      Margin="0,2,0,0"/>
-                                                    <TextBlock Text="• Into selected Excel cell/range" 
+                                                <TextBlock Text="• Into selected Excel cell/range"
                                      FontSize="11" FontStyle="Italic" Foreground="Black"
                                      Margin="0,2,0,0"/>
-                                                </StackPanel>
                                             </StackPanel>
-                                        </Border>
-                                    </StackPanel>
-                                </ToolTip>
-                            </Button.ToolTip>
-                        </Button>
-                        <Button x:Name="CmdClose" Style="{StaticResource CloseButtonStyle}" 
-                    Click="BtnClose_Click" />
-                    </StackPanel>
-                </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </ToolTip>
+                        </Button.ToolTip>
+                    </Button>
+                    <Button x:Name="CmdClose" Style="{StaticResource CloseButtonStyle}"
+                Click="BtnClose_Click" />
+                </StackPanel>
             </Grid>
         </Border>
         <!-- Toast / Busy overlay -->

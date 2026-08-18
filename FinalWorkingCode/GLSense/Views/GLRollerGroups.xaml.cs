@@ -5,6 +5,7 @@ using GLSense.Utilities;
 using GLSense.ViewModels;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -41,7 +42,25 @@ namespace GLSense.Views
 
             // Subscribe to scroll messages
             vm.ScrollToTopRequested += OnScrollToTopRequested;
+            vm.PropertyChanged += Vm_PropertyChanged;
         }
+
+        // Keeps the Overwrite/Insert radio buttons (bound to IsMultipleRowsEnabled for their
+        // IsEnabled state) from getting stuck on a stale "Insert" selection once they're
+        // disabled - e.g. the user picks Insert while a single segment is selected, then
+        // selects items from a second segment, which disables the whole row-mode section.
+        // Forcing rbOverwrite back on here (rather than just letting both radios grey out)
+        // guarantees the write path this window actually takes matches what's visibly shown -
+        // an unchecked, disabled "Insert" would otherwise still read as IsChecked=true.
+        private void Vm_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(SimpleSegmentViewModel.IsMultipleRowsEnabled) && !vm.IsMultipleRowsEnabled)
+            {
+                rbOverwrite.IsChecked = true;
+                rbByRows.IsChecked = true;
+            }
+        }
+
         private void OnScrollToTopRequested(ScrollToTopMessage message)
         {
 
@@ -86,6 +105,7 @@ namespace GLSense.Views
         {
             LogUtility.LogDebug("GLRollerGroups.BtnClose_Click invoked");
             vm.ScrollToTopRequested -= OnScrollToTopRequested;
+            vm.PropertyChanged -= Vm_PropertyChanged;
             Close();
         }
         private void dgLeft_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -183,14 +203,33 @@ namespace GLSense.Views
 
                 await ShowBusyOverlayAsync(cancellationHelper, "Writing data to Excel...");
 
-                LogUtility.LogDebug($"GLRollerGroups.BtnOK_Click: writing to Excel - startAddress={startAddress}, multipleRows={vm.IsMultipleRowsChecked}, groupCount={grouped.Count}");
+                LogUtility.LogDebug($"GLRollerGroups.BtnOK_Click: writing to Excel - startAddress={startAddress}, multipleRows={vm.IsMultipleRowsChecked}, groupCount={grouped.Count}, insertMode={rbInsert.IsChecked == true}");
 
                 if (vm.IsMultipleRowsChecked)
                 {
-                    WriteMultipleRows(rng, grouped);
+                    var flatCount = grouped.Values.Sum(v => v.Count);
+                    // Orientation only applies to this multi-cell path - the single-cell path
+                    // below always writes one concatenated string into one cell, so there is
+                    // nothing for "columns" to mean there (rbByColumns is disabled/reset to
+                    // rows whenever chkMultipleRows itself is disabled - see Vm_PropertyChanged).
+                    bool columnWise = rbByColumns.IsChecked == true;
+                    PerformInsertIfNeeded(rng, flatCount, columnWise);
+                    // Re-resolve the reference after a possible Insert: Excel's Range object
+                    // for `rng` was bound to the cell(s) at startAddress BEFORE the insert, and
+                    // Insert(xlShiftDown/xlShiftToRight) carries that same object along with the
+                    // original content it shifts - so writing into the (stale) `rng` reference
+                    // here would land on the shifted-down/shifted-right old content instead of
+                    // the newly-opened blank cells. A fresh address lookup always resolves to
+                    // whatever now occupies that address, which is exactly the blank space
+                    // Insert just created. This is a no-op re-fetch (same cells) when Overwrite
+                    // is selected.
+                    rng = AppState.Instance.ExcelApp.Range[startAddress];
+                    WriteMultipleRows(rng, grouped, columnWise);
                 }
                 else
                 {
+                    PerformInsertIfNeeded(rng, 1, columnWise: false);
+                    rng = AppState.Instance.ExcelApp.Range[startAddress];
                     WriteSingleRow(rng, grouped);
                 }
 
@@ -252,10 +291,39 @@ namespace GLSense.Views
                 );
         }
 
-        private static void WriteMultipleRows(Microsoft.Office.Interop.Excel.Range rng, Dictionary<string, List<string>> grouped)
+        // When Insert is selected, opens space for the values about to be written by
+        // selecting a range the size of rowCount at the reference cell and shifting
+        // existing content down - mirrors GLSegmentDiscovery.PerformInsertIfNeeded's
+        // "Down" direction case. When Overwrite is selected (the default, matching this
+        // window's original behavior), this is a no-op and the write methods below write
+        // directly into the existing cells, same as before this feature existed.
+        private void PerformInsertIfNeeded(Microsoft.Office.Interop.Excel.Range rng, int count, bool columnWise)
+        {
+            if (rbInsert.IsChecked != true || count <= 0)
+                return;
+
+            LogUtility.LogDebug($"GLRollerGroups.PerformInsertIfNeeded: inserting {count} {(columnWise ? "column(s)" : "row(s)")} at {rng.Address}");
+            if (columnWise)
+            {
+                rng.Resize[1, count].Select();
+                var selectedRange = AppState.Instance.ExcelApp.Selection as Microsoft.Office.Interop.Excel.Range;
+                selectedRange.Insert(Microsoft.Office.Interop.Excel.XlInsertShiftDirection.xlShiftToRight);
+            }
+            else
+            {
+                rng.Resize[count, 1].Select();
+                var selectedRange = AppState.Instance.ExcelApp.Selection as Microsoft.Office.Interop.Excel.Range;
+                selectedRange.Insert(Microsoft.Office.Interop.Excel.XlInsertShiftDirection.xlShiftDown);
+            }
+        }
+
+        private static void WriteMultipleRows(Microsoft.Office.Interop.Excel.Range rng, Dictionary<string, List<string>> grouped, bool columnWise)
         {
             var flat = grouped.Values.SelectMany(x => x).ToList();
-            WriteValuesVerticallyToExcel(rng, flat);
+            if (columnWise)
+                WriteValuesHorizontallyToExcel(rng, flat);
+            else
+                WriteValuesVerticallyToExcel(rng, flat);
         }
         private void WriteSingleRow(Microsoft.Office.Interop.Excel.Range rng, Dictionary<string, List<string>> grouped)
         {
@@ -277,6 +345,17 @@ namespace GLSense.Views
             {
                 rng.Offset[i].NumberFormat = "@";
                 rng.Offset[i].Value = values[i];
+            }
+        }
+
+        // Write as Multiple Columns: same shape as WriteValuesVerticallyToExcel, offsetting
+        // across columns (row offset 0, increasing column offset) instead of down rows.
+        private static void WriteValuesHorizontallyToExcel(Microsoft.Office.Interop.Excel.Range rng, System.Collections.Generic.List<string> values)
+        {
+            for (int i = 0; i < values.Count; i++)
+            {
+                rng.Offset[0, i].NumberFormat = "@";
+                rng.Offset[0, i].Value = values[i];
             }
         }
         private static void WriteStringToExcel(Microsoft.Office.Interop.Excel.Range rng, string value)

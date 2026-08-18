@@ -9,8 +9,8 @@
                       xmlns:viewmodels="clr-namespace:GLSense.ViewModels"
                       Background="#F8F9FA" SizeToContent="Manual"
                       ResizeMode="CanResize"
-                      MinWidth="720" MaxWidth="760"
-                      MinHeight="750"
+                      MinWidth="820" MaxWidth="860"
+                      MinHeight="790"
                       WindowStyle="None" WindowStartupLocation="CenterOwner"
                      Loaded="Window_Loaded">
     <utils:DpiAwareWindow.Resources>
@@ -525,18 +525,21 @@
             </Grid>
         </Border>
         <!-- Footer Section: Options and Actions -->
-        <Border Grid.Row="3" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,0" Padding="8,4">
+        <Border Grid.Row="3" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,0" Padding="8,6">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Insert as Multiple Rows Checkbox -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <CheckBox x:Name="chkMultipleRows" Content="Insert as Multiple Rows" Style="{StaticResource ModernCheckBox}" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="{Binding IsMultipleRowsChecked, Mode=TwoWay}" Margin="0,0,10,0" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#2E86AB">
+                <!-- Row 0: Write to Multiple Rows/Columns Checkbox + Overwrite/Insert + By Rows/By Columns, one line -->
+                <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <CheckBox x:Name="chkMultipleRows" Content="Write to Multiple Rows/Columns" Style="{StaticResource ModernCheckBox}" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="{Binding IsMultipleRowsChecked, Mode=TwoWay}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#2E86AB">
                         <CheckBox.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                 <StackPanel>
@@ -545,7 +548,7 @@
                                         <StackPanel Orientation="Horizontal">
                                             <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             <StackPanel>
-                                                <TextBlock Text="✓ Checked: Each item in new row" FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                                <TextBlock Text="✓ Checked: Each item in its own cell (By Rows/By Columns below)" FontSize="11" FontStyle="Italic" Foreground="Black" TextWrapping="Wrap" MaxWidth="220"/>
                                                 <TextBlock Text="✗ Unchecked: All items in single cell" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
                                             </StackPanel>
                                         </StackPanel>
@@ -554,19 +557,44 @@
                             </ToolTip>
                         </CheckBox.ToolTip>
                     </CheckBox>
+
+                    <!-- Overwrite / Insert - disabled together with the Multiple Rows checkbox
+                         above (bound to the same IsMultipleRowsEnabled), forced back to Overwrite
+                         whenever that happens (see Vm_PropertyChanged in code-behind). Overwrite
+                         (default) matches this window's original behavior: write directly into
+                         the existing cells. Insert opens space for the incoming values first by
+                         shifting existing content down, mirroring GLSegmentDiscovery's
+                         Overwrite/Insert radio pair. Label style matches the checkbox above
+                         (FontWeight/Foreground) for visual consistency. -->
+                    <RadioButton x:Name="rbOverwrite" Content="Overwrite" Style="{StaticResource ModernRadioButton}" GroupName="SegmentValuesWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center" Margin="28,0,0,0"/>
+                    <RadioButton x:Name="rbInsert" Content="Insert" Style="{StaticResource ModernRadioButton}" GroupName="SegmentValuesWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center">
+                        <RadioButton.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Inserts new row(s) at the cell reference, shifting existing content down, instead of overwriting it." TextWrapping="Wrap" MaxWidth="260"/>
+                            </ToolTip>
+                        </RadioButton.ToolTip>
+                    </RadioButton>
+
+                    <!-- By Rows / By Columns - orientation for the multi-cell write path only
+                         (same enablement/reset pattern as Overwrite/Insert above; has nothing to
+                         act on when chkMultipleRows is unchecked, since that path always writes
+                         a single concatenated cell regardless of orientation). By Rows (default)
+                         matches this window's original vertical behavior. By Columns writes each
+                         value into its own column, left-to-right from the reference cell,
+                         mirroring GLExpandOptions.xaml's By Rows/By Columns pair (same short
+                         label style, to keep this row compact). -->
+                    <RadioButton x:Name="rbByRows" Content="By Rows" Style="{StaticResource ModernRadioButton}" GroupName="SegmentValuesOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center" Margin="28,0,0,0"/>
+                    <RadioButton x:Name="rbByColumns" Content="By Columns" Style="{StaticResource ModernRadioButton}" GroupName="SegmentValuesOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Cell Reference Label and Control -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
+                <!-- Row 1, left corner: Cell Reference -->
+                <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,15,0,0">
                     <TextBlock Text="Cell Reference:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                     <local:ExcelRefEditControl x:Name="excelRefEdit" TagName="Segment Values Cell Reference" Height="30" Margin="8,0,0,0" Width="200" VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Spacer Column -->
-                <StackPanel Grid.Column="2" VerticalAlignment="Center"/>
-
-                <!-- Action Buttons -->
-                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
+                <!-- Row 1, right corner: Action Buttons -->
+                <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,15,0,0">
                     <Button x:Name="btnOK" Style="{StaticResource InsertButtonStyle}" Click="BtnOK_Click" Margin="0,0,8,0">
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">

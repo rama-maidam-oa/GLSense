@@ -555,6 +555,18 @@ namespace GLSense.ViewModels
         {
             try
             {
+                // Budget rows have no journal source/category of their own - Journal
+                // Source and Category only ever apply to actual (non-budget) balances,
+                // so disable them outright whenever Actual Flag is Budget, regardless of
+                // Activity/BalanceType/CurrencyType. GetFieldValue (not a raw ComboValue
+                // read) so this also respects Actual Flag being set via cell reference.
+                var actualFlag = GetFieldValue(ActualFlagField);
+                if (!string.IsNullOrEmpty(actualFlag) &&
+                    (actualFlag.Equals(Budget, StringComparison.OrdinalIgnoreCase) || actualFlag.Equals("B", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return false;
+                }
+
                 var activity = GetFieldValue(ActivityField);
                 var balanceType = GetFieldValue(BalanceTypeField);
                 var currencyType = GetFieldValue(CurrencyTypeField);
@@ -1962,6 +1974,13 @@ namespace GLSense.ViewModels
                             IsBudgetEnabled = true;
                             IsEncumbranceEnabled = false;
                             ClearEncumbranceSelections();
+                            // Budget rows have no journal source/category of their own -
+                            // IsJournalValidationSatisfied() now disables both fields
+                            // whenever Actual Flag is Budget, so clear any selection made
+                            // before switching to Budget instead of leaving it stuck
+                            // (greyed out but still holding a stale value).
+                            ResetField(JournalSourceField);
+                            ResetField(JournalCategoryField);
                             break;
                         case Encumbrance:
                         case "E":
@@ -1981,6 +2000,36 @@ namespace GLSense.ViewModels
                             ResetField(BudgetField);
                             ClearEncumbranceSelections();
                             break;
+                    }
+
+                    // Journal Source/Category's enable state now depends on Actual Flag
+                    // too (via IsJournalValidationSatisfied) - refresh unconditionally so
+                    // switching AWAY from Budget re-enables them again, not just switching
+                    // to it.
+                    JournalSourceField?.RefreshEnableState();
+                    JournalCategoryField?.RefreshEnableState();
+
+                    // Currency Type's available list now also depends on Actual Flag
+                    // (Budget restricts it to Total-only, inside
+                    // UpdateCurrencyTypesForBalanceType) - recompute immediately on every
+                    // Actual Flag change, not just the next Balance Type/Journal change,
+                    // so switching to/away from Budget updates the list right away. The
+                    // isJED base value still needs to come from the current Balance Type,
+                    // same computation OnFieldDependencyChanged's own BalanceType case
+                    // uses below.
+                    try
+                    {
+                        var balanceTypeForCurrency = GetBalanceTypeText();
+                        var isJedForCurrency = !string.IsNullOrWhiteSpace(balanceTypeForCurrency) && (
+                            balanceTypeForCurrency.Equals(AppConstants.BalanceTypeJED, StringComparison.OrdinalIgnoreCase) ||
+                            balanceTypeForCurrency.Equals(AppConstants.BalanceTypeJEDP, StringComparison.OrdinalIgnoreCase) ||
+                            balanceTypeForCurrency.Equals(AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase)
+                        );
+                        UpdateCurrencyTypesForBalanceType(isJedForCurrency);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateCurrencyTypesForBalanceType (ActualFlag) failed (non-fatal)");
                     }
                     break;
 
@@ -2508,12 +2557,19 @@ namespace GLSense.ViewModels
             }
         }
 
-        // Update CurrencyTypes collection based on whether BalanceType is a JED variant.
-        // For JED/JEDP/JEDU only allow AppConstants.CurrencyTypeTotal and AppConstants.CurrencyTypeEntered. Clear the field binding
-        // if the currently selected currency type is not allowed.
+        // Update CurrencyTypes collection based on whether BalanceType is a JED variant,
+        // further restricted to Total-only when Actual Flag is Budget. Budget takes
+        // precedence over the JED-based list (a Budget row only ever reports a single
+        // Total figure - Entered/Translated/Converted don't apply to it - so this
+        // overrides isJED entirely rather than combining with it). Clears the field
+        // binding if the currently selected currency type is no longer allowed.
         private void UpdateCurrencyTypesForBalanceType(bool isJED)
         {
-            LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateCurrencyTypesForBalanceType: isJED={isJED}");
+            var actualFlag = GetFieldValue(ActualFlagField);
+            bool isBudget = !string.IsNullOrEmpty(actualFlag) &&
+                (actualFlag.Equals(Budget, StringComparison.OrdinalIgnoreCase) || actualFlag.Equals("B", StringComparison.OrdinalIgnoreCase));
+
+            LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateCurrencyTypesForBalanceType: isJED={isJED}, isBudget={isBudget}");
             try
             {
                 // Ensure operation runs on UI thread
@@ -2524,7 +2580,18 @@ namespace GLSense.ViewModels
 
                     CurrencyTypes.Clear();
 
-                    if (isJED)
+                    if (isBudget)
+                    {
+                        CurrencyTypes.Add(new CurrencyTypeModel { Name = AppConstants.CurrencyTypeTotal, ShortName = AppConstants.CurrencyTypeTotal });
+
+                        // If current currency type isn't Total, clear it
+                        var current = GetFieldValue(CurrencyTypeField);
+                        if (!string.IsNullOrWhiteSpace(current) && !current.Equals(AppConstants.CurrencyTypeTotal, StringComparison.OrdinalIgnoreCase))
+                        {
+                            ResetField(CurrencyTypeField);
+                        }
+                    }
+                    else if (isJED)
                     {
                         CurrencyTypes.Add(new CurrencyTypeModel { Name = AppConstants.CurrencyTypeTotal, ShortName = AppConstants.CurrencyTypeTotal });
                         CurrencyTypes.Add(new CurrencyTypeModel { Name = AppConstants.CurrencyTypeEntered, ShortName = "E" });
@@ -2554,7 +2621,7 @@ namespace GLSense.ViewModels
             }
             catch (Exception ex)
             {
-                LogUtility.LogException(ex, $"GLConfiguratorViewModel.UpdateCurrencyTypesForBalanceType: failed (non-fatal). isJED={isJED}");
+                LogUtility.LogException(ex, $"GLConfiguratorViewModel.UpdateCurrencyTypesForBalanceType: failed (non-fatal). isJED={isJED}, isBudget={isBudget}");
             }
         }
         private static void ApplyRefHelper<T>(
