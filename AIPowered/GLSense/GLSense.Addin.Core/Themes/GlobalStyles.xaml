@@ -12,11 +12,6 @@
     <Color x:Key="SecondaryDarkColor">#5A6268</Color>
     <Color x:Key="SecondaryDarkerColor">#495057</Color>
     <Color x:Key="DangerColor">#EC616E</Color>
-    <Color x:Key="DangerDarkColor">#E62E40</Color>
-    <Color x:Key="DangerDarkerColor">#D02B3B</Color>
-    <Color x:Key="SuccessColor">#28A745</Color>
-    <Color x:Key="WarningColor">#FFC107</Color>
-    <Color x:Key="InfoColor">#17A2B8</Color>
     <Color x:Key="TextPrimaryColor">#212529</Color>
     <Color x:Key="TextSecondaryColor">#6C757D</Color>
     <Color x:Key="BackgroundColor">#F8F9FA</Color>
@@ -36,11 +31,6 @@
     <SolidColorBrush x:Key="SecondaryDarkBrush" Color="{StaticResource SecondaryDarkColor}"/>
     <SolidColorBrush x:Key="SecondaryDarkerBrush" Color="{StaticResource SecondaryDarkerColor}"/>
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
-    <SolidColorBrush x:Key="DangerDarkBrush" Color="{StaticResource DangerDarkColor}"/>
-    <SolidColorBrush x:Key="DangerDarkerBrush" Color="{StaticResource DangerDarkerColor}"/>
-    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
-    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
-    <SolidColorBrush x:Key="InfoBrush" Color="{StaticResource InfoColor}"/>
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}"/>
@@ -204,18 +194,6 @@
     </Style>
 
     <!-- ==================== Icon Styles (FontAwesome) ==================== -->
-    <Style x:Key="SmallIcon" TargetType="iconPacks:PackIconFontAwesome">
-        <Setter Property="Width" Value="14"/>
-        <Setter Property="Height" Value="14"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-
-    <Style x:Key="VerySmallIcon" TargetType="iconPacks:PackIconFontAwesome">
-        <Setter Property="Width" Value="12"/>
-        <Setter Property="Height" Value="12"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-
     <Style x:Key="MediumIcon" TargetType="iconPacks:PackIconFontAwesome">
         <Setter Property="Width" Value="16"/>
         <Setter Property="Height" Value="16"/>
@@ -246,31 +224,6 @@
         <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
         <Setter Property="Padding" Value="16"/>
         <Setter Property="Margin" Value="0,0,0,12"/>
-    </Style>
-
-    <Style x:Key="CardBorderStyle" TargetType="Border">
-        <Setter Property="Background" Value="White"/>
-        <Setter Property="CornerRadius" Value="8"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
-        <Setter Property="Padding" Value="20"/>
-        <Setter Property="Effect">
-            <Setter.Value>
-                <DropShadowEffect Color="Black" Opacity="0.08" BlurRadius="10" ShadowDepth="2"/>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style x:Key="HeaderBorderStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
-        <Setter Property="CornerRadius" Value="6"/>
-        <Setter Property="Padding" Value="15,10"/>
-    </Style>
-
-    <Style x:Key="LabelIconBorderStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource BackgroundBrush}"/>
-        <Setter Property="CornerRadius" Value="4"/>
-        <Setter Property="Padding" Value="8,6"/>
     </Style>
 
     <!-- ==================== Label Styles ==================== -->
@@ -308,27 +261,6 @@
     </Style>
 
     <!-- ==================== Button Styles ==================== -->
-    <!--
-    Plain Border+ContentPresenter template, no default chrome hover/pressed overlay -
-    used by GLMessageWindow's dynamically-created OK/Yes/No/Cancel buttons (built via
-    `new Button { Background = ... }` in code-behind, with hover/pressed colors swapped
-    manually in MouseEnter/MouseLeave/PreviewMouseDown/PreviewMouseUp) so those
-    already-correct, computed colors render exactly as set instead of being washed out
-    by WPF's default Button chrome, which layers its own theme-driven highlight overlay
-    on top of Background on hover - that overlay is what made the OK button look like
-    it faded to near-transparent/white on hover instead of the intended, slightly
-    lighter blue, unlike the Close button (CloseButtonStyle/DynamicContentButton) which
-    already uses an explicit template like this one and hovers correctly.
-    -->
-    <ControlTemplate x:Key="PlainButtonTemplate" TargetType="Button">
-        <Border Background="{TemplateBinding Background}"
-                CornerRadius="4"
-                BorderThickness="0"
-                Padding="{TemplateBinding Padding}">
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Border>
-    </ControlTemplate>
-
     <Style x:Key="ModernButton" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
         <Setter Property="Foreground" Value="White"/>
@@ -916,31 +848,6 @@
         </Style.Triggers>
     </Style>
 
-    <Style x:Key="ModernDataGridColumnHeader" TargetType="DataGridColumnHeader">
-        <Setter Property="Background" Value="#2E86AB"/>
-        <Setter Property="Foreground" Value="White"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Height" Value="36"/>
-        <Setter Property="BorderBrush" Value="#1B6B93"/>
-        <Setter Property="BorderThickness" Value="0,0,1,1"/>
-        <Setter Property="HorizontalContentAlignment" Value="Center"/>
-    </Style>
-
-    <Style x:Key="ModernDataGridCell" TargetType="DataGridCell">
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
-        <Setter Property="BorderBrush" Value="Transparent"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="Padding" Value="4,0"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Style.Triggers>
-            <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="Transparent"/>
-                <Setter Property="BorderBrush" Value="Transparent"/>
-            </Trigger>
-        </Style.Triggers>
-    </Style>
-
     <!-- ==================== TabControl Styles ==================== -->
     <Style x:Key="ModernTabControl" TargetType="TabControl">
         <Setter Property="Background" Value="Transparent"/>
@@ -1000,73 +907,12 @@
         </Setter>
     </Style>
 
-    <!-- ==================== ListBox Styles ==================== -->
-    <Style x:Key="ModernListBoxItem" TargetType="ListBoxItem">
-        <Setter Property="FontFamily" Value="Segoe UI"/>
-        <Setter Property="Padding" Value="12,8"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Cursor" Value="Hand"/>
-        <Style.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Background" Value="#E6F3FF"/>
-            </Trigger>
-            <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
-                <Setter Property="Foreground" Value="White"/>
-            </Trigger>
-        </Style.Triggers>
-    </Style>
-
     <!-- ==================== ProgressBar Styles ==================== -->
     <Style x:Key="ModernProgressBar" TargetType="ProgressBar">
         <Setter Property="Background" Value="{StaticResource BorderLightBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
         <Setter Property="Height" Value="15"/>
         <Setter Property="BorderThickness" Value="0"/>
-    </Style>
-
-    <Style x:Key="IndeterminateProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource ModernProgressBar}">
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ProgressBar">
-                    <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                        <Grid ClipToBounds="True">
-                            <Rectangle x:Name="Indicator" Width="120" Height="12" RadiusX="4" RadiusY="4" HorizontalAlignment="Left">
-                                <Rectangle.RenderTransform>
-                                    <TranslateTransform x:Name="IndicatorTransform" X="0"/>
-                                </Rectangle.RenderTransform>
-                                <Rectangle.Fill>
-                                    <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                                        <GradientStop Color="{StaticResource PrimaryColor}" Offset="0"/>
-                                        <GradientStop Color="{StaticResource PrimaryDarkColor}" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Rectangle.Fill>
-                            </Rectangle>
-                        </Grid>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsIndeterminate" Value="True">
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard RepeatBehavior="Forever">
-                                        <DoubleAnimation Storyboard.TargetName="IndicatorTransform" Storyboard.TargetProperty="X" From="-150" To="300" Duration="0:0:1.2"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <!-- ==================== Separator Styles ==================== -->
-    <Style x:Key="ModernSeparator" TargetType="Separator">
-        <Setter Property="Background" Value="{StaticResource BorderLightBrush}"/>
-        <Setter Property="Height" Value="1"/>
-        <Setter Property="Margin" Value="0,10"/>
     </Style>
 
     <!-- ==================== Status Message Styles ==================== -->
@@ -1076,29 +922,6 @@
         <Setter Property="FontFamily" Value="Segoe UI"/>
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Padding" Value="12,8"/>
-    </Style>
-
-    <Style x:Key="ErrorMessage" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="#721C24"/>
-        <Setter Property="Background" Value="#F8D7DA"/>
-        <Setter Property="FontFamily" Value="Segoe UI"/>
-        <Setter Property="FontSize" Value="12"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Padding" Value="12,8"/>
-    </Style>
-
-    <Style x:Key="WarningMessage" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="#856404"/>
-        <Setter Property="FontFamily" Value="Segoe UI"/>
-        <Setter Property="FontSize" Value="12"/>
-        <Setter Property="Padding" Value="12,8"/>
-    </Style>
-
-    <Style x:Key="InfoMessage" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="#0C5460"/>
-        <Setter Property="FontFamily" Value="Segoe UI"/>
-        <Setter Property="FontSize" Value="12"/>
         <Setter Property="Padding" Value="12,8"/>
     </Style>
 
@@ -1173,61 +996,6 @@
         </Style.Triggers>
     </Style>
 
-    <Style x:Key="ModernScrollViewer" TargetType="{x:Type ScrollViewer}">
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="{x:Type ScrollViewer}">
-                    <Grid Background="{TemplateBinding Background}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <ScrollContentPresenter x:Name="ScrollContentPresenter" 
-                                                Grid.Row="0" 
-                                                Grid.Column="0" 
-                                                CanContentScroll="{TemplateBinding CanContentScroll}"
-                                                CanHorizontallyScroll="False" 
-                                                CanVerticallyScroll="False" 
-                                                ContentTemplate="{TemplateBinding ContentTemplate}"
-                                                Content="{TemplateBinding Content}" 
-                                                Margin="{TemplateBinding Padding}"/>
-
-                        <ScrollBar x:Name="PART_VerticalScrollBar" 
-                                   Grid.Row="0" 
-                                   Grid.Column="1" 
-                                   Style="{StaticResource AppScrollBarStyle}"
-                                   AutomationProperties.AutomationId="VerticalScrollBar"
-                                   Cursor="Arrow" 
-                                   Maximum="{TemplateBinding ScrollableHeight}" 
-                                   Minimum="0" 
-                                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"
-                                   Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}"
-                                   ViewportSize="{TemplateBinding ViewportHeight}"
-                                   Orientation="Vertical"/>
-
-                        <ScrollBar x:Name="PART_HorizontalScrollBar" 
-                                   Grid.Row="1" 
-                                   Grid.Column="0" 
-                                   Style="{StaticResource AppScrollBarStyle}"
-                                   AutomationProperties.AutomationId="HorizontalScrollBar"
-                                   Cursor="Arrow" 
-                                   Maximum="{TemplateBinding ScrollableWidth}" 
-                                   Minimum="0" 
-                                   Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"
-                                   Value="{Binding HorizontalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}"
-                                   ViewportSize="{TemplateBinding ViewportWidth}"
-                                   Orientation="Horizontal"/>
-                    </Grid>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
     <!-- ==================== ToolTipService Default Timing ==================== -->
     <Style TargetType="FrameworkElement">
         <Setter Property="ToolTipService.InitialShowDelay" Value="50"/>
@@ -1238,25 +1006,6 @@
         <Setter Property="ToolTipService.VerticalOffset" Value="10"/>
     </Style>
 
-    <!-- ==================== Validation Error Style ==================== -->
-    <Style x:Key="ValidationErrorStyle" TargetType="Control">
-        <Setter Property="Validation.ErrorTemplate">
-            <Setter.Value>
-                <ControlTemplate>
-                    <DockPanel LastChildFill="True">
-                        <Border BorderBrush="#DC3545" 
-                                BorderThickness="1" 
-                                CornerRadius="4"
-                                DockPanel.Dock="Top">
-                            <AdornedElementPlaceholder/>
-                        </Border>
-                    </DockPanel>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-
     <!-- ==================== Additional TextBox Focus Styles ==================== -->
     <Style x:Key="ComboBoxFocusVisualStyle" TargetType="Control">
         <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
@@ -1266,47 +1015,6 @@
     <!-- Focus border for controls - thin like textbox -->
     <Style TargetType="TextBox">
         <Setter Property="FocusVisualStyle" Value="{StaticResource ComboBoxFocusVisualStyle}"/>
-    </Style>
-
-    <!-- ==================== Toast Close Button Style ==================== -->
-    <Style x:Key="ToastCloseButtonStyle" TargetType="Button">
-        <Setter Property="Width" Value="28"/>
-        <Setter Property="Height" Value="28"/>
-        <Setter Property="Margin" Value="0,0,4,0"/>
-        <Setter Property="Padding" Value="0"/>
-        <Setter Property="MinWidth" Value="0"/>
-        <Setter Property="MinHeight" Value="0"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Foreground" Value="White"/>
-        <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="HorizontalAlignment" Value="Right"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Border x:Name="border"
-                        Background="{TemplateBinding Background}"
-                        BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="2">
-                        <ContentPresenter x:Name="contentPresenter"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#E81123"/>
-                            <Setter Property="Foreground" Value="White"/>
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#BF0F1A"/>
-                            <Setter Property="Foreground" Value="White"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
     </Style>
 
     <!-- ==================== Ported from FinalWorkingCode (2026-08-19) ==================== -->
