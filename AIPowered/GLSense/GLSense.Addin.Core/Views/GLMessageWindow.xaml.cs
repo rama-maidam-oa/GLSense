@@ -9,26 +9,29 @@
 //     for the same idiom). BaseWindow sets the Excel owner automatically via
 //     ServiceLocator.ExcelHandle, so there is no explicit ShowWithOwner()/SetExcelOwner()
 //     call anywhere in this file or at its call site (CommonFunctions.GLSenseMessage).
-//   - EnhancedDragDropHelper.EnableWindowDrag(this) -> dedicated title-bar drag handler
-//     (TitleBar_MouseLeftButtonDown), matching GLDailyRates.xaml.cs/GLWaitWindow.xaml.cs
-//     (the old HeaderPanel_MouseLeftButtonDown handler is dropped along with the old
-//     bespoke HeaderPanel markup - see GLMessageWindow.xaml's header comment).
-//   - Constructor ADAPTED (per this pass's explicit requirement) to take WPF's own
-//     System.Windows.MessageBoxImage/MessageBoxButton enums instead of the old WinForms
-//     System.Windows.Forms.MessageBoxIcon/MessageBoxButtons (this project has no WinForms
-//     reference). The icon-kind/button-set switch logic is otherwise unchanged - just the
-//     enum types:
-//       MessageBoxImage.Error   (also covers Hand/Stop - same underlying value 16)
-//       MessageBoxImage.Warning (also covers Exclamation - same underlying value 32)
-//       MessageBoxImage.Information (also covers Asterisk - same underlying value 64)
-//       MessageBoxImage.Question
-//       (default/None -> generic message icon, same as the old Icon.None fallback)
-//     WPF's MessageBoxButton enum (OK/OKCancel/YesNo/YesNoCancel) already matches the old
-//     WinForms MessageBoxButtons 1:1 by name, so SetupButtons' switch is otherwise
-//     unchanged.
-//   - No more `using System.Windows.Forms;` (was only present in the old file to
-//     disambiguate System.Windows.Controls.Button from System.Windows.Forms.Button; this
-//     project has no WinForms reference, so plain `Button`/`new Button` is unambiguous).
+//   - EnhancedDragDropHelper.EnableWindowDrag(this) -> a dedicated header drag handler
+//     (HeaderPanel_MouseLeftButtonDown, wired from GLMessageWindow.xaml's HeaderPanel
+//     DockPanel), matching the pattern GLWaitWindow.xaml.cs already established when it
+//     was ported (this project has no Helpers\EnhancedDragDropHelper.cs at all - verified
+//     via search before this pass - so FinalWorkingCode's own drag-helper call could not be
+//     carried over verbatim; the plan brief's note that this helper "already exists in
+//     AIPowered" does not hold, see the pilot-2 task report for details). Kept
+//     FinalWorkingCode's own handler name (HeaderPanel_MouseLeftButtonDown) rather than
+//     GLWaitWindow's TitleBar_MouseLeftButtonDown, per the brief's own guidance that this
+//     window's naming convention is independently valid.
+//   - Constructor signature kept as this project's own WPF System.Windows.MessageBoxImage/
+//     MessageBoxButton enums (NOT FinalWorkingCode's WinForms System.Windows.Forms.
+//     MessageBoxIcon/MessageBoxButtons) - this project has no System.Windows.Forms
+//     reference, and Utilities\CommonFunctions.cs's GLSenseMessage (the sole call site)
+//     already calls this constructor with the WPF enums today. This was already true
+//     before this porting pass and is unchanged by it; see the pilot-2 task report for why
+//     the plan brief's claim that FinalWorkingCode's WinForms-typed signature "already
+//     matches AIPowered's current constructor exactly" does not hold literally (the enum
+//     VALUE names match 1:1 - Error/Warning/Information/Question and OK/OKCancel/YesNo/
+//     YesNoCancel - which is what actually matters for the switch logic below; only the
+//     enum TYPES differ).
+//   - No `using System.Windows.Forms;` (this project has no WinForms reference at all, so
+//     plain `Button`/`new Button` is unambiguous without it).
 using GLSense.Addin.Core.Infrastructure;
 using MahApps.Metro.IconPacks;
 using System;
@@ -57,7 +60,7 @@ namespace GLSense.Addin.Core.Views
             SetupButtons(buttons);
         }
 
-        private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        private void HeaderPanel_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             try
             {
@@ -68,7 +71,7 @@ namespace GLSense.Addin.Core.Views
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, "TitleBar_MouseLeftButtonDown error");
+                ServiceLocator.Logger?.LogException(ex, "HeaderPanel_MouseLeftButtonDown error");
             }
         }
 

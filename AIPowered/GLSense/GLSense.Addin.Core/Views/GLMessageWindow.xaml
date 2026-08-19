@@ -7,27 +7,20 @@
                   xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   mc:Ignorable="d"
-                  WindowCaption="Orbit GLSense"
-                  IconSymbol="CircleInfoSolid"
                   WindowStartupLocation="CenterOwner"
                   ResizeMode="CanResize"
                   SizeToContent="WidthAndHeight"
                   MinHeight="165" MaxHeight="500"
                   MinWidth="400" MaxWidth="620"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
-                  ShowInTaskbar="False">
+                  WindowStyle="None" Background="#F8F9FA"
+                  AllowsTransparency="false" ShowInTaskbar="False" Topmost="False" ShowActivated="True">
 
     <!--
-    Port of GLSense\Views\GLMessageWindow.xaml (FinalWorkingCode) - resolves the TODO in
-    Utilities\CommonFunctions.cs's GLSenseMessage (was a plain WPF MessageBox.Show fallback
-    pending this view's migration). Content layout (icon + scrollable message text + a
-    right-aligned button row built dynamically in code-behind per MessageBoxButton) is a
-    straight port of the old window's Border/DockPanel content. The title bar, however,
-    uses this project's standard TitleBarGridStyle/TitleBarIconStyle/TitleBarTextStyle/
-    CloseButtonStyle idiom (see GLDailyRates.xaml/GLWaitWindow.xaml) instead of the old
-    window's bespoke HeaderPanel, since that idiom already gives BaseWindow-derived windows
-    consistent drag/close behavior in this project.
+    Wholesale port of GLSense\Views\GLMessageWindow.xaml (FinalWorkingCode) as part of the
+    WPF-UI removal/sync pass (pilot window 2) - replaces this project's earlier
+    TitleBarGridStyle/TitleBarIconStyle/TitleBarTextStyle/TitleBarCloseButtonStyle header
+    idiom with FinalWorkingCode's own bespoke DockPanel-based HeaderPanel (see
+    GLMessageWindow.xaml.cs's own header comment for the code-behind side of this).
     -->
 
     <Window.Resources>
@@ -35,78 +28,82 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <Style TargetType="ScrollBar">
+                <Setter Property="Background" Value="#E0E0E0"/>
+            </Style>
+            <Style TargetType="Thumb">
+                <Setter Property="Background" Value="#9E9E9E"/>
+                <Setter Property="BorderBrush" Value="#757575"/>
+                <Setter Property="BorderThickness" Value="1"/>
+            </Style>
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <Grid>
+        <Border Background="White" CornerRadius="10" BorderBrush="#D1D5DB" BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect ShadowDepth="0" BlurRadius="15" Opacity="0.25" Color="Black"/>
+            </Border.Effect>
+            <DockPanel LastChildFill="True">
+                <!-- Header -->
+                <DockPanel x:Name="HeaderPanel" DockPanel.Dock="Top" Background="#2E86AB" Height="40" LastChildFill="True" MouseLeftButtonDown="HeaderPanel_MouseLeftButtonDown">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <iconPacks:PackIconFontAwesome Kind="MessageSolid" Style="{StaticResource MediumIcon}" Margin="6,4,0,0" />
+                            <TextBlock Text="Orbit GLSense" Style="{StaticResource TitleHeaderTextBlock}"/>
+                        </StackPanel>
+                        <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click" Margin="0,0,10,0"/>
+                    </Grid>
+                </DockPanel>
+                <!-- Content -->
+                <Border Margin="10" Background="White" CornerRadius="4">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <!-- Content takes available space so footer can sit at the bottom when window
+                                 is larger than the content (e.g. due to MinHeight). -->
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="Orbit GLSense" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+                        <!-- Icon -->
+                        <iconPacks:PackIconFontAwesome x:Name="MsgIcon" Grid.Row="0" Grid.Column="0" Width="28" Height="28" Margin="0,-2,15,0" VerticalAlignment="Top"/>
 
-        <!-- Content -->
-        <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" Padding="16">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <!-- Auto (not *) so this row - which holds the message content that
-                         actually drives the window's SizeToContent height - is measured
-                         correctly. A bare "*" row collapses toward 0 during
-                         SizeToContent's infinite-availSize measurement pass (the
-                         opposite of DataGridColumn "*" behavior), which was causing the
-                         window to render with far more blank space than the message
-                         needed until a manual resize forced a real remeasure. -->
-                    <RowDefinition Height="Auto"/>
-                    <!-- Empty spacer - safe to be "*" since it has no content driving
-                         size off of it; this is what lets the button row sit at the
-                         bottom when the window is taller than the content needs (e.g.
-                         due to MinHeight). -->
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
+                        <!-- Message Text with ScrollViewer - Height will be auto-sized -->
+                        <ScrollViewer x:Name="MsgScrollViewer"
+                                Grid.Row="0" Grid.Column="1"
+                                VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Disabled"
+                                MaxHeight="350"
+                                Margin="0,0,0,12">
+                            <TextBlock x:Name="MsgText"
+                                TextWrapping="Wrap"
+                                FontSize="14"
+                                Foreground="#212529"
+                                FontFamily="Segoe UI"
+                                LineHeight="1.2"/>
+                        </ScrollViewer>
 
-                <!-- Icon -->
-                <iconPacks:PackIconFontAwesome x:Name="MsgIcon" Grid.Row="0" Grid.Column="0" Width="28" Height="28" Margin="0,-2,15,0" VerticalAlignment="Top"/>
-
-                <!-- Message Text -->
-                <ScrollViewer x:Name="MsgScrollViewer"
-                        Grid.Row="0" Grid.Column="1"
-                        VerticalScrollBarVisibility="Auto"
-                        HorizontalScrollBarVisibility="Disabled"
-                        MaxHeight="350"
-                        Margin="0,0,0,12">
-                    <TextBlock x:Name="MsgText"
-                        TextWrapping="Wrap"
-                        FontSize="14"
-                        Foreground="{StaticResource TextPrimaryBrush}"
-                        FontFamily="Segoe UI"
-                        LineHeight="1.2"/>
-                </ScrollViewer>
-
-                <!-- Buttons -->
-                <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="0,8,0,0" HorizontalAlignment="Stretch">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel x:Name="ButtonPanel" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"/>
-                </Grid>
-            </Grid>
+                        <!-- Buttons -->
+                        <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,8,0,0" HorizontalAlignment="Stretch">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel x:Name="ButtonPanel" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </DockPanel>
         </Border>
     </Grid>
 </views:BaseWindow>
