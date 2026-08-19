@@ -408,6 +408,7 @@ namespace GLSense.Addin.Core.Views
         private double _initialMaxWidth = double.NaN;
         private double _initialMaxHeight = double.NaN;
         private double _initialMinHeight = double.NaN;
+        private DispatcherTimer _resizeSettleTimer;
 
         public bool EnableAutoLayoutRefresh { get; set; } = true;
         public bool EnableExcelCentering { get; set; } = true;
@@ -967,6 +968,41 @@ namespace GLSense.Addin.Core.Views
             if (double.IsPositiveInfinity(maxWidth))
                 return double.PositiveInfinity;
             return maxWidth + 200;
+        }
+
+        // Content that grows/shrinks AFTER the window is already shown (e.g. a DataGrid
+        // populating asynchronously well past initial load) fires RenderSizeChanged, not
+        // SourceInitialized/WM_DPICHANGED - neither of which OnSourceInitialized/
+        // AdjustForDpiChange's own FitToAvailableWorkArea calls are reached by. Without
+        // this, a window whose content grows post-show would render past its intended
+        // Max bounds/off-center until the user manually resized it or a DPI change
+        // happened to fire. Debounced (120ms) since a DataGrid can raise many
+        // back-to-back RenderSizeChanged events while its rows populate - reacting to
+        // every single one would make the window visibly "dance" (resize/reposition more
+        // than once in quick succession) instead of settling once, quietly, after
+        // rendering goes quiet.
+        protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+        {
+            base.OnRenderSizeChanged(sizeInfo);
+
+            if (DisableAutoSizing || !AutoClampToWorkArea)
+                return;
+
+            _resizeSettleTimer?.Stop();
+            _resizeSettleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+            _resizeSettleTimer.Tick += (s, e) =>
+            {
+                _resizeSettleTimer.Stop();
+                try
+                {
+                    FitToAvailableWorkArea();
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnRenderSizeChanged (debounced clamp) error");
+                }
+            };
+            _resizeSettleTimer.Start();
         }
 
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
