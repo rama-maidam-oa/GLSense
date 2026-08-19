@@ -108,6 +108,7 @@ namespace GLSense.Addin.Core.Views
                 this.SourceInitialized += OnSourceInitialized;
                 this.Loaded += OnLoaded;
                 this.Closed += RestoreOwnerFocusOnClosed;
+                this.KeyDown += BaseWindow_KeyDown;
 
                 MouseWheelFocusHelper.EnableHoverToScroll(this);
 
@@ -132,9 +133,13 @@ namespace GLSense.Addin.Core.Views
             if (e.Key == Key.Escape && IsInteractionOverlayVisible())
             {
                 e.Handled = true;
-                return;
             }
+        }
 
+        // Bubbling (not tunneling) - fires only after every child control has had a chance
+        // to mark the key handled for its own purpose (closing a dropdown, canceling a cell edit).
+        private void BaseWindow_KeyDown(object sender, KeyEventArgs e)
+        {
             if (!e.Handled && e.Key == Key.Escape && EnableEscapeToClose)
             {
                 e.Handled = true;
@@ -373,9 +378,9 @@ namespace GLSense.Addin.Core.Views
             try
             {
                 var scaleFactor = newDpi / 96.0;
-                _currentScaleFactor = scaleFactor;
 
                 ApplyScaleTransform(scaleFactor);
+                _currentScaleFactor = scaleFactor;
 
                 if (lParam != IntPtr.Zero)
                 {
