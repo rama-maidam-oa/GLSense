@@ -45,8 +45,22 @@
              wiring kept as this project's own pre-existing TitleBar_MouseLeftButtonDown
              handler (see .xaml.cs) rather than FinalWorkingCode's
              EnhancedDragDropHelper.EnableWindowDrag(this), which doesn't exist in this
-             project (same reasoning as GLWaitWindow/GLMessageWindow's ports). -->
-        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+             project (same reasoning as GLWaitWindow/GLMessageWindow's ports).
+
+             Margin="10,10,10,0": FinalWorkingCode's own file achieves this same 10px inset by
+             wrapping its ENTIRE root Grid (header + middle content + both footers) in a single
+             Margin="10" - the header there has no margin of its own because the inset comes
+             from its parent. AIPowered's RootGrid here is NOT margined the same way (Row 1's
+             middle-content Grid and both footer Borders already carry their own explicit
+             Margin="10..."/"...,10,...,..." insets tuned independently) - adding Margin="10" to
+             RootGrid itself would double-inset every one of those and misalign everything the
+             opposite direction. Giving the header Border this same 10px left/top/right inset
+             directly (bottom=0, since Row 1's own top margin already supplies the gap to the
+             next row) reproduces FinalWorkingCode's visual result - rounded corners inset from
+             the square WindowStyle="None" edge, left/right edges aligned with every content
+             card below it - without restructuring the rest of this file's already-tuned,
+             per-row margins. -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" Margin="10,10,10,0" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
