@@ -147,9 +147,6 @@ namespace GLSense.Addin.Core
 
                 // Ensure WPF Application exists - ONLY CALL THIS ONCE
                 WpfAppManager.EnsureApplication();
-                //Implementing WPF-UI Bootstrapper
-                WpfUiBootstrapper.Initialize();
-                WpfUiBootstrapper.SetLightTheme();
 
                 // Check if ribbon controller is already available
                 if (ServiceLocator.RibbonController != null)

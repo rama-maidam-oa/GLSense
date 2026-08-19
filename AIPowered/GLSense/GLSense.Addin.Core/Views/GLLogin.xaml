@@ -4,7 +4,6 @@
                   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                   xmlns:local="clr-namespace:GLSense.Addin.Core.Views"
-                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                   xmlns:Controls="clr-namespace:GLSense.Addin.Core.Controls"
                   xmlns:wpf="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
                   xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
