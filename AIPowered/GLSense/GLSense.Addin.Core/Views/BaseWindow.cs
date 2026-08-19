@@ -36,15 +36,19 @@ namespace GLSense.Addin.Core.Views
         public double WorkAreaMargin { get; set; } = 24d;
         public bool ModalToExcel { get; set; } = true;
 
-        // Compat no-op: WPF-UI's FluentWindow declared this DP to extend window content
-        // into its own custom title-bar chrome. BaseWindow no longer derives from
-        // FluentWindow and never rendered that chrome to begin with, so this does
-        // nothing - it exists purely because ~26 not-yet-ported windows' XAML sets
-        // ExtendsContentIntoTitleBar="True" directly on their <views:BaseWindow> root
-        // tag, and XAML markup compilation (MC3072) fails for any attribute that isn't a
-        // real property on the tag's type. Remove this once every window has been ported
-        // away from setting it (grep for "ExtendsContentIntoTitleBar" across Views/*.xaml
-        // before deleting - same removal pattern as IconSymbol/WindowCaption).
+        // Compat shim: under WPF-UI's old FluentWindow base class, this DP actively
+        // suppressed the native Windows title bar via WindowChrome so the window's own
+        // custom header (TitleBarGridStyle) could be the only visible caption/chrome.
+        // BaseWindow no longer derives from FluentWindow, and plain Window has no
+        // equivalent built-in mechanism - so without OnInitialized's handling below, every
+        // one of the ~23 not-yet-ported windows (which all set
+        // WindowStyle="SingleBorderWindow" + ExtendsContentIntoTitleBar="True" + their own
+        // custom header row) would show a NATIVE Windows caption bar stacked directly above
+        // their own custom header, both showing the title. See OnInitialized for the actual
+        // fix. Remove this (and OnInitialized's handling of it) once every window has been
+        // individually ported to set WindowStyle="None" itself in its own XAML (grep for
+        // "ExtendsContentIntoTitleBar" across Views/*.xaml before deleting - same removal
+        // pattern as IconSymbol/WindowCaption).
         public bool ExtendsContentIntoTitleBar { get; set; }
 
         public bool CenterInExcel { get; set; } = true;
@@ -120,6 +124,28 @@ namespace GLSense.Addin.Core.Views
             }
         }
 
+        protected override void OnInitialized(EventArgs e)
+        {
+            base.OnInitialized(e);
+
+            // Compat shim for not-yet-ported windows: under WPF-UI's old FluentWindow base
+            // class, ExtendsContentIntoTitleBar="True" actively suppressed the native title
+            // bar via WindowChrome. Under plain Window there's no equivalent mechanism, so
+            // without this, every window still setting this flag (all ~23 not yet ported to
+            // their own WindowStyle="None" header) would show a native Windows caption bar
+            // stacked above their own custom TitleBarGridStyle header. Switching WindowStyle
+            // to None here matches exactly what the already-ported pilot windows
+            // (GLWaitWindow, GLMessageWindow, GLSegmentValues) do natively in their own XAML
+            // - this is the real target end-state, not a workaround. Remove this override
+            // once every window has been individually ported to set WindowStyle="None"
+            // itself (grep for "ExtendsContentIntoTitleBar" across Views/*.xaml before
+            // deleting).
+            if (ExtendsContentIntoTitleBar && WindowStyle == WindowStyle.SingleBorderWindow)
+            {
+                WindowStyle = WindowStyle.None;
+            }
+        }
+
         // Dismisses the shared toast overlay (if any AppOverlay is visible on this window)
         // on any click/keypress/text input anywhere in the window - ported from
         // DpiAwareWindow, a genuine missing feature vs. AIPowered's previous BaseWindow.
@@ -168,12 +194,12 @@ namespace GLSense.Addin.Core.Views
         {
             try
             {
-                if (FindName("AppOverlayControl") is FrameworkElement overlay)
-                {
-                    var isBusy = overlay.GetType().GetProperty("IsBusyVisible")?.GetValue(overlay) as bool? ?? false;
-                    var isConfirm = overlay.GetType().GetProperty("IsConfirmVisible")?.GetValue(overlay) as bool? ?? false;
-                    return isBusy || isConfirm;
-                }
+                // AppOverlay lives in this same assembly/namespace, so a direct typed check
+                // is used instead of reflection-by-property-name (which DismissActiveToast
+                // above still needs, since AppOverlay's DismissToast is only reachable via
+                // a method lookup there for unrelated reasons - left as-is).
+                if (FindName("AppOverlayControl") is AppOverlay overlay)
+                    return overlay.IsBusyVisible || overlay.IsConfirmVisible;
             }
             catch (Exception ex)
             {
@@ -501,12 +527,130 @@ namespace GLSense.Addin.Core.Views
                 MaxWidth = Math.Min(MaxWidth, availableWidth);
                 MaxHeight = Math.Min(MaxHeight, availableHeight);
 
-                if (sizeChanged && EnableExcelCentering && CenterInExcel)
+                // Recenter unconditionally whenever this method itself just changed
+                // Width/Height - NOT gated on EnableExcelCentering/CenterInExcel. Those
+                // flags only govern the one-time CenterOverExcelOnce() initial-placement
+                // pass; they say nothing about whether a window that was already
+                // positioned some other way (e.g. WindowStartupLocation="CenterOwner",
+                // used by GLSegmentValues/GLSegmentRef/GLSegmentManager/
+                // GLBalanceConfigurator, all of which set EnableExcelCentering=false)
+                // should be allowed to silently drift off-center when THIS method resizes
+                // it. A resize always grows/shrinks anchored at the current top-left
+                // corner, so without recentering here, any of those 4 windows would
+                // reintroduce the exact off-center bug CLAUDE.md section 33 already fixed.
+                if (sizeChanged)
+                {
                     RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
+                    ForceFrameRedraw();
+                }
             }
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] FitToAvailableWorkArea error");
+            }
+        }
+
+        // Lighter-weight counterpart to FitToAvailableWorkArea, ported verbatim (aside from
+        // the logging call) from the reference DpiAwareWindow.EnsureFitsWorkArea. Unlike
+        // FitToAvailableWorkArea (meant for initial load - remeasures Content at infinite
+        // available size and rescales via LayoutTransform), this only clamps the window's
+        // already-resolved Width/Height against its own Min/Max bounds - no content
+        // remeasure, no rescale. This is the correct method for OnRenderSizeChanged's
+        // debounced post-show reclamp: a window whose content changes size well after it's
+        // already visible (e.g. AppOverlay.EnsureOwnerWindowRoomForConfirm deliberately
+        // growing Height to fit a confirm popup) should have that new size clamped to fit
+        // the work area, not have its entire content remeasured from scratch and rescaled -
+        // which previously caused the just-grown Height to be measured back down again,
+        // shrinking a popup whose own MaxHeight is bound to a percentage of the window's
+        // Height (see OnRenderSizeChanged's own comment for the full bug history).
+        protected void EnsureFitsWorkArea(double? marginOverride = null)
+        {
+            if (DisableAutoSizing)
+                return;
+
+            var margin = marginOverride ?? WorkAreaMargin;
+            try
+            {
+                double previousLeft = Left;
+                double previousTop = Top;
+                double previousWidth = Width;
+                double previousHeight = Height;
+                bool sizeChanged = false;
+
+                var workArea = SystemParameters.WorkArea;
+
+                var baseMaxWidth = Math.Max(0, workArea.Width - margin);
+                var baseMaxHeight = Math.Max(0, workArea.Height - margin);
+
+                var requestedMaxWidth = GetEffectiveRequestedMaxWidth();
+
+                if (!double.IsPositiveInfinity(requestedMaxWidth))
+                {
+                    baseMaxWidth = Math.Min(baseMaxWidth, requestedMaxWidth);
+                }
+
+                if (MaxWidthCap.HasValue)
+                {
+                    baseMaxWidth = Math.Min(baseMaxWidth, MaxWidthCap.Value);
+                }
+
+                if (MaxHeightCap.HasValue)
+                {
+                    baseMaxHeight = Math.Min(baseMaxHeight, MaxHeightCap.Value);
+                }
+
+                var effectiveMaxWidth = double.IsPositiveInfinity(MaxWidth)
+                    ? baseMaxWidth
+                    : Math.Min(MaxWidth, baseMaxWidth);
+
+                var effectiveMaxHeight = double.IsPositiveInfinity(MaxHeight)
+                    ? baseMaxHeight
+                    : Math.Min(MaxHeight, baseMaxHeight);
+
+                MaxWidth = effectiveMaxWidth;
+                MaxHeight = effectiveMaxHeight;
+
+                if (MinWidth > effectiveMaxWidth)
+                {
+                    MinWidth = effectiveMaxWidth;
+                }
+
+                if (MinHeight > effectiveMaxHeight)
+                {
+                    MinHeight = effectiveMaxHeight;
+                }
+
+                if (Width > effectiveMaxWidth)
+                {
+                    Width = effectiveMaxWidth;
+                    sizeChanged = true;
+                }
+                else if (Width < MinWidth)
+                {
+                    Width = MinWidth;
+                    sizeChanged = true;
+                }
+
+                if (Height > effectiveMaxHeight)
+                {
+                    Height = effectiveMaxHeight;
+                    sizeChanged = true;
+                }
+                else if (Height < MinHeight)
+                {
+                    Height = MinHeight;
+                    sizeChanged = true;
+                }
+
+                if (sizeChanged)
+                {
+                    RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
+                    ForceFrameRedraw();
+                }
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] EnsureFitsWorkArea error");
             }
         }
 
@@ -631,7 +775,15 @@ namespace GLSense.Addin.Core.Views
                 _resizeSettleTimer.Stop();
                 try
                 {
-                    FitToAvailableWorkArea();
+                    // EnsureFitsWorkArea, NOT FitToAvailableWorkArea - the latter remeasures
+                    // Content at infinite available size and rescales via LayoutTransform,
+                    // which is only correct for the INITIAL fit-to-content pass. Calling it
+                    // here (a post-show debounced reclamp) re-measured content from scratch
+                    // and could shrink a size a caller had just deliberately grown (e.g.
+                    // AppOverlay.EnsureOwnerWindowRoomForConfirm growing Height to fit a
+                    // confirm popup) right back down. EnsureFitsWorkArea only clamps the
+                    // already-resolved Width/Height against Min/Max - see its own comment.
+                    EnsureFitsWorkArea();
                 }
                 catch (Exception ex)
                 {
@@ -699,6 +851,12 @@ namespace GLSense.Addin.Core.Views
                     _hwndSource.RemoveHook(WndProc);
                     _hwndSource = null;
                 }
+
+                // Stop the debounced resize-settle timer (OnRenderSizeChanged) so it can't
+                // tick once more and call EnsureFitsWorkArea/ForceFrameRedraw against an
+                // already-closed window.
+                _resizeSettleTimer?.Stop();
+                _resizeSettleTimer = null;
             }
             catch (Exception ex)
             {
@@ -791,6 +949,53 @@ namespace GLSense.Addin.Core.Views
 
         [DllImport("user32.dll")]
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("user32.dll")]
+        private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_FRAMECHANGED = 0x0020;
+
+        private const uint RDW_INVALIDATE = 0x0001;
+        private const uint RDW_ERASE = 0x0004;
+        private const uint RDW_FRAME = 0x0400;
+        private const uint RDW_ALLCHILDREN = 0x0080;
+        private const uint RDW_UPDATENOW = 0x0100;
+
+        // WindowStyle="None" windows still get a DWM-drawn drop shadow around their real
+        // client area, and resizing programmatically (Width/Height set from code, not a
+        // user drag) can leave stale rendering behind at the old edge - see CLAUDE.md
+        // section 1.4d and the reference DpiAwareWindow.ForceFrameRedraw for the original,
+        // screenshot-confirmed defect this fixes. SWP_FRAMECHANGED alone only recomputes
+        // the non-client frame/shadow, not the client area, so RedrawWindow with
+        // INVALIDATE|ERASE|FRAME|ALLCHILDREN|UPDATENOW forces an immediate full
+        // erase-and-repaint regardless of the exact cause. NOMOVE/NOSIZE/NOZORDER/
+        // NOACTIVATE mean this call itself never moves/resizes/activates anything -
+        // Width/Height/Left/Top are already set separately by the caller.
+        private void ForceFrameRedraw()
+        {
+            try
+            {
+                var hwnd = _hwndSource?.Handle ?? IntPtr.Zero;
+                if (hwnd == IntPtr.Zero)
+                    return;
+
+                SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                RedrawWindow(hwnd, IntPtr.Zero, IntPtr.Zero,
+                    RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] ForceFrameRedraw error");
+            }
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT

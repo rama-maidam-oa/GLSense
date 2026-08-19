@@ -67,22 +67,28 @@ namespace GLSense.Addin.Core.Utilities
             // SizeChanged handler itself. Refresh() calls grid.UpdateLayout() (a forced,
             // synchronous re-measure) - running that synchronously from a SizeChanged
             // handler risks it firing WHILE an ancestor is still in the middle of its own
-            // layout pass (e.g. BaseWindow.ForceSizeToContentResettle's three UpdateLayout()
-            // calls, or the nested DispatcherFrame BaseWindow.PumpDispatcherFrame() pushes
-            // right after - which explicitly pumps every operation at Background priority
-            // and above). Reported symptom on GLSegmentManager: window opens, the visible
-            // gap near the title bar's close button briefly appears (the well-known
-            // SizeToContent stale-first-measurement symptom - CLAUDE.md section 1), then
-            // BaseWindow's resettle "adjusts the width to close the gap", and immediately
-            // hangs/crashes Excel - i.e. the hang coincides exactly with the resettle-and-
-            // pump sequence, not with any specific Grid row-structure choice (three
-            // unrelated layout rewrites all still hung). Dispatching at ContextIdle -
-            // strictly below Background - guarantees Refresh() never runs INSIDE that
-            // pump; it simply waits until the dispatcher is genuinely idle, after
-            // ForceSizeToContentResettle/PumpDispatcherFrame have both fully returned.
-            // Matches the priority GLSegmentManager.xaml.cs's own Window_Loaded already
-            // uses for its manual Refresh() calls (DispatcherPriority.ContextIdle) - kept
-            // consistent here so every call site defers the same way.
+            // layout pass.
+            //
+            // Historically (pre-WPF-UI-removal) this mattered because of
+            // BaseWindow.ForceSizeToContentResettle's three UpdateLayout() calls plus the
+            // nested DispatcherFrame BaseWindow.PumpDispatcherFrame() pushed right after -
+            // both removed from this project's BaseWindow along with the FluentWindow base
+            // class. That specific mechanism no longer exists, but the deferral is still
+            // load-bearing for a different, current reason: BaseWindow now has a SEPARATE
+            // auto-sizing mechanism, OnRenderSizeChanged -> (120ms debounce) ->
+            // EnsureFitsWorkArea, which clamps Width/Height and can itself trigger another
+            // layout pass. Running this helper's UpdateLayout()/Width reassignment
+            // synchronously inside a SizeChanged handler risks racing that debounced
+            // reclamp - each could observe the other's in-flight, not-yet-settled layout
+            // and re-trigger itself, in the same "never settles" shape as the original
+            // GLSegmentManager hang this deferral was first added to fix (CLAUDE.md
+            // section 26.3.4/26.3.5). Dispatching at ContextIdle - strictly below the
+            // Background priority BaseWindow's own resize-settle timer and any pending
+            // layout work run at - guarantees Refresh() only ever runs once the dispatcher
+            // is genuinely idle, after any in-flight BaseWindow auto-sizing pass has fully
+            // settled. Matches the priority GLSegmentManager.xaml.cs's own Window_Loaded
+            // already uses for its manual Refresh() calls (DispatcherPriority.ContextIdle)
+            // - kept consistent here so every call site defers the same way.
             grid.Loaded += (s, e) =>
                 grid.Dispatcher.BeginInvoke(new Action(() => Refresh(grid, fillColumn)),
                     System.Windows.Threading.DispatcherPriority.ContextIdle);

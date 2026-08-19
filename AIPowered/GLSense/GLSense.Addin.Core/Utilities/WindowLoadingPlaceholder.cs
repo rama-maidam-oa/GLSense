@@ -111,6 +111,47 @@ namespace GLSense.Addin.Core.Utilities
             return myGeneration;
         }
 
+        /// <summary>
+        /// Pays this placeholder's one-time per-instance HWND-creation/first-paint cost
+        /// (EnsureCreated) during Excel's own ribbon-load idle time, instead of letting it
+        /// happen synchronously the first time any real window's OnSourceInitialized calls
+        /// ShowMatching(). Deferred to ApplicationIdle priority so it never competes with
+        /// anything on the startup critical path - if nothing else is queued, it runs almost
+        /// immediately; if the ribbon/UI is still busy loading, it simply waits its turn.
+        /// Safe to call before Application.Current exists yet (e.g. too early in add-in
+        /// init) - just skips with a warning log in that case, since EnsureCreated needs a
+        /// live WPF Application/Dispatcher to create a Window against.
+        /// </summary>
+        public static void WarmUpInBackground()
+        {
+            var app = System.Windows.Application.Current;
+            if (app == null)
+            {
+                ServiceLocator.Logger?.LogWarn("WindowLoadingPlaceholder.WarmUpInBackground: no Application.Current yet, skipping.");
+                return;
+            }
+
+            try
+            {
+                app.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        EnsureCreated();
+                        ServiceLocator.Logger?.LogDebug("WindowLoadingPlaceholder: warmed up (paid its own first-paint cost off-screen).");
+                    }
+                    catch (Exception ex)
+                    {
+                        ServiceLocator.Logger?.LogException(ex, "WindowLoadingPlaceholder.WarmUpInBackground (inner)");
+                    }
+                }), DispatcherPriority.ApplicationIdle);
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "WindowLoadingPlaceholder.WarmUpInBackground");
+            }
+        }
+
         public static void Hide(int generation)
         {
             try

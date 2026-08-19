@@ -9,10 +9,12 @@
 // GLSegmentRef in the old project - GLSegmentRef itself is out of scope for this pass (see
 // SegmentSelectorViewModel.cs's header comment and Views\GLAccountsRef.xaml.cs's existing
 // EditRequested deferral) - this dialog always constructs the shared ViewModel with
-// windowName="val", exactly like the original. The old RefreshWindowLayout() call (a
-// DpiAwareWindow method that never existed on this project's BaseWindow) is dropped -
-// BaseWindow already re-applies DPI/work-area layout on its own Loaded handler, so no
-// equivalent call is needed here. No other logic changes vs. the original.
+// windowName="val", exactly like the original. The old RefreshWindowLayout() call is
+// dropped here - BaseWindow.RefreshWindowLayout() DOES exist on this project's BaseWindow
+// (added as part of this branch's BaseWindow rewrite, matching the reference
+// DpiAwareWindow's own method of the same name), but BaseWindow already re-applies
+// DPI/work-area layout on its own Loaded/SourceInitialized handlers, so no explicit call
+// to it is needed here. No other logic changes vs. the original.
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using GLSense.Addin.Core.Interfaces;
@@ -47,18 +49,32 @@ namespace GLSense.Addin.Core.Views
             // NOTE: this window does NOT use DataGridColumnFillHelper for Description/
             // Segment (unlike some other windows in this project). That helper exists
             // specifically to work around DataGridColumn Width="*" reporting a huge
-            // desired width when measured with an infinite available width, which only
-            // happens on SizeToContent="WidthAndHeight" windows. This window is
-            // SizeToContent="Manual" with a fixed, explicit Width - it is NEVER measured
-            // with infinite available width, so that bug cannot occur here, and native
-            // DataGridColumn Width="*" (declared directly in XAML on the Description/
-            // Segment columns) works correctly and robustly across scroll/resize/data
-            // reload without any manual recalculation. An earlier attempt to use the
-            // fill-helper here anyway caused the Is-Summary column to render at ~40% on
-            // open and vanish/shift off-screen after scrolling, because the helper's
-            // one-shot Loaded/SizeChanged-driven width calculation went stale relative
-            // to the DataGrid's real (virtualized, scrollbar-affected) layout - switching
-            // to native "*" removes that whole class of timing bug.
+            // desired width when measured with an infinite available width.
+            //
+            // Correction: this window IS measured at infinite width like every other
+            // BaseWindow, at least once - BaseWindow.FitToAvailableWorkArea unconditionally
+            // calls root.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity))
+            // during its initial fit/scale pass, regardless of SizeToContent mode, so the
+            // old "NEVER measured with infinite available width" claim here was false. The
+            // reason native "*" still works fine here isn't that the infinite measure never
+            // happens - it's that this window is SizeToContent="Manual" with a fixed,
+            // explicit Width: FitToAvailableWorkArea's infinite measure is a one-off,
+            // transient calculation used only to derive an initial fit-scale factor, and its
+            // resulting DesiredSize does not drive this window's real Arrange-time width the
+            // way it does for a SizeToContent="WidthAndHeight" window (whose actual rendered
+            // width IS, by definition, re-derived from exactly that infinite-constrained
+            // content measurement on every single layout pass - see
+            // DataGridColumnFillHelper's own header comment). Native DataGridColumn Width="*"
+            // resolves against the DataGrid's real, already-arranged width, which for this
+            // Manual window stays governed by the fixed Width (as clamped/rescaled by
+            // FitToAvailableWorkArea), not by that transient infinite-measure DesiredSize -
+            // so it continues to work correctly and robustly across scroll/resize/data reload
+            // without any manual recalculation. An earlier attempt to use the fill-helper
+            // here anyway caused the Is-Summary column to render at ~40% on open and
+            // vanish/shift off-screen after scrolling, because the helper's one-shot
+            // Loaded/SizeChanged-driven width calculation went stale relative to the
+            // DataGrid's real (virtualized, scrollbar-affected) layout - switching to native
+            // "*" removes that whole class of timing bug.
 
             vm = new SegmentSelectorViewModel(Dispatcher, "val", string.Empty)
             {

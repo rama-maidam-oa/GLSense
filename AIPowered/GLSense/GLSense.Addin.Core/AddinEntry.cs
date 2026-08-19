@@ -148,6 +148,13 @@ namespace GLSense.Addin.Core
                 // Ensure WPF Application exists - ONLY CALL THIS ONCE
                 WpfAppManager.EnsureApplication();
 
+                // Pay WindowLoadingPlaceholder's one-time HWND-creation/first-paint cost now,
+                // during Excel's own ribbon-load idle time (deferred to ApplicationIdle
+                // priority inside WarmUpInBackground itself), rather than letting the very
+                // first real window shown in this Excel session pay it synchronously on its
+                // own OnSourceInitialized/ShowMatching call.
+                WindowLoadingPlaceholder.WarmUpInBackground();
+
                 // Check if ribbon controller is already available
                 if (ServiceLocator.RibbonController != null)
                 {

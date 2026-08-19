@@ -3,8 +3,9 @@
 // SizeToContent="Height" + Auto-rows height fix already made there.
 //
 // Adjustments made when porting into this project's architecture:
-//   - Base class is now BaseWindow (WPF-UI FluentWindow) instead of DpiAwareWindow.
-//     BaseWindow already sets the Excel owner automatically (ServiceLocator.ExcelHandle
+//   - Base class is now BaseWindow (a plain System.Windows.Window - WPF-UI's FluentWindow
+//     base class was removed from this project) instead of DpiAwareWindow. BaseWindow
+//     already sets the Excel owner automatically (ServiceLocator.ExcelHandle
 //     + ModalToExcel), so there is no separate ShowWithOwner()/SetExcelOwner() call here.
 //   - LogUtility.* (static) -> ServiceLocator.Logger.*.
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> a dedicated title-bar drag
