@@ -55,16 +55,6 @@ namespace GLSense.Addin.Core.Views
                         await Dispatcher.InvokeAsync(async () =>
                             await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
                 HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()),
-                // LOVRows gets populated fire-and-forget (LOV_SelectedLedger's setter ->
-                // LoadLovRows() -> Task.Run(LoadLovRowsAsync)), detached from
-                // Window_Loaded's own await chain, so BaseWindow.OnLoaded's SizeToContent
-                // resettle always ran against an empty dgLovs. Resettle again once real
-                // rows are actually in place. See CLAUDE.md section 1.4b.
-                DataLoadedAction = () =>
-                {
-                    ForceSizeToContentResettle();
-                    PumpDispatcherFrame();
-                }
             };
             this.DataContext = vm;
         }

@@ -38,16 +38,6 @@ namespace GLSense.Addin.Core.Views
     {
         private readonly SegmentSelectorViewModel vm;
 
-        // Guards DataLoadedAction below so the window only resettles its SizeToContent size
-        // ONCE, the first time real data lands after the initial async load (its original
-        // purpose - see CLAUDE.md section 1.4b/1.4c). DataLoadedAction is invoked from
-        // SegmentSelectorViewModel.UpdatePagingAndGrid(), which is ALSO the choke point
-        // SelectedItemsRight's setter funnels through - so without this guard, every add/
-        // remove of a value in the right-hand grid during normal interactive use re-triggers
-        // a full window resettle. See GLSegmentManager.xaml.cs's identical fix/comment for
-        // the full writeup (same shared ViewModel, same bug).
-        private bool _hasResettledAfterInitialLoad;
-
         public GLSegmentValues()
         {
             InitializeComponent();
@@ -79,19 +69,6 @@ namespace GLSense.Addin.Core.Views
                         await Dispatcher.InvokeAsync(async () =>
                             await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
                 HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync()),
-                // See CLAUDE.md section 1.4b - dgLeft/dgRight populate fire-and-forget,
-                // detached from Window_Loaded's own await chain. Only resettle the FIRST
-                // time this fires (initial load) - see _hasResettledAfterInitialLoad's
-                // comment above for why later invocations (every right-grid add/remove)
-                // must not re-trigger this.
-                DataLoadedAction = () =>
-                {
-                    if (_hasResettledAfterInitialLoad) return;
-                    _hasResettledAfterInitialLoad = true;
-
-                    ForceSizeToContentResettle();
-                    PumpDispatcherFrame();
-                }
             };
             DataContext = vm;
 

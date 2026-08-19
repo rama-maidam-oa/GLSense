@@ -146,13 +146,6 @@ namespace GLSense.Addin.Core.Views
             ServiceLocator.Logger?.LogDebug("GLAbout.AboutWindow_Loaded invoked");
             // Start compatibility checking
             await CheckInstanceCompatibility();
-
-            // BaseWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
-            // before this async chain populated dgInstances - so it measured an empty
-            // grid. Resettle again now that real rows are in place. See CLAUDE.md
-            // section 1.4b (GLCubeDetails) for the full history of this pattern.
-            ForceSizeToContentResettle();
-            PumpDispatcherFrame();
         }
 
         private async Task CheckInstanceCompatibility()

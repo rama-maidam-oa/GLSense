@@ -1,32 +1,63 @@
-﻿using GLSense.Addin.Core.Helpers;
+using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using GLSense.Addin.Core.Utilities;
 using System;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using Wpf.Ui.Controls;
+using System.Windows.Threading;
 
 namespace GLSense.Addin.Core.Views
 {
-    public abstract class BaseWindow : FluentWindow
+    public abstract class BaseWindow : Window
     {
         private HwndSource _hwndSource;
+        private IntPtr _excelHandle;
+        private bool _ownerSet;
         private double _currentScaleFactor = 1.0;
         private readonly ScaleTransform _dpiScaleTransform = new ScaleTransform(1.0, 1.0);
         private readonly string _windowName;
         private bool _isDragging;
         private Point _dragStartPoint;
-        private IntPtr _excelHandle;
-        private bool _ownerSet;
+        private bool _layoutRefreshPending;
+        private bool _initialLayoutApplied;
+        private double _initialMaxWidth = double.NaN;
+        private double _initialMaxHeight = double.NaN;
+        private double _initialMinHeight = double.NaN;
+        private DispatcherTimer _resizeSettleTimer;
 
         public bool EnableAutoLayoutRefresh { get; set; } = true;
         public bool EnableExcelCentering { get; set; } = true;
         public bool EnableEscapeToClose { get; set; } = true;
         public bool AutoClampToWorkArea { get; set; } = true;
         public double WorkAreaMargin { get; set; } = 24d;
+        public bool ModalToExcel { get; set; } = true;
+
+        // Compat no-op: WPF-UI's FluentWindow declared this DP to extend window content
+        // into its own custom title-bar chrome. BaseWindow no longer derives from
+        // FluentWindow and never rendered that chrome to begin with, so this does
+        // nothing - it exists purely because ~26 not-yet-ported windows' XAML sets
+        // ExtendsContentIntoTitleBar="True" directly on their <views:BaseWindow> root
+        // tag, and XAML markup compilation (MC3072) fails for any attribute that isn't a
+        // real property on the tag's type. Remove this once every window has been ported
+        // away from setting it (grep for "ExtendsContentIntoTitleBar" across Views/*.xaml
+        // before deleting - same removal pattern as IconSymbol/WindowCaption).
+        public bool ExtendsContentIntoTitleBar { get; set; }
+
+        public bool CenterInExcel { get; set; } = true;
+        public double? MaxWidthCap { get; set; } = 1400d;
+        public double? MaxHeightCap { get; set; } = null;
+        public double MinContentScale { get; set; } = 0.85;
+
+        /// <summary>
+        /// When true, completely disables all auto-sizing/clamping/centering logic in this
+        /// class. Use for message boxes/dialogs that must respect user resizing exactly as
+        /// authored, with no fit-to-content or work-area clamping at all.
+        /// </summary>
+        public bool DisableAutoSizing { get; set; } = false;
 
         public string WindowCaption
         {
@@ -34,17 +65,15 @@ namespace GLSense.Addin.Core.Views
             set => Title = value;
         }
 
-        // FontAwesome PackIconFontAwesomeKind name (e.g. "KeySolid") bound to each
-        // window's title-bar iconPacks:PackIconFontAwesome via TitleBarIconStyle - kept
-        // as a plain string (not the enum type) since WPF's binding engine coerces a
-        // string source into an enum-typed target property automatically via the
-        // enum's default TypeConverter, so every derived window can keep just setting
-        // IconSymbol="SomeKind" in XAML like before. Switched from WPF-UI's Symbol
-        // names to FontAwesome Kind names project-wide so every icon in the app comes
-        // from the same, already-proven icon set FinalWorkingCode uses everywhere.
+        // FontAwesome PackIconFontAwesomeKind name (e.g. "KeySolid"), still bound by every
+        // not-yet-ported window's title-bar Grid (Style="{StaticResource TitleBarIconStyle}",
+        // Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=BaseWindow}}").
+        // Ported windows stop using this (they hardcode their own header icon per
+        // FinalWorkingCode's own-header-per-window pattern instead) - kept here only because
+        // ~23 windows still reference it as of this task; remove once every window has been
+        // ported and nothing binds to it any more (grep for "AncestorType=views:BaseWindow"
+        // and "IconSymbol=" across Views/*.xaml before deleting).
         public string IconSymbol { get; set; } = "KeySolid";
-        public bool CenterInExcel { get; set; } = true;
-        public bool ModalToExcel { get; set; } = true;
 
         protected BaseWindow()
         {
@@ -53,14 +82,6 @@ namespace GLSense.Addin.Core.Views
                 _windowName = GetType().Name;
                 ServiceLocator.Logger?.LogDebug($"[{_windowName}] constructing window");
 
-                // Initialize WPF-UI
-                if (!WpfUiBootstrapper.IsInitialized)
-                {
-                    WpfUiBootstrapper.Initialize();
-                    WpfUiBootstrapper.SetLightTheme();
-                }
-
-                // Set up DPI awareness with PerMonitorV2
                 using (DpiAwarenessHelper.SetPerMonitorAware())
                 {
                     this.UseLayoutRounding = true;
@@ -69,68 +90,92 @@ namespace GLSense.Addin.Core.Views
                     RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
                 }
 
-                // Get Excel handle from ServiceLocator
                 try
                 {
                     _excelHandle = ServiceLocator.ExcelHandle;
-                    if (_excelHandle != IntPtr.Zero)
-                    {
-                        ServiceLocator.Logger?.LogDebug($"[{_windowName}] Excel handle obtained from ServiceLocator: {_excelHandle}");
-                    }
-                    else
-                    {
+                    if (_excelHandle == IntPtr.Zero)
                         ServiceLocator.Logger?.LogWarn($"[{_windowName}] Excel handle is IntPtr.Zero from ServiceLocator");
-                    }
                 }
                 catch (Exception ex)
                 {
                     ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] Failed to get Excel handle from ServiceLocator");
                 }
 
-                // Set up events
+                AddHandler(UIElement.PreviewMouseDownEvent, new MouseButtonEventHandler(OnWindowPreviewMouseDown), true);
+                AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(OnWindowPreviewKeyDown), true);
+                AddHandler(UIElement.PreviewTextInputEvent, new TextCompositionEventHandler(OnWindowPreviewTextInput), true);
+
                 this.SourceInitialized += OnSourceInitialized;
                 this.Loaded += OnLoaded;
+                this.Closed += RestoreOwnerFocusOnClosed;
 
-                // See CLAUDE.md section 1.4e. OnLoaded's resettle runs synchronously
-                // inside the Loaded event - i.e. BEFORE ShowDialog()'s nested message
-                // loop has ever painted this window on screen. ForceSizeToContentResettle's
-                // SetWindowPos(SWP_FRAMECHANGED) call (1.4d) only has something to force
-                // Windows/DWM to recompose once the window actually has a first frame on
-                // screen to begin with - calling it pre-paint is a no-op, same as it would
-                // be for a user "clicking the resize border" on a window that isn't even
-                // visible yet. Windows whose own Loaded handler chains an async
-                // continuation (GLAbout/GLJobsMonitor/GLRollerGroups) or fires a
-                // DataLoadedAction callback (GLLOVs/GLSegmentRef/GLSegmentManager/
-                // GLSegmentValues) happen to get a second resettle call for free, always
-                // reached well after first paint - that's an accident of their timing, not
-                // something GLCubeDetails/GLServerConfiguration/GLMessageWindow have.
-                // ContentRendered is the one WPF event guaranteed to fire only after the
-                // window's content has actually been rendered/painted for the first time,
-                // so hooking the SAME resettle there gives every BaseWindow-derived window
-                // a guaranteed post-paint pass without needing a bespoke per-window hook.
-                this.ContentRendered += OnContentRendered;
-
-                // Escape-to-close for every BaseWindow-derived dialog, opt-out via
-                // EnableEscapeToClose (GLWaitWindow sets this false so Cancel is the only
-                // way out). Wired on the bubbling KeyDown (not PreviewKeyDown) and gated on
-                // !e.Handled so a DataGridCell/ComboBox that already consumed Escape for its
-                // own purpose (cancel cell edit, close dropdown) is left alone instead of
-                // also closing the whole window.
-                this.KeyDown += BaseWindow_KeyDown;
-
-                // Ensures mouse wheel scrolling works on hover for every window derived
-                // from this base class - see MouseWheelFocusHelper for the root cause
-                // (harmless no-op here since a shown top-level Window already has focus;
-                // the fix matters for content that's HWND-reparented into a host task
-                // pane, e.g. the Balance Configurator).
                 MouseWheelFocusHelper.EnableHoverToScroll(this);
 
-                ServiceLocator.Logger?.LogDebug($"[{_windowName}] constructor completed with DPI awareness");
+                ServiceLocator.Logger?.LogDebug($"[{_windowName}] constructor completed");
             }
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] constructor error");
             }
+        }
+
+        // Dismisses the shared toast overlay (if any AppOverlay is visible on this window)
+        // on any click/keypress/text input anywhere in the window - ported from
+        // DpiAwareWindow, a genuine missing feature vs. AIPowered's previous BaseWindow.
+        private void OnWindowPreviewMouseDown(object sender, MouseButtonEventArgs e) => DismissActiveToast();
+        private void OnWindowPreviewTextInput(object sender, TextCompositionEventArgs e) => DismissActiveToast();
+
+        private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            DismissActiveToast();
+
+            if (e.Key == Key.Escape && IsInteractionOverlayVisible())
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (!e.Handled && e.Key == Key.Escape && EnableEscapeToClose)
+            {
+                e.Handled = true;
+                ServiceLocator.Logger?.LogDebug($"[{_windowName}] Escape pressed - closing window");
+                this.Close();
+            }
+        }
+
+        private void DismissActiveToast()
+        {
+            try
+            {
+                if (FindName("AppOverlayControl") is FrameworkElement overlay)
+                {
+                    var dismissMethod = overlay.GetType().GetMethod("DismissToast", Type.EmptyTypes);
+                    dismissMethod?.Invoke(overlay, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogDebug($"[{_windowName}] toast dismiss ignored: {ex.Message}");
+            }
+        }
+
+        private bool IsInteractionOverlayVisible()
+        {
+            try
+            {
+                if (FindName("AppOverlayControl") is FrameworkElement overlay)
+                {
+                    var isBusy = overlay.GetType().GetProperty("IsBusyVisible")?.GetValue(overlay) as bool? ?? false;
+                    var isConfirm = overlay.GetType().GetProperty("IsConfirmVisible")?.GetValue(overlay) as bool? ?? false;
+                    return isBusy || isConfirm;
+                }
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogDebug($"[{_windowName}] overlay interaction check ignored: {ex.Message}");
+            }
+
+            return false;
         }
 
         private void OnSourceInitialized(object sender, EventArgs e)
@@ -139,13 +184,8 @@ namespace GLSense.Addin.Core.Views
             {
                 ServiceLocator.Logger?.LogDebug($"[{_windowName}] source initialized");
                 _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
+                _hwndSource?.AddHook(WndProc);
 
-                if (_hwndSource != null)
-                {
-                    _hwndSource.AddHook(WndProc);
-                }
-
-                // Set Excel as owner using ServiceLocator.ExcelHandle
                 if (ModalToExcel && _excelHandle != IntPtr.Zero)
                 {
                     try
@@ -155,7 +195,6 @@ namespace GLSense.Addin.Core.Views
                         {
                             helper.Owner = _excelHandle;
                             _ownerSet = true;
-                            ServiceLocator.Logger?.LogDebug($"[{_windowName}] Excel owner set successfully: {_excelHandle}");
                         }
                     }
                     catch (Exception ex)
@@ -168,9 +207,23 @@ namespace GLSense.Addin.Core.Views
                     ServiceLocator.Logger?.LogWarn($"[{_windowName}] Cannot set Excel owner - handle is IntPtr.Zero");
                 }
 
-                // Get initial DPI
                 _currentScaleFactor = DpiAwarenessHelper.GetWindowDpi(this) / 96.0;
-                ServiceLocator.Logger?.LogDebug($"[{_windowName}] Initial DPI scale: {_currentScaleFactor}");
+
+                // Run the DPI/fit/center pass now, synchronously, while the window still has
+                // no on-screen presence at all (SourceInitialized fires once the HWND exists
+                // but strictly before Show()/ShowDialog() makes it visible) - not later via a
+                // deferred Dispatcher callback, which used to run after the window was
+                // already visible at a stale placeholder size/position, producing a visible
+                // resize/reposition "pop" right on top of the window's first frame.
+                if (!DisableAutoSizing)
+                {
+                    CaptureInitialWindowConstraints();
+                    ApplyLayoutRefresh();
+                }
+
+                int placeholderGen = WindowLoadingPlaceholder.ShowMatching(
+                    Left, Top, ResolveExpectedWidth(), ResolveExpectedHeight(), _excelHandle);
+                HookPlaceholderDismissal(placeholderGen);
             }
             catch (Exception ex)
             {
@@ -178,333 +231,108 @@ namespace GLSense.Addin.Core.Views
             }
         }
 
+        private void HookPlaceholderDismissal(int generation)
+        {
+            if (generation < 0)
+                return;
+
+            void Dismiss(object sender, EventArgs e)
+            {
+                this.ContentRendered -= Dismiss;
+                this.Closed -= Dismiss;
+                WindowLoadingPlaceholder.Hide(generation);
+            }
+
+            this.ContentRendered += Dismiss;
+            this.Closed += Dismiss;
+        }
+
+        private double ResolveExpectedWidth()
+        {
+            if (double.IsNaN(Width) || double.IsInfinity(Width))
+                return double.NaN;
+
+            double w = Width;
+            if (!double.IsNaN(MinWidth)) w = Math.Max(w, MinWidth);
+            if (!double.IsPositiveInfinity(MaxWidth)) w = Math.Min(w, MaxWidth);
+            return w;
+        }
+
+        private double ResolveExpectedHeight()
+        {
+            if (double.IsNaN(Height) || double.IsInfinity(Height))
+                return double.NaN;
+
+            double h = Height;
+            if (!double.IsNaN(MinHeight)) h = Math.Max(h, MinHeight);
+            if (!double.IsPositiveInfinity(MaxHeight)) h = Math.Min(h, MaxHeight);
+            return h;
+        }
+
         private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            ServiceLocator.Logger?.LogDebug($"[{_windowName}] loaded");
+        }
+
+        private void QueueLayoutRefresh(DispatcherPriority priority)
+        {
+            if (_layoutRefreshPending)
+                return;
+
+            _layoutRefreshPending = true;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _layoutRefreshPending = false;
+                ApplyLayoutRefresh();
+            }), priority);
+        }
+
+        private void ApplyLayoutRefresh()
         {
             try
             {
-                ServiceLocator.Logger?.LogDebug($"[{_windowName}] loaded - applying DPI adjustments");
+                if (!EnableAutoLayoutRefresh || DisableAutoSizing)
+                    return;
 
-                // Center in Excel if enabled
-                if (CenterInExcel)
-                {
-                    CenterWindowInExcel();
-                }
-
-                // Apply DPI adjustments
                 AdjustForCurrentDpi();
                 FitToAvailableWorkArea();
 
-                // Ensure window is visible and on top of Excel
-                if (_ownerSet && _excelHandle != IntPtr.Zero)
+                if (EnableExcelCentering && CenterInExcel && !_initialLayoutApplied)
                 {
-                    this.Focus();
-                }
-
-                // SizeToContent windows can settle on a stale/undersized first measurement
-                // (e.g. a gap after the last DataGrid column, or blank space below the
-                // footer) that only corrects itself once the user manually resizes the
-                // window - which forces WPF to fully redo its layout from scratch. Toggling
-                // SizeToContent off and back on has the same effect, so do that once
-                // automatically instead of relying on the user to nudge the window.
-                //
-                // This used to be deferred via Dispatcher.BeginInvoke(..., ContextIdle),
-                // gambling that the dispatcher queue would still be busy long enough (e.g.
-                // from JIT/resource-loading on a "cold" first open of a given window type)
-                // for the ContextIdle callback to fire and fix the layout before the first
-                // frame was actually painted. That worked by luck on a cold first open, but
-                // on a "warm" reopen of the same window (JIT already done, styles already
-                // loaded, far less dispatcher traffic) the window's stale/gappy first layout
-                // pass would win the race and get painted before ContextIdle ever fired -
-                // exactly matching the reported "looks right the first time, distorted/gappy
-                // on close+reopen" symptom, and affecting every window using this base class.
-                //
-                // Fix: run the resettle synchronously right now, then pump a nested
-                // dispatcher frame (WPF's "DoEvents" equivalent - PumpDispatcherFrame below)
-                // so any pending native WM_SIZE/layout work queued as part of it is fully
-                // flushed before this handler returns and the window is actually presented
-                // on screen. This removes the timing race entirely instead of depending on
-                // how busy the dispatcher happens to be on any given open.
-                if (this.SizeToContent != SizeToContent.Manual)
-                {
-                    ForceSizeToContentResettle();
-                    PumpDispatcherFrame();
-                }
-
-                ServiceLocator.Logger?.LogDebug($"[{_windowName}] load complete");
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnLoaded error");
-            }
-        }
-
-        // See CLAUDE.md section 1.4e. Guaranteed to fire only after this window's
-        // content has actually been rendered/painted on screen for the first time -
-        // unlike OnLoaded's own resettle (which runs before that first paint), this one
-        // can actually make SetWindowPos(SWP_FRAMECHANGED) do something, the same way a
-        // user's resize-border click only works on a window that's already visible.
-        // Gives every BaseWindow-derived window a guaranteed post-paint resettle pass
-        // without depending on that window happening to have its own async Loaded
-        // continuation or DataLoadedAction callback landing after paint by accident.
-        private void OnContentRendered(object sender, EventArgs e)
-        {
-            try
-            {
-                if (this.SizeToContent != SizeToContent.Manual)
-                {
-                    ForceSizeToContentResettle();
-                    PumpDispatcherFrame();
+                    _initialLayoutApplied = true;
+                    CenterOverExcelOnce();
                 }
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnContentRendered error");
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] ApplyLayoutRefresh error");
             }
         }
 
-        private void BaseWindow_KeyDown(object sender, KeyEventArgs e)
+        public void RefreshWindowLayout()
         {
             try
             {
-                if (!e.Handled && e.Key == Key.Escape && EnableEscapeToClose)
+                if (DisableAutoSizing)
+                    return;
+
+                if (!Dispatcher.CheckAccess())
                 {
-                    e.Handled = true;
-                    ServiceLocator.Logger?.LogDebug($"[{_windowName}] Escape pressed - closing window");
-                    this.Close();
-                }
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] BaseWindow_KeyDown error");
-            }
-        }
-
-        // Protected (not private): windows whose content genuinely loads asynchronously
-        // after Loaded (e.g. GLCubeDetails' DataGrid, populated many awaits deep inside
-        // its own Loaded handler, well after OnLoaded's own synchronous resettle below
-        // has already run against an empty grid) need to trigger this same resettle
-        // again once their real content is actually in place - see CLAUDE.md section 1
-        // for the full history of this mechanism.
-        protected void ForceSizeToContentResettle()
-        {
-            try
-            {
-                // Capture the position/size the window had before this resettle runs, so
-                // that if the resettle actually changes its rendered size (the whole point
-                // of this method - forcing SizeToContent to regrow/reflow to real content),
-                // we can recenter it afterward instead of leaving Left/Top untouched. A
-                // resize always grows/shrinks anchored at the current top-left corner, so
-                // without this, every resettle call (there are several: once in OnLoaded,
-                // again in OnContentRendered, again from the DPI-change handler for
-                // auto-sized windows) silently drifts the window away from wherever
-                // CenterWindowInExcel originally centered it - the reported "windows not
-                // centered" MSI bug. ActualWidth/ActualHeight (not Width/Height) are used
-                // here since SizeToContent windows don't reliably keep the Width/Height DPs
-                // in sync with their true rendered size.
-                double previousLeft = this.Left;
-                double previousTop = this.Top;
-                double previousWidth = this.ActualWidth > 0 ? this.ActualWidth : this.Width;
-                double previousHeight = this.ActualHeight > 0 ? this.ActualHeight : this.Height;
-
-                var mode = this.SizeToContent;
-                this.SizeToContent = SizeToContent.Manual;
-                this.UpdateLayout();
-
-                // The UpdateLayout() calls here only flush WPF's own logical
-                // measure/arrange tree - they don't reliably force the underlying Win32
-                // HWND to actually resize to match on every machine/timing (WPF's
-                // SizeToContent -> native window resize hookup isn't guaranteed to be
-                // synchronously flushed by InvalidateMeasure/UpdateLayout alone). That's
-                // exactly why windows like GLMessageWindow kept rendering with stale,
-                // oversized chrome (extra blank space beyond the button/content, or a
-                // gap to the right of the close button) even after this method's two
-                // SizeToContent toggles above - until the user's own manual drag-resize
-                // forced a genuine native WM_SIZE round-trip. Nudging Width/Height by a
-                // full pixel (not the sub-pixel 0.1 this used to be - see below) while
-                // SizeToContent is Manual (so the sets actually take effect instead of
-                // being immediately overwritten) forces that same round-trip
-                // programmatically instead of relying on the user to do it.
-                if (this.ActualWidth > 0 && this.ActualHeight > 0)
-                {
-                    // This used to nudge by only +0.1 logical units. At every DPI scale
-                    // factor WPF actually renders at (100%, 125%, 150%...), 0.1 logical
-                    // units rounds to LESS THAN ONE physical device pixel - meaning the
-                    // native HWND's actual on-screen size never changed at all, so this
-                    // "nudge" was likely a near-total no-op at the Win32 level the entire
-                    // time. That lines up exactly with continuing reports that the gap
-                    // persists on windows still relying on this resettle (GLCubeDetails,
-                    // GLServerConfiguration) even after 1.4b/1.4c wired the resettle to
-                    // re-run once real content loads - re-running a no-op still does
-                    // nothing. A full pixel guarantees an actual, measurable device-pixel
-                    // size change regardless of DPI scale.
-                    this.Width = this.ActualWidth + 1.0;
-                    this.Height = this.ActualHeight + 1.0;
-                    this.UpdateLayout();
-                }
-
-                this.SizeToContent = mode;
-                this.UpdateLayout();
-
-                // Belt-and-braces: explicitly force Windows to recompute this window's
-                // non-client frame and let DWM recompose it, WITHOUT moving or resizing
-                // it (SWP_NOMOVE/SWP_NOSIZE) - this is the actual mechanism a user
-                // clicking (not even dragging) the resize border triggers internally via
-                // the modal sizing loop, and is a well-known, more direct way to force a
-                // stale-looking window frame to redraw than hoping a logical WPF
-                // Width/Height nudge produces a large enough physical pixel delta.
-                if (_hwndSource?.Handle != null && _hwndSource.Handle != IntPtr.Zero)
-                {
-                    SetWindowPos(_hwndSource.Handle, IntPtr.Zero, 0, 0, 0, 0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-                }
-
-                if (CenterInExcel)
-                {
-                    double newWidth = this.ActualWidth > 0 ? this.ActualWidth : this.Width;
-                    double newHeight = this.ActualHeight > 0 ? this.ActualHeight : this.Height;
-
-                    if (Math.Abs(newWidth - previousWidth) > 0.5 || Math.Abs(newHeight - previousHeight) > 0.5)
-                    {
-                        RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight, newWidth, newHeight);
-                    }
-                }
-
-                ServiceLocator.Logger?.LogDebug($"[{_windowName}] SizeToContent resettled ({mode})");
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] ForceSizeToContentResettle error");
-            }
-        }
-
-        // WPF's classic "DoEvents" equivalent: pushes a nested dispatcher frame that
-        // processes every pending operation at Background priority and above (which
-        // covers Send/Normal/DataBind/Render/Loaded/Background - i.e. essentially
-        // everything short of the Idle bands) until the frame is told to stop. Used
-        // right after ForceSizeToContentResettle() so the native HWND resize it
-        // triggers is guaranteed to be fully flushed - synchronously, deterministically -
-        // before OnLoaded returns and the window is actually painted on screen, instead
-        // of hoping a deferred ContextIdle callback happens to win a race against the
-        // first paint.
-        protected void PumpDispatcherFrame()
-        {
-            try
-            {
-                var frame = new System.Windows.Threading.DispatcherFrame();
-                this.Dispatcher.BeginInvoke(new Action(() => frame.Continue = false),
-                    System.Windows.Threading.DispatcherPriority.Background);
-                System.Windows.Threading.Dispatcher.PushFrame(frame);
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] PumpDispatcherFrame error");
-            }
-        }
-
-        private void CenterWindowInExcel()
-        {
-            try
-            {
-                if (_excelHandle == IntPtr.Zero)
-                {
-                    ServiceLocator.Logger?.LogWarn("CenterWindowInExcel: Excel handle is IntPtr.Zero");
+                    QueueLayoutRefresh(DispatcherPriority.Background);
                     return;
                 }
 
-                if (!GetWindowRect(_excelHandle, out RECT excelRect))
+                if (Content is FrameworkElement root)
                 {
-                    ServiceLocator.Logger?.LogWarn("CenterWindowInExcel: Failed to get Excel window rect");
-                    return;
+                    root.InvalidateMeasure();
+                    root.InvalidateArrange();
                 }
 
-                // GetWindowRect returns Excel's window rect in physical pixels, but
-                // this.Left/Top/ActualWidth/ActualHeight are all WPF device-independent
-                // units (DIPs). Combining them directly (as this method previously did)
-                // treats the physical-pixel Excel coordinates as if they were already
-                // DIPs - on a monitor at 100% scaling that's harmless (physical pixels
-                // and DIPs are numerically identical there, which is exactly why this
-                // was never caught on a 100%-scaled dev machine), but at any other
-                // scaling (125%/150%, common on business laptops) it positions the
-                // window using inflated coordinates, producing the intermittent
-                // "window not properly centered/appears off" symptom reported for some
-                // users. Convert the physical Excel rect to DIPs using this window's
-                // own current DPI scale (already tracked in _currentScaleFactor, set in
-                // OnSourceInitialized before OnLoaded calls this method) before
-                // combining it with the window's own (already-DIP) width/height.
-                double scale = _currentScaleFactor > 0 ? _currentScaleFactor : 1.0;
-                double excelLeft = excelRect.Left / scale;
-                double excelTop = excelRect.Top / scale;
-                double excelWidth = (excelRect.Right - excelRect.Left) / scale;
-                double excelHeight = (excelRect.Bottom - excelRect.Top) / scale;
-
-                var windowWidth = this.ActualWidth > 0 ? this.ActualWidth : this.Width;
-                var windowHeight = this.ActualHeight > 0 ? this.ActualHeight : this.Height;
-
-                var left = excelLeft + (excelWidth - windowWidth) / 2;
-                var top = excelTop + (excelHeight - windowHeight) / 2;
-
-                left = Math.Max(excelLeft + 10, Math.Min(excelLeft + excelWidth - windowWidth - 10, left));
-                top = Math.Max(excelTop + 10, Math.Min(excelTop + excelHeight - windowHeight - 10, top));
-
-                this.Left = left;
-                this.Top = top;
-
-                ServiceLocator.Logger?.LogDebug($"Centered at Left={left}, Top={top} (scale={scale})");
+                QueueLayoutRefresh(DispatcherPriority.Render);
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, "CenterWindowInExcel error");
-            }
-        }
-
-        /// <summary>
-        /// Recenters the window around the same center point it had before Width/Height
-        /// just changed (in ForceSizeToContentResettle or FitToAvailableWorkArea), instead
-        /// of leaving Left/Top untouched. See ForceSizeToContentResettle's comment for the
-        /// full reasoning - this is the fix for the reported "windows not centered on
-        /// screen" bug in the shipped MSI, ported from FinalWorkingCode's identical fix in
-        /// DpiAwareWindow.cs. Takes explicit before/after width/height (rather than reading
-        /// Width/Height itself) because callers need different sources depending on
-        /// whether SizeToContent is involved: FitToAvailableWorkArea assigns the Width/Height
-        /// DPs directly, while ForceSizeToContentResettle's real size change is only
-        /// reliably observable via ActualWidth/ActualHeight once UpdateLayout() has run.
-        /// </summary>
-        private void RecenterAfterSizeChange(double previousLeft, double previousTop,
-            double previousWidth, double previousHeight, double newWidth, double newHeight)
-        {
-            try
-            {
-                if (double.IsNaN(previousLeft) || double.IsNaN(previousTop) ||
-                    double.IsNaN(previousWidth) || double.IsNaN(previousHeight) ||
-                    previousWidth <= 0 || previousHeight <= 0 ||
-                    double.IsNaN(newWidth) || double.IsNaN(newHeight) ||
-                    newWidth <= 0 || newHeight <= 0)
-                {
-                    return;
-                }
-
-                double centerX = previousLeft + (previousWidth / 2.0);
-                double centerY = previousTop + (previousHeight / 2.0);
-
-                double newLeft = centerX - (newWidth / 2.0);
-                double newTop = centerY - (newHeight / 2.0);
-
-                // Clamp so recentering never pushes the window off the visible work area
-                // (e.g. if the old center point was near a screen edge).
-                var workArea = SystemParameters.WorkArea;
-                if (newWidth < workArea.Width)
-                    newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - newWidth));
-                if (newHeight < workArea.Height)
-                    newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - newHeight));
-
-                this.Left = newLeft;
-                this.Top = newTop;
-
-                ServiceLocator.Logger?.LogDebug($"[{_windowName}] Recentered after size change: Left={newLeft}, Top={newTop}");
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] RecenterAfterSizeChange error");
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] RefreshWindowLayout error");
             }
         }
 
@@ -513,45 +341,16 @@ namespace GLSense.Addin.Core.Views
             try
             {
                 const int WM_DPICHANGED = 0x02E0;
-                const int WM_ACTIVATE = 0x0006;
-                const int WA_ACTIVE = 1;
-                const int WA_CLICKACTIVE = 2;
 
-                switch (msg)
+                if (msg == WM_DPICHANGED && !DisableAutoSizing)
                 {
-                    case WM_DPICHANGED:
-                        var newDpi = (uint)wParam;
-                        AdjustForDpiChange(newDpi, lParam);
-                        handled = true;
-                        break;
-
-                    case WM_ACTIVATE:
-                        if ((int)wParam == WA_ACTIVE || (int)wParam == WA_CLICKACTIVE)
-                        {
-                            if (_ownerSet && _excelHandle != IntPtr.Zero)
-                            {
-                                this.Dispatcher.BeginInvoke(new Action(() =>
-                                {
-                                    try
-                                    {
-                                        if (this.IsVisible && !this.IsActive)
-                                        {
-                                            this.Focus();
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        ServiceLocator.Logger?.LogDebug($"WM_ACTIVATE handler error: {ex.Message}");
-                                    }
-                                }), System.Windows.Threading.DispatcherPriority.Background);
-                            }
-                        }
-                        break;
+                    AdjustForDpiChange((uint)wParam, lParam);
+                    handled = true;
                 }
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, $"WndProc error for msg {msg}");
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] WndProc error for msg {msg}");
             }
 
             return IntPtr.Zero;
@@ -562,11 +361,10 @@ namespace GLSense.Addin.Core.Views
             try
             {
                 _currentScaleFactor = DpiAwarenessHelper.GetWindowDpi(this) / 96.0;
-                ServiceLocator.Logger?.LogDebug($"[{_windowName}] Current DPI scale: {_currentScaleFactor}");
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, "AdjustForCurrentDpi error");
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] AdjustForCurrentDpi error");
             }
         }
 
@@ -577,204 +375,266 @@ namespace GLSense.Addin.Core.Views
                 var scaleFactor = newDpi / 96.0;
                 _currentScaleFactor = scaleFactor;
 
-                if (Content is FrameworkElement element)
-                {
-                    if (Math.Abs(scaleFactor - 1.0) > 0.001)
-                    {
-                        _dpiScaleTransform.ScaleX = scaleFactor;
-                        _dpiScaleTransform.ScaleY = scaleFactor;
-                        element.LayoutTransform = _dpiScaleTransform;
-                        element.InvalidateMeasure();
-                    }
-                    else
-                    {
-                        element.LayoutTransform = Transform.Identity;
-                    }
-                }
+                ApplyScaleTransform(scaleFactor);
 
                 if (lParam != IntPtr.Zero)
                 {
                     var rect = Marshal.PtrToStructure<RECT>(lParam);
-                    bool autoSized = this.SizeToContent != SizeToContent.Manual;
+
                     this.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         try
                         {
                             this.Left = rect.Left / scaleFactor;
                             this.Top = rect.Top / scaleFactor;
-
-                            // For SizeToContent windows, forcing Width/Height from Windows'
-                            // suggested DPI rect here "freezes" the window at whatever
-                            // intermediate size it happened to be measured at when this
-                            // (very common, near-immediate-on-open) DPI notification arrived -
-                            // overriding SizeToContent's own natural, content-fit measurement.
-                            // That is exactly what caused windows to open with a stale/wrong
-                            // size (a gap after the last DataGrid column, or blank space below
-                            // the footer) that only self-corrected once the user manually
-                            // resized the window and forced a fresh layout pass. Leaving
-                            // Width/Height alone here lets SizeToContent re-measure at the new
-                            // DPI scale on its own (the LayoutTransform update above already
-                            // invalidates measure), which produces the correct size the first
-                            // time instead of only after a later, unrelated resize.
-                            if (!autoSized)
-                            {
-                                this.Width = rect.Width / scaleFactor;
-                                this.Height = rect.Height / scaleFactor;
-
-                                // Windows' suggested rect (above) only keeps the window under
-                                // the cursor/at the same relative position during a DPI change
-                                // - it has no idea about our own MaxWidthCap/content-fit rules,
-                                // so a window dragged from a large, high-res monitor onto a
-                                // smaller/lower-res one at a different scale can land larger
-                                // than the new monitor's work area. Re-run the same clamp pass
-                                // OnLoaded already does, so a live cross-monitor drag ends up
-                                // exactly as constrained as a fresh open on that monitor would
-                                // be. Ported from FinalWorkingCode's identical fix.
-                                FitToAvailableWorkArea();
-                            }
-                            else
-                            {
-                                // The LayoutTransform + InvalidateMeasure() applied above only
-                                // flush WPF's own logical measure/arrange tree - exactly the
-                                // same category of problem ForceSizeToContentResettle()/
-                                // PumpDispatcherFrame() were built to fix for the initial-open
-                                // case in OnLoaded (a logical invalidate that never reliably
-                                // forces a genuine native HWND resize on its own). This add-in
-                                // only applies Per-Monitor-V2 DPI awareness to a scoped thread
-                                // context (see DpiAwarenessHelper.SetPerMonitorAware(), since
-                                // Excel's own process isn't PMv2-manifested), so on any monitor
-                                // running above 100% scaling (125%/150% - the norm on most
-                                // business laptops) WM_DPICHANGED can fire moments after
-                                // OnLoaded's own resettle already completed, silently
-                                // re-collapsing the window back to a stale measurement and
-                                // reproducing the exact "gap until a manual resize" symptom -
-                                // this time driven by the DPI change notification instead of
-                                // the original "*" row measurement bug. Re-running the same
-                                // resettle here (which OnLoaded doesn't repeat, since
-                                // WM_DPICHANGED can arrive well after Loaded has already fired)
-                                // closes that gap instead of waiting for the user to resize.
-                                ForceSizeToContentResettle();
-                                PumpDispatcherFrame();
-                            }
+                            this.Width = rect.Width / scaleFactor;
+                            this.Height = rect.Height / scaleFactor;
+                            FitToAvailableWorkArea();
                         }
                         catch (Exception ex)
                         {
-                            ServiceLocator.Logger?.LogException(ex, "AdjustForDpiChange resize error");
+                            ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] AdjustForDpiChange (resize) error");
                         }
                     }));
                 }
-
-                ServiceLocator.Logger?.LogDebug($"[{_windowName}] DPI changed to {newDpi}, scale: {scaleFactor}");
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, "AdjustForDpiChange error");
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] AdjustForDpiChange error");
+            }
+        }
+
+        private void ApplyScaleTransform(double scaleFactor)
+        {
+            if (Content is not FrameworkElement element)
+                return;
+
+            if (Math.Abs(scaleFactor - 1.0) < 0.001)
+            {
+                element.LayoutTransform = Transform.Identity;
+                return;
+            }
+
+            if (Math.Abs(scaleFactor - _currentScaleFactor) < 0.001)
+                return;
+
+            try
+            {
+                _dpiScaleTransform.ScaleX = scaleFactor;
+                _dpiScaleTransform.ScaleY = scaleFactor;
+                element.LayoutTransform = _dpiScaleTransform;
+                element.InvalidateMeasure();
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] ApplyScaleTransform error");
             }
         }
 
         private void FitToAvailableWorkArea()
         {
-            if (!AutoClampToWorkArea)
+            if (!AutoClampToWorkArea || DisableAutoSizing)
                 return;
 
             try
             {
+                if (Content is not FrameworkElement root)
+                    return;
+
                 var workArea = SystemParameters.WorkArea;
                 var availableWidth = Math.Max(0, workArea.Width - (WorkAreaMargin * 2));
                 var availableHeight = Math.Max(0, workArea.Height - (WorkAreaMargin * 2));
 
-                if (this.MaxWidthCap.HasValue)
-                    availableWidth = Math.Min(availableWidth, this.MaxWidthCap.Value);
-                if (this.MaxHeightCap.HasValue)
-                    availableHeight = Math.Min(availableHeight, this.MaxHeightCap.Value);
+                var requestedMaxWidth = GetEffectiveRequestedMaxWidth();
+                if (!double.IsPositiveInfinity(requestedMaxWidth))
+                    availableWidth = Math.Min(availableWidth, requestedMaxWidth);
 
-                // Take the smaller of the screen-derived limit and whatever MaxWidth/
-                // MaxHeight the window itself already declares in XAML (e.g.
-                // GLCubeDetails' MaxWidth="750" MaxHeight="650"). Unconditionally
-                // assigning here used to blow those tighter, author-chosen caps away
-                // with the much larger screen work-area size (or the 1400 default
-                // MaxWidthCap), which is why SizeToContent windows appeared to ignore
-                // their declared Min/Max and grow past the intended bounds - e.g.
-                // GLCubeDetails expanding off-screen once its DataGrid populated with
-                // long ledger names, since nothing smaller than ~1400px/screen-height
-                // was left to stop it.
-                this.MaxWidth = Math.Min(this.MaxWidth, availableWidth);
-                this.MaxHeight = Math.Min(this.MaxHeight, availableHeight);
+                if (MaxWidthCap.HasValue)
+                    availableWidth = Math.Min(availableWidth, MaxWidthCap.Value);
+                if (MaxHeightCap.HasValue)
+                    availableHeight = Math.Min(availableHeight, MaxHeightCap.Value);
 
-                double previousLeft = this.Left;
-                double previousTop = this.Top;
-                double previousWidth = this.Width;
-                double previousHeight = this.Height;
+                root.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                var desiredWidth = root.DesiredSize.Width;
+                var desiredHeight = root.DesiredSize.Height;
+
+                if (!double.IsNaN(_initialMinHeight) && _initialMinHeight > 0)
+                    desiredHeight = Math.Max(desiredHeight, _initialMinHeight);
+
+                if (desiredWidth <= 0 || desiredHeight <= 0)
+                    return;
+
+                var rawScale = Math.Min(availableWidth / desiredWidth, availableHeight / desiredHeight);
+                var fitScale = Math.Min(1.0, rawScale);
+
+                if (MinContentScale > 0 && fitScale < MinContentScale)
+                    fitScale = MinContentScale;
+
+                ApplyScaleTransform(fitScale);
+
+                var targetWidth = Math.Min(desiredWidth * fitScale, availableWidth);
+                var targetHeight = Math.Min(desiredHeight * fitScale, availableHeight);
+
+                double previousLeft = Left;
+                double previousTop = Top;
+                double previousWidth = Width;
+                double previousHeight = Height;
                 bool sizeChanged = false;
 
-                if (this.Width > availableWidth)
+                if (targetWidth > 0 && (double.IsNaN(previousWidth) || Math.Abs(targetWidth - previousWidth) > 0.5))
                 {
-                    this.Width = availableWidth;
-                    sizeChanged = true;
-                }
-                if (this.Height > availableHeight)
-                {
-                    this.Height = availableHeight;
+                    Width = targetWidth;
                     sizeChanged = true;
                 }
 
-                if (sizeChanged && CenterInExcel)
-                    RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight, this.Width, this.Height);
+                if (targetHeight > 0 && (double.IsNaN(previousHeight) || Math.Abs(targetHeight - previousHeight) > 0.5))
+                {
+                    Height = targetHeight;
+                    sizeChanged = true;
+                }
+
+                MaxWidth = Math.Min(MaxWidth, availableWidth);
+                MaxHeight = Math.Min(MaxHeight, availableHeight);
+
+                if (sizeChanged && EnableExcelCentering && CenterInExcel)
+                    RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, "FitToAvailableWorkArea error");
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] FitToAvailableWorkArea error");
             }
         }
 
-        // Win32 API imports
-        [DllImport("user32.dll")]
-        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-        [DllImport("user32.dll")]
-        private static extern uint GetDpiForWindow(IntPtr hwnd);
-
-        [DllImport("user32.dll")]
-        private static extern bool IsWindow(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern bool BringWindowToTop(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetParent(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
-            int X, int Y, int cx, int cy, uint uFlags);
-
-        private const uint SWP_NOMOVE = 0x0002;
-        private const uint SWP_NOSIZE = 0x0001;
-        private const uint SWP_NOZORDER = 0x0004;
-        private const uint SWP_NOACTIVATE = 0x0010;
-        private const uint SWP_FRAMECHANGED = 0x0020;
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct RECT
+        private void RecenterAfterSizeChange(double previousLeft, double previousTop, double previousWidth, double previousHeight)
         {
-            public int Left;
-            public int Top;
-            public int Right;
-            public int Bottom;
-            public int Width => Right - Left;
-            public int Height => Bottom - Top;
+            try
+            {
+                if (double.IsNaN(previousLeft) || double.IsNaN(previousTop) ||
+                    double.IsNaN(previousWidth) || double.IsNaN(previousHeight) ||
+                    previousWidth <= 0 || previousHeight <= 0)
+                {
+                    return;
+                }
+
+                double centerX = previousLeft + (previousWidth / 2.0);
+                double centerY = previousTop + (previousHeight / 2.0);
+
+                PositionAroundCenter(centerX, centerY);
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] RecenterAfterSizeChange error");
+            }
         }
 
-        public double? MaxWidthCap { get; set; } = 1400d;
-        public double? MaxHeightCap { get; set; } = null;
+        private void PositionAroundCenter(double centerX, double centerY)
+        {
+            double effectiveWidth = ActualWidth > 0 ? ActualWidth : Width;
+            double effectiveHeight = ActualHeight > 0 ? ActualHeight : Height;
+
+            if (double.IsNaN(effectiveWidth) || double.IsNaN(effectiveHeight) || effectiveWidth <= 0 || effectiveHeight <= 0)
+                return;
+
+            double newLeft = centerX - (effectiveWidth / 2.0);
+            double newTop = centerY - (effectiveHeight / 2.0);
+
+            var workArea = SystemParameters.WorkArea;
+            if (effectiveWidth < workArea.Width)
+                newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - effectiveWidth));
+            if (effectiveHeight < workArea.Height)
+                newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - effectiveHeight));
+
+            Left = newLeft;
+            Top = newTop;
+        }
+
+        // Centers over Excel's own main window (via ServiceLocator.ExcelHandle), using this
+        // window's real, post-layout size - called exactly once, right after the first
+        // FitToAvailableWorkArea pass has resolved the window's true size.
+        private void CenterOverExcelOnce()
+        {
+            try
+            {
+                UpdateLayout();
+
+                double centerX, centerY;
+
+                if (_excelHandle != IntPtr.Zero && GetWindowRect(_excelHandle, out RECT excelRect) &&
+                    excelRect.Width > 0 && excelRect.Height > 0)
+                {
+                    double scale = _currentScaleFactor > 0 ? _currentScaleFactor : 1.0;
+                    double excelLeft = excelRect.Left / scale;
+                    double excelTop = excelRect.Top / scale;
+                    double excelWidth = excelRect.Width / scale;
+                    double excelHeight = excelRect.Height / scale;
+
+                    centerX = excelLeft + (excelWidth / 2.0);
+                    centerY = excelTop + (excelHeight / 2.0);
+                }
+                else
+                {
+                    var workArea = SystemParameters.WorkArea;
+                    centerX = workArea.Left + (workArea.Width / 2.0);
+                    centerY = workArea.Top + (workArea.Height / 2.0);
+                }
+
+                PositionAroundCenter(centerX, centerY);
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] CenterOverExcelOnce error");
+            }
+        }
+
+        private void CaptureInitialWindowConstraints()
+        {
+            if (double.IsNaN(_initialMaxWidth)) _initialMaxWidth = MaxWidth;
+            if (double.IsNaN(_initialMaxHeight)) _initialMaxHeight = MaxHeight;
+            if (double.IsNaN(_initialMinHeight)) _initialMinHeight = MinHeight;
+        }
+
+        private double GetEffectiveRequestedMaxWidth()
+        {
+            var maxWidth = double.IsNaN(_initialMaxWidth) ? MaxWidth : _initialMaxWidth;
+            if (double.IsPositiveInfinity(maxWidth))
+                return double.PositiveInfinity;
+            return maxWidth + 200;
+        }
+
+        // Content that grows/shrinks AFTER the window is already shown (e.g. a DataGrid
+        // populating asynchronously well past initial load) fires RenderSizeChanged, not
+        // SourceInitialized/WM_DPICHANGED - neither of which OnSourceInitialized/
+        // AdjustForDpiChange's own FitToAvailableWorkArea calls are reached by. Without
+        // this, a window whose content grows post-show would render past its intended
+        // Max bounds/off-center until the user manually resized it or a DPI change
+        // happened to fire. Debounced (120ms) since a DataGrid can raise many
+        // back-to-back RenderSizeChanged events while its rows populate - reacting to
+        // every single one would make the window visibly "dance" (resize/reposition more
+        // than once in quick succession) instead of settling once, quietly, after
+        // rendering goes quiet.
+        protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+        {
+            base.OnRenderSizeChanged(sizeInfo);
+
+            if (DisableAutoSizing || !AutoClampToWorkArea)
+                return;
+
+            _resizeSettleTimer?.Stop();
+            _resizeSettleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+            _resizeSettleTimer.Tick += (s, e) =>
+            {
+                _resizeSettleTimer.Stop();
+                try
+                {
+                    FitToAvailableWorkArea();
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnRenderSizeChanged (debounced clamp) error");
+                }
+            };
+            _resizeSettleTimer.Start();
+        }
 
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
         {
@@ -840,42 +700,28 @@ namespace GLSense.Addin.Core.Views
                 ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnClosed error");
             }
 
-            // Closing a window does not reliably return focus to its owner - the OS can
-            // just as easily hand it to whatever unrelated application is next in its own
-            // activation history. This is the same "focus drifts away from Excel" bug
-            // ExcelWindowHelper.ActivateExcelMainWindow already fixes for long-running-
-            // operation completion (see its own comment) - reuse that same
-            // AttachThreadInput-fallback helper here so every BaseWindow-derived window
-            // gets it for free on close too, instead of relying on Windows' own
-            // (unreliable) owned-window activation.
+            base.OnClosed(e);
+        }
+
+        private void RestoreOwnerFocusOnClosed(object sender, EventArgs e)
+        {
             try
             {
                 if (Owner != null)
                 {
-                    // Owned by another WPF window (e.g. a WebView2PopupWindow owned by
-                    // GLLogin/GLDrilldownCustomization - see
-                    // WebView2NavigationResilience.OnNewWindowRequested) - reactivating it
-                    // is enough; that window's own native ownership chain (set via
-                    // SetExcelOwner) takes care of Excel in turn.
                     Owner.Activate();
                 }
                 else if (_ownerSet)
                 {
-                    // Owned directly by Excel's native HWND (SetExcelOwner/ShowDialog) -
-                    // Window.Owner is never set for this path since Excel isn't a WPF
-                    // Window, so force Excel's own window back to the foreground explicitly.
                     ExcelWindowHelper.ActivateExcelMainWindow();
                 }
             }
             catch (Exception ex)
             {
-                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] OnClosed: failed to reactivate owner");
+                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] RestoreOwnerFocusOnClosed error");
             }
-
-            base.OnClosed(e);
         }
 
-        // ShowDialog with proper Excel ownership using ServiceLocator
         public new bool? ShowDialog()
         {
             try
@@ -883,14 +729,10 @@ namespace GLSense.Addin.Core.Views
                 ServiceLocator.Logger?.LogDebug($"[{_windowName}] ShowDialog called");
 
                 if (!this.Dispatcher.CheckAccess())
-                {
                     return this.Dispatcher.Invoke(() => ShowDialog());
-                }
 
-                // Ensure Excel owner is set before showing
                 if (ModalToExcel && !_ownerSet)
                 {
-                    // Get fresh Excel handle from ServiceLocator
                     try
                     {
                         _excelHandle = ServiceLocator.ExcelHandle;
@@ -909,17 +751,12 @@ namespace GLSense.Addin.Core.Views
                             {
                                 helper.Owner = _excelHandle;
                                 _ownerSet = true;
-                                ServiceLocator.Logger?.LogDebug($"[{_windowName}] Excel owner set in ShowDialog: {_excelHandle}");
                             }
                         }
                         catch (Exception ex)
                         {
                             ServiceLocator.Logger?.LogDebug($"[{_windowName}] Could not set Excel owner in ShowDialog: {ex.Message}");
                         }
-                    }
-                    else
-                    {
-                        ServiceLocator.Logger?.LogWarn($"[{_windowName}] Excel handle is IntPtr.Zero in ShowDialog");
                     }
                 }
 
@@ -936,21 +773,29 @@ namespace GLSense.Addin.Core.Views
         {
             try
             {
-                ServiceLocator.Logger?.LogDebug($"[{_windowName}] SafeShowDialog called");
-
                 if (this.Dispatcher.CheckAccess())
-                {
                     this.ShowDialog();
-                }
                 else
-                {
                     this.Dispatcher.Invoke(() => this.ShowDialog());
-                }
             }
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] SafeShowDialog error");
             }
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+            public int Width => Right - Left;
+            public int Height => Bottom - Top;
         }
     }
 }

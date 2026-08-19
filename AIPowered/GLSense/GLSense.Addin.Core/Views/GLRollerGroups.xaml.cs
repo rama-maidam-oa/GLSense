@@ -144,13 +144,6 @@ namespace GLSense.Addin.Core.Views
                     cmbSegments.Text = vm.SelectedSegment.SegmentName;
                     cmbSearchType.Text = vm.SelectedSearchType.DisplayName;
                 });
-
-                // BaseWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
-                // before this async chain populated dgLeft/dgRight - so it measured empty
-                // grids. Resettle again now that real rows are in place. See CLAUDE.md
-                // section 1.4b (GLCubeDetails) for the full history of this pattern.
-                ForceSizeToContentResettle();
-                PumpDispatcherFrame();
             }
             catch (Exception ex)
             {

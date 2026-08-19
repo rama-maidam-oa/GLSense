@@ -99,13 +99,6 @@ namespace GLSense.Addin.Core.Views
             {
                 await vm.LoadJobsAsync();
                 ServiceLocator.Logger?.LogDebug("GLJobsMonitor.Window_Loaded: jobs loaded successfully");
-
-                // BaseWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
-                // before this async chain populated dgJobs - so it measured an empty grid.
-                // Resettle again now that real rows are in place. See CLAUDE.md section
-                // 1.4b (GLCubeDetails) for the full history of this pattern.
-                ForceSizeToContentResettle();
-                PumpDispatcherFrame();
             }
             catch (Exception ex)
             {
