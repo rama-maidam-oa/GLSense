@@ -489,6 +489,18 @@ namespace GLSense.Addin.Core.Views
                 this.Loaded += OnLoaded;
                 this.Closed += RestoreOwnerFocusOnClosed;
 
+                // Escape-to-close is deliberately bound on the BUBBLING KeyDown event, not
+                // the tunneling PreviewKeyDown handler above (which only exists to dismiss
+                // an active toast/overlay on ANY input, unconditionally, before children
+                // ever see it). Escape-to-close must run AFTER children have had a chance to
+                // handle it themselves (a SuggestAppendComboBox closing its own dropdown, a
+                // DataGridCell canceling its own edit) - gated on !e.Handled. Binding this on
+                // Preview instead (as an earlier draft of this class did) would let the
+                // window close itself before any child ever saw the key, silently discarding
+                // in-progress edits. See CLAUDE.md section 5's original note on this exact
+                // requirement.
+                this.KeyDown += BaseWindow_KeyDown;
+
                 MouseWheelFocusHelper.EnableHoverToScroll(this);
 
                 ServiceLocator.Logger?.LogDebug($"[{_windowName}] constructor completed");
@@ -512,9 +524,14 @@ namespace GLSense.Addin.Core.Views
             if (e.Key == Key.Escape && IsInteractionOverlayVisible())
             {
                 e.Handled = true;
-                return;
             }
+        }
 
+        // Bubbling (not tunneling) - see the constructor's own comment on why. Fires only
+        // after every child control has had a chance to mark the key handled for its own
+        // purpose.
+        private void BaseWindow_KeyDown(object sender, KeyEventArgs e)
+        {
             if (!e.Handled && e.Key == Key.Escape && EnableEscapeToClose)
             {
                 e.Handled = true;
@@ -753,9 +770,16 @@ namespace GLSense.Addin.Core.Views
             try
             {
                 var scaleFactor = newDpi / 96.0;
-                _currentScaleFactor = scaleFactor;
 
+                // ApplyScaleTransform's own dedupe check compares its argument against
+                // _currentScaleFactor to decide whether a LayoutTransform is actually
+                // needed - that comparison must see the OLD value, so _currentScaleFactor
+                // is only updated AFTER this call returns. Updating it first (as an earlier
+                // draft of this method did) makes the dedupe check compare scaleFactor
+                // against itself, always short-circuiting as "no change" and silently
+                // turning every DPI-change content rescale into a no-op.
                 ApplyScaleTransform(scaleFactor);
+                _currentScaleFactor = scaleFactor;
 
                 if (lParam != IntPtr.Zero)
                 {
