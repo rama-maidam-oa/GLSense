@@ -1,4 +1,4 @@
-﻿<views:BaseWindow x:Class="GLSense.Addin.Core.Views.GLSegmentValues"
+<views:BaseWindow x:Class="GLSense.Addin.Core.Views.GLSegmentValues"
                   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -419,8 +419,8 @@
                                     <StackPanel Orientation="Horizontal">
                                         <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <StackPanel>
-                                            <TextBlock Text="âœ“ Checked: Each item in its own cell (By Rows/By Columns below)" FontSize="11" FontStyle="Italic" Foreground="Black" TextWrapping="Wrap" MaxWidth="220"/>
-                                            <TextBlock Text="âœ— Unchecked: All items in single cell" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                            <TextBlock Text="✓ Checked: Each item in its own cell (By Rows/By Columns below)" FontSize="11" FontStyle="Italic" Foreground="Black" TextWrapping="Wrap" MaxWidth="220"/>
+                                            <TextBlock Text="✗ Unchecked: All items in single cell" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
