@@ -9,15 +9,14 @@
                   xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
                   xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
                   mc:Ignorable="d"
-                  WindowCaption="Segment Values Configurator"
-                  IconSymbol="FilterSolid"
+                  Background="#F8F9FA"
                   SizeToContent="Manual"
                   Width="840" Height="740"
                   MinWidth="800" MaxWidth="880"
                   MinHeight="700" MaxHeight="760"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
+                  WindowStartupLocation="CenterOwner"
                   Loaded="Window_Loaded">
 
     <Window.Resources>
@@ -25,29 +24,42 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <conv:WidthPercentageConverter x:Key="WidthPercentageConverter"/>
             <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
         </ResourceDictionary>
     </Window.Resources>
 
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header =================
+             Ported from FinalWorkingCode's own bespoke HeaderBar-styled Border (replacing
+             AIPowered's earlier TitleBarGridStyle/TitleBarIconStyle/TitleBarTextStyle/
+             TitleBarCloseButtonStyle idiom, same convention already established by pilot
+             windows 1/2 - GLWaitWindow/GLMessageWindow - in this same porting pass). Drag
+             wiring kept as this project's own pre-existing TitleBar_MouseLeftButtonDown
+             handler (see .xaml.cs) rather than FinalWorkingCode's
+             EnhancedDragDropHelper.EnableWindowDrag(this), which doesn't exist in this
+             project (same reasoning as GLWaitWindow/GLMessageWindow's ports). -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="LayerGroupSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="Segment Values Configurator" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- ================= Middle Content ================= -->
         <!-- Previously the whole section (Segment&Hierarchy row + Search row + Dual DataGrids)
@@ -232,7 +244,7 @@
                                 <DataGridTemplateColumn Header="Is-Summary" Width="100">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <CheckBox HorizontalAlignment="Center" IsChecked="{Binding IsSummaryChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsSummaryAccount}">
+                                            <CheckBox Style="{StaticResource SingleClickCheckBoxStyle}" IsChecked="{Binding IsSummaryChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsSummaryAccount}">
                                                 <CheckBox.ToolTip>
                                                     <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                                         <TextBlock Text="This is a summary account" TextWrapping="Wrap" MaxWidth="300"/>
