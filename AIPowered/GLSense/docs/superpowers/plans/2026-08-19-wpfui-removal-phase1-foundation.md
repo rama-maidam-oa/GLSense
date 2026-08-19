@@ -1388,25 +1388,31 @@ separately) `<package .../>` line(s).
 Run this PowerShell to do the removal mechanically and precisely (one exact line pattern, applied file by
 file, no other content touched):
 ```powershell
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 Get-ChildItem "GLSense.Addin.Core" -Recurse -Filter *.xaml | Where-Object { $_.FullName -notmatch '\\obj\\|\\bin\\' } | ForEach-Object {
+    $originalBytes = [System.IO.File]::ReadAllBytes($_.FullName)
+    $hasBom = $originalBytes.Length -ge 3 -and $originalBytes[0] -eq 0xEF -and $originalBytes[1] -eq 0xBB -and $originalBytes[2] -eq 0xBF
     $content = Get-Content $_.FullName -Raw -Encoding UTF8
     if ($content -match 'xmlns:ui="http://schemas\.lepo\.co/wpfui/2022/xaml"\s*\r?\n?') {
         $updated = $content -replace 'xmlns:ui="http://schemas\.lepo\.co/wpfui/2022/xaml"\s*\r?\n?', ''
-        [System.IO.File]::WriteAllText($_.FullName, $updated, $utf8NoBom)
-        Write-Output "Updated: $($_.FullName)"
+        $encoding = New-Object System.Text.UTF8Encoding($hasBom)
+        [System.IO.File]::WriteAllText($_.FullName, $updated, $encoding)
+        Write-Output "Updated: $($_.FullName) (BOM=$hasBom)"
     }
 }
 ```
-**Encoding note (do not skip):** these files are UTF-8 without a BOM, and some contain non-ASCII characters
-(a copyright `©` symbol, `✓`/`✗`/`•` glyphs in tooltips). Windows PowerShell 5.1's `Get-Content -Raw` (with no
-`-Encoding`) guesses the source encoding from the system ANSI codepage whenever no BOM is present, misreading
-these files; `Set-Content -Encoding UTF8` then re-emits the misread bytes as UTF-8 (mojibake) AND adds a BOM
-the original files never had. The script above avoids both: `-Encoding UTF8` on read forces correct UTF-8
-interpretation regardless of BOM, and `[System.IO.File]::WriteAllText` with an explicit no-BOM `UTF8Encoding`
-instance writes the result byte-for-byte equivalent to the original encoding (Windows PowerShell 5.1 has no
-`-Encoding UTF8NoBOM` value for `Set-Content`/`Out-File` — this `WriteAllText` approach is the correct
-workaround, not a stylistic preference).
+**Encoding note (do not skip):** most of these files are UTF-8 without a BOM, but at least 3
+(`Themes\Generic.xaml`, `Themes\GlobalStyles.xaml`, `Views\GLLogin.xaml`) already have one — do not assume
+uniformly BOM-less. Several files also contain non-ASCII characters (a copyright `©` symbol, `✓`/`✗`/`•`
+glyphs in tooltips). Windows PowerShell 5.1's `Get-Content -Raw` (with no `-Encoding`) guesses the source
+encoding from the system ANSI codepage whenever no BOM is present, misreading BOM-less files; `Set-Content
+-Encoding UTF8` then re-emits the misread bytes as UTF-8 (mojibake) AND unconditionally writes a BOM
+regardless of whether the original had one. The script above avoids both problems: `-Encoding UTF8` on read
+forces correct UTF-8 interpretation regardless of BOM presence, it detects each file's OWN existing BOM state
+by inspecting its raw bytes before overwriting, and `[System.IO.File]::WriteAllText` with a `UTF8Encoding`
+instance constructed from that same per-file flag preserves each file's original BOM-or-not state exactly
+(Windows PowerShell 5.1 has no `-Encoding UTF8NoBOM` value for `Set-Content`/`Out-File`, and unconditionally
+passing `$false` - as an earlier draft of this script did - silently strips a BOM from any file that
+legitimately had one, which is just as much an unrequested content change as adding one that wasn't there).
 
 Manually re-open each file this prints and confirm the XAML is still well-formed (no leftover trailing
 whitespace issue on the previous attribute's line) — a `>` or the next attribute must immediately follow
