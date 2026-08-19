@@ -416,6 +416,17 @@ namespace GLSense.Addin.Core.Views
         public bool AutoClampToWorkArea { get; set; } = true;
         public double WorkAreaMargin { get; set; } = 24d;
         public bool ModalToExcel { get; set; } = true;
+
+        // Compat no-op: WPF-UI's FluentWindow declared this DP to extend window content
+        // into its own custom title-bar chrome. BaseWindow no longer derives from
+        // FluentWindow and never rendered that chrome to begin with, so this does
+        // nothing - it exists purely because ~26 not-yet-ported windows' XAML sets
+        // ExtendsContentIntoTitleBar="True" directly on their <views:BaseWindow> root
+        // tag, and XAML markup compilation (MC3072) fails for any attribute that isn't a
+        // real property on the tag's type. Remove this once every window has been ported
+        // away from setting it (grep for "ExtendsContentIntoTitleBar" across Views/*.xaml
+        // before deleting - same removal pattern as IconSymbol/WindowCaption).
+        public bool ExtendsContentIntoTitleBar { get; set; }
         public bool CenterInExcel { get; set; } = true;
         public double? MaxWidthCap { get; set; } = 1400d;
         public double? MaxHeightCap { get; set; } = null;
