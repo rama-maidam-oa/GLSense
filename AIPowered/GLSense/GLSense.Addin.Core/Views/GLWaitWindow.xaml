@@ -100,10 +100,23 @@
                                 <TextBlock x:Name="ElapsedTimeLabel" FontFamily="Segoe UI" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Text="Time Elapsed: 00:00"/>
                             </StackPanel>
                             <!-- Cancel Button -->
-                            <Button x:Name="BtnCancel" Grid.Column="1" Style="{StaticResource ProgressButton}" Width="80" Click="BtnCancel_Click" ToolTip="Cancel operation">
+                            <Button x:Name="BtnCancel"
+                                    Grid.Column="1"
+                                    Style="{StaticResource CloseButtonStyle}"
+                                    Width="90"
+                                    Click="BtnCancel_Click"
+                                    ToolTip="Cancel operation">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <iconPacks:PackIconFontAwesome Kind="CircleXmarkSolid" Width="10" Height="10" Foreground="White" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                    <TextBlock Text="Cancel" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center" FontSize="11"/>
+                                    <iconPacks:PackIconFontAwesome Kind="CircleXmarkSolid"
+                                                                    Width="10" Height="10"
+                                                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                    VerticalAlignment="Center"
+                                                                    Margin="0,0,5,0"/>
+                                    <TextBlock Text="Cancel"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               FontSize="11"/>
                                 </StackPanel>
                             </Button>
                         </Grid>
