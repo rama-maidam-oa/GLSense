@@ -29,3 +29,4 @@
 # they're left on disk but not tracked. Revisit if you want them tracked instead. ---
 /AIPowered/bkpup1/
 /AIPowered/bkpup2/
+/AIPowered/GLSense/GLSense.Addin.Core/GLSense.Addin.Core.csproj
