@@ -9,12 +9,11 @@
                   mc:Ignorable="d"
                   WindowCaption="GLSense Segment Values Discover"
                   IconSymbol="FilterSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="660" MaxWidth="700"
-                  MinHeight="345" MaxHeight="520"
+                  SizeToContent="Manual"
+                  MinHeight="440" MaxHeight="490"
+                  MinWidth="680" MaxWidth="780"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True">
+                  Background="#F8F9FA">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -25,48 +24,62 @@
     </Window.Resources>
 
     <Grid x:Name="RootGrid">
-        <!-- SizeToContent="WidthAndHeight" (see GLGetPeriod.xaml for the full
-             reasoning): the earlier "Width"-only + fixed Min/MaxHeight + dead "*"
-             spacer row workaround traded the collapse-until-resize bug for a visible
-             dead gap between content and buttons. BaseWindow's Window.ContentRendered
-             resettle (CLAUDE.md 1.4e) now fixes the collapse symptom generically, so
-             this window can shrink-to-fit its content like FinalWorkingCode's does. -->
+        <!-- Header/chrome/sizing ported from FinalWorkingCode's own GLSegmentDiscovery.xaml
+             (bespoke HeaderBar-styled Border replacing the old TitleBarGridStyle/
+             TitleBarIconStyle/TitleBarTextStyle/TitleBarCloseButtonStyle idiom, and
+             SizeToContent="Manual" with fixed Min/MaxWidth/Height replacing the previous
+             "WidthAndHeight" auto-sizing, matching FinalWorkingCode's own Manual sizing for
+             this window). Drag wiring kept as this project's own pre-existing
+             TitleBar_MouseLeftButtonDown handler (see .xaml.cs) rather than
+             FinalWorkingCode's EnhancedDragDropHelper.EnableWindowDrag(this), which doesn't
+             exist in this project. -->
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="GLSense Segment Values Discover" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- Header -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="CompassSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="GLSense Segment Values Discover" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- Content -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="10,10,10,4">
             <StackPanel>
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                <Border Style="{StaticResource ContentBorderStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Segment Value :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="120" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <TextBox x:Name="txtSegmentValue" Grid.Column="1" Style="{StaticResource ReadOnlyTextBox}" Margin="6,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Segment Value : " Style="{StaticResource SectionHeader}" Grid.Column="0" VerticalAlignment="Center"/>
+                        <TextBox x:Name="txtSegmentValue" Grid.Column="1" Style="{StaticResource ModernTextBox}" IsReadOnly="True" Margin="8,0,0,0" VerticalAlignment="Center">
                             <TextBox.ToolTip>
                                 <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                     <StackPanel>
                                         <TextBlock Text="Displays the selected segment value to be written to Excel" TextWrapping="Wrap"/>
-                                        <TextBlock Text="This value will be populated based on:" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,0"/>
-                                        <TextBlock Text="• Number of selected Excel rows/cells" FontSize="11" FontStyle="Italic" Margin="0,2,0,0"/>
-                                        <TextBlock Text="• Selected direction (Up/Down/Left/Right)" FontSize="11" FontStyle="Italic" Margin="0,2,0,0"/>
+                                        <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                <StackPanel>
+                                                    <TextBlock Text="This value will be populated based on:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                    <TextBlock Text="• Number of selected Excel rows/cells" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                    <TextBlock Text="• Selected direction (Up/Down/Left/Right)" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
                                 </ToolTip>
                             </TextBox.ToolTip>
@@ -74,14 +87,14 @@
                     </Grid>
                 </Border>
 
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                <Border Style="{StaticResource ContentBorderStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Direction Options :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="120" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                        <TextBlock Text="Direction Options : " Style="{StaticResource SectionHeader}" Grid.Column="0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                             <RadioButton x:Name="rbUp" Content="Up" Style="{StaticResource ModernRadioButton}" GroupName="DirectionGroup" IsChecked="True" Checked="DirectionRadio_Checked"/>
                             <RadioButton x:Name="rbDown" Content="Down" Style="{StaticResource ModernRadioButton}" GroupName="DirectionGroup" Margin="20,0,0,0" Checked="DirectionRadio_Checked"/>
                             <RadioButton x:Name="rbRight" Content="Right" Style="{StaticResource ModernRadioButton}" GroupName="DirectionGroup" Margin="20,0,0,0" Checked="DirectionRadio_Checked"/>
@@ -92,42 +105,42 @@
                     </Grid>
                 </Border>
 
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                <Border Style="{StaticResource ContentBorderStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Include Options :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="120" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                        <TextBlock Text="Include Options : " Style="{StaticResource SectionHeader}" Grid.Column="0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                             <CheckBox x:Name="chkParent" Content="Parent" Style="{StaticResource ModernCheckBox}" IsChecked="True"/>
                             <CheckBox x:Name="chkChild" Content="Child" Style="{StaticResource ModernCheckBox}" IsChecked="True" Margin="30,0,0,0"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                <Border Style="{StaticResource ContentBorderStyle}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Output Options :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="120" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                        <TextBlock Text="Output Options : " Style="{StaticResource SectionHeader}" Grid.Column="0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                             <RadioButton x:Name="rbOverwrite" Content="Overwrite" Style="{StaticResource ModernRadioButton}" GroupName="OutputGroup" IsChecked="True"/>
                             <RadioButton x:Name="rbInsert" Content="Insert" Style="{StaticResource ModernRadioButton}" GroupName="OutputGroup" Margin="30,0,0,0"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Padding="10,8">
+                <Border Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,0">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Range Selected :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="120" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <TextBox x:Name="txtRangeSelected" Grid.Column="1" Style="{StaticResource ReadOnlyTextBox}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Range Selected : " Style="{StaticResource SectionHeader}" Grid.Column="0" VerticalAlignment="Center"/>
+                        <TextBox x:Name="txtRangeSelected" Grid.Column="1" Style="{StaticResource ModernTextBox}" IsReadOnly="True" Margin="8,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
             </StackPanel>
