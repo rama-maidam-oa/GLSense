@@ -2443,33 +2443,9 @@ namespace GLSense.Addin.Core.ViewModels
             if (string.IsNullOrWhiteSpace(periodVal) || string.IsNullOrWhiteSpace(endPeriodValue))
                 return false;
 
-            string? newPeriodValue = null;
-
-            // Resolve reference if needed
-            if (!string.IsNullOrEmpty(periodVal) && ExcelRangeHelper.IsRealRange(periodVal))
-            {
-                try
-                {
-                    if (_excelApp != null)
-                    {
-                        newPeriodValue = (string?)_excelApp.Range[periodVal]?.Value;
-                    }
-                    else
-                    {
-                        ServiceLocator.Logger?.LogWarn("IsValidEndPeriodSequence: ExcelApp is null, cannot resolve period reference (non-fatal).");
-                        return false;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    ServiceLocator.Logger?.LogException(ex, "GLConfiguratorViewModel.IsValidEndPeriodSequence");
-                    return false;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(newPeriodValue))
-                return false;
-
+            // periodVal arrives already resolved to the Period's text value (GetFieldValue
+            // resolves any cell reference through Excel before returning it), so it should
+            // be matched directly against Periods rather than re-resolved as a range here.
             var startPeriod = Periods?.FirstOrDefault(p => p.PeriodName.Equals(periodVal, StringComparison.OrdinalIgnoreCase));
             var endPeriod = Periods?.FirstOrDefault(p => p.PeriodName.Equals(endPeriodValue, StringComparison.OrdinalIgnoreCase));
 
