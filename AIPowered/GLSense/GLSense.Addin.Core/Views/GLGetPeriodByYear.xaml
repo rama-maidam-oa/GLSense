@@ -9,14 +9,12 @@
                   xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
                   xmlns:sys="clr-namespace:System;assembly=mscorlib"
                   mc:Ignorable="d"
-                  WindowCaption="GLSense Get Period by Year"
-                  IconSymbol="CalendarDaysSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="600" MaxWidth="650"
-                  MinHeight="345" MaxHeight="480"
-                  ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True">
+                  WindowStyle="None"
+                  SizeToContent="Manual"
+                  MinWidth="600" MaxWidth="700"
+                  MinHeight="360" MaxHeight="480"
+                  Background="#F8F9FA"
+                  ResizeMode="CanResize">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -31,107 +29,115 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
-        <!-- SizeToContent="WidthAndHeight" (see GLGetPeriod.xaml for the full
-             reasoning): the earlier "Width"-only + fixed Min/MaxHeight + dead "*"
-             spacer row workaround traded the collapse-until-resize bug for a visible
-             dead gap between content and buttons. BaseWindow's Window.ContentRendered
-             resettle (CLAUDE.md 1.4e) now fixes the collapse symptom generically, so
-             this window can shrink-to-fit its content like FinalWorkingCode's does. -->
+    <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
             <RowDefinition Height="Auto"/>
+            <!-- Header -->
             <RowDefinition Height="Auto"/>
+            <!-- Main content: shrinks/grows to fit the form fields -->
+            <RowDefinition Height="Auto"/>
+            <!-- Buttons -->
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Grid.ColumnSpan="3" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="CalendarDaysSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="Get Period by Year" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
-        <!-- Content -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="10,10,10,4">
+        <!-- ================= Main Content ================= -->
+        <ScrollViewer Grid.Row="1" Grid.ColumnSpan="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,5,0,4">
             <StackPanel>
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                <Border Style="{StaticResource CompactBorderStyle}" Margin="0,0,0,4" HorizontalAlignment="Stretch">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Ledger :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
-                        <ctrls:SuggestAppendComboBox x:Name="cmbLedgers" Grid.Column="1" Height="{StaticResource ControlHeight}" ItemsSource="{Binding Ledgers}" DisplayMemberPath="LedgerName" SelectedItem="{Binding LedgerField.ComboValue, Mode=TwoWay}" Text="{Binding LedgerField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="{StaticResource ControlMargin}" Background="White" Foreground="#212529" IsEnabled="{Binding LedgerField.IsComboEnabled}"/>
-                        <local:ExcelRefEditControl Grid.Column="2" Height="{StaticResource ControlHeight}" Text="{Binding LedgerField.RefValue, Mode=TwoWay}" TagName="Period By Year Ledgers Field" IsEnabled="{Binding LedgerField.IsRefEnabled}" MinWidth="{StaticResource RefEditMinWidth}" VerticalAlignment="Center"/>
+                        <Label Content="Ledger :" Style="{StaticResource HeaderLabel}" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <ctrls:SuggestAppendComboBox x:Name="cmbLedgers" Grid.Column="1" Height="{StaticResource ControlHeight}" ItemsSource="{Binding Ledgers}" DisplayMemberPath="LedgerName" SelectedItem="{Binding LedgerField.ComboValue, Mode=TwoWay}" Text="{Binding LedgerField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="{StaticResource ControlMargin}" ArrowBrush="#2E86AB" ArrowWidth="10" ArrowHeight="8" Background="White" Foreground="#212529" IsEnabled="{Binding LedgerField.IsComboEnabled}"/>
+                        <local:ExcelRefEditControl Grid.Column="2" Height="{StaticResource ControlHeight}" Style="{StaticResource CompactRefEditControl}" Text="{Binding LedgerField.RefValue, Mode=TwoWay}" TagName="Period By Year Ledgers Field" Margin="0,0,0,0" IsEnabled="{Binding LedgerField.IsRefEnabled}" MinWidth="{StaticResource RefEditMinWidth}" VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
 
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                <Border Style="{StaticResource CompactBorderStyle}" Margin="0,0,0,4" HorizontalAlignment="Stretch">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Period Year :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
-                        <ctrls:SuggestAppendComboBox x:Name="cmbPeriodYear" Grid.Column="1" Height="{StaticResource ControlHeight}" ItemsSource="{Binding PeriodYears}" SelectedItem="{Binding PeriodYearField.ComboValue, Mode=TwoWay}" Text="{Binding PeriodYearField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="{StaticResource ControlMargin}" Background="White" Foreground="#212529" IsEnabled="{Binding PeriodYearField.IsComboEnabled}"/>
-                        <local:ExcelRefEditControl Grid.Column="2" Height="{StaticResource ControlHeight}" Text="{Binding PeriodYearField.RefValue, Mode=TwoWay}" TagName="Period By Year Period Year Field" IsEnabled="{Binding PeriodYearField.IsRefEnabled}" MinWidth="{StaticResource RefEditMinWidth}" VerticalAlignment="Center"/>
+                        <Label Content="Period Year :" Style="{StaticResource HeaderLabel}" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <ctrls:SuggestAppendComboBox x:Name="cmbPeriodYear" Grid.Column="1" Height="{StaticResource ControlHeight}" ItemsSource="{Binding PeriodYears}" SelectedItem="{Binding PeriodYearField.ComboValue, Mode=TwoWay}" Text="{Binding PeriodYearField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="{StaticResource ControlMargin}" ArrowBrush="#2E86AB" ArrowWidth="10" ArrowHeight="8" Background="White" Foreground="#212529" IsEnabled="{Binding PeriodYearField.IsComboEnabled}"/>
+                        <local:ExcelRefEditControl Grid.Column="2" Height="{StaticResource ControlHeight}" Style="{StaticResource CompactRefEditControl}" Text="{Binding PeriodYearField.RefValue, Mode=TwoWay}" TagName="Period By Year Period Year Field" Margin="0,0,0,0" IsEnabled="{Binding PeriodYearField.IsRefEnabled}" MinWidth="{StaticResource RefEditMinWidth}" VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
 
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                <Border Style="{StaticResource CompactBorderStyle}" Margin="0,0,0,4" HorizontalAlignment="Stretch">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Period Num :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
-                        <ctrls:SuggestAppendComboBox x:Name="cmbPeriodNum" Grid.Column="1" Height="{StaticResource ControlHeight}" ItemsSource="{Binding PeriodNums}" SelectedItem="{Binding PeriodNumField.ComboValue, Mode=TwoWay}" Text="{Binding PeriodNumField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding PeriodNumField.IsComboEnabled}" VerticalAlignment="Center" Margin="{StaticResource ControlMargin}" Background="White" Foreground="#212529"/>
-                        <local:ExcelRefEditControl Grid.Column="2" Height="{StaticResource ControlHeight}" Text="{Binding PeriodNumField.RefValue, Mode=TwoWay}" TagName="Period By Year Period Num Field" IsEnabled="{Binding PeriodNumField.IsRefEnabled}" MinWidth="{StaticResource RefEditMinWidth}" VerticalAlignment="Center"/>
+                        <Label Content="Period Num :" Style="{StaticResource HeaderLabel}" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <ctrls:SuggestAppendComboBox x:Name="cmbPeriodNum" Grid.Column="1" Height="{StaticResource ControlHeight}" ItemsSource="{Binding PeriodNums}" SelectedItem="{Binding PeriodNumField.ComboValue, Mode=TwoWay}" Text="{Binding PeriodNumField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding PeriodNumField.IsComboEnabled}" VerticalAlignment="Center" Margin="{StaticResource ControlMargin}" ArrowBrush="#2E86AB" ArrowWidth="10" ArrowHeight="8" Background="White" Foreground="#212529"/>
+                        <local:ExcelRefEditControl Grid.Column="2" Height="{StaticResource ControlHeight}" Style="{StaticResource CompactRefEditControl}" Text="{Binding PeriodNumField.RefValue, Mode=TwoWay}" TagName="Period By Year Period Num Field" Margin="0,0,0,0" IsEnabled="{Binding PeriodNumField.IsRefEnabled}" MinWidth="{StaticResource RefEditMinWidth}" VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
 
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+                <Border Style="{StaticResource CompactBorderStyle}" Margin="0,0,0,4" HorizontalAlignment="Stretch">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Result :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <Label Content="Result :" Style="{StaticResource HeaderLabel}" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
                         <TextBox x:Name="txtResult" Grid.Column="1" Grid.ColumnSpan="2" Height="{StaticResource ControlHeight}" Style="{StaticResource ReadOnlyTextBox}" Text="{Binding ResultText, Mode=OneWay}" Margin="{StaticResource ControlMargin}" VerticalAlignment="Center">
                             <TextBox.ToolTip>
                                 <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                    <TextBlock Text="Calculated period result" TextWrapping="Wrap"/>
+                                    <StackPanel>
+                                        <TextBlock Text="Calculated period start and end dates" TextWrapping="Wrap"/>
+                                    </StackPanel>
                                 </ToolTip>
                             </TextBox.ToolTip>
                         </TextBox>
                     </Grid>
                 </Border>
 
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Padding="10,8">
+                <Border Style="{StaticResource CompactBorderStyle}" Margin="0,0,0,0" HorizontalAlignment="Stretch">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <Label Content="Reference :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
-                        <local:ExcelRefEditControl x:Name="CellReference" Grid.Column="1" Grid.ColumnSpan="2" Height="{StaticResource ControlHeight}" Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TagName="Period By Year Cell Reference" Margin="{StaticResource ControlMargin}" VerticalAlignment="Center"/>
+                        <Label Content="Reference :" Style="{StaticResource HeaderLabel}" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
+                        <local:ExcelRefEditControl x:Name="CellReference" Grid.Column="1" Grid.ColumnSpan="2" Height="{StaticResource ControlHeight}" Style="{StaticResource CompactRefEditControl}" Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TagName="Period By Year Cell Reference" Margin="{StaticResource ControlMargin}" VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Buttons -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="8,4">
+        <!-- ================= Buttons Section ================= -->
+        <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="8,4">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <Button x:Name="btnSubmit" Style="{StaticResource InsertButtonStyle}" Click="BtnSubmit_Click" Margin="0,0,8,0"/>
                 <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
@@ -139,6 +145,6 @@
         </Border>
 
         <!-- Toast / Busy overlay -->
-        <local:AppOverlay x:Name="AppOverlayControl" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" Panel.ZIndex="100"/>
+        <local:AppOverlay x:Name="AppOverlayControl" Grid.Column="0" Grid.ColumnSpan="3" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="10"/>
     </Grid>
 </views:BaseWindow>
