@@ -9,12 +9,12 @@
                   mc:Ignorable="d"
                   WindowCaption="About Orbit GLSense"
                   IconSymbol="CircleInfoSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="450" MaxWidth="650"
-                  MinHeight="500" MaxHeight="620"
+                  SizeToContent="Manual"
+                  MinWidth="400" MaxWidth="650"
+                  MinHeight="450" MaxHeight="600"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
+                  Background="#F8F9FA"
                   Loaded="AboutWindow_Loaded">
 
     <Window.Resources>
@@ -74,27 +74,32 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
+    <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Left side with icon and title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="CircleInfoSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="About Orbit GLSense" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- ================= Combined Content Section ================= -->
-        <Grid Grid.Row="1" Margin="10,10,10,8">
+        <Grid Grid.Row="1" Margin="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <!-- Company & Product Info -->
@@ -105,7 +110,7 @@
             </Grid.RowDefinitions>
 
             <!-- ================= Company & Product Info Section ================= -->
-            <Border Grid.Row="0" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Padding="16" Margin="0,0,0,8">
+            <Border Grid.Row="0" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -153,7 +158,7 @@
             </Border>
 
             <!-- ================= Instance Compatibility Section ================= -->
-            <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8">
+            <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8">
                 <Border.ToolTip>
                     <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                         <TextBlock Text="Shows configured server instances and their compatibility status"/>
@@ -277,7 +282,7 @@
         <!-- ================= Footer with Copyright ================= -->
         <!-- Matches FinalWorkingCode: footer also carries its own Close button (in addition
              to the title bar's), not just the copyright text. -->
-        <Border Grid.Row="2" Background="Transparent" Margin="10,0,10,10">
+        <Border Grid.Row="2" Background="Transparent">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
