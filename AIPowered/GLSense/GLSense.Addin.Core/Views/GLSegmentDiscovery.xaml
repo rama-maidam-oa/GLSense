@@ -13,6 +13,7 @@
                   MinHeight="440" MaxHeight="490"
                   MinWidth="680" MaxWidth="780"
                   ResizeMode="CanResize"
+                  WindowStyle="None"
                   Background="#F8F9FA">
 
     <Window.Resources>
