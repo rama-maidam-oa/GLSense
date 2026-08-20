@@ -10,13 +10,13 @@
                   xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
                   mc:Ignorable="d"
                   WindowCaption="GLSense LOVs"
-                  IconSymbol="ClipboardListSolid"
-                  SizeToContent="WidthAndHeight"
+                  IconSymbol="ListCheckSolid"
+                  SizeToContent="Manual"
                   MinWidth="550" MaxWidth="750"
-                  MinHeight="650" MaxHeight="800"
+                  MinHeight="750"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
+                  Background="#F8F9FA"
                   Loaded="Window_Loaded">
 
     <Window.Resources>
@@ -38,16 +38,12 @@
                         <ControlTemplate TargetType="TextBox">
                             <Grid>
                                 <ScrollViewer x:Name="PART_ContentHost" Background="Transparent" VerticalAlignment="Top" Padding="{TemplateBinding Padding}"/>
-                                <!-- MaxWidth is required here: this window is SizeToContent="WidthAndHeight",
-                                     which re-measures Width using PositiveInfinity every time content
-                                     invalidates layout (e.g. toggling this TextBlock's Visibility when the
-                                     user clears the comments text). With TextWrapping="Wrap" but no width
-                                     constraint, an infinite-width measure pass reports the full unwrapped
-                                     single-line width of this long sentence, which briefly ballooned the
-                                     window's width up toward MaxWidth the instant comments were cleared.
-                                     Capping MaxWidth forces wrapping/a stable desired size regardless of
-                                     available measure space, so clearing the text no longer resizes the
-                                     window. -->
+                                <!-- MaxWidth is required here even though this window is now
+                                     SizeToContent="Manual": kept as cheap, harmless insurance
+                                     against the infinite-width remeasure bug this guarded
+                                     against under the previous SizeToContent="WidthAndHeight"
+                                     mode (CLAUDE.md section 10.1) - a hard MaxWidth forces wrapping/a
+                                     stable desired size regardless of available measure space. -->
                                 <TextBlock x:Name="WatermarkText" Text="Add your comments here. The entered text will be added as an Excel cell comment. If left blank, the selected ledger name is used instead." Foreground="{StaticResource TextSecondaryBrush}" FontStyle="Italic" Margin="8,4" MaxWidth="480" VerticalAlignment="Top" TextWrapping="Wrap" Visibility="Collapsed"/>
                             </Grid>
                             <ControlTemplate.Triggers>
@@ -68,60 +64,59 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
+    <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header ================= -->
+        <!-- FinalWorkingCode's Ledger combo lives inside the header itself (unlike every
+             other window in this plan, where it's a body row) - ported that structure
+             here: Auto/*/Auto columns so the title sits left, the Ledger combo is
+             right-aligned in the middle column, and the close button stays rightmost. -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Left side with icon and title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="ListCheckSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="GLSense LOVs" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <!-- Ledger Selection in the middle/right area -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0">
+                    <Label Content="Ledger:" Foreground="White" FontFamily="Segoe UI" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <ctrls:SuggestAppendComboBox x:Name="cmbLedgers" Width="400" Height="28" ItemsSource="{Binding Ledgers}" DisplayMemberPath="LedgerName" SelectedItem="{Binding LOV_SelectedLedger, Mode=TwoWay}" VerticalAlignment="Center" ArrowBrush="#2E86AB" ArrowWidth="10" ArrowHeight="8" Background="White" Foreground="#212529"/>
+                </StackPanel>
+                <!-- Close Button -->
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
-        <!-- ================= Main Content ================= -->
-        <Grid Grid.Row="1" Margin="10">
+        <!-- ================= Main Content: LOVs DataGrid + Comments ================= -->
+        <Grid Grid.Row="1" Margin="0,8,0,0">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Ledger Selection -->
-            <Border Grid.Row="0" Background="{StaticResource WhiteBrush}" CornerRadius="8" Margin="0,0,0,8" Padding="12,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Ledger:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <ctrls:SuggestAppendComboBox x:Name="cmbLedgers" Grid.Column="1" Height="30" HorizontalAlignment="Stretch" ItemsSource="{Binding Ledgers}" DisplayMemberPath="LedgerName" SelectedItem="{Binding LOV_SelectedLedger, Mode=TwoWay}" VerticalAlignment="Center" Background="{StaticResource WhiteBrush}" Foreground="{StaticResource TextPrimaryBrush}" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}"/>
-                </Grid>
-            </Border>
-
             <!-- LOVs DataGrid -->
-            <!-- MinHeight added (matches the AttachmentsDialog/GLSegmentValues fix): a bare
-                 "*" row collapses toward 0 during SizeToContent's infinite-availSize
-                 measurement pass, which is the same root cause behind the "rows collapsed"
-                 symptom seen on other SizeToContent windows. MinHeight stops that
-                 pathological first-pass collapse while still letting the grid grow/scroll
-                 normally. -->
-            <!-- MaxHeight caps how far this window grows once rows populate - see
-                 GLRollerGroups.xaml/GLSegmentValues.xaml for the same pattern/reasoning. -->
-            <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" MinHeight="250" MaxHeight="400">
-                <DataGrid x:Name="dgLovs" ItemsSource="{Binding LOVRows}" SelectedItem="{Binding SelectedLov, Mode=TwoWay}" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False" Background="{StaticResource WhiteBrush}" IsReadOnly="True" SelectionUnit="FullRow" SelectionMode="Single" BorderThickness="0" GridLinesVisibility="None" ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <!-- MinHeight/MaxHeight kept (CLAUDE.md sections 6.1/8.2) - FinalWorkingCode has no cap
+                 here at all, but this codebase's DataGrid-in-a-"*"-row windows need this
+                 floor/ceiling pair for reasons specific to this add-in's own layout history. -->
+            <Border Grid.Row="0" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,8" MinHeight="250" MaxHeight="400">
+                <DataGrid x:Name="dgLovs" FontFamily="Segoe UI" ItemsSource="{Binding LOVRows}" SelectedItem="{Binding SelectedLov, Mode=TwoWay}" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False" Background="White" IsReadOnly="True" SelectionUnit="FullRow" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionMode="Single">
+                    <!-- Override system selection colors -->
                     <DataGrid.Resources>
                         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
                         <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
                         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
+                        <!-- local scrollbar styles scoped to this DataGrid (ensure visible, consistent look) -->
                         <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
                             <Setter Property="Background" Value="#E0E0E0"/>
                             <Setter Property="Opacity" Value="1"/>
@@ -141,6 +136,44 @@
                             <Setter Property="Padding" Value="12,8"/>
                             <Setter Property="Height" Value="36"/>
                             <Setter Property="FontSize" Value="12"/>
+                            <!-- Sort-arrow ControlTemplate (ported from FinalWorkingCode): the
+                                 default WPF DataGridColumnHeader template reserves extra
+                                 internal space for the sort-arrow glyph even when the column
+                                 isn't sorted, clipping header text at narrow widths. This
+                                 template puts the sort arrow in its own Auto column so the
+                                 ContentPresenter gets the full remaining width. -->
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="DataGridColumnHeader">
+                                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Grid.Column="0" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                                <Path x:Name="SortArrow" Grid.Column="1" Margin="6,0,6,0" Width="10" Height="6" Stretch="Fill" Fill="{TemplateBinding Foreground}" Visibility="Collapsed" Data="M 0 4 L 5 0 L 10 4 Z"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" TargetName="border" Value="#389BC7"/>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter Property="Background" TargetName="border" Value="#277596"/>
+                                            </Trigger>
+                                            <Trigger Property="SortDirection" Value="Ascending">
+                                                <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                <Setter TargetName="SortArrow" Property="Data" Value="M 0 4 L 5 0 L 10 4 Z"/>
+                                            </Trigger>
+                                            <Trigger Property="SortDirection" Value="Descending">
+                                                <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                <Setter TargetName="SortArrow" Property="Data" Value="M 0 0 L 5 4 L 10 0 Z"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
                         </Style>
                     </DataGrid.ColumnHeaderStyle>
                     <DataGrid.RowStyle>
@@ -185,7 +218,17 @@
                                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                                 <StackPanel>
                                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                                    <TextBlock Text="Click to select this list of values" FontStyle="Italic"/>
+                                                    <TextBlock Text="{Binding Category}" FontStyle="Italic"/>
+                                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                            <StackPanel>
+                                                                <TextBlock Text="Click to select this list of values" FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                                                <TextBlock Text="Category: " FontSize="11" FontWeight="SemiBold" Foreground="Black" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="{Binding Category}" FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
                                                 </StackPanel>
                                             </ToolTip>
                                         </Setter.Value>
@@ -198,15 +241,28 @@
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                     <Setter Property="ToolTip">
                                         <Setter.Value>
+                                            <!-- Amber callout styling ported from FinalWorkingCode, but the
+                                                 headline text KEEPS AIPowered's own live-count MultiBinding
+                                                 ("{0} item(s) available for '{1}'", CLAUDE.md section 10.2) instead
+                                                 of reverting to FinalWorkingCode's static
+                                                 "Number of values in this list" text. -->
                                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                                <TextBlock TextWrapping="Wrap" MaxWidth="300">
-                                                    <TextBlock.Text>
-                                                        <MultiBinding StringFormat="{}{0} item(s) available for '{1}'">
-                                                            <Binding Path="ItemsCount"/>
-                                                            <Binding Path="Name"/>
-                                                        </MultiBinding>
-                                                    </TextBlock.Text>
-                                                </TextBlock>
+                                                <StackPanel>
+                                                    <TextBlock TextWrapping="Wrap" MaxWidth="300">
+                                                        <TextBlock.Text>
+                                                            <MultiBinding StringFormat="{}{0} item(s) available for '{1}'">
+                                                                <Binding Path="ItemsCount"/>
+                                                                <Binding Path="Name"/>
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                            <TextBlock Text="Click to select this list of values" FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </StackPanel>
                                             </ToolTip>
                                         </Setter.Value>
                                     </Setter>
@@ -219,13 +275,13 @@
             </Border>
 
             <!-- Comments Section -->
-            <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Padding="12">
+            <Border Grid.Row="1" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,0" Padding="12">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Comments" Style="{StaticResource HeaderTextBlock}" Margin="0,0,0,5"/>
+                    <Label Content="Comments" Style="{StaticResource HeaderLabel}" Grid.Row="0" Margin="0,0,0,5"/>
                     <TextBox x:Name="TxtComments" Grid.Row="1" Style="{StaticResource WatermarkTextBox}" Height="50" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top">
                         <TextBox.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
@@ -238,17 +294,19 @@
         </Grid>
 
         <!-- Footer Actions -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="8,6">
+        <Border Grid.Row="2" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="8,6" Margin="0,8,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
+                <!-- Cell Reference -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="Reference:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
                     <local:ExcelRefEditControl x:Name="excelRefEdit" TagName="LOV's Cell Reference" Width="220" Height="30" VerticalAlignment="Center" Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                 </StackPanel>
+                <!-- Action Buttons -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="CmdSubmit" Style="{StaticResource InsertButtonStyle}" Margin="0,0,8,0" Click="CmdSubmit_Click">
                         <Button.ToolTip>
