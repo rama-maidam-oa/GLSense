@@ -11,10 +11,10 @@
                   IconSymbol="FilterSolid"
                   SizeToContent="WidthAndHeight"
                   MinWidth="420" MaxWidth="460"
-                  MinHeight="220" MaxHeight="320"
+                  MinHeight="240" MaxHeight="320"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True">
+                  WindowStyle="None"
+                  Background="#F8F9FA">
 
     <!-- New in this pass: replaces the old "Hierarchy" ribbon menu (RibSegmentExpand
          ADXRibbonMenu hosting the RibExpandAll / RibbonExpand1Level ADXRibbonButton menu
@@ -32,35 +32,39 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
+    <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="GLSense Expand Segment Hierarchy" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="FilterSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="GLSense Expand Segment Hierarchy" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
-        <!-- Content -->
-        <StackPanel Grid.Row="1" Margin="10,10,10,4">
-            <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
+        <!-- ================= Main Content ================= -->
+        <StackPanel Grid.Row="1" Margin="0,2,0,0">
+            <Border Style="{StaticResource ContentBorderStyle}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Label Content="Expand Level :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="110" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                    <TextBlock Text="Expand Level : " Style="{StaticResource SectionHeader}" Grid.Column="0" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                         <RadioButton x:Name="rbExpandAll" Content="Expand All" Style="{StaticResource ModernRadioButton}" GroupName="LevelGroup" IsChecked="True">
                             <RadioButton.ToolTip>
                                 <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
@@ -79,14 +83,14 @@
                 </Grid>
             </Border>
 
-            <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Padding="10,8">
+            <Border Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Label Content="Fill Direction :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="110" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                    <TextBlock Text="Fill Direction : " Style="{StaticResource SectionHeader}" Grid.Column="0" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                         <RadioButton x:Name="rbByRows" Content="By Rows" Style="{StaticResource ModernRadioButton}" GroupName="OrientationGroup" IsChecked="True">
                             <RadioButton.ToolTip>
                                 <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
@@ -94,7 +98,7 @@
                                 </ToolTip>
                             </RadioButton.ToolTip>
                         </RadioButton>
-                        <RadioButton x:Name="rbByColumns" Content="By Columns" Style="{StaticResource ModernRadioButton}" GroupName="OrientationGroup" Margin="20,0,0,0">
+                        <RadioButton x:Name="rbByColumns" Content="By Columns" Style="{StaticResource ModernRadioButton}" GroupName="OrientationGroup" Margin="35,0,0,0">
                             <RadioButton.ToolTip>
                                 <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                     <TextBlock Text="Reads the selected segment values left-to-right and inserts new columns for each expanded child" TextWrapping="Wrap"/>
@@ -106,8 +110,8 @@
             </Border>
         </StackPanel>
 
-        <!-- Buttons -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="8,4">
+        <!-- ================= Action Buttons Section ================= -->
+        <Border Grid.Row="2" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="8,4" Margin="0,8,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <Button x:Name="btnExpand" Style="{StaticResource InsertButtonStyle}" Content="Insert" Click="BtnExpand_Click" Margin="0,0,8,0"/>
                 <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
