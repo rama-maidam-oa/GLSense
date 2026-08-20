@@ -9,12 +9,12 @@
                   mc:Ignorable="d"
                   WindowCaption="GLSense Login Details"
                   IconSymbol="CircleInfoSolid"
-                  SizeToContent="Width"
-                  MinHeight="100" MaxHeight="230"
-                  MinWidth="460" MaxWidth="480"
+                  SizeToContent="Manual"
+                  MinHeight="260" MaxHeight="400"
+                  MinWidth="460" MaxWidth="580"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True">
+                  WindowStyle="None"
+                  Background="#F8F9FA">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -26,82 +26,125 @@
 
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
-            <!-- This window has no genuine "fill remaining space" element (no DataGrid/
-                 TabControl/WebView2/Expander - just two read-only fields and a Close
-                 button), so there is no legitimate reason for a "*" row here at all. An
-                 earlier fix added an Auto content row + "*" spacer to absorb the extra
-                 height that a since-removed MinHeight="180"/MaxHeight="300" forced onto
-                 the window beyond its natural content size - but that just relocated the
-                 visible gap (leaking below the Grid before a relayout happened, or
-                 appearing as a big blank strip between the URL field and the Close
-                 button once it did) instead of eliminating it. With MinHeight/MaxHeight
-                 removed, both rows below can just be Auto and the window sizes itself
-                 exactly to its natural content - no spacer, nothing to collapse or
-                 over-absorb. -->
             <RowDefinition Height="Auto"/>
+            <!-- Header -->
             <RowDefinition Height="Auto"/>
+            <!-- Content -->
+            <RowDefinition Height="Auto"/>
+            <!-- Buttons -->
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="GLSense Login Details" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- Header -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="CircleInfoSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="GLSense Login Details" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
-        <!-- Content -->
-        <StackPanel Grid.Row="1" Margin="10,10,10,4">
-            <!-- User Row -->
-            <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8" Padding="10,8">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Label Content="User :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="70" VerticalAlignment="Center"/>
-                    <TextBox Grid.Column="1" Style="{StaticResource ModernTextBox}"
-                             Text="{Binding LoginUserName, Source={x:Static core:AppState.Instance}}"
-                             IsReadOnly="True" d:Text=" " VerticalAlignment="Center">
-                        <TextBox.ToolTip>
-                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="User logged in" FontWeight="SemiBold"/>
-                            </ToolTip>
-                        </TextBox.ToolTip>
-                    </TextBox>
-                </Grid>
-            </Border>
+        <!-- ================= Content Section ================= -->
+        <Border Grid.Row="1" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="20" Margin="0,0,0,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
-            <!-- URL Row -->
-            <Border Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Padding="10,8">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Label Content="URL :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" MinWidth="70" VerticalAlignment="Center"/>
-                    <TextBox Grid.Column="1" Style="{StaticResource ModernTextBox}"
-                             Text="{Binding LoginUrl, Source={x:Static core:AppState.Instance}}"
-                             IsReadOnly="True" d:Text=" " VerticalAlignment="Center">
-                        <TextBox.ToolTip>
-                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Instance logged in" FontWeight="SemiBold"/>
-                            </ToolTip>
-                        </TextBox.ToolTip>
-                    </TextBox>
-                </Grid>
-            </Border>
-        </StackPanel>
+                <!-- User Row -->
+                <Border Grid.Row="0" Grid.Column="0" Background="#F8F9FA" CornerRadius="4" Padding="8,6" Margin="0,0,12,12">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <iconPacks:PackIconFontAwesome
+                            Kind="UserRegular"
+                            Margin="0,4,0,0"
+                            Style="{StaticResource SmallIcon}"
+                            Foreground="#2E86AB"
+                            VerticalAlignment="Center"/>
+                        <TextBlock Text="User:"
+                                   Style="{StaticResource HeaderTextBlock}"
+                                   Margin="8,0,0,0"/>
+                    </StackPanel>
+                </Border>
+                <TextBox x:Name="TxtUser"
+                         Grid.Row="0" Grid.Column="1"
+                         Style="{StaticResource ModernTextBox}"
+                         Text="{Binding LoginUserName, Source={x:Static core:AppState.Instance}}"
+                         IsReadOnly="True"
+                         d:Text=" "
+                         Margin="0,0,0,12">
+                    <TextBox.ToolTip>
+                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                            <StackPanel>
+                                <TextBlock Text="User logged in:" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding LoginUserName, Source={x:Static core:AppState.Instance}}"
+                                           FontFamily="Segoe UI"
+                                           Background="#F5F5F5"
+                                           Padding="4"
+                                           Margin="0,6,0,0"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="300"
+                                           d:Text=" "/>
+                            </StackPanel>
+                        </ToolTip>
+                    </TextBox.ToolTip>
+                </TextBox>
 
-        <!-- Buttons -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="8,6">
+                <!-- URL Row -->
+                <Border Grid.Row="1" Grid.Column="0" Background="#F8F9FA" CornerRadius="4" Padding="8,6" Margin="0,0,12,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <iconPacks:PackIconFontAwesome
+                            Kind="LinkSolid"
+                            Style="{StaticResource SmallIcon}"
+                            Foreground="#2E86AB"
+                            Margin="0,4,0,0"
+                            VerticalAlignment="Center"/>
+                        <TextBlock Text="URL:"
+                                   Style="{StaticResource HeaderTextBlock}"
+                                   Margin="8,0,0,0"/>
+                    </StackPanel>
+                </Border>
+                <TextBox x:Name="TxtURL"
+                         Grid.Row="1" Grid.Column="1"
+                         Style="{StaticResource ModernTextBox}"
+                         Text="{Binding LoginUrl, Source={x:Static core:AppState.Instance}}"
+                         d:Text=" "
+                         IsReadOnly="True">
+                    <TextBox.ToolTip>
+                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                            <StackPanel>
+                                <TextBlock Text="Instance logged in:" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding LoginUrl, Source={x:Static core:AppState.Instance}}"
+                                           FontFamily="Segoe UI"
+                                           Background="#F5F5F5"
+                                           Padding="4"
+                                           Margin="0,6,0,0"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="300"
+                                           d:Text=" "/>
+                            </StackPanel>
+                        </ToolTip>
+                    </TextBox.ToolTip>
+                </TextBox>
+            </Grid>
+        </Border>
+
+        <!-- ================= Buttons Section ================= -->
+        <Border Grid.Row="2" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="10,4">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
+                <Button x:Name="CmdClose" Style="{StaticResource CloseButtonStyle}" Click="BtnClose_Click"/>
             </StackPanel>
         </Border>
     </Grid>
