@@ -101,6 +101,9 @@
                                 <Setter Property="Control.Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="{x:Type DatePickerTextBox}">
+                                            <!-- BorderThickness/Background transparent - see GLDailyRates.xaml
+                                                 for why (avoids a visible nested border inside
+                                                 ModernDatePicker's own outer Border). -->
                                             <TextBox x:Name="PART_TextBox" Height="{StaticResource ControlHeight}" MinWidth="200" HorizontalAlignment="Stretch" VerticalAlignment="Center" VerticalContentAlignment="Center" BorderThickness="0" Background="Transparent" Padding="4,0,4,0" Text="{Binding Path=SelectedDate,
                                                 RelativeSource={RelativeSource AncestorType={x:Type DatePicker}},
                                                 Converter={StaticResource NullableDateConverter},
