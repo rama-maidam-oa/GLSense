@@ -11,12 +11,12 @@
                   mc:Ignorable="d"
                   WindowCaption="Segment Rollup Groups"
                   IconSymbol="CubesSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="800" MaxWidth="940"
-                  MinHeight="740" MaxHeight="890"
+                  SizeToContent="Manual"
+                  MinWidth="800" MaxWidth="840"
+                  MinHeight="790"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
+                  Background="#F8F9FA"
                   Loaded="Window_Loaded">
 
     <Window.Resources>
@@ -29,27 +29,31 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
+    <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="LayerGroupSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="Segment Rollup Groups" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- ================= Main Content ================= -->
-        <Grid Grid.Row="1" Margin="10">
+        <Grid Grid.Row="1" Margin="0,8,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -67,27 +71,35 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Segment:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <iconPacks:PackIconFontAwesome Kind="ChartPieSolid" Width="14" Height="14" Foreground="#2E86AB" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Segment:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
+                        </StackPanel>
                         <ctrls:SuggestAppendComboBox x:Name="cmbSegments" Grid.Column="1" Height="30" HorizontalAlignment="Stretch" ItemsSource="{Binding Segments}" DisplayMemberPath="SegmentName" SelectedItem="{Binding SelectedSegment, Mode=TwoWay}" VerticalAlignment="Center" Background="{StaticResource WhiteBrush}" Foreground="{StaticResource TextPrimaryBrush}" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}"/>
                     </Grid>
                 </Border>
 
-                <Border Background="{StaticResource WhiteBrush}" CornerRadius="8" Margin="0,0,0,8" Padding="12,10">
+                <Border Background="{StaticResource WhiteBrush}" CornerRadius="8" Margin="0,0,0,0" Padding="12,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Search:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <ctrls:SuggestAppendComboBox x:Name="cmbSearchType" Grid.Column="1" MinWidth="160" Height="30" Margin="0,0,8,0" ItemsSource="{Binding SearchTypes}" DisplayMemberPath="DisplayName" SelectedItem="{Binding SelectedSearchType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Background="{StaticResource WhiteBrush}" Foreground="{StaticResource TextPrimaryBrush}" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}"/>
-                        <TextBox x:Name="txtSearch" Grid.Column="2" Height="30" Style="{StaticResource ModernTextBox}" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                            <TextBox.ToolTip>
-                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                    <TextBlock Text="Filters the data by given value" TextWrapping="Wrap"/>
-                                </ToolTip>
-                            </TextBox.ToolTip>
-                        </TextBox>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <iconPacks:PackIconFontAwesome Kind="SearchenginBrands" Width="14" Height="14" Foreground="#2E86AB" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Search:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                            <ctrls:SuggestAppendComboBox x:Name="cmbSearchType" Width="Auto" MinWidth="150" Height="30" Margin="0,0,8,0" ItemsSource="{Binding SearchTypes}" DisplayMemberPath="DisplayName" SelectedItem="{Binding SelectedSearchType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Background="{StaticResource WhiteBrush}" Foreground="{StaticResource TextPrimaryBrush}" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}"/>
+                            <TextBox x:Name="txtSearch" Width="Auto" MinWidth="280" Height="30" Style="{StaticResource ModernTextBox}" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.ToolTip>
+                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                        <TextBlock Text="Filters the data by given value" TextWrapping="Wrap"/>
+                                    </ToolTip>
+                                </TextBox.ToolTip>
+                            </TextBox>
+                        </StackPanel>
                     </Grid>
                 </Border>
             </StackPanel>
@@ -121,6 +133,45 @@
                                 <Style TargetType="Thumb" BasedOn="{StaticResource AppScrollThumbStyle}">
                                     <Setter Property="Background" Value="#6C757D"/>
                                     <Setter Property="Opacity" Value="1"/>
+                                </Style>
+
+                                <!-- Style to completely remove borders for title row cells -->
+                                <Style x:Key="TitleRowCellStyle" TargetType="DataGridCell">
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Setter Property="BorderBrush" Value="Transparent"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SummaryFlag}" Value="RG">
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="BorderBrush" Value="Transparent"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                                <!-- Custom element style for title rows to span content -->
+                                <Style x:Key="TitleRowElementStyle" TargetType="TextBlock">
+                                    <Setter Property="Padding" Value="12,8"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SummaryFlag}" Value="RG">
+                                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                            <Setter Property="TextAlignment" Value="Left"/>
+                                            <Setter Property="Padding" Value="12,8"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SummaryFlag}" Value="False">
+                                            <Setter Property="Foreground" Value="#212529"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                                <!-- Modern DataGrid Text Style for normal rows -->
+                                <Style x:Key="ModernDataGridText" TargetType="TextBlock">
+                                    <Setter Property="Padding" Value="12,8"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                    <Setter Property="Foreground" Value="#212529"/>
                                 </Style>
                             </DataGrid.Resources>
                             <DataGrid.ColumnHeaderStyle>
@@ -185,7 +236,7 @@
                                 </Style>
                             </DataGrid.CellStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Value" Width="*">
+                                <DataGridTextColumn Header="Value" Width="*" CellStyle="{StaticResource TitleRowCellStyle}">
                                     <DataGridTextColumn.Binding>
                                         <MultiBinding Converter="{StaticResource TitleRowValueConverter}">
                                             <Binding/>
@@ -197,25 +248,71 @@
                                             <Setter Property="VerticalAlignment" Value="Center"/>
                                             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
                                             <Setter Property="Foreground" Value="#212529"/>
+
                                             <Style.Triggers>
+                                                <!-- Title row text - white foreground to match close button -->
                                                 <DataTrigger Binding="{Binding SummaryFlag}" Value="RG">
                                                     <Setter Property="Foreground" Value="#FFFFFF"/>
                                                     <Setter Property="FontWeight" Value="SemiBold"/>
+                                                    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                                    <Setter Property="TextAlignment" Value="Left"/>
+
+                                                    <!-- Tooltip for Roller Group Headers -->
+                                                    <Setter Property="ToolTip">
+                                                        <Setter.Value>
+                                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="Roller Group: Contains related segment values"
+                                                          FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#212529"/>
+                                                                    <TextBlock Text="Click to expand/collapse or double-click to select all items"
+                                                         TextWrapping="Wrap" Foreground="#212529"/>
+                                                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                                        <StackPanel Orientation="Horizontal">
+                                                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                          Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                                            <StackPanel>
+                                                                                <TextBlock Text="Examples:" FontSize="11" FontWeight="SemiBold"
+                                             Foreground="Black"/>
+                                                                                <TextBlock Text="• Cash (header)" FontSize="11" FontStyle="Italic"
+                                             Foreground="Black" Margin="0,2,0,0"/>
+                                                                                <TextBlock Text="• Petty Cash, Bank Accounts (items)"
+                                             FontSize="11" FontStyle="Italic" Foreground="Black"
+                                             Margin="0,2,0,0"/>
+                                                                            </StackPanel>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </StackPanel>
+                                                            </ToolTip>
+                                                        </Setter.Value>
+                                                    </Setter>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
-                                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*" IsReadOnly="True">
+                                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*"
+                            IsReadOnly="True" CellStyle="{StaticResource TitleRowCellStyle}">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Padding" Value="12,8"/>
                                             <Setter Property="VerticalAlignment" Value="Center"/>
                                             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
                                             <Setter Property="Foreground" Value="#212529"/>
+
+                                            <!-- Default tooltip -->
+                                            <Setter Property="ToolTip">
+                                                <Setter.Value>
+                                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="#212529"/>
+                                                    </ToolTip>
+                                                </Setter.Value>
+                                            </Setter>
+
                                             <Style.Triggers>
+                                                <!-- Hide description for title rows -->
                                                 <DataTrigger Binding="{Binding SummaryFlag}" Value="RG">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Setter Property="ToolTip" Value="{x:Null}"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -282,12 +379,28 @@
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Value" Binding="{Binding Value1}" Width="100">
                                     <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                            <Setter Property="ToolTip">
+                                                <Setter.Value>
+                                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                        <TextBlock Text="{Binding Value1}"/>
+                                                    </ToolTip>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="Segment" Binding="{Binding Segment}" Width="*">
                                     <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                            <Setter Property="ToolTip">
+                                                <Setter.Value>
+                                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                        <TextBlock Text="{Binding Segment}"/>
+                                                    </ToolTip>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                             </DataGrid.Columns>
@@ -298,7 +411,7 @@
         </Grid>
 
         <!-- Footer -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="8,6">
+        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,6,0,0" Padding="8,6">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -312,10 +425,30 @@
 
                 <!-- Row 0: Write to Multiple Rows/Columns Checkbox + Overwrite/Insert + By Rows/By Columns, one line -->
                 <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" VerticalAlignment="Center">
-                    <CheckBox x:Name="chkMultipleRows" Content="Write to Multiple Rows/Columns" Style="{StaticResource ModernCheckBox}" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="{Binding IsMultipleRowsChecked, Mode=TwoWay}" VerticalAlignment="Center">
+                    <CheckBox x:Name="chkMultipleRows" Content="Write to Multiple Rows/Columns"
+                              Style="{StaticResource ModernCheckBox}"
+                              IsEnabled="{Binding IsMultipleRowsEnabled}"
+                              IsChecked="{Binding IsMultipleRowsChecked, Mode=TwoWay}"
+                              VerticalAlignment="Center" FontWeight="SemiBold"
+                              Foreground="#2E86AB">
                         <CheckBox.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="✓ Checked: Each item in its own cell (By Rows/By Columns below). ✗ Unchecked: All items in single Excel cell." TextWrapping="Wrap" MaxWidth="260"/>
+                                <StackPanel>
+                                    <TextBlock Text="Controls how roller groups are inserted into Excel" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="✓ Checked: Each item in its own cell (By Rows/By Columns below)"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black" TextWrapping="Wrap" MaxWidth="220"/>
+                                                <TextBlock Text="✗ Unchecked: All items in single Excel cell"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </CheckBox.ToolTip>
                     </CheckBox>
@@ -324,8 +457,8 @@
                          above (bound to the same IsMultipleRowsEnabled), forced back to Overwrite
                          whenever that happens (see Vm_PropertyChanged in code-behind). Ported from
                          FinalWorkingCode's identical GLRollerGroups.xaml. -->
-                    <RadioButton x:Name="rbOverwrite" Content="Overwrite" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" VerticalAlignment="Center" Margin="28,0,0,0"/>
-                    <RadioButton x:Name="rbInsert" Content="Insert" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" VerticalAlignment="Center">
+                    <RadioButton x:Name="rbOverwrite" Content="Overwrite" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center" Margin="28,0,0,0"/>
+                    <RadioButton x:Name="rbInsert" Content="Insert" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsWriteModeGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center">
                         <RadioButton.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                 <TextBlock Text="Inserts new row(s) at the cell reference, shifting existing content down, instead of overwriting it." TextWrapping="Wrap" MaxWidth="260"/>
@@ -335,22 +468,42 @@
 
                     <!-- By Rows / By Columns - orientation for the multi-cell write path only.
                          Ported from FinalWorkingCode's identical GLRollerGroups.xaml. -->
-                    <RadioButton x:Name="rbByRows" Content="By Rows" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" VerticalAlignment="Center" Margin="28,0,0,0"/>
-                    <RadioButton x:Name="rbByColumns" Content="By Columns" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                    <RadioButton x:Name="rbByRows" Content="By Rows" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" IsChecked="True" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center" Margin="28,0,0,0"/>
+                    <RadioButton x:Name="rbByColumns" Content="By Columns" Style="{StaticResource ModernRadioButton}" GroupName="RollerGroupsOrientationGroup" IsEnabled="{Binding IsMultipleRowsEnabled}" Margin="16,0,0,0" FontWeight="SemiBold" Foreground="#2E86AB" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Row 1, left corner: Cell Reference -->
                 <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,15,0,0">
                     <TextBlock Text="Reference:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
-                    <local:ExcelRefEditControl x:Name="excelRefEdit" TagName="Roller Groups Cell Reference" Height="30" Width="180" VerticalAlignment="Center" Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    <local:ExcelRefEditControl x:Name="excelRefEdit" TagName="Roller Groups Cell Reference" Height="30" Width="175" VerticalAlignment="Center" Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                 </StackPanel>
 
                 <!-- Row 1, right corner: Action Buttons -->
                 <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,15,0,0">
-                    <Button x:Name="btnOK" Style="{StaticResource InsertButtonStyle}" Click="BtnOK_Click" Margin="0,0,8,0">
+                    <Button x:Name="btnOK" Style="{StaticResource InsertButtonStyle}" Width="90" Click="BtnOK_Click" Margin="0,0,8,0">
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Insert selected roller groups into Excel at the specified cell reference" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Insert selected roller groups into Excel at specified cell reference" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Will insert:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Selected roller group items"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Based on multiple rows checkbox setting"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Into selected Excel cell/range"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>

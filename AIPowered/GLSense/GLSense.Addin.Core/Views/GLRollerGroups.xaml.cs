@@ -44,12 +44,6 @@ namespace GLSense.Addin.Core.Views
             InitializeComponent();
             ServiceLocator.Logger?.LogDebug("GLRollerGroups constructor invoked");
 
-            // "Description"/"Segment" fill any left-over width in their respective grids
-            // instead of leaving a blank gap now that every column is Width="Auto" (see
-            // DataGridColumnFillHelper for why the star-width columns were removed).
-            DataGridColumnFillHelper.EnableFillColumn(dgLeft, dgLeft.Columns[1]);
-            DataGridColumnFillHelper.EnableFillColumn(dgRight, dgRight.Columns[1]);
-
             vm = new SimpleSegmentViewModel(Dispatcher)
             {
                 ExcelApp = ServiceLocator.ExcelApp,
