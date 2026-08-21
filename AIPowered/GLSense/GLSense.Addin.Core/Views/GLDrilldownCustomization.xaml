@@ -8,14 +8,13 @@
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   xmlns:wpf="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
                   mc:Ignorable="d"
-                  WindowCaption="GLSense Drilldown Customization"
-                  IconSymbol="GearSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="1250" MaxWidth="1300"
-                  MinHeight="750" MaxHeight="900"
+                  WindowStyle="None"
+                  SizeToContent="Manual"
+                  Width="1250" Height="850"
+                  MinWidth="1250" MaxWidth="1500"
+                  MinHeight="850"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True">
+                  Background="#F8F9FA">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -37,50 +36,37 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
+    <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0"
-              Style="{StaticResource TitleBarGridStyle}"
-              MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <iconPacks:PackIconFontAwesome Grid.Column="0"
-                           Style="{StaticResource TitleBarIconStyle}"
-                           Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-
-            <TextBlock Grid.Column="1"
-                       Style="{StaticResource TitleBarTextStyle}"
-                       Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"
-                       VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis"/>
-
-            <Button Grid.Column="2"
-                    x:Name="CloseButton"
-                    Style="{StaticResource TitleBarCloseButtonStyle}"
-                    Content="&#xE8BB;"
-                    Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Left side with icon and title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="GearsSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="GLSense Drilldown Customization" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- ================= WebView2 Section ================= -->
-        <Border Grid.Row="1"
-                Style="{StaticResource ContentBorderStyle}"
-                Margin="10,8,10,8">
-            <wpf:WebView2 x:Name="webView" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,2,0,0">
+            <wpf:WebView2 x:Name="webView" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
         </Border>
 
         <!-- ================= Close Button Section ================= -->
-        <Border Grid.Row="2" Background="Transparent" Margin="10,0,10,10">
-            <!-- Ported from GLSense\Views\GLDrilldownCustomization.xaml (FinalWorkingCode) -->
+        <Border Grid.Row="2" Background="Transparent" Margin="0,8,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -88,7 +74,7 @@
                 </Grid.ColumnDefinitions>
                 <Border Grid.Column="0" Style="{StaticResource SaveInfoMessage}" HorizontalAlignment="Right" Margin="0,0,10,0">
                     <TextBlock Text="By clicking Save, these customizations are stored in this workbook's memory - they travel with the workbook whenever it is shared or shipped to other users."
-                               FontSize="13" FontWeight="SemiBold" Foreground="#0C5460" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                               FontSize="12" FontWeight="SemiBold" Foreground="#0C5460" TextWrapping="Wrap" VerticalAlignment="Center"/>
                 </Border>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Button x:Name="btnSaveLocally" Content="Save" Margin="0,0,8,0" Style="{StaticResource DynamicContentButton}" Click="BtnSaveLocally_Click">
@@ -106,11 +92,6 @@
         </Border>
 
         <!-- Toast / Busy overlay -->
-        <local:AppOverlay x:Name="AppOverlayControl"
-                          Grid.Row="0" Grid.RowSpan="3"
-                          HorizontalAlignment="Stretch"
-                          VerticalAlignment="Stretch"
-                          Visibility="Collapsed"
-                          Panel.ZIndex="100"/>
+        <local:AppOverlay x:Name="AppOverlayControl" Margin="0" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="10"/>
     </Grid>
 </views:BaseWindow>
