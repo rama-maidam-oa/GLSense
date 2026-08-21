@@ -2655,7 +2655,7 @@ namespace GLSense.ViewModels
         // file's existing multi-variant string checks (e.g. validCurrencyTypes at line ~585).
         private bool IsActivityBeginOrEndBalance()
         {
-            var t = GetFieldValue(ActivityField)?.Trim();
+            var t = GetFieldValue(ActivityField).Trim();
             if (string.IsNullOrWhiteSpace(t)) return false;
             return t.Equals("BB", StringComparison.OrdinalIgnoreCase) ||
                    t.Equals("EB", StringComparison.OrdinalIgnoreCase) ||
@@ -2665,7 +2665,7 @@ namespace GLSense.ViewModels
 
         private bool IsCurrencyTypeTranslatedOrConverted()
         {
-            var t = GetFieldValue(CurrencyTypeField)?.Trim();
+            var t = GetFieldValue(CurrencyTypeField).Trim();
             if (string.IsNullOrWhiteSpace(t)) return false;
             return t.Equals("Translated", StringComparison.OrdinalIgnoreCase) ||
                    t.Equals("T", StringComparison.OrdinalIgnoreCase) ||
@@ -2676,7 +2676,7 @@ namespace GLSense.ViewModels
         private bool IsCurrencyTypeTranslatedConvertedOrEntered()
         {
             if (IsCurrencyTypeTranslatedOrConverted()) return true;
-            var t = GetFieldValue(CurrencyTypeField)?.Trim();
+            var t = GetFieldValue(CurrencyTypeField).Trim();
             if (string.IsNullOrWhiteSpace(t)) return false;
             return t.Equals(AppConstants.CurrencyTypeEntered, StringComparison.OrdinalIgnoreCase) ||
                    t.Equals("E", StringComparison.OrdinalIgnoreCase);
@@ -2684,7 +2684,7 @@ namespace GLSense.ViewModels
 
         private bool IsActualFlagBudget()
         {
-            var t = GetFieldValue(ActualFlagField)?.Trim();
+            var t = GetFieldValue(ActualFlagField).Trim();
             if (string.IsNullOrWhiteSpace(t)) return false;
             return t.Equals(Budget, StringComparison.OrdinalIgnoreCase) ||
                    t.Equals("B", StringComparison.OrdinalIgnoreCase);
