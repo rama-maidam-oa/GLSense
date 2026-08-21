@@ -9,14 +9,12 @@
                   xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   mc:Ignorable="d"
-                  WindowCaption="GLSense Cube Details"
-                  IconSymbol="CubesSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="680" MaxWidth="750"
+                  Background="#F8F9FA"
+                  SizeToContent="Manual"
+                  MinWidth="800" MaxWidth="950"
                   MinHeight="500" MaxHeight="650"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
                   Loaded="Window_Loaded">
 
     <Window.Resources>
@@ -31,43 +29,33 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
+    <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0"
-              Style="{StaticResource TitleBarGridStyle}"
-              MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <iconPacks:PackIconFontAwesome Grid.Column="0"
-                           Style="{StaticResource TitleBarIconStyle}"
-                           Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-
-            <TextBlock Grid.Column="1"
-                       Style="{StaticResource TitleBarTextStyle}"
-                       Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"
-                       VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis"/>
-
-            <Button Grid.Column="2"
-                    x:Name="CloseButton"
-                    Style="{StaticResource TitleBarCloseButtonStyle}"
-                    Content="&#xE8BB;"
-                    Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Left side with icon and title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="CubesSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="GLSense Cube Details" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- Controls Section: cube combo + validate -->
-        <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" CornerRadius="8" Margin="10,10,10,8" Padding="16,12">
+        <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" CornerRadius="8" Margin="0,10,0,8" Padding="16,12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -76,18 +64,23 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <Label Grid.Column="0" Content="Cubes:" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <Label Grid.Column="0" Content="Cubes:" Foreground="#2E86AB" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
 
                 <ctrls:SuggestAppendComboBox x:Name="cmbCubes"
                                               Grid.Column="1"
+                                              Width="Auto"
                                               MinWidth="200"
+                                              MaxWidth="500"
                                               Height="30"
                                               VerticalAlignment="Center"
                                               HorizontalAlignment="Stretch"
-                                              Background="{StaticResource WhiteBrush}"
-                                              Foreground="{StaticResource TextPrimaryBrush}"
+                                              ArrowBrush="#2E86AB"
+                                              ArrowWidth="10"
+                                              ArrowHeight="8"
+                                              Background="White"
+                                              Foreground="#212529"
                                               BorderThickness="1"
-                                              BorderBrush="{StaticResource BorderLightBrush}"
+                                              BorderBrush="#E9ECEF"
                                               Margin="0,0,10,0">
                     <ctrls:SuggestAppendComboBox.ToolTip>
                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
@@ -96,13 +89,13 @@
                     </ctrls:SuggestAppendComboBox.ToolTip>
                 </ctrls:SuggestAppendComboBox>
 
-                <CheckBox x:Name="chkValidateCube" Grid.Column="2" Content="Validate Cube" VerticalAlignment="Center" Margin="0,0,20,0" Style="{StaticResource CompactCheckBox}" Checked="ChkValidateCube_Changed" Unchecked="ChkValidateCube_Changed"/>
-                <Button x:Name="btnValidateCube" Grid.Column="3" Content="Validate" MinWidth="90" Style="{StaticResource DynamicContentButton}" Click="BtnValidateCube_Click"/>
+                <CheckBox x:Name="chkValidateCube" Grid.Column="2" Content="Validate Cube" VerticalAlignment="Center" Margin="0,0,25,0" Style="{StaticResource CompactCheckBox}" Checked="ChkValidateCube_Changed" Unchecked="ChkValidateCube_Changed"/>
+                <Button x:Name="btnValidateCube" Grid.Column="3" Content="Validate" MinWidth="100" Style="{StaticResource DynamicContentButton}" Click="BtnValidateCube_Click"/>
             </Grid>
         </Border>
 
         <!-- Cube DataGrid -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,8">
+        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,8">
             <DataGrid x:Name="dgCubes" FontFamily="Segoe UI" AutoGenerateColumns="False" CanUserAddRows="False" Background="{StaticResource WhiteBrush}" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" SelectionUnit="FullRow" BorderThickness="0" GridLinesVisibility="None" ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <DataGrid.Resources>
                     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
@@ -221,7 +214,7 @@
         </Border>
 
         <!-- Footer -->
-        <Border Grid.Row="3" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="10,8">
+        <Border Grid.Row="3" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="0,0,0,0" Padding="10,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -235,7 +228,7 @@
                             <TextBlock x:Name="lblCubeStatus" VerticalAlignment="Center" Margin="8,0,0,0"
                                        FontWeight="SemiBold" Foreground="#2E86AB"
                                        TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                                       MaxWidth="400"/>
+                                       MaxWidth="450"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
