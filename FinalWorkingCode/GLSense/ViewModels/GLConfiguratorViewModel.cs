@@ -2708,7 +2708,10 @@ namespace GLSense.ViewModels
             LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateBalanceTypesForConditions: hideJed={hideJed}");
             try
             {
-                _dispatcher.InvokeAsync(() =>
+                // Synchronous (not InvokeAsync/fire-and-forget): callers such as
+                // ApplyDefaultSelections() read BalanceTypes immediately afterward and
+                // need the rebuilt list to already be in place, not merely queued.
+                _dispatcher.Invoke(() =>
                 {
                     if (BalanceTypes == null)
                         BalanceTypes = new ObservableCollection<BalanceTypeModel>();
@@ -2753,7 +2756,8 @@ namespace GLSense.ViewModels
             LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateActualFlagsForConditions: hideBudget={hideBudget}");
             try
             {
-                _dispatcher.InvokeAsync(() =>
+                // Synchronous (not InvokeAsync/fire-and-forget) - see UpdateBalanceTypesForConditions.
+                _dispatcher.Invoke(() =>
                 {
                     if (ActualFlags == null)
                         ActualFlags = new ObservableCollection<ActualFlagsModel>();
@@ -2792,7 +2796,13 @@ namespace GLSense.ViewModels
             LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateActivitiesForConditions: hideBeginEnd={hideBeginEnd}");
             try
             {
-                _dispatcher.InvokeAsync(() =>
+                // Synchronous (not InvokeAsync/fire-and-forget): this was the actual bug -
+                // ApplyDefaultSelections() (called right after UpdateUIAsync, which calls
+                // this method) reads Activities immediately looking for the "NET" default,
+                // and a fire-and-forget InvokeAsync here left Activities still empty at
+                // that point (the queued repopulation hadn't run yet), so the default
+                // Activity selection silently failed. See also the two sibling methods.
+                _dispatcher.Invoke(() =>
                 {
                     if (Activities == null)
                         Activities = new ObservableCollection<ActivityModel>();
