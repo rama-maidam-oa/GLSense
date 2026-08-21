@@ -10,13 +10,12 @@
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   mc:Ignorable="d"
                   WindowCaption="GLSense User Preferences"
-                  IconSymbol="GearSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="500" MaxWidth="600"
-                  MinHeight="400" MaxHeight="560"
+                  IconSymbol="UserGearSolid"
+                  SizeToContent="Manual"
+                  MinHeight="430" MaxHeight="520" MinWidth="550" MaxWidth="630"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
+                  Background="#F8F9FA"
                   Loaded="Window_Loaded">
 
     <Window.Resources>
@@ -28,64 +27,45 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
+    <Border Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="1">
+    <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- HEADER -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="UserGearSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="GLSense User Preferences" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- TAB CONTROL -->
         <!-- Wrapped in a ScrollViewer (matches FinalWorkingCode) so content remains reachable
              instead of clipped/collapsed when the window can't fully fit on screen - e.g. at
              150%+ DPI scaling or on lower resolution displays. -->
-        <ScrollViewer Grid.Row="1" Margin="10,10,10,8" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
-        <Border Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}">
-            <TabControl x:Name="MainTabControl" HorizontalContentAlignment="Left" Style="{StaticResource ModernTabControl}" ItemContainerStyle="{StaticResource ModernTabItem}" SelectionChanged="MainTabControl_SelectionChanged" Margin="8">
+        <ScrollViewer Grid.Row="1" Margin="0,8,0,8" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
+            <TabControl x:Name="MainTabControl" HorizontalContentAlignment="Left" Style="{StaticResource ModernTabControl}" ItemContainerStyle="{StaticResource TabItemStyle}" SelectionChanged="MainTabControl_SelectionChanged">
                 <TabItem Header="DrillDowns">
-                    <Border Background="{StaticResource WhiteBrush}" CornerRadius="4" Padding="4" Margin="0,8,0,0">
-                        <DataGrid x:Name="dgDrillDowns" FontFamily="Segoe UI" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column" Background="{StaticResource WhiteBrush}" BorderThickness="0" GridLinesVisibility="None" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                            <DataGrid.ColumnHeaderStyle>
-                                <Style TargetType="DataGridColumnHeader">
-                                    <Setter Property="Background" Value="#2E86AB"/>
-                                    <Setter Property="Foreground" Value="White"/>
-                                    <Setter Property="FontWeight" Value="SemiBold"/>
-                                    <Setter Property="BorderBrush" Value="#1B6B93"/>
-                                    <Setter Property="BorderThickness" Value="0,0,1,0"/>
-                                    <Setter Property="Padding" Value="12,10"/>
-                                    <Setter Property="Height" Value="38"/>
-                                    <Setter Property="FontSize" Value="12"/>
-                                </Style>
-                            </DataGrid.ColumnHeaderStyle>
-                            <DataGrid.RowStyle>
-                                <Style TargetType="DataGridRow" BasedOn="{StaticResource ModernDataGridRow}">
-                                    <Setter Property="BorderBrush" Value="#F8F9FA"/>
-                                    <Setter Property="BorderThickness" Value="0,0,0,1"/>
-                                    <Setter Property="Height" Value="36"/>
-                                </Style>
-                            </DataGrid.RowStyle>
+                    <Border Style="{StaticResource CompactCardStyle}" Padding="6" Margin="0,4,0,0">
+                        <DataGrid x:Name="dgDrillDowns" FontFamily="Segoe UI" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column" Background="White" BorderThickness="0" GridLinesVisibility="None" ColumnHeaderStyle="{StaticResource ModernDataGridColumnHeader}" RowStyle="{StaticResource ModernDataGridRowWithBorder}" CellStyle="{StaticResource ModernDataGridCell}" ScrollViewer.VerticalScrollBarVisibility="Disabled">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="DrillDowns" Binding="{Binding Name}" Width="*" IsReadOnly="True">
-                                    <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
-                                    </DataGridTextColumn.ElementStyle>
-                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="DrillDowns" Binding="{Binding Name}" Width="*" IsReadOnly="True" ElementStyle="{StaticResource ModernDataGridTextBlock}"/>
                                 <DataGridTemplateColumn Header="Run as Job" Width="110">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <CheckBox IsChecked="{Binding RunAsJob, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEditRunAsJob}" Style="{StaticResource ModernCheckBox}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <CheckBox IsChecked="{Binding RunAsJob, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEditRunAsJob}" Style="{StaticResource ModernDataGridCheckBoxColumn}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
@@ -96,7 +76,7 @@
                                             <CheckBox IsChecked="{Binding IncludeManualJournal, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                       IsEnabled="{Binding CanEditManualJournals}"
                                                       Visibility="{Binding ShowManualJournalsColumn, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                      Style="{StaticResource ModernCheckBox}"
+                                                      Style="{StaticResource ModernDataGridCheckBoxColumn}"
                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -106,72 +86,74 @@
                     </Border>
                 </TabItem>
                 <TabItem Header="Options">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,8,0,0">
-                        <Border Background="{StaticResource WhiteBrush}" CornerRadius="4" Padding="12">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <!-- 1.) No Data/Missing Row -->
-                                <Grid Grid.Row="0" Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="140"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="No Data/Missing :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <ctrls:SuggestAppendComboBox x:Name="CmbOptions" Grid.Column="1" HorizontalAlignment="Stretch" Height="30" Margin="8,0,0,0" Foreground="Black" DisplayMemberPath="Value" Loaded="CmbOptions_Loaded"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,4,0,0">
+                        <StackPanel Margin="4">
+                            <!-- Consolidated Options Card -->
+                            <Border Style="{StaticResource CompactCardStyle}" Padding="12">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <!-- 1.) No Data/Missing Row -->
+                                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="140"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="No Data/Missing :" Style="{StaticResource TextBlockLabelStyle}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <ctrls:SuggestAppendComboBox x:Name="CmbOptions" Grid.Column="1" HorizontalAlignment="Stretch" Height="30" Margin="8,0,0,0" Foreground="Black" DisplayMemberPath="Value" Loaded="CmbOptions_Loaded"/>
+                                    </Grid>
+                                    <!-- 2.) Refresh Cells Row -->
+                                    <Grid Grid.Row="1" Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="140"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Range Cells :" Style="{StaticResource TextBlockLabelStyle}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <ctrls:NumericSpinner x:Name="SpinnerRefreshCells" Grid.Column="1" Minimum="1" Maximum="100" HintText="Minimum 1, maximum 100." HorizontalAlignment="Stretch" VerticalAlignment="Center" Height="28" Margin="8,0,0,0" ValueChanged="SpinnerRefreshCells_ValueChanged"/>
+                                    </Grid>
+                                    <!-- 3.) Records per page Row -->
+                                    <Grid Grid.Row="2" Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="140"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Records per page :" Style="{StaticResource TextBlockLabelStyle}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <ctrls:NumericSpinner x:Name="SpinnerRecordsPerPage" Grid.Column="1" Minimum="1" Maximum="1000" HintText="Minimum 1, maximum 1000." Step="10" HorizontalAlignment="Stretch" VerticalAlignment="Center" Height="28" Margin="8,0,0,0" ValueChanged="SpinnerRecordsPerPage_ValueChanged"/>
+                                    </Grid>
+                                    <!-- 4.) Validate Cube Checkbox -->
+                                    <CheckBox x:Name="ChkValidateCube" Grid.Row="3" Content="Live Data Check" Style="{StaticResource CompactCheckBox}" Margin="0,10,0,12" HorizontalAlignment="Left" Checked="ChkValidateCube_Checked" Unchecked="ChkValidateCube_Unchecked">
+                                        <CheckBox.ToolTip>
+                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                <TextBlock Text="When enabled, cube validation will be performed while selecting the cube." FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="300"/>
+                                            </ToolTip>
+                                        </CheckBox.ToolTip>
+                                    </CheckBox>
+                                    <!-- 5.) Suppress zeroes Checkbox -->
+                                    <CheckBox x:Name="ChkZeroes" Grid.Row="4" Content="Suppress zeroes in Balance Drilldown" Style="{StaticResource CompactCheckBox}" Margin="0,0,0,12" HorizontalAlignment="Left" Checked="ChkZeroes_Checked" Unchecked="ChkZeroes_Unchecked"/>
+                                    <!-- 6.) Overwrite drilldown metadata Checkbox - default unchecked -->
+                                    <CheckBox x:Name="ChkOverwriteDrilldownMetadata" Grid.Row="5" Content="Overwrite drilldown metadata with locally saved" Style="{StaticResource CompactCheckBox}" Margin="0,0,0,0" HorizontalAlignment="Left" Checked="ChkOverwriteDrilldownMetadata_Checked" Unchecked="ChkOverwriteDrilldownMetadata_Unchecked">
+                                        <CheckBox.ToolTip>
+                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                <TextBlock Text="When enabled, drilldowns will use the drilldown metadata saved locally (via Save Locally) instead of fetching it fresh." FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="300"/>
+                                            </ToolTip>
+                                        </CheckBox.ToolTip>
+                                    </CheckBox>
                                 </Grid>
-                                <!-- 2.) Refresh Cells Row -->
-                                <Grid Grid.Row="1" Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="140"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Range Cells :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <ctrls:NumericSpinner x:Name="SpinnerRefreshCells" Grid.Column="1" Minimum="1" Maximum="100" HintText="Minimum 1, maximum 100." HorizontalAlignment="Stretch" VerticalAlignment="Center" Height="28" Margin="8,0,0,0" ValueChanged="SpinnerRefreshCells_ValueChanged"/>
-                                </Grid>
-                                <!-- 3.) Records per page Row -->
-                                <Grid Grid.Row="2" Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="140"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Records per page :" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <ctrls:NumericSpinner x:Name="SpinnerRecordsPerPage" Grid.Column="1" Minimum="1" Maximum="1000" HintText="Minimum 1, maximum 1000." Step="10" HorizontalAlignment="Stretch" VerticalAlignment="Center" Height="28" Margin="8,0,0,0" ValueChanged="SpinnerRecordsPerPage_ValueChanged"/>
-                                </Grid>
-                                <!-- 4.) Validate Cube Checkbox -->
-                                <CheckBox x:Name="ChkValidateCube" Grid.Row="3" Content="Live Data Check" Style="{StaticResource CompactCheckBox}" Margin="0,10,0,12" HorizontalAlignment="Left" Checked="ChkValidateCube_Checked" Unchecked="ChkValidateCube_Unchecked">
-                                    <CheckBox.ToolTip>
-                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <TextBlock Text="When enabled, cube validation will be performed while selecting the cube." FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="300"/>
-                                        </ToolTip>
-                                    </CheckBox.ToolTip>
-                                </CheckBox>
-                                <!-- 5.) Suppress zeroes Checkbox -->
-                                <CheckBox x:Name="ChkZeroes" Grid.Row="4" Content="Suppress zeroes in Balance Drilldown" Style="{StaticResource CompactCheckBox}" Margin="0,0,0,12" HorizontalAlignment="Left" Checked="ChkZeroes_Checked" Unchecked="ChkZeroes_Unchecked"/>
-                                <!-- 6.) Overwrite drilldown metadata Checkbox - default unchecked -->
-                                <CheckBox x:Name="ChkOverwriteDrilldownMetadata" Grid.Row="5" Content="Overwrite drilldown metadata with locally saved" Style="{StaticResource CompactCheckBox}" Margin="0,0,0,0" HorizontalAlignment="Left" Checked="ChkOverwriteDrilldownMetadata_Checked" Unchecked="ChkOverwriteDrilldownMetadata_Unchecked">
-                                    <CheckBox.ToolTip>
-                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <TextBlock Text="When enabled, drilldowns will use the drilldown metadata saved locally (via Save Locally) instead of fetching it fresh." FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="300"/>
-                                        </ToolTip>
-                                    </CheckBox.ToolTip>
-                                </CheckBox>
-                            </Grid>
-                        </Border>
+                            </Border>
+                        </StackPanel>
                     </ScrollViewer>
                 </TabItem>
             </TabControl>
-        </Border>
         </ScrollViewer>
 
         <!-- BUTTONS -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="12,8">
+        <Border Grid.Row="2" Style="{StaticResource CompactCardStyle}" Padding="12,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -186,6 +168,8 @@
                         </ToolTip>
                     </Button.ToolTip>
                 </Button>
+                <!-- spacer -->
+                <Grid Grid.Column="1"/>
                 <!-- SAVE and CLOSE BUTTONS - Right aligned -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
                     <Button Content="Save" Margin="0,0,8,0" Style="{StaticResource DynamicContentButton}" Click="CmdSave_Click">
@@ -201,6 +185,7 @@
         </Border>
 
         <!-- Toast / Busy overlay -->
-        <local:AppOverlay x:Name="AppOverlayControl" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="100"/>
+        <local:AppOverlay x:Name="AppOverlayControl" Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="10"/>
     </Grid>
+    </Border>
 </views:BaseWindow>
