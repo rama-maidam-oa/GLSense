@@ -52,11 +52,6 @@ namespace GLSense.Addin.Core.Views
             InitializeComponent();
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor constructor invoked");
 
-            // "Name" (index 1, previously the highest-weighted 3* column) fills any left-over
-            // width instead of leaving a blank gap now that every column is Width="Auto" (see
-            // DataGridColumnFillHelper for why the star-width columns were removed).
-            DataGridColumnFillHelper.EnableFillColumn(dgJobs, dgJobs.Columns[1]);
-
             vm = new GLSubmittedJobsViewModel
             {
                 ExcelApp = ServiceLocator.ExcelApp,

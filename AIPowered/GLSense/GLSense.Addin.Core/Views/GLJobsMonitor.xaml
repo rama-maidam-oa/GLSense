@@ -9,14 +9,12 @@
                   xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   mc:Ignorable="d"
-                  WindowCaption="GLSense Processed Jobs"
-                  IconSymbol="ClipboardListSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="800" MaxWidth="900"
-                  MinHeight="700" MaxHeight="850"
+                  SizeToContent="Manual"
+                  MinWidth="800" MaxWidth="1000"
+                  MinHeight="700"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
+                  Background="#F8F9FA"
                   Loaded="Window_Loaded">
 
     <Window.Resources>
@@ -31,43 +29,32 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid" Margin="0,0,0,0">
+    <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0"
-              Style="{StaticResource TitleBarGridStyle}"
-              MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <iconPacks:PackIconFontAwesome Grid.Column="0"
-                           Style="{StaticResource TitleBarIconStyle}"
-                           Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-
-            <TextBlock Grid.Column="1"
-                       Style="{StaticResource TitleBarTextStyle}"
-                       Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"
-                       VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis"/>
-
-            <Button Grid.Column="2"
-                    x:Name="CloseButton"
-                    Style="{StaticResource TitleBarCloseButtonStyle}"
-                    Content="&#xE8BB;"
-                    Click="BtnClose_Click"/>
-        </Grid>
+        <!-- Header -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="SwatchbookSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="Processed Jobs" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- ================= Search Controls Section ================= -->
-        <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" CornerRadius="8" Margin="10,10,10,8" Padding="16,12">
+        <Border Grid.Row="1" Background="White" CornerRadius="8" Margin="0,0,0,12" Padding="16,12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -78,6 +65,7 @@
 
                 <!-- Search Label -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="SearchenginBrands" Width="14" Height="14" Foreground="#2E86AB" Margin="0,2,8,0" VerticalAlignment="Center"/>
                     <TextBlock Text="Search:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
                 </StackPanel>
 
@@ -85,8 +73,9 @@
                 <ctrls:SuggestAppendComboBox x:Name="cmbSearchType" Grid.Column="1" Width="Auto" MinWidth="200" Height="30" Margin="8,0,8,0"
                                               ItemsSource="{Binding SearchTypes}" DisplayMemberPath="DisplayName"
                                               SelectedItem="{Binding SelectedSearchType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              Background="{StaticResource WhiteBrush}" Foreground="{StaticResource TextPrimaryBrush}"
-                                              BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}"/>
+                                              ArrowBrush="#2E86AB" ArrowWidth="10" ArrowHeight="8"
+                                              Background="White" Foreground="#212529"
+                                              BorderThickness="1" BorderBrush="#E9ECEF"/>
 
                 <!-- Search TextBox -->
                 <TextBox x:Name="txtSearch" Grid.Column="2" Height="30" Style="{StaticResource ModernTextBox}"
@@ -94,7 +83,28 @@
                          Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                     <TextBox.ToolTip>
                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                            <TextBlock Text="Enter text to filter jobs list" TextWrapping="Wrap"/>
+                            <StackPanel>
+                                <TextBlock Text="Enter text to filter jobs list" TextWrapping="Wrap"/>
+                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Search based on selected criteria:"
+                                     FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                            <TextBlock Text="• Process ID: Enter specific ID"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            <TextBlock Text="• Name: Partial or full job name"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            <TextBlock Text="• Phase/Status: Current state"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </ToolTip>
                     </TextBox.ToolTip>
                 </TextBox>
@@ -104,7 +114,27 @@
                         Content="Refresh" Padding="12,0" Click="BtnRefresh_Click">
                     <Button.ToolTip>
                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                            <TextBlock Text="Refresh the jobs list with latest status" TextWrapping="Wrap"/>
+                            <StackPanel>
+                                <TextBlock Text="Refresh the jobs list with latest status" TextWrapping="Wrap"/>
+                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Updates:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                            <TextBlock Text="• Current job statuses"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            <TextBlock Text="• Download availability"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            <TextBlock Text="• Phase and status changes"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </ToolTip>
                     </Button.ToolTip>
                 </Button>
@@ -112,13 +142,7 @@
         </Border>
 
         <!-- ================= Main Content: Jobs DataGrid ================= -->
-        <!-- MinHeight added (matches the AttachmentsDialog/GLSegmentValues fix): a bare
-             "*" row collapses toward 0 during SizeToContent's infinite-availSize
-             measurement pass, which is the same root cause behind the "rows collapsed"
-             symptom seen on other SizeToContent windows. MinHeight stops that
-             pathological first-pass collapse while still letting the grid grow/scroll
-             normally. -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,8" MinHeight="300">
+        <Border Grid.Row="2" Background="White" CornerRadius="8" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,12">
             <DataGrid x:Name="dgJobs"
                       ItemsSource="{Binding JobsView}"
                       AutoGenerateColumns="False"
@@ -161,6 +185,52 @@
                         <Setter Property="Padding" Value="12,10"/>
                         <Setter Property="Height" Value="38"/>
                         <Setter Property="FontSize" Value="12"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="DataGridColumnHeader">
+                                    <Border x:Name="border"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <ContentPresenter Grid.Column="0"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                            <Path x:Name="SortArrow"
+                          Grid.Column="1"
+                          Margin="6,0,6,0"
+                          Width="10"
+                          Height="6"
+                          Stretch="Fill"
+                          Fill="{TemplateBinding Foreground}"
+                          Visibility="Collapsed"
+                          Data="M 0 4 L 5 0 L 10 4 Z"/>
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" TargetName="border" Value="#389BC7"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter Property="Background" TargetName="border" Value="#277596"/>
+                                        </Trigger>
+                                        <Trigger Property="SortDirection" Value="Ascending">
+                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 4 L 5 0 L 10 4 Z"/>
+                                        </Trigger>
+                                        <Trigger Property="SortDirection" Value="Descending">
+                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 0 L 5 4 L 10 0 Z"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
                     </Style>
                 </DataGrid.ColumnHeaderStyle>
 
@@ -247,7 +317,18 @@
                                 <Setter Property="ToolTip">
                                     <Setter.Value>
                                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <TextBlock Text="{Binding ProcessId}"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Unique identifier for the job" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding ProcessId}"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Use for tracking and reference"
+                                             FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
                                         </ToolTip>
                                     </Setter.Value>
                                 </Setter>
@@ -266,7 +347,10 @@
                                 <Setter Property="ToolTip">
                                     <Setter.Value>
                                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <TextBlock Text="{Binding Name}" TextWrapping="Wrap"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Job Name" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding Name}" TextWrapping="Wrap"/>
+                                            </StackPanel>
                                         </ToolTip>
                                     </Setter.Value>
                                 </Setter>
@@ -280,7 +364,18 @@
                             Binding="{Binding JobType}"
                             Width="2*">
                         <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Job Type" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding JobType}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
@@ -293,6 +388,28 @@
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding PhaseColor}"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Current processing phase" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding Phase}" Foreground="{Binding PhaseColor}" FontWeight="SemiBold"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Common phases:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                            <TextBlock Text="• Setup/Initialization" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Processing/Running" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Completed/Finalized" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
@@ -306,6 +423,29 @@
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding StatusColor}"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Job execution status" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding Status}" Foreground="{Binding StatusColor}" FontWeight="SemiBold"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Status indicators:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                            <TextBlock Text="• Success/Completed" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• In Progress/Running" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Failed/Error" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Pending/Queued" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
@@ -316,12 +456,54 @@
                             Binding="{Binding DisplayDate}"
                             Width="2*">
                         <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Job submission/execution date and time" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding DisplayDate}"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Time information:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                            <TextBlock Text="• When job was submitted" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• When job started/completed" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Used for sorting/filtering" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
                     <!-- Download Icon -->
                     <DataGridTemplateColumn Header="Download" Width="1.1*" IsReadOnly="True">
+                        <DataGridTemplateColumn.HeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="#2E86AB"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="BorderBrush" Value="#1B6B93"/>
+                                <Setter Property="BorderThickness" Value="0,0,1,0"/>
+                                <Setter Property="Padding" Value="12,10"/>
+                                <Setter Property="Height" Value="38"/>
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <TextBlock Text="Download availability indicator" TextWrapping="Wrap"/>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </DataGridTemplateColumn.HeaderStyle>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <iconPacks:PackIconFontAwesome Kind="{Binding DownloadIconKind}"
@@ -332,7 +514,22 @@
                                            Foreground="{Binding DownloadIconColor}">
                                     <iconPacks:PackIconFontAwesome.ToolTip>
                                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <TextBlock Text="{Binding DownloadTooltip}" TextWrapping="Wrap"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Download Status" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding DownloadTooltip}" TextWrapping="Wrap"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Icon meanings:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                            <TextBlock Text="• Green: Available for download" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Gray: Not available yet" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Red: Download failed/error" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
                                         </ToolTip>
                                     </iconPacks:PackIconFontAwesome.ToolTip>
                                 </iconPacks:PackIconFontAwesome>
@@ -344,7 +541,7 @@
         </Border>
 
         <!-- Footer Actions -->
-        <Border Grid.Row="3" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="16">
+        <Border Grid.Row="3" Background="White" CornerRadius="8" BorderThickness="1" BorderBrush="#E9ECEF" Padding="16">
             <Grid>
                 <!-- Left Side: Delete Buttons -->
                 <StackPanel HorizontalAlignment="Left" Orientation="Horizontal">
@@ -352,7 +549,27 @@
                             Click="BtnDelete_Click">
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Delete selected jobs from the system" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Delete selected jobs from the system" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Will delete:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Only checked/selected jobs"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Job records and associated data"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Action cannot be undone"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>
@@ -360,7 +577,27 @@
                             Click="BtnDeleteAll_Click">
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Delete all jobs from the system (use with caution)" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Delete all jobs from the system (use with caution)" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                             Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="WARNING:" FontSize="11" FontWeight="Bold" Foreground="Red"/>
+                                                <TextBlock Text="• Deletes ALL jobs regardless of selection"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Irreversible action"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Consider using selective delete instead"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>
@@ -372,7 +609,30 @@
                          Click="BtnDownloadLogs_Click">
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Download execution logs for selected jobs" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Download execution logs for selected jobs" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Downloads:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Execution log files"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Error messages and debugging info"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Performance metrics"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Only available for completed/failed jobs"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>
@@ -380,7 +640,33 @@
                            Click="BtnDownloadOutputs_Click">
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Download output files/results from selected jobs" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Download output files/results from selected jobs" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Downloads:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Job result files"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Generated reports and data"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Export files (Excel, CSV, etc.)"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Multiple outputs for batch jobs"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Only available for successful jobs"
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>
@@ -391,6 +677,6 @@
         </Border>
 
         <!-- Toast / Busy overlay -->
-        <local:AppOverlay x:Name="AppOverlayControl" Grid.Row="0" Grid.RowSpan="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" Panel.ZIndex="100"/>
+        <local:AppOverlay x:Name="AppOverlayControl" Grid.Row="0" Grid.RowSpan="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="10"/>
     </Grid>
 </views:BaseWindow>
