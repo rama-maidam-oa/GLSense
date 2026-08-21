@@ -7,14 +7,13 @@
                   xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   mc:Ignorable="d"
-                  WindowCaption="Instance Configuration"
-                  IconSymbol="DatabaseSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="640" MaxWidth="720"
-                  MinHeight="410" MaxHeight="650"
+                  Background="#F8F9FA"
+                  SizeToContent="Manual"
+                  MinWidth="650" MaxWidth="720"
+                  MinHeight="500" MaxHeight="650"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True">
+                  WindowStyle="None"
+                  WindowStartupLocation="CenterOwner">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -28,111 +27,207 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid">
+    <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- Left side with icon and title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="DatabaseSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="Instance Configuration" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- ================= Data Grid Section ================= -->
-        <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,10,10,8">
-            <DataGrid x:Name="dgInstances" FontFamily="Segoe UI" AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="False" HeadersVisibility="Column" SelectionMode="Single" SelectionUnit="FullRow" Background="{StaticResource WhiteBrush}" BorderThickness="0" GridLinesVisibility="None" CellEditEnding="DgInstances_CellEditEnding" SelectionChanged="DgInstances_SelectionChanged" ScrollViewer.VerticalScrollBarVisibility="Auto">
-                <DataGrid.Resources>
-                    <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
-                        <Setter Property="Background" Value="#E0E0E0"/>
-                        <Setter Property="Opacity" Value="1"/>
-                    </Style>
-                    <Style TargetType="Thumb" BasedOn="{StaticResource AppScrollThumbStyle}">
-                        <Setter Property="Background" Value="#6C757D"/>
-                        <Setter Property="Opacity" Value="1"/>
-                    </Style>
-                </DataGrid.Resources>
-                <DataGrid.ColumnHeaderStyle>
-                    <Style TargetType="DataGridColumnHeader">
-                        <Setter Property="Background" Value="#2E86AB"/>
-                        <Setter Property="Foreground" Value="White"/>
-                        <Setter Property="FontWeight" Value="SemiBold"/>
-                        <Setter Property="BorderBrush" Value="#1B6B93"/>
-                        <Setter Property="BorderThickness" Value="0,0,1,0"/>
-                        <Setter Property="Padding" Value="12,10"/>
-                        <Setter Property="Height" Value="38"/>
-                        <Setter Property="FontSize" Value="12"/>
-                    </Style>
-                </DataGrid.ColumnHeaderStyle>
-                <DataGrid.RowStyle>
-                    <Style TargetType="DataGridRow">
-                        <Setter Property="BorderBrush" Value="#F8F9FA"/>
-                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
-                        <Setter Property="Background" Value="White"/>
-                        <Setter Property="Foreground" Value="#212529"/>
-                        <Setter Property="FontSize" Value="13"/>
-                        <Setter Property="Height" Value="36"/>
-                        <Style.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#F0F8FF"/>
-                                <Setter Property="BorderBrush" Value="#2E86AB"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="#E6F3FF"/>
-                                <Setter Property="BorderBrush" Value="#2E86AB"/>
-                                <Setter Property="Foreground" Value="#212529"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </DataGrid.RowStyle>
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="URL Name" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="*">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
-                                <Setter Property="ToolTip">
-                                    <Setter.Value>
-                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <StackPanel>
-                                                <TextBlock Text="Friendly name for the server instance" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                                <TextBlock Text="{Binding Name}"/>
-                                            </StackPanel>
-                                        </ToolTip>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn Header="URL Address" Binding="{Binding Address, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
-                                <Setter Property="ToolTip">
-                                    <Setter.Value>
-                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <StackPanel>
-                                                <TextBlock Text="Server connection URL" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                                <TextBlock Text="{Binding Address}" TextWrapping="Wrap"/>
-                                                <TextBlock Text="Example: http://server.domain.com:port/reporting" FontSize="11" FontStyle="Italic" Margin="0,6,0,0"/>
-                                            </StackPanel>
-                                        </ToolTip>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                </DataGrid.Columns>
-            </DataGrid>
+        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,12">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <DataGrid x:Name="dgInstances" FontFamily="Segoe UI" AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="False" HeadersVisibility="Column" SelectionMode="Single" SelectionUnit="FullRow" Background="{StaticResource WhiteBrush}" BorderThickness="0" GridLinesVisibility="None" CellEditEnding="DgInstances_CellEditEnding" SelectionChanged="DgInstances_SelectionChanged" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <DataGrid.Resources>
+                        <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
+                            <Setter Property="Background" Value="#E0E0E0"/>
+                            <Setter Property="Opacity" Value="1"/>
+                        </Style>
+                        <Style TargetType="Thumb" BasedOn="{StaticResource AppScrollThumbStyle}">
+                            <Setter Property="Background" Value="#6C757D"/>
+                            <Setter Property="Opacity" Value="1"/>
+                        </Style>
+                    </DataGrid.Resources>
+                    <DataGrid.ColumnHeaderStyle>
+                        <Style TargetType="DataGridColumnHeader">
+                            <Setter Property="Background" Value="#2E86AB"/>
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="BorderBrush" Value="#1B6B93"/>
+                            <Setter Property="BorderThickness" Value="0,0,1,0"/>
+                            <Setter Property="Padding" Value="12,10"/>
+                            <Setter Property="Height" Value="38"/>
+                            <Setter Property="FontSize" Value="12"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="DataGridColumnHeader">
+                                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Grid.Column="0" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                                <Path x:Name="SortArrow" Grid.Column="1" Margin="6,0,6,0" Width="10" Height="6" Stretch="Fill" Fill="{TemplateBinding Foreground}" Visibility="Collapsed" Data="M 0 4 L 5 0 L 10 4 Z"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" TargetName="border" Value="#389BC7"/>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter Property="Background" TargetName="border" Value="#277596"/>
+                                            </Trigger>
+                                            <Trigger Property="SortDirection" Value="Ascending">
+                                                <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                <Setter TargetName="SortArrow" Property="Data" Value="M 0 4 L 5 0 L 10 4 Z"/>
+                                            </Trigger>
+                                            <Trigger Property="SortDirection" Value="Descending">
+                                                <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                <Setter TargetName="SortArrow" Property="Data" Value="M 0 0 L 5 4 L 10 0 Z"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </DataGrid.ColumnHeaderStyle>
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Setter Property="BorderBrush" Value="#F8F9FA"/>
+                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="Foreground" Value="#212529"/>
+                            <Setter Property="FontSize" Value="13"/>
+                            <Setter Property="Height" Value="36"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#F0F8FF"/>
+                                    <Setter Property="BorderBrush" Value="#2E86AB"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#E6F3FF"/>
+                                    <Setter Property="BorderBrush" Value="#2E86AB"/>
+                                    <Setter Property="Foreground" Value="#212529"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="URL Name" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="*">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                    <Setter Property="ToolTip">
+                                        <Setter.Value>
+                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Friendly name for the server instance" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                    <TextBlock Text="{Binding Name}"/>
+                                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                            <StackPanel>
+                                                                <TextBlock Text="Naming tips:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                                <TextBlock Text="• Use descriptive names" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="• Example: 'Production Server'" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="• Avoid special characters" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </StackPanel>
+                                            </ToolTip>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                            <DataGridTextColumn.EditingElementStyle>
+                                <Style TargetType="TextBox" BasedOn="{StaticResource EditableDataGridText}">
+                                    <Setter Property="ToolTip">
+                                        <Setter.Value>
+                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                <TextBlock Text="Enter a friendly name for this server instance" TextWrapping="Wrap"/>
+                                            </ToolTip>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </DataGridTextColumn.EditingElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="URL Address" Binding="{Binding Address, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="2*">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                    <Setter Property="ToolTip">
+                                        <Setter.Value>
+                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Server connection URL" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                    <TextBlock Text="{Binding Address}" TextWrapping="Wrap"/>
+                                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                            <StackPanel>
+                                                                <TextBlock Text="Format examples:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                                <TextBlock Text="• http://server.domain.com:port/reporting" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="• http://localhost:8080/reporting" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="• Include protocol (http/https)" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </StackPanel>
+                                            </ToolTip>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                            <DataGridTextColumn.EditingElementStyle>
+                                <Style TargetType="TextBox" BasedOn="{StaticResource EditableDataGridText}">
+                                    <Setter Property="ToolTip">
+                                        <Setter.Value>
+                                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Enter the complete server URL address" TextWrapping="Wrap"/>
+                                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                            <StackPanel>
+                                                                <TextBlock Text="Required format:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                                <TextBlock Text="• Protocol (http:// or https://)" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="• Server name or IP address" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="• Port number (if not default)" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="• Example: https://api.example.com:8443" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,4,0,0"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </StackPanel>
+                                            </ToolTip>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </DataGridTextColumn.EditingElementStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </ScrollViewer>
         </Border>
 
         <!-- ================= Action Buttons Section ================= -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="12,8">
+        <Border Grid.Row="2" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Padding="8,4">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -147,14 +242,41 @@
                     <Button x:Name="btnUpdate" Content="Add" Style="{StaticResource DynamicContentButton}" Click="BtnUpdate_Click" Margin="0,0,8,0">
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Add / save server configuration" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Add / save server configuration" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Adds a blank row for:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• New server name" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Server URL/address" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Click in cells to edit values" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>
                     <Button x:Name="btnDelete" Content="Delete" Style="{StaticResource DynamicContentButton}" Click="BtnDelete_Click" Margin="0,0,8,0">
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Delete selected server configuration" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Delete selected server configuration" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Requirements:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Select a row first" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Cannot delete all servers" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                <TextBlock Text="• At least one server must remain" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Action cannot be undone" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>

@@ -66,11 +66,6 @@ namespace GLSense.Addin.Core.Views
         {
             InitializeComponent();
 
-            // "URL Address" (index 1) fills any left-over width instead of leaving a blank
-            // gap now that both columns are Width="Auto" (see DataGridColumnFillHelper for why
-            // star-width columns were removed).
-            DataGridColumnFillHelper.EnableFillColumn(dgInstances, dgInstances.Columns[1]);
-
             urlInstances = new ObservableCollection<UrlInstance>();
             dgInstances.ItemsSource = urlInstances;
             // Monitor collection changes so we can attach PropertyChanged handlers and keep
