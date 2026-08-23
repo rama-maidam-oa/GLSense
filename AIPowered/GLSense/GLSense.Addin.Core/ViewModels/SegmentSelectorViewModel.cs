@@ -60,7 +60,7 @@ namespace GLSense.Addin.Core.ViewModels
         // Set by the View so it can resettle its SizeToContent window once
         // PagedSegmentValues actually has real data - the initial load runs via
         // SelectedSegment's setter firing "_ = LoadSegmentValuesAsync();" fire-and-
-        // forget, detached from Window_Loaded's own await chain, so BaseWindow.
+        // forget, detached from Window_Loaded's own await chain, so DpiAwareWindow.
         // OnLoaded's SizeToContent resettle always ran against an empty dgLeft/dgRight.
         // Invoked from UpdatePagingAndGrid() below, which is the single choke point
         // every paging/filter/search update already funnels through - harmless to also

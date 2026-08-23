@@ -24,7 +24,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLGetPeriodStartEnd.xaml
     /// </summary>
-    public partial class GLGetPeriodStartEnd : BaseWindow, IWarningHost
+    public partial class GLGetPeriodStartEnd : DpiAwareWindow, IWarningHost
     {
         private sealed class LedgerInfo
         {

@@ -23,7 +23,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLGetPeriodDetails.xaml
     /// </summary>
-    public partial class GLGetPeriodDetails : BaseWindow, IWarningHost
+    public partial class GLGetPeriodDetails : DpiAwareWindow, IWarningHost
     {
         private sealed class LedgerInfo
         {

@@ -7,7 +7,7 @@
 //
 // Adjustments made when porting into this project's architecture (see PORTING_GUIDE.md
 // for the general rules referenced below):
-//   - Base class DpiAwareWindow -> BaseWindow (same as GLLogin/GLWaitWindow). BaseWindow
+//   - Base class DpiAwareWindow -> DpiAwareWindow (same as GLLogin/GLWaitWindow). DpiAwareWindow
 //     already centers/modals against the Excel owner, so AddinEntry's ShowCubeDetails()
 //     just does `new GLCubeDetails { CenterInExcel = true, ModalToExcel = true }.ShowDialog()`.
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> the dedicated
@@ -57,7 +57,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLCubeDetails.xaml
     /// </summary>
-    public partial class GLCubeDetails : BaseWindow
+    public partial class GLCubeDetails : DpiAwareWindow
     {
         private enum ValidationStatus
         {
@@ -355,7 +355,7 @@ namespace GLSense.Addin.Core.Views
 
                 await DgGridUpdate(data);
 
-                // BaseWindow.OnLoaded's SizeToContent resettle (see CLAUDE.md section 1)
+                // DpiAwareWindow.OnLoaded's SizeToContent resettle (see CLAUDE.md section 1)
                 // runs synchronously as soon as this window's Loaded event fires - which
                 // is BEFORE this method's caller chain (Window_Loaded -> ...
                 // -> LoadCubeData -> UpdateGridAsync, several awaits deep) has actually

@@ -2,7 +2,7 @@
 // Port of GLSense\Views\GLLOVs.xaml.cs (FinalWorkingCode) - opened by ribbon button
 // RibLOVs (Group H - Balance Configurator pane + LOVs/Roller/Account dialogs, last
 // remaining piece). Follows the exact same pattern already established by GLDailyRates.
-// xaml.cs/GLSegmentFunctions.xaml.cs (BaseWindow instead of DpiAwareWindow,
+// xaml.cs/GLSegmentFunctions.xaml.cs (DpiAwareWindow instead of DpiAwareWindow,
 // TitleBar_MouseLeftButtonDown instead of EnhancedDragDropHelper.EnableWindowDrag,
 // ServiceLocator.ExcelApp instead of AppState.Instance.ExcelApp.Application,
 // ServiceLocator.Logger?.* instead of LogUtility.*). Re-pointed additionally: GLSense.
@@ -32,7 +32,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLLOVs.xaml
     /// </summary>
-    public partial class GLLOVs : BaseWindow, IWarningHost
+    public partial class GLLOVs : DpiAwareWindow, IWarningHost
     {
         private readonly GLLovViewModel vm;
         public GLLOVs()
@@ -57,7 +57,7 @@ namespace GLSense.Addin.Core.Views
                 HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()),
                 // LOVRows gets populated fire-and-forget (LOV_SelectedLedger's setter ->
                 // LoadLovRows() -> Task.Run(LoadLovRowsAsync)), detached from
-                // Window_Loaded's own await chain, so BaseWindow.OnLoaded's SizeToContent
+                // Window_Loaded's own await chain, so DpiAwareWindow.OnLoaded's SizeToContent
                 // resettle always ran against an empty dgLovs. Resettle again once real
                 // rows are actually in place. See CLAUDE.md section 1.4b.
                 DataLoadedAction = () =>
@@ -67,6 +67,38 @@ namespace GLSense.Addin.Core.Views
                 }
             };
             this.DataContext = vm;
+        }
+
+        public async Task PrepareAsync()
+        {
+            ServiceLocator.Logger?.LogDebug("GLLOVs.PrepareAsync invoked");
+            try
+            {
+                Excel.Range rng = ServiceLocator.ExcelApp.ActiveCell;
+                string sheetName = ((Excel.Worksheet)rng.Parent).Name;
+                string cellAddress = rng.Address[true, true, Excel.XlReferenceStyle.xlA1, false];
+                string addr = $"'{sheetName}'!{cellAddress}";
+
+                excelRefEdit.Text = addr;
+                GlobalStateViewModel.Instance.ReferenceText = addr;
+                ServiceLocator.Logger?.LogDebug($"GLLOVs.PrepareAsync: active cell reference={addr}");
+
+                if (AppState.Instance.SelectedCube != null && AppState.Instance.SelectedLedger != null)
+                {
+                    ServiceLocator.Logger?.LogDebug($"GLLOVs.PrepareAsync: loading data for cubeId={AppState.Instance.SelectedCube.CubeId}, ledgerId={AppState.Instance.SelectedLedger.LedgerId}");
+                    await vm.LoadDataAsync(AppState.Instance.SelectedCube.CubeId, AppState.Instance.SelectedLedger.LedgerId);
+                    await Dispatcher.InvokeAsync(() => cmbLedgers.Text = vm.LOV_SelectedLedger.LedgerName);
+                    ServiceLocator.Logger?.LogDebug("GLLOVs.PrepareAsync: LOV data loaded successfully");
+                }
+                else
+                {
+                    ServiceLocator.Logger?.LogDebug("GLLOVs.PrepareAsync: no cube/ledger selected, skipping load");
+                }
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "GLLOVs.PrepareAsync");
+            }
         }
 
         private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -87,30 +119,7 @@ namespace GLSense.Addin.Core.Views
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
             ServiceLocator.Logger?.LogDebug("GLLOVs.Window_Loaded invoked");
-            try
-            {
-                Excel.Range rng = ServiceLocator.ExcelApp.ActiveCell;
-                string sheetName = ((Excel.Worksheet)rng.Parent).Name;
-                string cellAddress = rng.Address[true, true, Excel.XlReferenceStyle.xlA1, false];
-                string addr = $"'{sheetName}'!{cellAddress}";
-
-                GlobalStateViewModel.Instance.ReferenceText = addr;
-
-                if (AppState.Instance.SelectedCube != null && AppState.Instance.SelectedLedger != null)
-                {
-                    ServiceLocator.Logger?.LogDebug($"GLLOVs.Window_Loaded: loading data for cubeId={AppState.Instance.SelectedCube.CubeId}, ledgerId={AppState.Instance.SelectedLedger.LedgerId}");
-                    await vm.LoadDataAsync(AppState.Instance.SelectedCube.CubeId, AppState.Instance.SelectedLedger.LedgerId);
-
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        cmbLedgers.Text = vm.LOV_SelectedLedger.LedgerName;
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex, "GLLOVs.Window_Loaded");
-            }
+            await PrepareAsync();
         }
         public void CellSelectionWarning(string message)
         {

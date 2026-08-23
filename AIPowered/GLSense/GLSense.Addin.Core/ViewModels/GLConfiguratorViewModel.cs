@@ -597,6 +597,8 @@ namespace GLSense.Addin.Core.ViewModels
         // in ApplyDefaultSelections guarantees the lookup is against the same ledger the
         // Currencies collection was actually populated for.
         private LedgerRecord? _activeLedger;
+        private ObservableCollection<ActivityModel> _allActivities =
+            new ObservableCollection<ActivityModel>();
 
         // Field-change coalescing helpers
         private readonly object _fieldChangeLock = new object();
@@ -805,7 +807,7 @@ namespace GLSense.Addin.Core.ViewModels
                 ResetUIState();
                 InitializeStaticCollections();
 
-                OnPropertyChanged(nameof(Activities));
+                UpdateActivitiesForConditions();
                 OnPropertyChanged(nameof(Periods));
                 OnPropertyChanged(nameof(Currencies));
                 OnPropertyChanged(nameof(Budgets));
@@ -909,7 +911,7 @@ namespace GLSense.Addin.Core.ViewModels
                 ConfiguratorSegments = results[0] as ObservableCollection<SegmentModel> ?? new ObservableCollection<SegmentModel>();
                 var ledgersData = results[1] as ObservableCollection<GenericLedgerModel> ?? new ObservableCollection<GenericLedgerModel>();
                 PopulateDynamicCollections(Ledgers, ledgersData, l => l.PropertyChanged += Ledger_PropertyChanged);
-                Activities = results[2] as ObservableCollection<ActivityModel> ?? new ObservableCollection<ActivityModel>();
+                _allActivities = results[2] as ObservableCollection<ActivityModel> ?? new ObservableCollection<ActivityModel>();
                 Periods = results[3] as ObservableCollection<PeriodModel> ?? new ObservableCollection<PeriodModel>();
                 Currencies = results[4] as ObservableCollection<CurrencyModel> ?? new ObservableCollection<CurrencyModel>();
                 Budgets = results[5] as ObservableCollection<BudgetModel> ?? new ObservableCollection<BudgetModel>();
@@ -2739,6 +2741,162 @@ namespace GLSense.Addin.Core.ViewModels
                 ServiceLocator.Logger?.LogWarn($"UpdateCurrencyTypesForBalanceType: failed (non-fatal): isJED={isJED}, isBudget={isBudget}: {ex.Message}");
             }
         }
+
+        private bool IsActivityBeginOrEndBalance()
+        {
+            var value = GetFieldValue(ActivityField).Trim();
+            return value.Equals("BB", StringComparison.OrdinalIgnoreCase) ||
+                   value.Equals("EB", StringComparison.OrdinalIgnoreCase) ||
+                   value.Equals("BEGIN_BALANCE", StringComparison.OrdinalIgnoreCase) ||
+                   value.Equals("END_BALANCE", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsCurrencyTypeTranslatedOrConverted()
+        {
+            var value = GetFieldValue(CurrencyTypeField).Trim();
+            return value.Equals("Translated", StringComparison.OrdinalIgnoreCase) ||
+                   value.Equals("T", StringComparison.OrdinalIgnoreCase) ||
+                   value.Equals("Converted", StringComparison.OrdinalIgnoreCase) ||
+                   value.Equals("C", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsCurrencyTypeTranslatedConvertedOrEntered()
+        {
+            if (IsCurrencyTypeTranslatedOrConverted())
+                return true;
+
+            var value = GetFieldValue(CurrencyTypeField).Trim();
+            return value.Equals(AppConstants.CurrencyTypeEntered, StringComparison.OrdinalIgnoreCase) ||
+                   value.Equals("E", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsActualFlagBudget()
+        {
+            var value = GetFieldValue(ActualFlagField).Trim();
+            return value.Equals(Budget, StringComparison.OrdinalIgnoreCase) ||
+                   value.Equals("B", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsBalanceTypeJedGroup()
+        {
+            return IsBalanceTypeJEDVariant();
+        }
+
+        private void UpdateBalanceTypesForConditions()
+        {
+            var hideJed = IsActivityBeginOrEndBalance() ||
+                          IsCurrencyTypeTranslatedOrConverted() ||
+                          IsActualFlagBudget();
+
+            try
+            {
+                _dispatcher.Invoke(() =>
+                {
+                    BalanceTypes.Clear();
+                    BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypePTD });
+                    BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeYTD });
+                    BalanceTypes.Add(new BalanceTypeModel { Name = "QTD" });
+                    BalanceTypes.Add(new BalanceTypeModel { Name = "PJTD" });
+                    BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeCTD });
+                    if (!hideJed)
+                    {
+                        BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeJED });
+                        BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeJEDP });
+                        BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeJEDU });
+                    }
+
+                    var current = GetFieldValue(BalanceTypeField);
+                    if (!string.IsNullOrWhiteSpace(current) &&
+                        !BalanceTypes.Any(b => b.Name.Equals(current, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        ResetField(BalanceTypeField);
+                    }
+
+                    OnPropertyChanged(nameof(BalanceTypes));
+                    BalanceTypeField?.RefreshEnableState();
+                });
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "UpdateBalanceTypesForConditions failed (non-fatal).");
+            }
+        }
+
+        private void UpdateActualFlagsForConditions()
+        {
+            var hideBudget = IsCurrencyTypeTranslatedConvertedOrEntered();
+
+            try
+            {
+                _dispatcher.Invoke(() =>
+                {
+                    ActualFlags.Clear();
+                    ActualFlags.Add(new ActualFlagsModel { Name = AppConstants.ActivityFlagActual, ShortName = "A" });
+                    if (!hideBudget)
+                        ActualFlags.Add(new ActualFlagsModel { Name = Budget, ShortName = "B" });
+                    ActualFlags.Add(new ActualFlagsModel { Name = Encumbrance, ShortName = "E" });
+                    ActualFlags.Add(new ActualFlagsModel { Name = AE, ShortName = AppConstants.ActualEncumbranceShort });
+
+                    var current = GetFieldValue(ActualFlagField);
+                    if (!string.IsNullOrWhiteSpace(current) &&
+                        !ActualFlags.Any(a => a.Name.Equals(current, StringComparison.OrdinalIgnoreCase) ||
+                                              a.ShortName.Equals(current, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        ResetField(ActualFlagField);
+                    }
+
+                    OnPropertyChanged(nameof(ActualFlags));
+                    ActualFlagField?.RefreshEnableState();
+                });
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "UpdateActualFlagsForConditions failed (non-fatal).");
+            }
+        }
+
+        private void UpdateActivitiesForConditions()
+        {
+            var hideBeginEnd = IsBalanceTypeJedGroup();
+
+            try
+            {
+                _dispatcher.Invoke(() =>
+                {
+                    Activities.Clear();
+                    foreach (var activity in _allActivities ?? new ObservableCollection<ActivityModel>())
+                    {
+                        if (!hideBeginEnd || !IsBeginOrEndBalanceActivity(activity))
+                            Activities.Add(activity);
+                    }
+
+                    var current = GetFieldValue(ActivityField);
+                    if (!string.IsNullOrWhiteSpace(current) &&
+                        !Activities.Any(a => string.Equals(a.ShortName, current, StringComparison.OrdinalIgnoreCase) ||
+                                             string.Equals(a.DisplayName, current, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        ResetField(ActivityField);
+                    }
+
+                    OnPropertyChanged(nameof(Activities));
+                    ActivityField?.RefreshEnableState();
+                });
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "UpdateActivitiesForConditions failed (non-fatal).");
+            }
+        }
+
+        private static bool IsBeginOrEndBalanceActivity(ActivityModel activity)
+        {
+            return activity != null &&
+                   (string.Equals(activity.ShortName, "BB", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(activity.ShortName, "EB", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(activity.DisplayName, "BEGIN_BALANCE", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(activity.DisplayName, "END_BALANCE", StringComparison.OrdinalIgnoreCase));
+        }
+
         private static void ApplyRefHelper<T>(
                 FieldBinding field,
                 IEnumerable<T> collection,

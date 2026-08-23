@@ -13,7 +13,7 @@
 // by reference, so the host cannot `new` it up or set it as an ElementHost.Child directly.
 //
 // Instead: this class creates a real, self-contained, borderless top-level Window - the
-// exact same "own dedicated WPF thread via WpfAppManager" trick every BaseWindow-derived
+// exact same "own dedicated WPF thread via WpfAppManager" trick every DpiAwareWindow-derived
 // dialog in this migration already uses - whose Content is GLBalanceConfigurator, and
 // exposes only its native window handle (an IntPtr; a blittable value that crosses an
 // AppDomain boundary in the same process safely, unlike a live object reference) via

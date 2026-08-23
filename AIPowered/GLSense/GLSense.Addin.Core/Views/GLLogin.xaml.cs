@@ -7,7 +7,7 @@
 //
 // Adjustments made when porting into this project's architecture (see
 // PORTING_GUIDE.md for the general rules referenced below):
-//   - Base class DpiAwareWindow -> BaseWindow. BaseWindow already sets the Excel owner
+//   - Base class DpiAwareWindow -> DpiAwareWindow. DpiAwareWindow already sets the Excel owner
 //     and handles DPI/work-area sizing, so there's no SetExcelOwner()/ShowWithOwner()
 //     call here - AddinEntry.Login() just calls ShowDialog().
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> the dedicated
@@ -60,7 +60,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLLogin.xaml
     /// </summary>
-    public partial class GLLogin : BaseWindow, INotifyPropertyChanged
+    public partial class GLLogin : DpiAwareWindow, INotifyPropertyChanged
     {
         private bool _xlEdgePermission;
         private Task? _webViewInitTask;

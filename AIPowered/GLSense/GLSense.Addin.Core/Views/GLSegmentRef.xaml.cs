@@ -9,20 +9,20 @@
 //
 // Follows the exact same pattern already established by GLSegmentValues.xaml.cs (shares
 // SegmentSelectorViewModel, just constructed with windowName="Ref" instead of "val"):
-//   - Base class DpiAwareWindow -> BaseWindow. EnhancedDragDropHelper.EnableWindowDrag(this)
+//   - Base class DpiAwareWindow -> DpiAwareWindow. EnhancedDragDropHelper.EnableWindowDrag(this)
 //     -> TitleBar_MouseLeftButtonDown (same handler every other window here uses).
 //   - AppState.Instance.ExcelApp.Application -> ServiceLocator.ExcelApp.
 //   - LogUtility.* -> ServiceLocator.Logger?.*.
 //   - dlg.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd) (caller-side, in
-//     GLAccountsRef/GLBalanceConfigurator) -> plain ShowDialog(); BaseWindow already sets
+//     GLAccountsRef/GLBalanceConfigurator) -> plain ShowDialog(); DpiAwareWindow already sets
 //     the Excel owner automatically via ServiceLocator.ExcelHandle/ModalToExcel.
 //   - The DataGrid columns here (Value/Description/Is-Summary on the left,
 //     Value1/Value2/Segment on the right) are Width="Auto" with DataGridColumnFillHelper
 //     filling the Description/Segment columns, exactly like GLSegmentValues - the original
 //     used Width="*" columns, which is the same star-width-under-SizeToContent bug fixed
 //     project-wide earlier in this migration (see DataGridColumnFillHelper's own header).
-//   - The old RefreshWindowLayout() call (DpiAwareWindow-only, never existed on BaseWindow)
-//     is dropped - BaseWindow's own Loaded handler already re-applies DPI/work-area layout.
+//   - The old RefreshWindowLayout() call (DpiAwareWindow-only, never existed on DpiAwareWindow)
+//     is dropped - DpiAwareWindow's own Loaded handler already re-applies DPI/work-area layout.
 // No other logic changes vs. the original.
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
@@ -44,7 +44,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLSegmentRef.xaml
     /// </summary>
-    public partial class GLSegmentRef : BaseWindow, IWarningHost
+    public partial class GLSegmentRef : DpiAwareWindow, IWarningHost
     {
         public string GLSegments_SelectedValue { get; set; }
         private readonly SegmentSelectorViewModel vm;

@@ -25,7 +25,7 @@
 //   - System.Windows.Forms MessageBoxIcon/MessageBoxButtons -> System.Windows
 //     MessageBoxImage/MessageBoxButton (this project has no WinForms reference, same as
 //     every other Group E/F file).
-//   - GLWaitWindow now derives from BaseWindow: win.ShowWithOwner(hwnd) -> win.Show()
+//   - GLWaitWindow now derives from DpiAwareWindow: win.ShowWithOwner(hwnd) -> win.Show()
 //     (Excel owner set automatically via ServiceLocator.ExcelHandle). CreateAndShow-
 //     ProgressWindow rewritten to the WpfAppManager.InvokeOnWpfThread(Action)-with-
 //     captured-local pattern (InvokeOnWpfThread has no Func<T> overload in this project -
@@ -919,7 +919,7 @@ namespace GLSense.Addin.Core.Drilldowns
                 // WpfAppManager.InvokeOnWpfThread only takes an Action (no return value),
                 // so capture the created window from inside the delegate - same pattern
                 // DrillCellHighlighter.cs/DD_JL.cs use for GLWaitWindow. win.Show() replaces
-                // the original's win.ShowWithOwner(hwnd) - GLWaitWindow (BaseWindow-derived)
+                // the original's win.ShowWithOwner(hwnd) - GLWaitWindow (DpiAwareWindow-derived)
                 // sets its Excel owner automatically via ServiceLocator.ExcelHandle.
                 WpfAppManager.InvokeOnWpfThread(() =>
                 {

@@ -5,8 +5,8 @@
 // plain WPF MessageBox.Show fallback).
 //
 // Re-pointed vs. the original:
-//   - Base class DpiAwareWindow -> BaseWindow (see GLDailyRates.xaml.cs/GLWaitWindow.xaml.cs
-//     for the same idiom). BaseWindow sets the Excel owner automatically via
+//   - Base class DpiAwareWindow -> DpiAwareWindow (see GLDailyRates.xaml.cs/GLWaitWindow.xaml.cs
+//     for the same idiom). DpiAwareWindow sets the Excel owner automatically via
 //     ServiceLocator.ExcelHandle, so there is no explicit ShowWithOwner()/SetExcelOwner()
 //     call anywhere in this file or at its call site (CommonFunctions.GLSenseMessage).
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> dedicated title-bar drag handler
@@ -39,7 +39,7 @@ using System.Windows.Media;
 
 namespace GLSense.Addin.Core.Views
 {
-    public partial class GLMessageWindow : BaseWindow
+    public partial class GLMessageWindow : DpiAwareWindow
     {
         public MessageBoxResult Result { get; private set; } = MessageBoxResult.None;
 

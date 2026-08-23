@@ -7,7 +7,7 @@
 // task notes).
 //
 // Adjustments made when porting into this project's architecture:
-//   - Base class DpiAwareWindow -> BaseWindow (same as every other window in this
+//   - Base class DpiAwareWindow -> DpiAwareWindow (same as every other window in this
 //     project).
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> the dedicated
 //     TitleBar_MouseLeftButtonDown handler already present on every other window here.
@@ -46,7 +46,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLUserConfig.xaml
     /// </summary>
-    public partial class GLUserConfig : BaseWindow
+    public partial class GLUserConfig : DpiAwareWindow
     {
         private string? _dataOption;
         private bool? _suppressZeroes;

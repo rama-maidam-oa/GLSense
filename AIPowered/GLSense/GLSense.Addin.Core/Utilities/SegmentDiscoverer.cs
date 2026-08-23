@@ -20,7 +20,7 @@
 //     (no Func<T> overload) in this project, so the GLWaitWindow is captured via a local
 //     variable assigned from inside the delegate - the same pattern AddinEntry.
 //     LedgerChanged already uses for the same reason. win.ShowWithOwner(hwnd) (old
-//     GLWaitWindow) -> win.Show() (this project's BaseWindow-derived GLWaitWindow sets
+//     GLWaitWindow) -> win.Show() (this project's DpiAwareWindow-derived GLWaitWindow sets
 //     the Excel owner automatically via ServiceLocator.ExcelHandle).
 //   - ExcelWindowHelper.ActivateExcelMainWindow ported alongside this file (Helpers\
 //     ExcelWindowHelper.cs) since nothing else needed it yet.

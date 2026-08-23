@@ -30,7 +30,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLExpandOptions.xaml
     /// </summary>
-    public partial class GLExpandOptions : BaseWindow
+    public partial class GLExpandOptions : DpiAwareWindow
     {
         public GLExpandOptions()
         {

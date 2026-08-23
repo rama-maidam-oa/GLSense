@@ -24,7 +24,7 @@
 //   - LogUtility.* (static) -> ServiceLocator.Logger?.*.
 //   - System.Windows.Forms MessageBoxIcon/MessageBoxButtons -> System.Windows
 //     MessageBoxImage/MessageBoxButton (this project has no WinForms reference).
-//   - GLWaitWindow now derives from BaseWindow: win.ShowWithOwner(hwnd) -> win.Show().
+//   - GLWaitWindow now derives from DpiAwareWindow: win.ShowWithOwner(hwnd) -> win.Show().
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using GLSense.Addin.Core.Utilities;

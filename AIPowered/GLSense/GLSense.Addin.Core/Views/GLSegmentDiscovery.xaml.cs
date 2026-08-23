@@ -3,9 +3,9 @@
 // (Segment/Period discoverers) - modal dialog for filling segment values in a chosen
 // direction. No separate ViewModel in the original and none added here - all logic stays
 // in code-behind, matching the source file exactly (only the plumbing below changed):
-//   - Base class DpiAwareWindow -> BaseWindow; EnhancedDragDropHelper.EnableWindowDrag(this)
+//   - Base class DpiAwareWindow -> DpiAwareWindow; EnhancedDragDropHelper.EnableWindowDrag(this)
 //     -> TitleBar_MouseLeftButtonDown handler (same pattern as every other Group C/D
-//     BaseWindow-derived view in this project, e.g. GLSegmentFunctions.xaml.cs).
+//     DpiAwareWindow-derived view in this project, e.g. GLSegmentFunctions.xaml.cs).
 //   - GLSense.Helpers/.Models/.Repositories/.Utilities -> GLSense.Addin.Core.* equivalents.
 //   - AppState.Instance.ExcelApp -> ServiceLocator.ExcelApp.
 //   - LogUtility.* -> ServiceLocator.Logger.*.
@@ -35,7 +35,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLSegmentDiscovery.xaml
     /// </summary>
-    public partial class GLSegmentDiscovery : BaseWindow
+    public partial class GLSegmentDiscovery : DpiAwareWindow
     {
         private Excel.Range OrbSelection = null;
         private Excel.Range OrbFirstCell = null;

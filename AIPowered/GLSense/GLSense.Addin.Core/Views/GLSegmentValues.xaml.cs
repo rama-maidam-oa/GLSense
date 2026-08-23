@@ -2,7 +2,7 @@
 // Port of GLSense\Views\GLSegmentValues.xaml.cs (FinalWorkingCode) - opened by ribbon
 // button RibAccount (Group H - Balance Configurator pane + LOVs/Roller/Account dialogs,
 // last remaining piece). Follows the exact same pattern already established by
-// GLDailyRates.xaml.cs/GLSegmentFunctions.xaml.cs (BaseWindow instead of DpiAwareWindow,
+// GLDailyRates.xaml.cs/GLSegmentFunctions.xaml.cs (DpiAwareWindow instead of DpiAwareWindow,
 // TitleBar_MouseLeftButtonDown instead of EnhancedDragDropHelper.EnableWindowDrag,
 // ServiceLocator.ExcelApp instead of AppState.Instance.ExcelApp.Application,
 // ServiceLocator.Logger?.* instead of LogUtility.*). Shares SegmentSelectorViewModel with
@@ -10,8 +10,8 @@
 // SegmentSelectorViewModel.cs's header comment and Views\GLAccountsRef.xaml.cs's existing
 // EditRequested deferral) - this dialog always constructs the shared ViewModel with
 // windowName="val", exactly like the original. The old RefreshWindowLayout() call (a
-// DpiAwareWindow method that never existed on this project's BaseWindow) is dropped -
-// BaseWindow already re-applies DPI/work-area layout on its own Loaded handler, so no
+// DpiAwareWindow method that never existed on this project's DpiAwareWindow) is dropped -
+// DpiAwareWindow already re-applies DPI/work-area layout on its own Loaded handler, so no
 // equivalent call is needed here. No other logic changes vs. the original.
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
@@ -34,7 +34,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLSegmentValues.xaml
     /// </summary>
-    public partial class GLSegmentValues : BaseWindow, IWarningHost
+    public partial class GLSegmentValues : DpiAwareWindow, IWarningHost
     {
         private readonly SegmentSelectorViewModel vm;
 

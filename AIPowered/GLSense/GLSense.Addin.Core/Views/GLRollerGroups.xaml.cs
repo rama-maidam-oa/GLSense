@@ -2,7 +2,7 @@
 // Port of GLSense\Views\GLRollerGroups.xaml.cs (FinalWorkingCode) - opened by ribbon
 // button RibRollerGroup (Group H - Balance Configurator pane + LOVs/Roller/Account
 // dialogs, last remaining piece). Follows the exact same pattern already established by
-// GLDailyRates.xaml.cs/GLSegmentFunctions.xaml.cs (BaseWindow instead of DpiAwareWindow,
+// GLDailyRates.xaml.cs/GLSegmentFunctions.xaml.cs (DpiAwareWindow instead of DpiAwareWindow,
 // TitleBar_MouseLeftButtonDown instead of EnhancedDragDropHelper.EnableWindowDrag,
 // ServiceLocator.ExcelApp instead of AppState.Instance.ExcelApp.Application,
 // ServiceLocator.Logger?.* instead of LogUtility.*).
@@ -36,7 +36,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLRollerGroups.xaml
     /// </summary>
-    public partial class GLRollerGroups : BaseWindow, IWarningHost
+    public partial class GLRollerGroups : DpiAwareWindow, IWarningHost
     {
         private readonly SimpleSegmentViewModel vm;
         public GLRollerGroups()
@@ -145,7 +145,7 @@ namespace GLSense.Addin.Core.Views
                     cmbSearchType.Text = vm.SelectedSearchType.DisplayName;
                 });
 
-                // BaseWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
+                // DpiAwareWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
                 // before this async chain populated dgLeft/dgRight - so it measured empty
                 // grids. Resettle again now that real rows are in place. See CLAUDE.md
                 // section 1.4b (GLCubeDetails) for the full history of this pattern.

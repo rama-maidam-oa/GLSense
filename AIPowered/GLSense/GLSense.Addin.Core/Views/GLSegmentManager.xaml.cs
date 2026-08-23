@@ -46,7 +46,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLSegmentManager.xaml
     /// </summary>
-    public partial class GLSegmentManager : BaseWindow, IWarningHost
+    public partial class GLSegmentManager : DpiAwareWindow, IWarningHost
     {
         public string GLSegments_SelectedValue { get; set; }
         private readonly SegmentSelectorViewModel vm;
@@ -62,7 +62,7 @@ namespace GLSense.Addin.Core.Views
             // header comment), so dgLeft's "Description" and dgRight's "Segment" columns are
             // plain, native Width="*" - they size correctly on their own, the same way
             // GLSegmentValues.xaml's identical dual-grid layout always has. That also means
-            // none of BaseWindow's SizeToContent-only resettle/pump-dispatcher-frame logic
+            // none of DpiAwareWindow's SizeToContent-only resettle/pump-dispatcher-frame logic
             // runs for this window (it's gated on SizeToContent != Manual), so there's no
             // "only resettle once" bookkeeping needed here either - this window's size never
             // resettles itself at all now, matching GLSegmentValues.

@@ -20,7 +20,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLDailyRates.xaml
     /// </summary>
-    public partial class GLDailyRates : BaseWindow, IWarningHost
+    public partial class GLDailyRates : DpiAwareWindow, IWarningHost
     {
         private readonly GLDailyRatesViewModel vm;
         public GLDailyRates()

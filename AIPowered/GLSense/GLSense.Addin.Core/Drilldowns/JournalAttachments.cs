@@ -37,8 +37,8 @@
 //   - SafeInvokeWpf(...) (old AddinModule.cs private helper) -> WpfAppManager.
 //     InvokeOnWpfThread(...) directly, using the exact win.CenterInExcel/ModalToExcel/
 //     ShowInTaskbar/ShowDialog() idiom AddinEntry.cs's ShowGroupCWindow already established
-//     for every other BaseWindow-derived modal dialog in this project - no separate
-//     ShowWithOwner/ShowDialogWithOwner call needed (BaseWindow sets the Excel owner
+//     for every other DpiAwareWindow-derived modal dialog in this project - no separate
+//     ShowWithOwner/ShowDialogWithOwner call needed (DpiAwareWindow sets the Excel owner
 //     automatically via ServiceLocator.ExcelHandle).
 //   - CommonMethods.DisableExcelSettings()/EnableExcelSettings() and the CancellationHelper
 //     scope, previously owned by the outer adxExcelAppEvents1_SheetFollowHyperlink handler

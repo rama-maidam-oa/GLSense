@@ -5,8 +5,8 @@
 // this group's task notes).
 //
 // Adjustments made when porting into this project's architecture:
-//   - Base class DpiAwareWindow -> BaseWindow (same as every other window in this
-//     project). BaseWindow already centers/modals against the Excel owner.
+//   - Base class DpiAwareWindow -> DpiAwareWindow (same as every other window in this
+//     project). DpiAwareWindow already centers/modals against the Excel owner.
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> the dedicated
 //     TitleBar_MouseLeftButtonDown handler already present on every other window here
 //     (see GLLogin.xaml.cs / GLCubeDetails.xaml.cs for the identical pattern).
@@ -52,7 +52,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLServerConfiguration.xaml
     /// </summary>
-    public partial class GLServerConfiguration : BaseWindow
+    public partial class GLServerConfiguration : DpiAwareWindow
     {
         private readonly string xmlFilePath = ServiceLocator.Paths.UrlsDirectory;
         private readonly ObservableCollection<UrlInstance> urlInstances;

@@ -7,11 +7,33 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using System.Windows.Media.Effects;
+using System.Collections.Generic;
 
 namespace GLSense.Addin.Core.Views
 {
     public partial class AppOverlay : UserControl
     {
+        public static readonly DependencyProperty BlurAppliedProperty =
+            DependencyProperty.RegisterAttached("BlurApplied", typeof(bool), typeof(AppOverlay), new PropertyMetadata(false));
+
+        public static void SetBlurApplied(UIElement element, bool value)
+        {
+            try { element?.SetValue(BlurAppliedProperty, value); }
+            catch (Exception ex) { ServiceLocator.Logger?.LogWarn($"AppOverlay.SetBlurApplied failed: {ex.Message}"); }
+        }
+
+        public static bool GetBlurApplied(UIElement element)
+        {
+            try { return (bool)(element?.GetValue(BlurAppliedProperty) ?? false); }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogWarn($"AppOverlay.GetBlurApplied failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        private readonly List<(UIElement Element, Effect OriginalEffect, bool OriginalHitTest)> _blurredElements = new();
         private DispatcherTimer _busyTimer;
         private DateTime? _busyStart;
         private DispatcherTimer _toastTimer;
@@ -59,7 +81,10 @@ namespace GLSense.Addin.Core.Views
 
             ServiceLocator.Logger?.LogDebug($"AppOverlay.ShowToast invoked: message={message}, durationSeconds={durationSeconds}, dimBackground={dimBackground}");
             if (dimBackground)
+            {
                 ShowToastOverlay();
+                ApplyBlurToSiblings();
+            }
 
             this.Visibility = Visibility.Visible;
             Toast.Visibility = Visibility.Visible;
@@ -70,8 +95,6 @@ namespace GLSense.Addin.Core.Views
             ToastMessage.Text = message;
             ToastIcon.Kind = icon;
             ToastIcon.Foreground = color;
-            ToastIconBackground.Fill = color;
-            ToastIconBackground.Opacity = 0.2;
 
             Panel.SetZIndex(this, 9999);
 
@@ -86,28 +109,21 @@ namespace GLSense.Addin.Core.Views
 
         private void ShowToastOverlay()
         {
-            ToastOverlay.Visibility = Visibility.Visible;
-            ToastOverlay.IsHitTestVisible = true;
-            if (this.Resources["ToastOverlayFadeIn"] is Storyboard sb)
-                sb.Begin(ToastOverlay);
+            if (ToastInputBlocker == null)
+                return;
+
+            ToastInputBlocker.Visibility = Visibility.Visible;
+            ToastInputBlocker.IsHitTestVisible = true;
         }
 
         private void HideToastOverlay()
         {
-            if (this.Resources["ToastOverlayFadeOut"] is Storyboard sb)
+            if (ToastInputBlocker != null)
             {
-                sb.Completed += (s, e) =>
-                {
-                    ToastOverlay.Visibility = Visibility.Collapsed;
-                    ToastOverlay.IsHitTestVisible = false;
-                };
-                sb.Begin(ToastOverlay);
+                ToastInputBlocker.Visibility = Visibility.Collapsed;
+                ToastInputBlocker.IsHitTestVisible = false;
             }
-            else
-            {
-                ToastOverlay.Visibility = Visibility.Collapsed;
-                ToastOverlay.IsHitTestVisible = false;
-            }
+            RemoveBlurFromSiblings();
         }
 
         public void ShowSuccess(string message) => ShowToast(message, PackIconFontAwesomeKind.CircleCheckSolid, Brushes.LimeGreen, 60);
@@ -123,7 +139,10 @@ namespace GLSense.Addin.Core.Views
             _activeToastTcs = tcs;
 
             if (dimBackground)
+            {
                 ShowToastOverlay();
+                ApplyBlurToSiblings();
+            }
 
             this.Visibility = Visibility.Visible;
             Toast.Visibility = Visibility.Visible;
@@ -134,8 +153,6 @@ namespace GLSense.Addin.Core.Views
             ToastMessage.Text = message;
             ToastIcon.Kind = icon;
             ToastIcon.Foreground = color;
-            ToastIconBackground.Fill = color;
-            ToastIconBackground.Opacity = 0.2;
 
             Panel.SetZIndex(this, 9999);
 
@@ -152,6 +169,7 @@ namespace GLSense.Addin.Core.Views
                 {
                     Toast.Opacity = 0;
                     HideToastOverlay();
+                    RemoveBlurFromSiblings();
                     if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
                         this.Visibility = Visibility.Collapsed;
                     tcs.TrySetResult(true);
@@ -204,6 +222,7 @@ namespace GLSense.Addin.Core.Views
             Toast.Opacity = 0;
             Toast.Visibility = Visibility.Collapsed;
             HideToastOverlay();
+            RemoveBlurFromSiblings();
 
             if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
                 this.Visibility = Visibility.Collapsed;
@@ -232,6 +251,7 @@ namespace GLSense.Addin.Core.Views
                 {
                     Toast.Opacity = 0;
                     HideToastOverlay();
+                    RemoveBlurFromSiblings();
                     if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
                         this.Visibility = Visibility.Collapsed;
                 };
@@ -244,6 +264,7 @@ namespace GLSense.Addin.Core.Views
                 {
                     Toast.Opacity = 0;
                     HideToastOverlay();
+                    RemoveBlurFromSiblings();
                     if (BusyOverlay.Visibility != Visibility.Visible && ConfirmOverlay.Visibility != Visibility.Visible)
                         this.Visibility = Visibility.Collapsed;
                 };
@@ -259,6 +280,58 @@ namespace GLSense.Addin.Core.Views
         private void ToastOverlay_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             e.Handled = true;
+        }
+
+        private void ApplyBlurToSiblings()
+        {
+            try
+            {
+                var panel = Parent as Panel ?? Window.GetWindow(this)?.Content as Panel;
+                if (panel == null)
+                    return;
+
+                _blurredElements.Clear();
+                foreach (UIElement child in panel.Children)
+                {
+                    if (child == this)
+                        continue;
+
+                    _blurredElements.Add((child, child.Effect, child.IsHitTestVisible));
+                    child.Effect = new BlurEffect { Radius = 6 };
+                    child.IsHitTestVisible = false;
+                    SetBlurApplied(child, true);
+                }
+                ServiceLocator.Logger?.LogDebug($"AppOverlay.ApplyBlurToSiblings: blurred {_blurredElements.Count} sibling(s)");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogWarn($"AppOverlay.ApplyBlurToSiblings failed: {ex.Message}");
+            }
+        }
+
+        private void RemoveBlurFromSiblings()
+        {
+            try
+            {
+                foreach (var entry in _blurredElements)
+                {
+                    try
+                    {
+                        entry.Element.Effect = entry.OriginalEffect;
+                        entry.Element.IsHitTestVisible = entry.OriginalHitTest;
+                        SetBlurApplied(entry.Element, false);
+                    }
+                    catch (Exception ex)
+                    {
+                        ServiceLocator.Logger?.LogWarn($"AppOverlay.RemoveBlurFromSiblings failed for element: {ex.Message}");
+                    }
+                }
+                _blurredElements.Clear();
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogWarn($"AppOverlay.RemoveBlurFromSiblings failed: {ex.Message}");
+            }
         }
 
         // Busy Overlay

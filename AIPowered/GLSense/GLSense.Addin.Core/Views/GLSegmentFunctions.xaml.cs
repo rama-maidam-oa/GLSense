@@ -24,7 +24,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLSegmentFunctions.xaml
     /// </summary>
-    public partial class GLSegmentFunctions : BaseWindow, IWarningHost
+    public partial class GLSegmentFunctions : DpiAwareWindow, IWarningHost
     {
         private string _formulaName;
         private sealed class LedgerInfo

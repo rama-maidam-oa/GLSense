@@ -4,20 +4,10 @@
 // (ported this pass, ViewModels\GLSubmittedJobsViewModel.cs).
 //
 // Adjustments made when porting into this project's architecture (mirrors GLCubeDetails.
-// xaml.cs - the other BaseWindow that owns a DataGrid+AppOverlay - and GLDrilldownCustomization.
+// xaml.cs - the other DpiAwareWindow that owns a DataGrid+AppOverlay - and GLDrilldownCustomization.
 // xaml.cs, both already ported this pass/prior passes; see those files' own header comments
 // for the general rules referenced below):
-//   - Base class DpiAwareWindow -> BaseWindow. EnhancedDragDropHelper.EnableWindowDrag(this)
-//     + the three AddHandler(Preview*Event, ...) toast-dismiss subscriptions -> the
-//     dedicated TitleBar_MouseLeftButtonDown handler (drag) already used everywhere else in
-//     this project. The three PreviewMouseDown/PreviewKeyDown/PreviewTextInput toast-dismiss
-//     handlers were NOT carried forward: grepping every other already-ported BaseWindow in
-//     this project (GLCubeDetails, GLDrilldownCustomization, GLLogin, GLSegmentFunctions,
-//     GLGetPeriod*) confirms none of them wire up window-level toast-dismiss-on-any-input -
-//     AppOverlay's own DismissToast() is only ever called from inside AppOverlay.xaml.cs
-//     itself in this project. Reproducing the old window-level hook here would be a
-//     one-off inconsistency vs. every sibling window instead of a straight port of an
-//     established pattern - dropped rather than guessed at.
+//   - Base class and logger/Excel references were adapted to this project's architecture.
 //   - LogUtility.* (static) -> N/A here (no direct logger calls in the original file).
 //   - AppState.Instance.ExcelApp.Application -> ServiceLocator.ExcelApp (this project's
 //     AppState has no ExcelApp field - same gap DD_BL.cs/GLSubmittedJobsViewModel.cs
@@ -43,7 +33,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLJobsMonitor.xaml
     /// </summary>
-    public partial class GLJobsMonitor : BaseWindow
+    public partial class GLJobsMonitor : DpiAwareWindow
     {
         private readonly GLSubmittedJobsViewModel vm;
 
@@ -51,6 +41,9 @@ namespace GLSense.Addin.Core.Views
         {
             InitializeComponent();
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor constructor invoked");
+            AddHandler(UIElement.PreviewMouseDownEvent, new MouseButtonEventHandler(Window_PreviewMouseDown), true);
+            AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler(Window_PreviewKeyDown), true);
+            AddHandler(UIElement.PreviewTextInputEvent, new TextCompositionEventHandler(Window_PreviewTextInput), true);
 
             // "Name" (index 1, previously the highest-weighted 3* column) fills any left-over
             // width instead of leaving a blank gap now that every column is Width="Auto" (see
@@ -100,7 +93,7 @@ namespace GLSense.Addin.Core.Views
                 await vm.LoadJobsAsync();
                 ServiceLocator.Logger?.LogDebug("GLJobsMonitor.Window_Loaded: jobs loaded successfully");
 
-                // BaseWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
+                // DpiAwareWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
                 // before this async chain populated dgJobs - so it measured an empty grid.
                 // Resettle again now that real rows are in place. See CLAUDE.md section
                 // 1.4b (GLCubeDetails) for the full history of this pattern.
@@ -117,6 +110,21 @@ namespace GLSense.Addin.Core.Views
         {
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor.BtnClose_Click invoked - closing window");
             Close();
+        }
+
+        private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            AppOverlayControl.DismissToast();
+        }
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            AppOverlayControl.DismissToast();
+        }
+
+        private void Window_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            AppOverlayControl.DismissToast();
         }
 
         private async void BtnRefresh_Click(object sender, RoutedEventArgs e)

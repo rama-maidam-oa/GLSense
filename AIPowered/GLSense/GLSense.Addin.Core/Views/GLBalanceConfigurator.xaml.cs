@@ -125,7 +125,7 @@ namespace GLSense.Addin.Core.Views
             // OISR: scroll wheel/touchpad gestures did nothing here (only click-and-drag
             // of the scrollbar thumb worked). This control's own host Window (created by
             // ConfiguratorPaneHost.CreateContent) is a plain System.Windows.Window, not a
-            // BaseWindow, so it doesn't get BaseWindow's blanket fix - and even if it did,
+            // DpiAwareWindow, so it doesn't get DpiAwareWindow's blanket fix - and even if it did,
             // HWND-reparenting into the host's task pane never gives it Win32 keyboard
             // focus just from mouse hover, which is what WM_MOUSEWHEEL routing requires.
             // See MouseWheelFocusHelper for the full explanation.
@@ -204,22 +204,14 @@ namespace GLSense.Addin.Core.Views
         /// and this handler (which does, since both live in this project's Views
         /// namespace already).
         ///
-        /// TRIAL: currently opens GLSegmentManager (the master-detail redesign - segment
-        /// list on the left, Value/Reference/Hierarchy/Search/dual-grid detail panel on
-        /// the right that rebinds to whichever segment is selected) instead of the
-        /// original GLSegmentRef, so it gets exercised through real usage. GLSegmentRef is
-        /// untouched and still fully compiled into the project - if GLSegmentManager turns
-        /// up problems, roll back by changing the one line below from
-        /// "new GLSegmentManager(AcctsRef.Text)" to "new GLSegmentRef(AcctsRef.Text)".
-        /// Both share the exact same constructor signature and GLSegments_SelectedValue
-        /// contract, so nothing else here needs to change either way.
+        /// Opens the FinalWorkingCode-compatible account assignment picker.
         /// </summary>
         private void AcctsRef_EditRequested(object sender, EventArgs e)
         {
             ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.AcctsRef_EditRequested invoked");
             try
             {
-                var dlg = new GLSegmentManager(AcctsRef.Text)
+                var dlg = new GLSegmentRef(AcctsRef.Text)
                 {
                     EnableExcelCentering = false,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner

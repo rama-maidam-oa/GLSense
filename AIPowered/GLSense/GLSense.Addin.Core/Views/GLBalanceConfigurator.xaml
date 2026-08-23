@@ -12,7 +12,7 @@
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
             <conv:WidthPercentageConverter x:Key="WidthPercentageConverter"/>
@@ -23,50 +23,19 @@
             <conv:JournalValidationConverter x:Key="JournalValidationConverter"/>
             <conv:NullableDateConverter x:Key="NullableDateConverter"/>
 
-            <!-- Balance-Configurator-local styles. These are not shared/registered in the
-                 project's Themes\GlobalStyles.xaml because this migration's already-ported
-                 windows use a different visual convention for headers/labels/combos (WPF-UI
-                 SymbolIcon-based BaseWindow title bars, inline-styled rows - see e.g.
-                 Views\GLGetPeriod.xaml) than this UserControl, which draws its own
-                 self-contained header/close button (it has no BaseWindow title bar - it is
-                 hosted as plain Window.Content by Views\ConfiguratorPaneHost.cs, itself
-                 reparented into the host's task pane). Scoping these locally mirrors exactly
-                 what the old monolith's GLBalanceConfigurator.xaml already did (it also
-                 defined ConfigLabelStyle/ConfigRowStyle/BlueCircleExpanderStyle locally on
-                 top of its merged dictionary) rather than inventing a new shared-theme
-                 pattern. Brushes referenced below (PrimaryBrush/TextPrimaryBrush/etc.) all
-                 come from the merged GlobalStyles.xaml dictionary. -->
-            <Style x:Key="ConfigLabelStyle" TargetType="Label">
-                <!-- Width intentionally NOT set here anymore: the label column is now
-                     Auto + SharedSizeGroup (see each row's Grid.ColumnDefinitions), so
-                     it shrink-wraps to the widest label text across all rows instead of
-                     a fixed 190 that left a big dead gap after short labels. A 1px right
-                     margin keeps a hairline gap before the combo even for the longest
-                     label ("Account Assignment(s):"). -->
+            <!-- Professional Label Style for config rows -->
+            <Style x:Key="ConfigLabelStyle" TargetType="Label" BasedOn="{StaticResource LabelStyle}">
+                <Setter Property="Width" Value="140"/>
                 <Setter Property="HorizontalAlignment" Value="Left"/>
                 <Setter Property="VerticalAlignment" Value="Center"/>
-                <Setter Property="Margin" Value="0,0,1,0"/>
+                <Setter Property="Margin" Value="0"/>
                 <Setter Property="Padding" Value="0"/>
                 <Setter Property="FontWeight" Value="Normal"/>
-                <!-- Blue (PrimaryBrush), not TextPrimaryBrush - standardized every
-                     field-prompt label in the app on blue (see HeaderTextBlock/
-                     LabelTextStyle in GlobalStyles.xaml), this window's own labels
-                     were the last ones still on the dark/near-black brush. -->
-                <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
             </Style>
 
             <!-- Professional Row Style -->
-            <!-- Margin bumped from "0,3" to "0,8" - the field rows (Ledger/Activity/
-                 Balance Type/etc.) were packed too tightly together while the
-                 collapsed "Get Balance Function Parameters" accordion at the bottom
-                 left a large block of unused vertical space. Widening the per-row
-                 margin here (applies uniformly to all ~14 rows via this shared style)
-                 uses that spare space to give the field list real breathing room,
-                 matching FinalWorkingCode's effectively taller row rhythm (which
-                 layers a CompactCombo/CompactRefEditControl Height="30"+Margin
-                 bottom="6" on top of the same row margin). -->
             <Style x:Key="ConfigRowStyle" TargetType="Grid">
-                <Setter Property="Margin" Value="0,8"/>
+                <Setter Property="Margin" Value="0,3"/>
                 <Setter Property="VerticalAlignment" Value="Center"/>
             </Style>
 
@@ -153,7 +122,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- ================= Header ================= -->
-                <Border Grid.Row="0" Background="{StaticResource PrimaryBrush}" CornerRadius="6,6,0,0" Padding="12,8" Margin="0,0,0,8">
+                <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -161,57 +130,31 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <iconPacks:PackIconFontAwesome Kind="MoneyCheckDollarSolid" Width="20" Height="20" Foreground="White" VerticalAlignment="Center"/>
-                            <TextBlock Text="Balance Configurator" Margin="10,0,0,0" FontSize="14" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                            <iconPacks:PackIconFontAwesome Kind="MoneyCheckDollarSolid" Style="{StaticResource LargeIcon}"/>
+                            <TextBlock Text="Balance Configurator" Style="{StaticResource TitleHeaderTextBlock}"/>
                         </StackPanel>
-                        <Button Grid.Column="2" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnCancelBottom_Click"/>
+                        <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnCancelBottom_Click"/>
                     </Grid>
                 </Border>
 
                 <!-- ================= Main Controls Section ================= -->
                 <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8">
-                    <!-- MaxHeight bumped from 500 to 620: widening ConfigRowStyle's row
-                         margin (0,3 -> 0,8, see that style's comment above) to fix the
-                         "controls too close together" spacing complaint made each row
-                         taller, and with up to ~12 rows simultaneously visible (Ledger/
-                         Activity/BalanceType/Period/EndPeriod(CTD)/Currency/CurrencyType/
-                         ActualFlag/Budget-or-Encumbrance/JournalSource/JournalCategory/
-                         AccountAssignments) the old 500px cap could clip the last row
-                         (Account Assignment(s) was reported rendering only partially
-                         visible) instead of just letting the ScrollViewer scroll. -->
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" 
                                   HorizontalScrollBarVisibility="Disabled"
-                                  MaxHeight="620">
-                        <!-- IsSharedSizeScope: makes every row's Auto-width label column
-                             (SharedSizeGroup="ConfigLabelCol") size to the single widest
-                             label across all rows, so combos/refedits still line up at a
-                             common x position even though the column is no longer a fixed
-                             190px. -->
-                        <StackPanel Grid.IsSharedSizeScope="True">
+                                  MaxHeight="500">
+                        <StackPanel>
                             <!-- Row 0: Ledger -->
                             <Grid Style="{StaticResource ConfigRowStyle}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Ledger:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbLedgers"
                                                              Grid.Column="1"
                                                              IsMultiSelect="True"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding Ledgers}"
                                                              DisplayMemberPath="LedgerName"
                                                              SelectedItem="{Binding LedgerField.ComboValue, Mode=TwoWay}"
@@ -220,7 +163,7 @@
                                                              Margin="0,0,8,0"/>
                                 <views:ExcelRefEditControl x:Name="RefLedger"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding LedgerField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Ledgers Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -234,26 +177,14 @@
                             <!-- Row 1: Activity -->
                             <Grid Style="{StaticResource ConfigRowStyle}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Activity:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbActivity"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding Activities}"
                                                              SelectedItem="{Binding ActivityField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding ActivityField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -262,7 +193,7 @@
                                                              Margin="0,0,8,0"/>
                                 <views:ExcelRefEditControl x:Name="RefActivity"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding ActivityField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Activity Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -276,26 +207,14 @@
                             <!-- Row 2: Balance Type -->
                             <Grid Style="{StaticResource ConfigRowStyle}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Balance Type:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbBT"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding BalanceTypes, UpdateSourceTrigger=PropertyChanged}"
                                                              SelectedItem="{Binding BalanceTypeField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding BalanceTypeField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -304,7 +223,7 @@
                                                              Margin="0,0,8,0"/>
                                 <views:ExcelRefEditControl x:Name="RefBalanceType"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding BalanceTypeField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Balance Type Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -319,30 +238,22 @@
                             <Grid Style="{StaticResource ConfigRowStyle}"
                                   Visibility="{Binding IsStartEndVisible, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Start Date:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <DatePicker x:Name="dtpStartDate"
             Grid.Column="1"
-            Style="{StaticResource ModernDatePicker}"
             Margin="0,0,8,0"
             Height="28"
             VerticalAlignment="Center"
             SelectedDateFormat="Short"
-            CalendarOpened="DatePicker_CalendarOpenedEx"
-            SelectedDate="{Binding StartDateSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=False, NotifyOnValidationError=True}">
+            CalendarOpened="DatePicker_CalendarOpenedEx"                                
+            SelectedDate="{Binding StartDateSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=False, NotifyOnValidationError=True}"
+            BorderThickness="1"
+            BorderBrush="Gray"
+            Background="White">
                                     <DatePicker.IsEnabled>
                                         <MultiBinding Converter="{StaticResource BalanceTypeDatePeriodConverter}">
                                             <Binding Path="BalanceTypeField.ComboValue"/>
@@ -356,11 +267,7 @@
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="{x:Type DatePickerTextBox}">
                                                         <TextBox x:Name="PART_TextBox"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 VerticalAlignment="Stretch"
-                                 VerticalContentAlignment="Center"
-                                 Padding="4,0,0,0"
+                                 BorderBrush="White"
                                  Text="{Binding Path=SelectedDate, RelativeSource={RelativeSource AncestorType={x:Type DatePicker}}, Converter={StaticResource NullableDateConverter}, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
                                                     </ControlTemplate>
                                                 </Setter.Value>
@@ -370,7 +277,7 @@
                                 </DatePicker>
                                 <views:ExcelRefEditControl x:Name="RefStartDate"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding StartDateField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Start Date Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -385,30 +292,22 @@
                             <Grid Style="{StaticResource ConfigRowStyle}"
                                   Visibility="{Binding IsStartEndVisible, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="End Date:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <DatePicker x:Name="dtpEndDate"
             Grid.Column="1"
-            Style="{StaticResource ModernDatePicker}"
             Margin="0,0,8,0"
             Height="28"
             VerticalAlignment="Center"
             SelectedDateFormat="Short"
-            CalendarOpened="DatePicker_CalendarOpenedEx"
-            SelectedDate="{Binding EndDateSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=False, NotifyOnValidationError=True}">
+            CalendarOpened="DatePicker_CalendarOpenedEx"                                
+            SelectedDate="{Binding EndDateSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=False, NotifyOnValidationError=True}"
+            BorderThickness="1"
+            BorderBrush="Gray"
+            Background="White">
                                     <DatePicker.IsEnabled>
                                         <MultiBinding Converter="{StaticResource BalanceTypeDatePeriodConverter}">
                                             <Binding Path="BalanceTypeField.ComboValue"/>
@@ -422,11 +321,7 @@
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="{x:Type DatePickerTextBox}">
                                                         <TextBox x:Name="PART_TextBox"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 VerticalAlignment="Stretch"
-                                 VerticalContentAlignment="Center"
-                                 Padding="4,0,0,0"
+                                 BorderBrush="White"
                                  Text="{Binding Path=SelectedDate, RelativeSource={RelativeSource AncestorType={x:Type DatePicker}}, Converter={StaticResource NullableDateConverter}, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
                                                     </ControlTemplate>
                                                 </Setter.Value>
@@ -436,7 +331,7 @@
                                 </DatePicker>
                                 <views:ExcelRefEditControl x:Name="RefEndDate"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding EndDateField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator End Date Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -451,26 +346,14 @@
                             <Grid Style="{StaticResource ConfigRowStyle}"
                                   Visibility="{Binding IsPeriodVisible, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Period:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbPeriods"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding Periods}"
                                                              SelectedItem="{Binding PeriodField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding PeriodField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -487,7 +370,7 @@
                                                            Grid.Column="2"
                                                            RowAbsolute="True"
                                                            ColumnAbsolute="False"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding PeriodField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Period Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -502,26 +385,14 @@
                             <Grid Style="{StaticResource ConfigRowStyle}"
                                   Visibility="{Binding IsEndPeriodVisible, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="End Period:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbEndPeriods"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding EndPeriods}"
                                                              SelectedItem="{Binding EndPeriodField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding EndPeriodField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -536,7 +407,7 @@
                                 </ctrls:SuggestAppendComboBox>
                                 <views:ExcelRefEditControl x:Name="RefEndPeriod"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding EndPeriodField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator End Period Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -550,26 +421,14 @@
                             <!-- Row 7: Currency -->
                             <Grid Style="{StaticResource ConfigRowStyle}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Currency:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbCurrency"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding Currencies}"
                                                              SelectedItem="{Binding CurrencyField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding CurrencyField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -578,7 +437,7 @@
                                                              Margin="0,0,8,0"/>
                                 <views:ExcelRefEditControl x:Name="RefCurrency"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding CurrencyField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Currency Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -592,26 +451,14 @@
                             <!-- Row 8: Currency Type -->
                             <Grid Style="{StaticResource ConfigRowStyle}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Currency Type:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbCurrencyType"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding CurrencyTypes}"
                                                              SelectedItem="{Binding CurrencyTypeField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding CurrencyTypeField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -620,7 +467,7 @@
                                                              Margin="0,0,8,0"/>
                                 <views:ExcelRefEditControl x:Name="RefCurrencyType"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding CurrencyTypeField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Currency Type Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -634,26 +481,14 @@
                             <!-- Row 9: Actual Flag -->
                             <Grid Style="{StaticResource ConfigRowStyle}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Actual Flag:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbAF"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding ActualFlags}"
                                                              SelectedItem="{Binding ActualFlagField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding ActualFlagField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -662,7 +497,7 @@
                                                              Margin="0,0,8,0"/>
                                 <views:ExcelRefEditControl x:Name="RefActualFlag"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding ActualFlagField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Actual Flag Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -677,26 +512,14 @@
                             <Grid Style="{StaticResource ConfigRowStyle}"
                                   Visibility="{Binding IsBudgetVisible, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Budgets:" Style="{StaticResource ConfigLabelStyle}" VerticalAlignment="Center"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbBudgets"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding Budgets}"
                                                              SelectedItem="{Binding BudgetField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding BudgetField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -712,7 +535,7 @@
                                 </ctrls:SuggestAppendComboBox>
                                 <views:ExcelRefEditControl x:Name="RefBudget"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding BudgetField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Budget Field"
                                                            VerticalAlignment="Center">
@@ -728,27 +551,15 @@
                             <Grid Style="{StaticResource ConfigRowStyle}"
                                   Visibility="{Binding IsEncumbranceVisible, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Encumbrances:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbEncumbrances"
                                                              Grid.Column="1"
                                                              IsMultiSelect="True"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding Encumbrances}"
                                                              SelectedItem="{Binding EncumbranceField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding EncumbranceField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -763,7 +574,7 @@
                                 </ctrls:SuggestAppendComboBox>
                                 <views:ExcelRefEditControl x:Name="RefEncumbrance"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding EncumbranceField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Encumbrance Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -778,26 +589,14 @@
                             <Grid Style="{StaticResource ConfigRowStyle}"
                                   Visibility="{Binding IsJournalSourceVisible, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Journal Source:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbJS"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding JournalSources}"
                                                              DisplayMemberPath="SourceName"
                                                              SelectedItem="{Binding JournalSourceField.ComboValue, Mode=TwoWay}"
@@ -814,7 +613,7 @@
                                 </ctrls:SuggestAppendComboBox>
                                 <views:ExcelRefEditControl x:Name="RefJournalSource"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding JournalSourceField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Journal Source Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -832,26 +631,14 @@
                             <Grid Style="{StaticResource ConfigRowStyle}"
                                   Visibility="{Binding IsJournalCategoryVisible, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Journal Category:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbJC"
                                                              Grid.Column="1"
-                                                             Height="28"
-                                                             Background="White"
-                                                             Foreground="#212529"
+                                                             Style="{StaticResource CompactCombo}"
                                                              ItemsSource="{Binding JournalCategories}"
                                                              SelectedItem="{Binding JournalCategoryField.ComboValue, Mode=TwoWay}"
                                                              Text="{Binding JournalCategoryField.ComboText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -868,7 +655,7 @@
                                 </ctrls:SuggestAppendComboBox>
                                 <views:ExcelRefEditControl x:Name="RefJournalCategory"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding JournalCategoryField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Journal Category Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -885,19 +672,9 @@
                             <!-- Row 14: Account Assignments -->
                             <Grid Style="{StaticResource ConfigRowStyle}">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Label column: Auto + SharedSizeGroup (scope declared on the
-                                         parent StackPanel below) instead of a fixed 190 - this makes
-                                         the column shrink-to-fit the WIDEST label across all ~15 rows
-                                         ("Account Assignment(s):") automatically, so short labels like
-                                         "Ledger:" don't leave a big dead gap before their combo starts,
-                                         while every row's combo/refedit still lines up at the same x
-                                         (all rows share the same computed column width). -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <ColumnDefinition Width="140"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Account Assignment(s):" Style="{StaticResource ConfigLabelStyle}"/>
                                 <views:GLAccountsRef x:Name="AcctsRef"
@@ -909,7 +686,7 @@
                                                      IsEnabled="{Binding AccountAssignmentField.IsComboEnabled}"/>
                                 <views:ExcelRefEditControl x:Name="RefAccountAssignments"
                                                            Grid.Column="2"
-                                                           Height="28"
+                                                           Style="{StaticResource CompactRefEditControl}"
                                                            Text="{Binding AccountAssignmentField.RefValue, Mode=TwoWay}"
                                                            TagName="Balance Configurator Account(s) Assignment Field">
                                     <views:ExcelRefEditControl.IsEnabled>
@@ -959,7 +736,7 @@
                             </CheckBox>
                         </StackPanel>
 
-                        <TextBlock Grid.Column="2" Text="Factor:" VerticalAlignment="Center" Style="{StaticResource LabelTextStyle}" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Column="2" Text="Factor:" VerticalAlignment="Center" Style="{StaticResource SectionHeaderStyle}" HorizontalAlignment="Right"/>
                         <TextBox x:Name="TxtFactor"
                                  Grid.Column="3"
                                  Style="{StaticResource CompactTextBox}"
@@ -986,7 +763,7 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="Reference:" Style="{StaticResource LabelTextStyle}"/>
+                            <TextBlock Text="Reference:" Style="{StaticResource SectionHeaderStyle}"/>
                         </StackPanel>
 
                         <views:ExcelRefEditControl x:Name="CellReference"
@@ -995,7 +772,8 @@
                                                    Margin="12,0"
                                                    TagName="Balance Configurator Cell Reference"
                                                    Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                   VerticalAlignment="Center"/>
+                                                   VerticalAlignment="Center"
+                                                   Style="{StaticResource CompactRefEditControl}"/>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <Button x:Name="btnOKBottom" Margin="0,0,8,0" Style="{StaticResource InsertButtonStyle}" Click="BtnOKBottom_Click"/>
@@ -1033,17 +811,17 @@
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
                             <iconPacks:PackIconFontAwesome Kind="CodeSolid" Width="14" Height="14" Foreground="#2E86AB" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="Get Balance Function Parameters" Style="{StaticResource HeaderTextBlock}" VerticalAlignment="Center"/>
+                            <TextBlock Text="Get Balance Function Parameters" Style="{StaticResource SectionHeaderStyle1}" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Expander.Header>
 
                     <!-- Content that fills available space -->
                     <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
-                        <Border BorderBrush="#E9ECEF"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Background="White"
-                                Margin="2"
+                        <Border BorderBrush="#E9ECEF" 
+                                BorderThickness="1" 
+                                CornerRadius="4" 
+                                Background="White" 
+                                Margin="2" 
                                 Padding="0"
                                 VerticalAlignment="Stretch">
                             <ScrollViewer VerticalScrollBarVisibility="Auto"

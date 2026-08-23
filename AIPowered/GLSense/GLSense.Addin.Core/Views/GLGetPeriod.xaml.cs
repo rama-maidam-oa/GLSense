@@ -3,8 +3,8 @@
 // (Segment/Period pickers) - GLSense_GetPeriod formula picker (period + numeric offset).
 // Re-pointed vs. the original (same mapping as GLCubeDetails.xaml.cs / the ViewModels in
 // this same pass):
-//   - DpiAwareWindow -> BaseWindow; EnhancedDragDropHelper.EnableWindowDrag(this) removed
-//     - BaseWindow/TitleBar_MouseLeftButtonDown already provide window-drag (see
+//   - DpiAwareWindow -> DpiAwareWindow; EnhancedDragDropHelper.EnableWindowDrag(this) removed
+//     - DpiAwareWindow/TitleBar_MouseLeftButtonDown already provide window-drag (see
 //     GLCubeDetails.xaml.cs for the identical pattern).
 //   - GLSense.Helpers/Interfaces/Repositories/Utilities/ViewModels ->
 //     GLSense.Addin.Core.Helpers/Interfaces/Repositories/Utilities/ViewModels.
@@ -34,7 +34,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLGetPeriod.xaml
     /// </summary>
-    public partial class GLGetPeriod : BaseWindow, IWarningHost
+    public partial class GLGetPeriod : DpiAwareWindow, IWarningHost
     {
         private sealed class LedgerInfo
         {

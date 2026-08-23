@@ -2,7 +2,7 @@
 // Port of GLSense\Views\GLGetPeriodByYear.xaml.cs (FinalWorkingCode) for Group C
 // (Segment/Period pickers) - GLSense_GetPeriodByYear formula picker (period year + period
 // num). Re-pointed the same way as GLGetPeriod.xaml.cs (see that file's header for the
-// full mapping) - DpiAwareWindow -> BaseWindow, EnhancedDragDropHelper removed,
+// full mapping) - DpiAwareWindow -> DpiAwareWindow, EnhancedDragDropHelper removed,
 // LogUtility.* -> ServiceLocator.Logger?.*, AppState.Instance.ExcelApp.Application ->
 // ServiceLocator.ExcelApp.
 using GLSense.Addin.Core.Helpers;
@@ -24,7 +24,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLGetPeriodByYear.xaml
     /// </summary>
-    public partial class GLGetPeriodByYear : BaseWindow, IWarningHost
+    public partial class GLGetPeriodByYear : DpiAwareWindow, IWarningHost
     {
         private sealed class LedgerInfo
         {

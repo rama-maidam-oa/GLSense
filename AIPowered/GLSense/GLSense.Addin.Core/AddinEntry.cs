@@ -1,4 +1,4 @@
-﻿// GLSense.Addin.Core/AddinEntry.cs
+// GLSense.Addin.Core/AddinEntry.cs
 using GLSense.Addin.Core.Caching;
 using GLSense.Addin.Core.Common;
 using GLSense.Addin.Core.Controls;
@@ -147,9 +147,6 @@ namespace GLSense.Addin.Core
 
                 // Ensure WPF Application exists - ONLY CALL THIS ONCE
                 WpfAppManager.EnsureApplication();
-                //Implementing WPF-UI Bootstrapper
-                WpfUiBootstrapper.Initialize();
-                WpfUiBootstrapper.SetLightTheme();
 
                 // Check if ribbon controller is already available
                 if (ServiceLocator.RibbonController != null)
@@ -369,7 +366,7 @@ namespace GLSense.Addin.Core
                     break;
 
                 // ---- Group E (Drilldowns) ----
-                // RibDrillJobs/RibDDConfiguration open BaseWindow-derived windows, so they
+                // RibDrillJobs/RibDDConfiguration open DpiAwareWindow-derived windows, so they
                 // reuse ShowGroupCWindow (Group C's shared modal-dispatch helper) exactly
                 // like the 7 Group C pickers above - no new mechanism needed.
                 case "ShowJobsMonitor":
@@ -925,12 +922,12 @@ namespace GLSense.Addin.Core
 
         /// <summary>
         /// Shared dispatch helper for all 7 Group C picker windows - every one of them is a
-        /// BaseWindow-derived modal dialog opened the same way ShowCubeDetails() opens
+        /// DpiAwareWindow-derived modal dialog opened the same way ShowCubeDetails() opens
         /// GLCubeDetails (Group B), so this collapses that identical
         /// WpfAppManager.InvokeOnWpfThread + CenterInExcel/ModalToExcel/ShowInTaskbar +
         /// ShowDialog() boilerplate into one place instead of repeating it 7 times.
         /// </summary>
-        private void ShowGroupCWindow(string actionLabel, Func<BaseWindow> createWindow)
+        private void ShowGroupCWindow(string actionLabel, Func<DpiAwareWindow> createWindow)
         {
             try
             {
@@ -1123,8 +1120,8 @@ namespace GLSense.Addin.Core
         /// GLSegmentDiscovery modally. Re-pointed vs. the original: AppState.Instance.
         /// ExcelApp -> ServiceLocator.ExcelApp; WinForms MessageBoxIcon/MessageBoxButtons
         /// -> WPF MessageBoxImage; new GLSegmentDiscovery().ShowDialogWithOwner(hwnd) ->
-        /// ShowGroupCWindow(...), the same shared BaseWindow dispatch helper every other
-        /// Group C picker window already uses (GLSegmentDiscovery is BaseWindow-derived
+        /// ShowGroupCWindow(...), the same shared DpiAwareWindow dispatch helper every other
+        /// Group C picker window already uses (GLSegmentDiscovery is DpiAwareWindow-derived
         /// now, not DpiAwareWindow, so it fits that helper directly).
         /// </summary>
         private void ShowSegmentDiscovery()
@@ -1215,7 +1212,7 @@ namespace GLSense.Addin.Core
         /// ViewModels\GLSubmittedJobsViewModel.cs). Old monolith's RibDrillJobs_OnClick
         /// opened it via SafeInvokeWpf + ShowDialogWithOwner(hwnd); this reuses
         /// ShowGroupCWindow exactly like every Group C picker window instead, since
-        /// GLJobsMonitor is BaseWindow-derived here (not DpiAwareWindow).
+        /// GLJobsMonitor is DpiAwareWindow-derived here (not DpiAwareWindow).
         /// </summary>
         private void ShowJobsMonitor()
         {

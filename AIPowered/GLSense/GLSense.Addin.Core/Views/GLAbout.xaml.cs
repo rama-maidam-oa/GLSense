@@ -1,10 +1,10 @@
-// GLAbout.xaml.cs in GLSense.Addin.Core
+﻿// GLAbout.xaml.cs in GLSense.Addin.Core
 // Port of GLSense\Views\GLAbout.xaml.cs (FinalWorkingCode) - the about/version-
 // compatibility-checker dialog opened by the RibAbout ribbon button (ribbon wiring
 // itself is out of scope here - see PORTING_GUIDE.md / this group's task notes).
 //
 // Adjustments made when porting into this project's architecture:
-//   - Base class DpiAwareWindow -> BaseWindow (same as every other window in this
+//   - Base class DpiAwareWindow -> DpiAwareWindow (same as every other window in this
 //     project).
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> the dedicated
 //     TitleBar_MouseLeftButtonDown handler already present on every other window here.
@@ -57,7 +57,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLAbout.xaml
     /// </summary>
-    public partial class GLAbout : BaseWindow
+    public partial class GLAbout : DpiAwareWindow
     {
         private readonly ObservableCollection<InstanceCompatibility> instances;
         private readonly string xmlFilePath = ServiceLocator.Paths.UrlsDirectory;
@@ -147,7 +147,7 @@ namespace GLSense.Addin.Core.Views
             // Start compatibility checking
             await CheckInstanceCompatibility();
 
-            // BaseWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
+            // DpiAwareWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
             // before this async chain populated dgInstances - so it measured an empty
             // grid. Resettle again now that real rows are in place. See CLAUDE.md
             // section 1.4b (GLCubeDetails) for the full history of this pattern.
@@ -283,155 +283,109 @@ namespace GLSense.Addin.Core.Views
         {
             try
             {
-                var handler = new HttpClientHandler()
-                {
-                    SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
-                    ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate
-                };
-
-                using var httpClient = new HttpClient(handler);
-                // Was Timeout.InfiniteTimeSpan - bounded so a transient blip triggers the
-                // retry below instead of hanging indefinitely. Ported from
-                // FinalWorkingCode's identical fix.
-                httpClient.Timeout = TimeSpan.FromSeconds(30);
-                httpClient.DefaultRequestHeaders.ExpectContinue = false;
-
-                var ReqURL = url.Trim();
-
-                var patterns = new string[] { "/bypass-saml-login-flow", "/bypass-sso-login-flow" };
-
+                var reqUrl = url.Trim();
+                var patterns = new[] { "/bypass-saml-login-flow", "/bypass-sso-login-flow" };
                 foreach (var pattern in patterns)
-                {
-                    ReqURL = Regex.Replace(ReqURL, Regex.Escape(pattern), "", RegexOptions.IgnoreCase);
-                }
+                    reqUrl = Regex.Replace(reqUrl, Regex.Escape(pattern), "", RegexOptions.IgnoreCase);
 
-                // Bounded timeout + one retry on a transient failure, matching the
-                // resilience ApiHelper.ServerAPI already has for the main API path -
-                // this check previously had neither, so any transient blip showed up
-                // identically to a genuinely incompatible/unreachable instance. Ported
-                // from FinalWorkingCode's identical fix.
                 const int maxAttempts = 2;
                 for (int attempt = 1; attempt <= maxAttempts; attempt++)
                 {
-                try
-                {
-                    // Log request
-                    ServiceLocator.Logger?.LogDebug($"Sending request: {ReqURL}");
-
-                    // Create request object
-                    var request = new HttpRequestMessage(HttpMethod.Get, $"{ReqURL}/rest/public/orbit-version");
-
-                    // Send request and get response
-                    var responseMessage = await httpClient.SendAsync(request).ConfigureAwait(false);
-
-                    // Capture status code and headers
-                    var statusCode = (int)responseMessage.StatusCode;
-                    var responseHeaders = responseMessage.Headers.ToString();
-
-                    // Read full response body
-                    var responseBody = await responseMessage.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-                    // Log detailed response
-                    ServiceLocator.Logger?.LogDebug($"Response from: {ReqURL}/rest/public/orbit-version");
-                    ServiceLocator.Logger?.LogDebug($"Status Code: {statusCode}");
-                    ServiceLocator.Logger?.LogDebug($"Headers: {responseHeaders}");
-                    ServiceLocator.Logger?.LogDebug($"Response Body: {responseBody}");
-
-                    // Parse JSON (with additional logging for unexpected structures)
                     try
                     {
-                        if (string.IsNullOrWhiteSpace(responseBody))
-                        {
-                            ServiceLocator.Logger?.LogError($"Empty response body from {ReqURL}");
-                            return false;
-                        }
-
-                        using var doc = JsonDocument.Parse(responseBody);
-                        var root = doc.RootElement;
-
-                        ServiceLocator.Logger?.LogDebug($"Parsed JSON: {root.GetRawText()}");
-
-                        var glSenseVersion = root
-                            .EnumerateObject()
-                            .FirstOrDefault(p =>
-                                string.Equals(p.Name, "verionInfo",
-                                              StringComparison.OrdinalIgnoreCase))
-                            .Value
-                            .EnumerateObject()
-                            .FirstOrDefault(p =>
-                                string.Equals(p.Name, "glSenseVersion",
-                                              StringComparison.OrdinalIgnoreCase))
-                            .Value
-                            .GetString();
-
-                        if (string.Equals(glSenseVersion,
-                                          ServiceLocator.Version,
-                                          StringComparison.Ordinal))
-                        {
-                            return true;
-                        }
-
-                        ServiceLocator.Logger?.LogDebug(
-                            $"Version mismatch or missing: Expected='{ServiceLocator.Version}', " +
-                            $"Received='{glSenseVersion ?? "(null)"}'");
-
+                        return await SendCompatibilityCheckAsync(reqUrl).ConfigureAwait(false);
+                    }
+                    catch (HttpRequestException ex) when (attempt < maxAttempts)
+                    {
+                        ServiceLocator.Logger?.LogWarn($"Network error for {reqUrl} (attempt {attempt}/{maxAttempts}) - retrying in 1s: {ex.Message}");
+                        await Task.Delay(1000).ConfigureAwait(false);
+                    }
+                    catch (TaskCanceledException ex) when (attempt < maxAttempts && !ex.CancellationToken.IsCancellationRequested)
+                    {
+                        ServiceLocator.Logger?.LogWarn($"Timeout for {reqUrl} (attempt {attempt}/{maxAttempts}) - retrying in 1s: {ex.Message}");
+                        await Task.Delay(1000).ConfigureAwait(false);
+                    }
+                    catch (HttpRequestException ex)
+                    {
+                        LogInstanceCheckFailure(reqUrl, ex);
                         return false;
                     }
-                    catch (JsonException jsonEx)
+                    catch (TaskCanceledException ex)
                     {
-                        ServiceLocator.Logger?.LogError(
-                            $"JSON Parsing Error at {ReqURL}: {jsonEx.Message} | Raw Response: {responseBody}");
+                        if (ex.CancellationToken.IsCancellationRequested)
+                            ServiceLocator.Logger?.LogWarn($"Instance check for {reqUrl} was cancelled: {ex.Message}");
+                        else
+                            ServiceLocator.Logger?.LogError($"Instance not reachable (request timed out) for {reqUrl}: {ex.Message} | StackTrace: {ex.StackTrace}");
                         return false;
                     }
                     catch (Exception ex)
                     {
-                        ServiceLocator.Logger?.LogError(
-                            $"Unexpected error parsing response from {ReqURL}: {ex.Message} | Raw Response: {responseBody}");
+                        ServiceLocator.Logger?.LogError($"Unexpected error checking instance {reqUrl}: {ex.GetType().Name}: {ex.Message} | StackTrace: {ex.StackTrace}");
                         return false;
                     }
                 }
-                catch (HttpRequestException ex) when (attempt < maxAttempts)
-                {
-                    ServiceLocator.Logger?.LogWarn($"Network error for {ReqURL} (attempt {attempt}/{maxAttempts}) - retrying in 1s: {ex.Message}");
-                    await Task.Delay(1000).ConfigureAwait(false);
-                }
-                // HttpClient throws this same exception type both for a genuine request
-                // timeout AND for an explicit CancellationToken cancellation - only retry
-                // the former (a user-cancelled check should stop immediately, not retry).
-                catch (TaskCanceledException ex) when (attempt < maxAttempts && !ex.CancellationToken.IsCancellationRequested)
-                {
-                    ServiceLocator.Logger?.LogWarn($"Timeout for {ReqURL} (attempt {attempt}/{maxAttempts}) - retrying in 1s: {ex.Message}");
-                    await Task.Delay(1000).ConfigureAwait(false);
-                }
-                catch (HttpRequestException ex)
-                {
-                    LogInstanceCheckFailure(ReqURL, ex);
-                    return false;
-                }
-                catch (TaskCanceledException ex)
-                {
-                    if (ex.CancellationToken.IsCancellationRequested)
-                    {
-                        ServiceLocator.Logger?.LogWarn($"Instance check for {ReqURL} was cancelled: {ex.Message}");
-                    }
-                    else
-                    {
-                        ServiceLocator.Logger?.LogError($"Instance not reachable (request timed out) for {ReqURL}: {ex.Message} | StackTrace: {ex.StackTrace}");
-                    }
-                    return false;
-                }
-                catch (Exception ex)
-                {
-                    ServiceLocator.Logger?.LogError($"Unexpected error checking instance {ReqURL}: {ex.GetType().Name}: {ex.Message} | StackTrace: {ex.StackTrace}");
-                    return false;
-                }
-                }
-
                 return false;
             }
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "GLAbout.CheckUrlCompatibility");
+                return false;
+            }
+        }
+
+        private static async Task<bool> SendCompatibilityCheckAsync(string reqUrl)
+        {
+            using var handler = new HttpClientHandler
+            {
+                SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate
+            };
+            using var httpClient = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
+            httpClient.DefaultRequestHeaders.ExpectContinue = false;
+            ServiceLocator.Logger?.LogDebug($"Sending request: {reqUrl}");
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{reqUrl}/rest/public/orbit-version");
+            using var responseMessage = await httpClient.SendAsync(request).ConfigureAwait(false);
+            var responseBody = await responseMessage.Content.ReadAsStringAsync().ConfigureAwait(false);
+            ServiceLocator.Logger?.LogDebug($"Response from: {reqUrl}/rest/public/orbit-version");
+            ServiceLocator.Logger?.LogDebug($"Status Code: {(int)responseMessage.StatusCode}");
+            ServiceLocator.Logger?.LogDebug($"Headers: {responseMessage.Headers}");
+            ServiceLocator.Logger?.LogDebug($"Response Body: {responseBody}");
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(responseBody))
+                {
+                    ServiceLocator.Logger?.LogError($"Empty response body from {reqUrl}");
+                    return false;
+                }
+
+                using var doc = JsonDocument.Parse(responseBody);
+                var root = doc.RootElement;
+                ServiceLocator.Logger?.LogDebug($"Parsed JSON: {root.GetRawText()}");
+                var glSenseVersion = root.EnumerateObject()
+                    .FirstOrDefault(p => string.Equals(p.Name, "verionInfo", StringComparison.OrdinalIgnoreCase)).Value
+                    .EnumerateObject()
+                    .FirstOrDefault(p => string.Equals(p.Name, "glSenseVersion", StringComparison.OrdinalIgnoreCase)).Value
+                    .GetString();
+
+                if (string.Equals(glSenseVersion, ServiceLocator.Version, StringComparison.Ordinal))
+                    return true;
+
+                ServiceLocator.Logger?.LogDebug($"Version mismatch or missing: Expected='{ServiceLocator.Version}', Received='{glSenseVersion ?? "(null)"}'");
+                return false;
+            }
+            catch (JsonException jsonEx)
+            {
+                ServiceLocator.Logger?.LogError($"JSON Parsing Error at {reqUrl}: {jsonEx.Message} | Raw Response: {responseBody}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogError($"Unexpected error parsing response from {reqUrl}: {ex.Message} | Raw Response: {responseBody}");
                 return false;
             }
         }

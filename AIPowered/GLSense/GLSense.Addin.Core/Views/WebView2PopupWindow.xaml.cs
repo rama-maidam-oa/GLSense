@@ -8,12 +8,12 @@
 // Adjustments made when porting into this project's architecture (mirrors GLLogin.xaml.cs/
 // GLDrilldownCustomization.xaml.cs conventions - see those files' own header comments for
 // the general rules referenced below):
-//   - Base class DpiAwareWindow -> BaseWindow. Owner is still set directly via the WPF
+//   - Base class DpiAwareWindow -> DpiAwareWindow. Owner is still set directly via the WPF
 //     Window.Owner property by WebView2NavigationResilience.OnNewWindowRequested (not
-//     SetExcelOwner/ModalToExcel) - BaseWindow.OnSourceInitialized only sets the native
+//     SetExcelOwner/ModalToExcel) - DpiAwareWindow.OnSourceInitialized only sets the native
 //     Excel owner when WindowInteropHelper(this).Owner is still zero, so setting Owner to
 //     another window (e.g. GLLogin) before Show() - exactly as OnNewWindowRequested does -
-//     is left alone. See BaseWindow.OnClosed for how this Owner is reactivated on close.
+//     is left alone. See DpiAwareWindow.OnClosed for how this Owner is reactivated on close.
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> the dedicated
 //     TitleBar_MouseLeftButtonDown handler (copied verbatim from GLLogin.xaml.cs's own
 //     handler), matching every other window in this project.
@@ -30,7 +30,7 @@ using System.Windows.Input;
 namespace GLSense.Addin.Core.Views
 {
 #nullable enable
-    public partial class WebView2PopupWindow : BaseWindow
+    public partial class WebView2PopupWindow : DpiAwareWindow
     {
         private WebView2NavigationResilience? _resilience;
 
@@ -113,7 +113,7 @@ namespace GLSense.Addin.Core.Views
                 ServiceLocator.Logger?.LogException(ex, "WebView2PopupWindow.WebView2PopupWindow_Closed: WebView2 dispose failed");
             }
 
-            // Owner reactivation on close is handled generically by BaseWindow.OnClosed for
+            // Owner reactivation on close is handled generically by DpiAwareWindow.OnClosed for
             // every window in this app.
         }
 

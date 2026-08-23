@@ -51,7 +51,7 @@ namespace GLSense.Addin.Core.ViewModels
         // Set by the View so it can resettle its SizeToContent window once LOVRows
         // actually has real data - LoadLovRows() is fired fire-and-forget from
         // LOV_SelectedLedger's setter (detached from Window_Loaded's own await chain),
-        // so BaseWindow.OnLoaded's resettle always runs against an empty grid. See
+        // so DpiAwareWindow.OnLoaded's resettle always runs against an empty grid. See
         // CLAUDE.md section 1.4b (GLCubeDetails) for the full history of this pattern.
         public Action DataLoadedAction { get; set; }
 

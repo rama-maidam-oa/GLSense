@@ -1,74 +1,68 @@
-<views:BaseWindow x:Class="GLSense.Addin.Core.Views.GLJobsMonitor"
-                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-                  xmlns:local="clr-namespace:GLSense.Addin.Core.Views"
-                  xmlns:views="clr-namespace:GLSense.Addin.Core.Views"
-                  xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
-                  xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
-                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-                  xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
-                  mc:Ignorable="d"
-                  WindowCaption="GLSense Processed Jobs"
-                  IconSymbol="ClipboardListSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="800" MaxWidth="900"
-                  MinHeight="700" MaxHeight="850"
-                  ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
-                  Loaded="Window_Loaded">
+<local:DpiAwareWindow x:Class="GLSense.Addin.Core.Views.GLJobsMonitor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:GLSense.Addin.Core.Views"
+        xmlns:utils="clr-namespace:GLSense.Addin.Core.Utilities"
+        xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
+        xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
+        xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+        Background="#F8F9FA"
+        ResizeMode="CanResize"
+        SizeToContent="Manual"
+        MinWidth="800" MaxWidth="1000"
+        MinHeight="700"
+        WindowStyle="None"
+        WindowStartupLocation="CenterOwner"
+        Loaded="Window_Loaded">
 
-    <Window.Resources>
+    <local:DpiAwareWindow.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+
             <!-- Converters (window-specific) -->
             <conv:WidthPercentageConverter x:Key="WidthPercentageConverter"/>
             <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
             <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         </ResourceDictionary>
-    </Window.Resources>
+    </local:DpiAwareWindow.Resources>
 
-    <Grid x:Name="RootGrid" Margin="0,0,0,0">
+    <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0"
-              Style="{StaticResource TitleBarGridStyle}"
-              MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-            <iconPacks:PackIconFontAwesome Grid.Column="0"
-                           Style="{StaticResource TitleBarIconStyle}"
-                           Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
+                <!-- Left side with icon and title -->
+                <StackPanel Grid.Column="0" 
+           Orientation="Horizontal" 
+           VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="SwatchbookSolid" 
+                 Style="{StaticResource LargeIcon}" />
+                    <TextBlock Text="Processed Jobs" 
+                 Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
 
-            <TextBlock Grid.Column="1"
-                       Style="{StaticResource TitleBarTextStyle}"
-                       Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"
-                       VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis"/>
-
-            <Button Grid.Column="2"
-                    x:Name="CloseButton"
-                    Style="{StaticResource TitleBarCloseButtonStyle}"
-                    Content="&#xE8BB;"
-                    Click="BtnClose_Click"/>
-        </Grid>
+                <Button Grid.Column="2" 
+             Style="{StaticResource CustomWindowCloseButtonStyle}" 
+             Click="BtnClose_Click" />
+            </Grid>
+        </Border>
 
         <!-- ================= Search Controls Section ================= -->
-        <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" CornerRadius="8" Margin="10,10,10,8" Padding="16,12">
+        <Border Grid.Row="1" Background="White" CornerRadius="8" Margin="0,0,0,12" Padding="16,12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -79,33 +73,71 @@
 
                 <!-- Search Label -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="SearchenginBrands" Width="14" Height="14" Foreground="#2E86AB" Margin="0,2,8,0" VerticalAlignment="Center"/>
                     <TextBlock Text="Search:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
                 </StackPanel>
 
                 <!-- Search ComboBox -->
-                <ctrls:SuggestAppendComboBox x:Name="cmbSearchType" Grid.Column="1" Width="Auto" MinWidth="200" Height="30" Margin="8,0,8,0"
-                                              ItemsSource="{Binding SearchTypes}" DisplayMemberPath="DisplayName"
-                                              SelectedItem="{Binding SelectedSearchType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              Background="{StaticResource WhiteBrush}" Foreground="{StaticResource TextPrimaryBrush}"
-                                              BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}"/>
+                <ctrls:SuggestAppendComboBox x:Name="cmbSearchType" Grid.Column="1" Width="Auto" MinWidth="200" Height="30" Margin="8,0,8,0" ItemsSource="{Binding SearchTypes}" DisplayMemberPath="DisplayName" SelectedItem="{Binding SelectedSearchType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ArrowBrush="#2E86AB" ArrowWidth="10" ArrowHeight="8" Background="White" Foreground="#212529" BorderThickness="1" BorderBrush="#E9ECEF"/>
 
                 <!-- Search TextBox -->
-                <TextBox x:Name="txtSearch" Grid.Column="2" Height="30" Style="{StaticResource ModernTextBox}"
+                <TextBox x:Name="txtSearch" Grid.Column="2" Height="30" Style="{StaticResource ModernTextBox}" 
                          Margin="0,0,8,0" HorizontalAlignment="Stretch" MinWidth="280"
-                         Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                         Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" >
                     <TextBox.ToolTip>
                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                            <TextBlock Text="Enter text to filter jobs list" TextWrapping="Wrap"/>
+                            <StackPanel>
+                                <TextBlock Text="Enter text to filter jobs list" TextWrapping="Wrap"/>
+                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Search based on selected criteria:" 
+                                     FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                            <TextBlock Text="• Process ID: Enter specific ID" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            <TextBlock Text="• Name: Partial or full job name" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            <TextBlock Text="• Phase/Status: Current state" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </ToolTip>
                     </TextBox.ToolTip>
                 </TextBox>
 
                 <!-- Refresh Button -->
-                <Button x:Name="btnRefresh" Grid.Column="3" Style="{StaticResource DynamicContentButton}"
-                        Content="Refresh" Padding="12,0" Click="BtnRefresh_Click">
+                <Button x:Name="btnRefresh" Grid.Column="3" Style="{StaticResource DynamicContentButton}" 
+                        Content="Refresh" Padding="12,0" Click="BtnRefresh_Click" >
                     <Button.ToolTip>
                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                            <TextBlock Text="Refresh the jobs list with latest status" TextWrapping="Wrap"/>
+                            <StackPanel>
+                                <TextBlock Text="Refresh the jobs list with latest status" TextWrapping="Wrap"/>
+                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <StackPanel>
+                                            <TextBlock Text="Updates:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                            <TextBlock Text="• Current job statuses" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            <TextBlock Text="• Download availability" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                            <TextBlock Text="• Phase and status changes" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </ToolTip>
                     </Button.ToolTip>
                 </Button>
@@ -113,27 +145,21 @@
         </Border>
 
         <!-- ================= Main Content: Jobs DataGrid ================= -->
-        <!-- MinHeight added (matches the AttachmentsDialog/GLSegmentValues fix): a bare
-             "*" row collapses toward 0 during SizeToContent's infinite-availSize
-             measurement pass, which is the same root cause behind the "rows collapsed"
-             symptom seen on other SizeToContent windows. MinHeight stops that
-             pathological first-pass collapse while still letting the grid grow/scroll
-             normally. -->
-        <Border Grid.Row="2" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,8" MinHeight="300">
-            <DataGrid x:Name="dgJobs"
-                      ItemsSource="{Binding JobsView}"
-                      AutoGenerateColumns="False"
-                      CanUserAddRows="False"
+        <Border Grid.Row="2" Background="White" CornerRadius="8" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,12">
+            <DataGrid x:Name="dgJobs" 
+                      ItemsSource="{Binding JobsView}" 
+                      AutoGenerateColumns="False" 
+                      CanUserAddRows="False" 
                       CanUserResizeColumns="True"
-                      Background="{StaticResource WhiteBrush}"
-                      HeadersVisibility="Column"
-                      SelectionMode="Extended"
-                      SelectionUnit="FullRow"
-                      BorderThickness="0"
-                      GridLinesVisibility="None"
+                      Background="White" 
+                      HeadersVisibility="Column" 
+                      SelectionMode="Extended" 
+                      SelectionUnit="FullRow" 
+                      BorderThickness="0" 
+                      GridLinesVisibility="None" 
                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                      Loaded="DgJobs_Loaded">
+                      ScrollViewer.VerticalScrollBarVisibility="Auto" 
+                      Loaded="DgJobs_Loaded" >
 
                 <!-- Override system selection colors -->
                 <DataGrid.Resources>
@@ -141,6 +167,7 @@
                     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
                     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
 
+                    <!-- Local scrollbar styles scoped to this DataGrid (apply AppScrollBar/AppScrollThumb) -->
                     <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
                         <Setter Property="Background" Value="#E0E0E0"/>
                         <Setter Property="Opacity" Value="1"/>
@@ -162,10 +189,56 @@
                         <Setter Property="Padding" Value="12,10"/>
                         <Setter Property="Height" Value="38"/>
                         <Setter Property="FontSize" Value="12"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="DataGridColumnHeader">
+                                    <Border x:Name="border"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <ContentPresenter Grid.Column="0"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                            <Path x:Name="SortArrow"
+                          Grid.Column="1"
+                          Margin="6,0,6,0"
+                          Width="10"
+                          Height="6"
+                          Stretch="Fill"
+                          Fill="{TemplateBinding Foreground}"
+                          Visibility="Collapsed"
+                          Data="M 0 4 L 5 0 L 10 4 Z"/>
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" TargetName="border" Value="#389BC7"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter Property="Background" TargetName="border" Value="#277596"/>
+                                        </Trigger>
+                                        <Trigger Property="SortDirection" Value="Ascending">
+                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 4 L 5 0 L 10 4 Z"/>
+                                        </Trigger>
+                                        <Trigger Property="SortDirection" Value="Descending">
+                                            <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="SortArrow" Property="Data" Value="M 0 0 L 5 4 L 10 0 Z"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
                     </Style>
                 </DataGrid.ColumnHeaderStyle>
 
-                <!-- RowStyle with consistent hover/selected/checkbox-selected formatting -->
+                <!-- UPDATED RowStyle with consistent hover/selected formatting -->
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow">
                         <Setter Property="BorderBrush" Value="#F8F9FA"/>
@@ -176,16 +249,21 @@
                         <Setter Property="Height" Value="36"/>
                         <EventSetter Event="PreviewMouseLeftButtonDown" Handler="DgJobsRow_PreviewMouseLeftButtonDown"/>
                         <Style.Triggers>
-                            <!-- Checkbox selected state -->
+                            <!-- IMPORTANT: Checkbox selected state -->
                             <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                 <Setter Property="Background" Value="#FFF8E1"/>
+                                <!-- Light yellow for checkbox selection -->
                             </DataTrigger>
+
+                            <!-- UI interaction triggers LAST (override checkbox selection when active) -->
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter Property="Background" Value="#F0F8FF"/>
+                                <!-- Light blue hover -->
                                 <Setter Property="BorderBrush" Value="#2E86AB"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter Property="Background" Value="#9bcee4"/>
+                                <!-- Blue for DataGrid selection -->
                                 <Setter Property="BorderBrush" Value="#2E86AB"/>
                                 <Setter Property="Foreground" Value="White"/>
                             </Trigger>
@@ -193,13 +271,14 @@
                     </Style>
                 </DataGrid.RowStyle>
 
+                <!-- UPDATED CellStyle with transparent background -->
                 <DataGrid.CellStyle>
                     <Style TargetType="DataGridCell">
                         <Setter Property="BorderBrush" Value="Transparent"/>
                         <Setter Property="BorderThickness" Value="0"/>
                         <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
                         <Setter Property="Background" Value="Transparent"/>
-                        <Setter Property="Foreground" Value="{Binding Foreground,
+                        <Setter Property="Foreground" Value="{Binding Foreground, 
                             RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
                     </Style>
                 </DataGrid.CellStyle>
@@ -208,12 +287,12 @@
                     <!-- Checkbox column -->
                     <DataGridTemplateColumn Width="40">
                         <DataGridTemplateColumn.Header>
-                            <CheckBox x:Name="chkSelectAll"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      Checked="ChkSelectAll_Checked"
+                            <CheckBox x:Name="chkSelectAll" 
+                                      HorizontalAlignment="Center" 
+                                      VerticalAlignment="Center" 
+                                      Checked="ChkSelectAll_Checked" 
                                       Unchecked="ChkSelectAll_Unchecked"
-                                      Style="{StaticResource ModernCheckBox}">
+                                      Style="{StaticResource ModernCheckBox}" >
                                 <CheckBox.ToolTip>
                                     <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                         <TextBlock Text="Select/Deselect all jobs in the list" TextWrapping="Wrap"/>
@@ -223,11 +302,11 @@
                         </DataGridTemplateColumn.Header>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <CheckBox x:Name="chkSelectJob"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center"
-                                          IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          Style="{StaticResource ModernCheckBox}">
+                                <CheckBox x:Name="chkSelectJob" 
+                                          HorizontalAlignment="Center" 
+                                          VerticalAlignment="Center" 
+                                          IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                          Style="{StaticResource ModernCheckBox}" >
                                     <CheckBox.ToolTip>
                                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                             <TextBlock Text="Select this job for batch operations (delete/download)" TextWrapping="Wrap"/>
@@ -239,16 +318,27 @@
                     </DataGridTemplateColumn>
 
                     <!-- Process ID -->
-                    <DataGridTextColumn Header="Process ID"
-                        IsReadOnly="True"
-                        Binding="{Binding ProcessId}"
+                    <DataGridTextColumn Header="Process ID" 
+                        IsReadOnly="True" 
+                        Binding="{Binding ProcessId}" 
                         Width="1.2*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
                                     <Setter.Value>
                                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <TextBlock Text="{Binding ProcessId}"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Unique identifier for the job" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding ProcessId}"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Use for tracking and reference" 
+                                             FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
                                         </ToolTip>
                                     </Setter.Value>
                                 </Setter>
@@ -257,9 +347,9 @@
                     </DataGridTextColumn>
 
                     <!-- Name -->
-                    <DataGridTextColumn Header="Name"
-                                        IsReadOnly="True"
-                                        Binding="{Binding Name}"
+                    <DataGridTextColumn Header="Name" 
+                                        IsReadOnly="True" 
+                                        Binding="{Binding Name}" 
                                         Width="3*"
                                         MinWidth="230">
                         <DataGridTextColumn.ElementStyle>
@@ -267,7 +357,10 @@
                                 <Setter Property="ToolTip">
                                     <Setter.Value>
                                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <TextBlock Text="{Binding Name}" TextWrapping="Wrap"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Job Name" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding Name}" TextWrapping="Wrap"/>
+                                            </StackPanel>
                                         </ToolTip>
                                     </Setter.Value>
                                 </Setter>
@@ -276,64 +369,177 @@
                     </DataGridTextColumn>
 
                     <!-- Job Type -->
-                    <DataGridTextColumn Header="Type"
-                            IsReadOnly="True"
-                            Binding="{Binding JobType}"
+                    <DataGridTextColumn Header="Type" 
+                            IsReadOnly="True" 
+                            Binding="{Binding JobType}" 
                             Width="2*">
                         <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Job Type" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding JobType}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
                     <!-- Phase -->
-                    <DataGridTextColumn Header="Phase"
-                            IsReadOnly="True"
-                            Binding="{Binding Phase}"
+                    <DataGridTextColumn Header="Phase" 
+                            IsReadOnly="True" 
+                            Binding="{Binding Phase}" 
                             Width="1.5*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding PhaseColor}"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Current processing phase" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding Phase}" Foreground="{Binding PhaseColor}" FontWeight="SemiBold"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Common phases:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                            <TextBlock Text="• Setup/Initialization" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Processing/Running" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Completed/Finalized" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
                     <!-- Status -->
-                    <DataGridTextColumn Header="Status"
+                    <DataGridTextColumn Header="Status" 
                             IsReadOnly="True"
-                            Binding="{Binding Status}"
+                            Binding="{Binding Status}" 
                             Width="1.5*">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding StatusColor}"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Job execution status" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding Status}" Foreground="{Binding StatusColor}" FontWeight="SemiBold"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Status indicators:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                            <TextBlock Text="• Success/Completed" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• In Progress/Running" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Failed/Error" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Pending/Queued" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
                     <!-- Date -->
-                    <DataGridTextColumn Header="Date"
+                    <DataGridTextColumn Header="Date" 
                             IsReadOnly="True"
-                            Binding="{Binding DisplayDate}"
+                            Binding="{Binding DisplayDate}" 
                             Width="2*">
                         <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <StackPanel>
+                                                <TextBlock Text="Job submission/execution date and time" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding DisplayDate}"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Time information:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                            <TextBlock Text="• When job was submitted" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• When job started/completed" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Used for sorting/filtering" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
                     <!-- Download Icon -->
                     <DataGridTemplateColumn Header="Download" Width="1.1*" IsReadOnly="True">
+                        <DataGridTemplateColumn.HeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="#2E86AB"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="BorderBrush" Value="#1B6B93"/>
+                                <Setter Property="BorderThickness" Value="0,0,1,0"/>
+                                <Setter Property="Padding" Value="12,10"/>
+                                <Setter Property="Height" Value="38"/>
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="ToolTip">
+                                    <Setter.Value>
+                                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                            <TextBlock Text="Download availability indicator" TextWrapping="Wrap"/>
+                                        </ToolTip>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </DataGridTemplateColumn.HeaderStyle>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <iconPacks:PackIconFontAwesome Kind="{Binding DownloadIconKind}"
-                                           Width="16"
-                                           Height="16"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           Foreground="{Binding DownloadIconColor}">
+                                <iconPacks:PackIconFontAwesome Kind="{Binding DownloadIconKind}" 
+                                           Width="16" 
+                                           Height="16" 
+                                           HorizontalAlignment="Center" 
+                                           VerticalAlignment="Center" 
+                                           Foreground="{Binding DownloadIconColor}" >
                                     <iconPacks:PackIconFontAwesome.ToolTip>
                                         <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                            <TextBlock Text="{Binding DownloadTooltip}" TextWrapping="Wrap"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Download Status" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding DownloadTooltip}" TextWrapping="Wrap"/>
+                                                <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                              Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Icon meanings:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                            <TextBlock Text="• Green: Available for download" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Gray: Not available yet" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="• Red: Download failed/error" FontSize="11" FontStyle="Italic" Foreground="Black" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
                                         </ToolTip>
                                     </iconPacks:PackIconFontAwesome.ToolTip>
                                 </iconPacks:PackIconFontAwesome>
@@ -345,23 +551,63 @@
         </Border>
 
         <!-- Footer Actions -->
-        <Border Grid.Row="3" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Margin="10,0,10,10" Padding="16">
+        <Border Grid.Row="3" Background="White" CornerRadius="8" BorderThickness="1" BorderBrush="#E9ECEF" Padding="16">
             <Grid>
                 <!-- Left Side: Delete Buttons -->
                 <StackPanel HorizontalAlignment="Left" Orientation="Horizontal">
-                    <Button x:Name="btnDelete" Content="Delete" Style="{StaticResource DynamicContentButton}" Margin="0,0,8,0"
-                            Click="BtnDelete_Click">
+                    <Button x:Name="btnDelete" Content="Delete" Style="{StaticResource DynamicContentButton}" Margin="0,0,8,0" 
+                            Click="BtnDelete_Click" >
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Delete selected jobs from the system" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Delete selected jobs from the system" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Will delete:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Only checked/selected jobs" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Job records and associated data" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Action cannot be undone" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>
                     <Button x:Name="btnDeleteAll" Content="Delete All" Style="{StaticResource DynamicContentButton}"
-                            Click="BtnDeleteAll_Click">
+                            Click="BtnDeleteAll_Click" >
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Delete all jobs from the system (use with caution)" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Delete all jobs from the system (use with caution)" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                             Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="WARNING:" FontSize="11" FontWeight="Bold" Foreground="Red"/>
+                                                <TextBlock Text="• Deletes ALL jobs regardless of selection" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Irreversible action" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Consider using selective delete instead" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>
@@ -369,29 +615,78 @@
 
                 <!-- Right Side: Download + Close -->
                 <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                    <Button x:Name="btnDownloadLogs" Content="Download Logs" Style="{StaticResource DynamicContentButton}" Margin="0,0,8,0"
-                         Click="BtnDownloadLogs_Click">
+                    <Button x:Name="btnDownloadLogs" Content="Download Logs" Style="{StaticResource DynamicContentButton}" Margin="0,0,8,0" 
+                         Click="BtnDownloadLogs_Click" >
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Download execution logs for selected jobs" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Download execution logs for selected jobs" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Downloads:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Execution log files" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Error messages and debugging info" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Performance metrics" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Only available for completed/failed jobs" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>
-                    <Button x:Name="btnDownloadOutputs" Content="Download Output(s)" Style="{StaticResource DynamicContentButton}" Margin="0,0,8,0"
-                           Click="BtnDownloadOutputs_Click">
+                    <Button x:Name="btnDownloadOutputs" Content="Download Output(s)" Style="{StaticResource DynamicContentButton}" Margin="0,0,8,0" 
+                           Click="BtnDownloadOutputs_Click" >
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                <TextBlock Text="Download output files/results from selected jobs" TextWrapping="Wrap"/>
+                                <StackPanel>
+                                    <TextBlock Text="Download output files/results from selected jobs" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" 
+                                  Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Downloads:" FontSize="11" FontWeight="SemiBold" Foreground="Black"/>
+                                                <TextBlock Text="• Job result files" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Generated reports and data" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Export files (Excel, CSV, etc.)" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Multiple outputs for batch jobs" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,2,0,0"/>
+                                                <TextBlock Text="• Only available for successful jobs" 
+                                     FontSize="11" FontStyle="Italic" Foreground="Black"
+                                     Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
                             </ToolTip>
                         </Button.ToolTip>
                     </Button>
-                    <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}"
-                    Click="BtnClose_Click"/>
+                    <Button x:Name="btnClose" Style="{StaticResource CloseButtonStyle}" 
+                    Click="BtnClose_Click" />
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- Toast / Busy overlay -->
-        <local:AppOverlay x:Name="AppOverlayControl" Grid.Row="0" Grid.RowSpan="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" Panel.ZIndex="100"/>
+        <local:AppOverlay x:Name="AppOverlayControl" Grid.Row="0" Grid.RowSpan="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Collapsed" DataContext="{x:Null}" Panel.ZIndex="10"/>
     </Grid>
-</views:BaseWindow>
+</local:DpiAwareWindow>

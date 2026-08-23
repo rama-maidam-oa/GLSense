@@ -5,12 +5,12 @@
 // busy overlay (AppOverlay) until the page finishes loading (NavigationCompleted).
 //
 // Adjustments made when porting into this project's architecture (mirrors GLLogin.xaml.cs
-// - the only other WebView2 window in this project - and BaseWindow's established
+// - the only other WebView2 window in this project - and DpiAwareWindow's established
 // conventions; see those files' own header comments for the general rules referenced
 // below):
-//   - Base class DpiAwareWindow -> BaseWindow. MaxWidthCap/MaxHeightCap are still reset to
+//   - Base class DpiAwareWindow -> DpiAwareWindow. MaxWidthCap/MaxHeightCap are still reset to
 //     null in the constructor (same as the original) because this window intentionally
-//     wants a much larger footprint (1250-1500px wide) than BaseWindow's default
+//     wants a much larger footprint (1250-1500px wide) than DpiAwareWindow's default
 //     work-area-clamped MaxWidthCap (1400d) would allow, and needs the ability to grow to
 //     900px+ tall on ultrawide monitors - resetting both caps to null restores the
 //     original DpiAwareWindow behavior of only being bound by SystemParameters.WorkArea.
@@ -59,7 +59,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLDrilldownCustomization.xaml
     /// </summary>
-    public partial class GLDrilldownCustomization : BaseWindow
+    public partial class GLDrilldownCustomization : DpiAwareWindow
     {
         private Task? _webViewInitTask;
         private WebView2NavigationResilience? _resilience;
@@ -69,7 +69,7 @@ namespace GLSense.Addin.Core.Views
             InitializeComponent();
             ServiceLocator.Logger?.LogDebug("GLDrilldownCustomization constructor invoked");
 
-            // This window wants a much larger footprint than BaseWindow's default
+            // This window wants a much larger footprint than DpiAwareWindow's default
             // work-area-clamped caps allow (see header comment above).
             MaxWidthCap = null;
             MaxHeightCap = null;
@@ -476,6 +476,24 @@ namespace GLSense.Addin.Core.Views
                 response.IndexOf("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 throw new InvalidOperationException(response);
+            }
+        }
+        private void Header_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ClickCount > 1 || WindowState == WindowState.Maximized)
+                return;
+
+            if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+            {
+                try
+                {
+                    DragMove();
+                }
+                catch (Exception ex)
+                {
+                    // ignore drag failures (e.g. race with mouse-up), but log for diagnostics.
+                    ServiceLocator.Logger?.LogWarn($"GLDrilldownCustomization.Header_MouseLeftButtonDown: DragMove failed (ignored): {ex.Message}");
+                }
             }
         }
     }

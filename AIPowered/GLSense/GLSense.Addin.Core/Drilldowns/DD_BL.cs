@@ -16,7 +16,7 @@
 //     no ExcelApp field).
 //   - System.Windows.Forms MessageBoxIcon/MessageBoxButtons -> System.Windows
 //     MessageBoxImage/MessageBoxButton (this project has no WinForms reference).
-//   - GLWaitWindow now derives from BaseWindow: win.ShowWithOwner(hwnd) -> win.Show()
+//   - GLWaitWindow now derives from DpiAwareWindow: win.ShowWithOwner(hwnd) -> win.Show()
 //     (Excel owner is set automatically via ServiceLocator.ExcelHandle). CreateAndShow-
 //     ProgressWindow rewritten to the WpfAppManager.InvokeOnWpfThread(Action)-with-
 //     captured-local pattern used by SegmentDiscoverer.cs/DrillCellHighlighter.cs, since

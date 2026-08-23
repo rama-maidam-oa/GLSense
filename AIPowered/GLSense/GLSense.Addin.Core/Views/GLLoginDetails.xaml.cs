@@ -5,7 +5,7 @@
 // button - the two TextBoxes bind straight to AppState.Instance via {x:Static} in XAML
 // (this project's AppState.cs, same pattern as the old monolith's), so nothing needs to
 // be set up here either.
-//   - DpiAwareWindow -> BaseWindow (same as every other already-ported window).
+//   - DpiAwareWindow -> DpiAwareWindow (same as every other already-ported window).
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> TitleBar_MouseLeftButtonDown,
 //     already wired in the XAML's title-bar Grid (see GLDailyRates.xaml.cs for the
 //     identical pattern).
@@ -18,7 +18,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLLoginDetails.xaml
     /// </summary>
-    public partial class GLLoginDetails : BaseWindow
+    public partial class GLLoginDetails : DpiAwareWindow
     {
         public GLLoginDetails()
         {

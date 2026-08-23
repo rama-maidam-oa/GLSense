@@ -25,7 +25,7 @@ namespace GLSense.Addin.Core.Utilities
     //
     // Fix: grab native Win32 focus for this element's own hwnd as soon as the mouse
     // enters it, so any immediately-following wheel notch is already routed correctly.
-    // Applied generically (via BaseWindow's constructor) so every window gets this safety
+    // Applied generically (via DpiAwareWindow's constructor) so every window gets this safety
     // net, not just the one pane that was actually broken; it is a no-op for ordinary
     // top-level windows that already own focus (SetFocus on a hwnd that already has focus
     // is harmless).

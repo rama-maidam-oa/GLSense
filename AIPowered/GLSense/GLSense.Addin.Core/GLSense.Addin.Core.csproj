@@ -111,12 +111,6 @@
     <Reference Include="WindowsBase" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
-    <Reference Include="Wpf.Ui, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
-      <HintPath>..\packages\WPF-UI.4.3.0\lib\net481\Wpf.Ui.dll</HintPath>
-    </Reference>
-    <Reference Include="Wpf.Ui.Abstractions, Version=4.3.0.0, Culture=neutral, PublicKeyToken=11f9f5cc97b3ffd6, processorArchitecture=MSIL">
-      <HintPath>..\packages\WPF-UI.Abstractions.4.3.0\lib\net481\Wpf.Ui.Abstractions.dll</HintPath>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddinEntry.cs" />
@@ -211,11 +205,10 @@
     <Compile Include="Utilities\UserConfig.cs" />
     <Compile Include="Utilities\WebView2NavigationResilience.cs" />
     <Compile Include="Utilities\WpfAppManager.cs" />
-    <Compile Include="Utilities\WpfUiBootstrapper.cs" />
     <Compile Include="Views\AppOverlay.xaml.cs">
       <DependentUpon>AppOverlay.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Views\BaseWindow.cs" />
+    <Compile Include="Views\DpiAwareWindow.cs" />
     <Compile Include="Views\GLCubeDetails.xaml.cs">
       <DependentUpon>GLCubeDetails.xaml</DependentUpon>
     </Compile>

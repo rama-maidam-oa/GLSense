@@ -15,7 +15,7 @@ namespace GLSense.Addin.Core.Utilities
     ///
     /// Why this exists: a DataGridColumn with Width="*" reports a huge desired width when it is
     /// measured with an unconstrained/infinite available width - which is exactly what happens
-    /// on every window that uses SizeToContent="WidthAndHeight" (see BaseWindow-derived windows
+    /// on every window that uses SizeToContent="WidthAndHeight" (see DpiAwareWindow-derived windows
     /// across this project). That caused those windows to always grow to their MaxWidth cap
     /// instead of fitting their actual data (e.g. GLServerConfiguration's "Instance Configuration"
     /// grid always opening at its widest allowed size even with only a couple of short rows).
@@ -67,13 +67,13 @@ namespace GLSense.Addin.Core.Utilities
             // SizeChanged handler itself. Refresh() calls grid.UpdateLayout() (a forced,
             // synchronous re-measure) - running that synchronously from a SizeChanged
             // handler risks it firing WHILE an ancestor is still in the middle of its own
-            // layout pass (e.g. BaseWindow.ForceSizeToContentResettle's three UpdateLayout()
-            // calls, or the nested DispatcherFrame BaseWindow.PumpDispatcherFrame() pushes
+            // layout pass (e.g. DpiAwareWindow.ForceSizeToContentResettle's three UpdateLayout()
+            // calls, or the nested DispatcherFrame DpiAwareWindow.PumpDispatcherFrame() pushes
             // right after - which explicitly pumps every operation at Background priority
             // and above). Reported symptom on GLSegmentManager: window opens, the visible
             // gap near the title bar's close button briefly appears (the well-known
             // SizeToContent stale-first-measurement symptom - CLAUDE.md section 1), then
-            // BaseWindow's resettle "adjusts the width to close the gap", and immediately
+            // DpiAwareWindow's resettle "adjusts the width to close the gap", and immediately
             // hangs/crashes Excel - i.e. the hang coincides exactly with the resettle-and-
             // pump sequence, not with any specific Grid row-structure choice (three
             // unrelated layout rewrites all still hung). Dispatching at ContextIdle -
@@ -104,7 +104,7 @@ namespace GLSense.Addin.Core.Utilities
 
             // Setting fillColumn.Width = DataGridLength.Auto a few lines below is only ever
             // meant to be a transient, in-method measurement trick - but on a window using
-            // SizeToContent="WidthAndHeight" (every BaseWindow-derived window here), WPF's
+            // SizeToContent="WidthAndHeight" (every DpiAwareWindow-derived window here), WPF's
             // SizeToContent engine measures the window on EVERY layout pass, including the
             // instant this method flips the column to Auto. A DataGridColumn at Auto reports
             // its full natural (unclamped) width - for a long "Description" cell that can be
@@ -115,7 +115,7 @@ namespace GLSense.Addin.Core.Utilities
             // Account descriptions made the grid - and then the window - resize, after which
             // the trailing "Is-Summary" column was pushed out of view with a horizontal
             // scrollbar appearing. Freezing SizeToContent to Manual for the duration of this
-            // method (mirroring BaseWindow.ForceSizeToContentResettle's own
+            // method (mirroring DpiAwareWindow.ForceSizeToContentResettle's own
             // toggle-Manual-then-restore pattern) means the transient Auto width is never
             // measured by the window at all - only the final, already-resolved pixel width is,
             // once SizeToContent is restored at the very end.

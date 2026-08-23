@@ -3,8 +3,8 @@
 // SizeToContent="Height" + Auto-rows height fix already made there.
 //
 // Adjustments made when porting into this project's architecture:
-//   - Base class is now BaseWindow (WPF-UI FluentWindow) instead of DpiAwareWindow.
-//     BaseWindow already sets the Excel owner automatically (ServiceLocator.ExcelHandle
+//   - Base class is now DpiAwareWindow (plain WPF Window) instead of DpiAwareWindow.
+//     DpiAwareWindow already sets the Excel owner automatically (ServiceLocator.ExcelHandle
 //     + ModalToExcel), so there is no separate ShowWithOwner()/SetExcelOwner() call here.
 //   - LogUtility.* (static) -> ServiceLocator.Logger.*.
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> a dedicated title-bar drag
@@ -25,7 +25,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for GLWaitWindow.xaml
     /// </summary>
-    public partial class GLWaitWindow : BaseWindow, IDisposable
+    public partial class GLWaitWindow : DpiAwareWindow, IDisposable
     {
         // ---- Fields kept for minimal functionality ----
         private readonly CancellationHelper _helper;

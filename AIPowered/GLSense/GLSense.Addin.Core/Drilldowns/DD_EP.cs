@@ -28,8 +28,8 @@
 //   - System.Windows.Forms MessageBoxIcon/MessageBoxButtons -> System.Windows
 //     MessageBoxImage/MessageBoxButton (this project has no WinForms reference; the enum
 //     member names used here - Exclamation/Error/OK - exist under both).
-//   - GLWaitWindow now derives from BaseWindow: no more Win.SetExcelOwner((IntPtr)
-//     ExcelApp.Hwnd) call - BaseWindow sets the Excel owner automatically via
+//   - GLWaitWindow now derives from DpiAwareWindow: no more Win.SetExcelOwner((IntPtr)
+//     ExcelApp.Hwnd) call - DpiAwareWindow sets the Excel owner automatically via
 //     ServiceLocator.ExcelHandle/ModalToExcel.
 //   - AddinModule.RibbonHelper.ApplyState("ApplySheetActiveState") ->
 //     ServiceLocator.RibbonController?.SetState("ApplySheetActiveState") (see

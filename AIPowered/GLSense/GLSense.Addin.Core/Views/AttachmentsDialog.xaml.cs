@@ -7,8 +7,8 @@
 // - see that file for the rest of the journal-attachment download flow.
 //
 // Re-pointed vs. the original:
-//   - Base class DpiAwareWindow -> BaseWindow (this project's WPF-UI FluentWindow base -
-//     see GLDailyRates.xaml.cs for the same idiom). BaseWindow sets the Excel owner
+//   - Base class DpiAwareWindow -> DpiAwareWindow (this project's plain WPF Window base -
+//     see GLDailyRates.xaml.cs for the same idiom). DpiAwareWindow sets the Excel owner
 //     automatically via ServiceLocator.ExcelHandle, so there is no more explicit
 //     ShowWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd) call at the show site.
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> dedicated title-bar drag handler
@@ -29,7 +29,7 @@ namespace GLSense.Addin.Core.Views
     /// <summary>
     /// Interaction logic for AttachmentsDialog.xaml
     /// </summary>
-    public partial class AttachmentsDialog : BaseWindow
+    public partial class AttachmentsDialog : DpiAwareWindow
     {
         public AttachmentsDialog()
         {

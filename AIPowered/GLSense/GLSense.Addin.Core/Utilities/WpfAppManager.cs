@@ -1,4 +1,4 @@
-﻿using GLSense.Addin.Core.Helpers;
+using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using System;
 using System.Windows;
@@ -27,7 +27,7 @@ namespace GLSense.Addin.Core.Utilities
 
                     // Set this thread's DPI awareness context to Per-Monitor-V2 and leave it
                     // set. IMPORTANT: this must NOT be reverted (no "using"/Dispose) here.
-                    // Every actual WPF window on this thread - every BaseWindow-derived
+                    // Every actual WPF window on this thread - every DpiAwareWindow-derived
                     // dialog, and ConfiguratorPaneHost's borderless Window for the Balance
                     // Configurator - is created later via separate InvokeOnWpfThread calls,
                     // well after this method returns, all on this same dedicated WPF

@@ -6,7 +6,7 @@
 //
 // Re-pointed vs. the original:
 //   - LogUtility.* -> ServiceLocator.Logger?.*; GLSense.Views.GLWaitWindow -> this
-//     project's Views.GLWaitWindow (BaseWindow-derived).
+//     project's Views.GLWaitWindow (DpiAwareWindow-derived).
 //   - System.Windows.Forms.SaveFileDialog -> Microsoft.Win32.SaveFileDialog. This project
 //     has no WinForms reference (see DrillCellHighlighter.cs/DD_JL.cs header comments for
 //     the same constraint); Microsoft.Win32.SaveFileDialog is the WPF-native equivalent
