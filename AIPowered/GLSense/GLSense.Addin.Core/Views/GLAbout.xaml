@@ -10,7 +10,7 @@
                   WindowCaption="About Orbit GLSense"
                   IconSymbol="CircleInfoSolid"
                   SizeToContent="Manual"
-                  MinWidth="400" MaxWidth="650"
+                  MinWidth="630" MaxWidth="680"
                   MinHeight="450" MaxHeight="600"
                   ResizeMode="CanResize"
                   WindowStyle="None"

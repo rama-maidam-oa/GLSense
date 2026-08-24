@@ -12,8 +12,8 @@
                   Background="#F8F9FA"
                   SizeToContent="Manual"
                   Width="540"
-                  MinWidth="480"
-                  MinHeight="750"
+                  MinWidth="480" MaxWidth="600"
+                  MinHeight="750" MaxHeight="820"
                   ResizeMode="CanResize"
                   WindowStyle="None">
 
@@ -73,11 +73,11 @@
                     <!-- Instance Row -->
                     <Border Grid.Row="0"
                             Grid.Column="0"
-                            Background="#F8F9FA"
+                            Background="White"
                             CornerRadius="4"
                             Padding="8,6"
                             Margin="0,0,10,8">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" >
                             <iconPacks:PackIconFontAwesome Kind="GlobeSolid"
                                            Style="{StaticResource SmallIcon}"
                                            Foreground="#2E86AB"/>
@@ -105,7 +105,7 @@
                     <!-- URL Row -->
                     <Border Grid.Row="1"
                             Grid.Column="0"
-                            Background="#F8F9FA"
+                            Background="White"
                             CornerRadius="4"
                             Padding="8,6"
                             Margin="0,0,10,0">
