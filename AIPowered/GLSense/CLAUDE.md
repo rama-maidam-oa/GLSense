@@ -4233,6 +4233,38 @@ as a verification-only override, same caveat as section 36 above).
 
 ---
 
+## 38. Actual Flag LOV excludes Budget for unsupported Balance Types; Jobs Monitor sorted by Process ID descending (ported from FinalWorkingCode - fixed in **both** codebases)
+
+Budget is only a valid Actual Flag for PTD/YTD/QTD/PJTD Balance Types - CTD/JED/JEDP/JEDU
+don't support it. FinalWorkingCode's `GLConfiguratorViewModel.cs` got a direct fix for
+this (`UpdateActualFlagsForBalanceType`); this codebase already has its own numbered
+"Issue-N" cross-field-conditional-LOV framework (`UpdateActualFlagsForConditions`/
+`UpdateBalanceTypesForConditions`/etc., from the "Add cross-field conditional LOVs to
+Balance Configurator" work), so this was ported as **Issue-6** into that framework
+instead of copying FinalWorkingCode's method shape directly: added
+`IsBalanceTypeUnsupportedForBudget()` (mirrors `IsActivityBeginOrEndBalance`/
+`IsCurrencyTypeTranslatedOrConverted`'s style), OR'd it into `UpdateActualFlagsForConditions`'s
+existing `hideBudget` computation (Issue-4 already hid Budget for
+Translated/Converted/Entered Currency Type - this is additive, not a replacement), and
+wired a call to `UpdateActualFlagsForConditions()` into both places `BalanceType` changes
+flow through (`OnFieldDependencyChanged`'s `BalanceType` case and `ProcessBalanceType`'s
+ref/formula path) - the same two call sites Issue-5's `UpdateActivitiesForConditions()`
+call already uses for the same field.
+
+Separately, `GLSubmittedJobsViewModel.ParseAndDisplayJobs` sorted
+`.OrderByDescending(j => j.ProcessId)` on the already-stringified `ProcessId`, which
+orders lexicographically rather than numerically (e.g. `"9"` sorts above `"10"`, wrong
+for a "biggest Job ID first" descending list once IDs cross a digit-count boundary).
+Fixed by moving the sort earlier in the pipeline, before `CreateJobModel` converts the
+underlying `record.processId` (`long`) to a string - `.OrderByDescending(r => r.processId)`
+on the raw `JobRecord` sequence, ahead of `.Select(r => CreateJobModel(r))`.
+
+**Status: build-verified** (`GLSense.Addin.Core` builds clean with `/p:SignAssembly=false`
+as a verification-only override, same caveat as section 36 above; FinalWorkingCode's
+`GLSense.dll` also compiled clean).
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
