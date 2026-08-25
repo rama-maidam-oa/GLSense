@@ -67,6 +67,16 @@ namespace GLSense.Addin.Core.Utilities
                             // Group C/H/I dialogs, etc.) - log the full structured dump, not
                             // just the message, since e.Handled=true means it would
                             // otherwise vanish silently.
+                            //
+                            // Explicit LogWarn marker (kept permanently - see the GLLogin
+                            // "blank combo box" investigation): a XamlParseException/
+                            // StaticResource-resolution failure thrown while a control's
+                            // Style/ControlTemplate is being applied would land here, get
+                            // swallowed by e.Handled=true, and leave that control's area
+                            // blank with nothing else visibly wrong - this line makes that
+                            // scenario unmistakable in the log instead of just another
+                            // LogException entry among many.
+                            ServiceLocator.Logger?.LogWarn($"WpfAppManager: UNHANDLED WPF DISPATCHER EXCEPTION being suppressed - {e.Exception.GetType().Name}: {e.Exception.Message}");
                             ServiceLocator.Logger?.LogException(e.Exception, "WpfAppManager: Unhandled WPF Dispatcher exception (suppressed, UI kept alive)");
                             e.Handled = true;
                         };

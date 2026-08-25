@@ -20,7 +20,22 @@
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
+                <!-- Merges Generic.xaml directly (which itself merges GlobalStyles.xaml -
+                     see Themes\Generic.xaml's own MergedDictionaries) instead of merging
+                     GlobalStyles.xaml alone. cmbServer's SuggestAppendComboBox style lives
+                     in Generic.xaml and is normally found via WPF's automatic
+                     "no local style -> fall back to the defining assembly's
+                     Themes/Generic.xaml" mechanism (the ThemeInfo attribute in
+                     AssemblyInfo.cs). Diagnostic logging (GLLogin.GLLogin_Loaded) proved
+                     that automatic fallback was returning no style at all for cmbServer
+                     here (Template stayed NULL, OnApplyTemplate never even fired) - this
+                     window is the very first one ever constructed in the process, before
+                     any other WPF style lookup has run against this custom, App.xaml-less
+                     Application, which is the most likely reason it's the one place this
+                     surfaced. Merging Generic.xaml here puts the style directly in this
+                     window's own page resources, so it's found on the normal implicit-
+                     style lookup path and no longer depends on that automatic fallback. -->
+                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/Generic.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Window.Resources>

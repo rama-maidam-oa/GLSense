@@ -19,7 +19,14 @@
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml" />
+                <!-- Generic.xaml (not GlobalStyles.xaml alone) - merges GlobalStyles.xaml
+                     internally, and also carries SuggestAppendComboBox's own Style/Template.
+                     WPF's automatic "fall back to the defining assembly's Themes/Generic.xaml"
+                     mechanism for that control proved unreliable in this Excel-hosted
+                     environment (see GLLogin.xaml's comment for the full investigation) -
+                     merging it explicitly here puts the style in this window's own page
+                     resources instead of depending on that fallback. -->
+                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/Generic.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <sys:Double x:Key="LabelMinWidth">110</sys:Double>
             <sys:Double x:Key="ControlHeight">32</sys:Double>

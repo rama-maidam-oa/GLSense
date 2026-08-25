@@ -231,6 +231,31 @@ namespace GLSense.Addin.Core.Controls
             _debounceTimer.Tick += (s, e) => { _debounceTimer.Stop(); ApplyFilterAndSuggest(_pendingUserInput); };
 
             SelectedItems = new ObservableCollection<object>();
+
+            // Permanent safety net (not tied to any one window): if this control's default
+            // style/template never resolves, OnApplyTemplate is never even invoked by WPF
+            // (confirmed by a real repro - see the GLLogin "blank combo box" investigation),
+            // so a check placed inside OnApplyTemplate can't catch this case. Loaded fires
+            // whenever the control joins a rendered element tree regardless of whether it
+            // has a template, so it's the one place guaranteed to run either way.
+            Loaded += OnLoadedCheckTemplateResolved;
+        }
+
+        private void OnLoadedCheckTemplateResolved(object sender, RoutedEventArgs e)
+        {
+            if (Template != null)
+                return;
+
+            // The hosting window/UserControl's own resources almost certainly don't merge
+            // Themes/Generic.xaml (this control's Style/ControlTemplate live there) -
+            // WPF's automatic "fall back to the defining assembly's Themes/Generic.xaml"
+            // mechanism for custom controls has proven unreliable in this Excel-hosted
+            // process. Fix: merge "/GLSense.Addin.Core;component/Themes/Generic.xaml" into
+            // that window's own Resources (see GLLogin.xaml for the working example).
+            Context?.Logger?.LogWarn(
+                $"SuggestAppendComboBox '{Name}' has no resolved Style/Template after Loaded - " +
+                "it will render as blank space. The hosting window/UserControl's Resources " +
+                "likely don't merge Themes/Generic.xaml - see GLLogin.xaml for the fix pattern.");
         }
 
         #region ItemsSource / DisplayMemberPath / SelectedItem
@@ -384,6 +409,30 @@ namespace GLSense.Addin.Core.Controls
             _textBox = GetTemplateChild("PART_TextBox") as TextBox;
             _popup = GetTemplateChild("PART_Popup") as Popup;
             _listBox = GetTemplateChild("PART_ListBox") as ListBox;
+
+            // Permanent safety net: Style/Template having resolved (OnApplyTemplate only
+            // runs at all when it did - see the constructor's Loaded handler for the "no
+            // template at all" case) doesn't guarantee the template that applied actually
+            // matches what this code expects - a wrong/stale/partial ControlTemplate would
+            // still leave one or more of these null. Only logs when something is actually
+            // missing, so normal operation stays quiet. Context (not ServiceLocator.Logger
+            // directly) - GetTemplateChild also runs inside the XAML Designer's live-
+            // preview pipeline, where ServiceLocator.Initialize() is never called.
+            var missingParts = new List<string>();
+            if (_textBox == null) missingParts.Add("PART_TextBox");
+            if (_popup == null) missingParts.Add("PART_Popup");
+            if (_listBox == null) missingParts.Add("PART_ListBox");
+            if (_clearButton == null) missingParts.Add("PART_ClearButton");
+            if (GetTemplateChild("PART_DropDownButton") == null) missingParts.Add("PART_DropDownButton");
+
+            if (missingParts.Count > 0)
+            {
+                Context?.Logger?.LogWarn(
+                    $"SuggestAppendComboBox '{Name}' applied a template missing part(s): " +
+                    $"{string.Join(", ", missingParts)}. The control will be missing/broken " +
+                    "functionality for those parts - check that Generic.xaml's ControlTemplate " +
+                    "still declares them with these exact x:Name values.");
+            }
         }
 
         private void FindToolTipTextBlock()
