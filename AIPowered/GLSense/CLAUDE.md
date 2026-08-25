@@ -4265,6 +4265,55 @@ as a verification-only override, same caveat as section 36 above; FinalWorkingCo
 
 ---
 
+## 39. Two small fixes ported from FinalWorkingCode's window-flash/logout-flicker investigation (fixed in **both** codebases); most of that investigation's other fixes don't apply here
+
+FinalWorkingCode went through an extensive investigation (its own `CLAUDE.md` Follow-ups
+11-23) into a window cold-start flash and a logout-flow flicker. Most of what came out of
+that doesn't translate here as a straight port - checked each one against this codebase's
+actual state before deciding what to bring over:
+
+- **`RevealAfterContentRendered`/the whole "park off-screen until ContentRendered" mechanism
+  doesn't exist in `BaseWindow.cs` at all** - this codebase already has a different,
+  separately-built busy-overlay mechanism for the cold-start flash (see section 1's
+  "READ THIS FIRST"), so there's no equivalent opt-in property to broaden here.
+- **`Logout()` (`AddinEntry.cs`) has no wait window and never did** - it's already
+  fire-and-forget/`async`/`await`ed from `OnRibbonAction`, so it never had
+  FinalWorkingCode's UI-thread-blocking `Task.Run(...).GetAwaiter().GetResult()` bug in the
+  first place. Building a wait-window-based result UI for it would be a new feature, not a
+  fix - out of scope for this pass (confirmed with the user).
+- **`EdgeAddinHelper.GetEdgeAddinInstance()` already has its own comment explaining why it
+  can't cache the way FinalWorkingCode's did** (different AppDomain, no reference to the
+  host's `AddinModule`) - and judges re-scanning acceptable since it's only ever called from
+  Login/Logout, not a hot path. Left as-is.
+- **`BaseWindow.PositionAroundCenter` already prefers `ActualWidth`/`ActualHeight` over
+  `Width`/`Height`** (`double effectiveWidth = ActualWidth > 0 ? ActualWidth : Width;`) -
+  the exact fallback FinalWorkingCode's equivalent method was missing. Nothing to port here.
+- **`CommonFunctions.GLSenseMessage` never had a duplicate `SetForegroundWindow` call** -
+  it just does `win.ShowDialog()` on a `GLMessageWindow` with `ModalToExcel`/`CenterInExcel`
+  set, relying solely on `BaseWindow.RestoreOwnerFocusOnClosed` for reactivation. No
+  redundant second call existed to remove.
+
+Two real gaps did carry over, both applied here exactly as fixed in FinalWorkingCode:
+
+1. **`BaseWindow.FitToAvailableWorkArea` floors `desiredHeight` against `_initialMinHeight`
+   but had no equivalent floor for width.** Added `_initialMinWidth` (captured in
+   `CaptureInitialWindowConstraints()`, mirroring `_initialMinHeight`) and floor
+   `desiredWidth` against it right alongside the existing height floor. Note: since
+   `PositionAroundCenter` here already prefers `ActualWidth` (see above), this specific gap
+   was never observed to cause a visible mis-centering bug in this codebase the way it did
+   in FinalWorkingCode - this is a preventive parity fix, not a confirmed-bug fix.
+2. **`AppState.Reset()` explicitly set `DebugLogs = false`** as part of clearing session
+   state on logout - same underlying problem as FinalWorkingCode's reflection-based
+   `Reset()` (just via an explicit assignment here instead of reflection iterating every
+   property): a user-controlled diagnostic preference getting silently wiped by
+   login/session-state cleanup. Removed that one line; every other property in `Reset()` is
+   genuinely session/operation state and reset correctly.
+
+**Status: build-verified** (`GLSense.Addin.Core` builds clean with `/p:SignAssembly=false`
+as a verification-only override, same caveat as section 36 above).
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

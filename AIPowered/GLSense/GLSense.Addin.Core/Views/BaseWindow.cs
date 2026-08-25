@@ -26,6 +26,7 @@ namespace GLSense.Addin.Core.Views
         private bool _initialLayoutApplied;
         private double _initialMaxWidth = double.NaN;
         private double _initialMaxHeight = double.NaN;
+        private double _initialMinWidth = double.NaN;
         private double _initialMinHeight = double.NaN;
         private DispatcherTimer _resizeSettleTimer;
 
@@ -489,6 +490,9 @@ namespace GLSense.Addin.Core.Views
                 var desiredWidth = root.DesiredSize.Width;
                 var desiredHeight = root.DesiredSize.Height;
 
+                if (!double.IsNaN(_initialMinWidth) && _initialMinWidth > 0)
+                    desiredWidth = Math.Max(desiredWidth, _initialMinWidth);
+
                 if (!double.IsNaN(_initialMinHeight) && _initialMinHeight > 0)
                     desiredHeight = Math.Max(desiredHeight, _initialMinHeight);
 
@@ -739,6 +743,7 @@ namespace GLSense.Addin.Core.Views
         {
             if (double.IsNaN(_initialMaxWidth)) _initialMaxWidth = MaxWidth;
             if (double.IsNaN(_initialMaxHeight)) _initialMaxHeight = MaxHeight;
+            if (double.IsNaN(_initialMinWidth)) _initialMinWidth = MinWidth;
             if (double.IsNaN(_initialMinHeight)) _initialMinHeight = MinHeight;
         }
 
