@@ -2127,6 +2127,10 @@ namespace GLSense.ViewModels
                     try { UpdateActivitiesForConditions(); }
                     catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateActivitiesForConditions (BalanceType) failed (non-fatal)"); }
 
+                    // Actual Flag excludes Budget when Balance Type doesn't support it (PTD/YTD/QTD/PJTD only).
+                    try { UpdateActualFlagsForConditions(); }
+                    catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateActualFlagsForConditions (BalanceType) failed (non-fatal)"); }
+
                     break;
                 case FieldBinding.FieldType.JournalSources:
                 case FieldBinding.FieldType.JournalCategories:
@@ -2329,6 +2333,10 @@ namespace GLSense.ViewModels
             // Issue-5: BalanceType=JED/JEDP/JEDU hides Begin/End Balance in Activity.
             try { UpdateActivitiesForConditions(); }
             catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessBalanceType: UpdateActivitiesForConditions failed (non-fatal)"); }
+
+            // Actual Flag excludes Budget when Balance Type doesn't support it (PTD/YTD/QTD/PJTD only).
+            try { UpdateActualFlagsForConditions(); }
+            catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessBalanceType: UpdateActualFlagsForConditions failed (non-fatal)"); }
         }
         private void ProcessCurrencyType(FieldBinding field, string refText, string? rngValue)
         {
@@ -2699,6 +2707,17 @@ namespace GLSense.ViewModels
                 bt.Equals(AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase));
         }
 
+        // Budget is only valid for PTD/YTD/QTD/PJTD Balance Types.
+        private bool IsBalanceTypeSupportingBudget()
+        {
+            var bt = GetBalanceTypeText();
+            if (string.IsNullOrWhiteSpace(bt)) return true; // nothing selected yet - don't restrict
+            return bt.Equals(AppConstants.BalanceTypePTD, StringComparison.OrdinalIgnoreCase)
+                || bt.Equals(AppConstants.BalanceTypeYTD, StringComparison.OrdinalIgnoreCase)
+                || bt.Equals("QTD", StringComparison.OrdinalIgnoreCase)
+                || bt.Equals("PJTD", StringComparison.OrdinalIgnoreCase);
+        }
+
         // Issue-1/2/3: Balance Type excludes JED/JEDP/JEDU whenever Activity is Begin/End
         // Balance, Currency Type is Translated/Converted, or Actual Flag is Budget. Clears
         // BalanceTypeField if its current value is no longer in the rebuilt list.
@@ -2752,7 +2771,7 @@ namespace GLSense.ViewModels
         // OnFieldDependencyChanged ActualFlag cascade - IsBudgetEnabled/BudgetField/etc.).
         private void UpdateActualFlagsForConditions()
         {
-            bool hideBudget = IsCurrencyTypeTranslatedConvertedOrEntered();
+            bool hideBudget = IsCurrencyTypeTranslatedConvertedOrEntered() || !IsBalanceTypeSupportingBudget();
             LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateActualFlagsForConditions: hideBudget={hideBudget}");
             try
             {
