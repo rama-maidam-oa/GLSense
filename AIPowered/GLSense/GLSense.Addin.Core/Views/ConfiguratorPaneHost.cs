@@ -84,6 +84,17 @@ namespace GLSense.Addin.Core.Views
                             WindowStyle = WindowStyle.None,
                             ResizeMode = ResizeMode.NoResize,
                             ShowInTaskbar = false,
+                            // ShowActivated=false, matching WindowLoadingPlaceholder's
+                            // already-proven-safe pattern for the same class of problem:
+                            // Show() briefly creates this as a genuine, independent
+                            // top-level window before the host's SetParent/WS_CHILD
+                            // rewrite below turns it into a child of the task pane -
+                            // without this, that window is transiently activatable/
+                            // foreground, which is what let it flash into the taskbar/
+                            // Alt-Tab despite ShowInTaskbar=false (ghost-window bug,
+                            // same root cause as the WpfWarmup ghost-window bug this
+                            // project already fixed once for a different mechanism).
+                            ShowActivated = false,
                             AllowsTransparency = false,
                             SizeToContent = SizeToContent.Manual,
                             // Off-screen until the host SetParent's + MoveWindow's this

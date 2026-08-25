@@ -10,10 +10,9 @@
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   mc:Ignorable="d"
                   Background="#F8F9FA"
-                  SizeToContent="Manual"
                   Width="540"
-                  MinWidth="480" MaxWidth="600"
-                  MinHeight="750" MaxHeight="820"
+                  MinWidth="480"
+                  MinHeight="750"
                   ResizeMode="CanResize"
                   WindowStyle="None">
 
@@ -74,7 +73,7 @@
             </Grid.RowDefinitions>
 
             <!-- Form Section -->
-            <Border Grid.Row="0" Style="{StaticResource LoginCardStyle}" Margin="0,0,0,8">
+            <Border Grid.Row="0" Background="{StaticResource WhiteBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" Padding="15" Margin="0,0,0,8">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -158,8 +157,10 @@
 
             <!-- WebView2 Section -->
             <Border Grid.Row="1"
-                    Style="{StaticResource LoginCardStyle}"
-                    Padding="0"
+                    Background="{StaticResource WhiteBrush}"
+                    CornerRadius="6"
+                    BorderThickness="1"
+                    BorderBrush="{StaticResource BorderLightBrush}"
                     Margin="0,0,0,8"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch">

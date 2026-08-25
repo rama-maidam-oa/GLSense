@@ -24,6 +24,14 @@
             <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#E6F3FF"/>
             <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#F0F8FF"/>
             <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
+            <!-- Status Message Styles -->
+            <Style x:Key="SuccessMessage" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="#155724"/>
+                <Setter Property="Background" Value="#D4EDDA"/>
+                <Setter Property="Padding" Value="12,8"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
         </ResourceDictionary>
     </Window.Resources>
 

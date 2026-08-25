@@ -9,14 +9,13 @@
                   xmlns:ctrls="clr-namespace:GLSense.Addin.Core.Controls"
                   xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
                   mc:Ignorable="d"
-                  WindowCaption="Account Assignment Configurator"
-                  IconSymbol="FilterSolid"
-                  SizeToContent="WidthAndHeight"
-                  MinWidth="760" MaxWidth="900"
-                  MinHeight="750" MaxHeight="900"
+                  Background="#F8F9FA"
+                  SizeToContent="Manual"
+                  MinWidth="670" MaxWidth="770"
+                  MinHeight="850"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True"
+                  WindowStyle="None"
+                  WindowStartupLocation="CenterOwner"
                   Loaded="Window_Loaded">
 
     <Window.Resources>
@@ -37,26 +36,34 @@
 
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0" Style="{StaticResource TitleBarGridStyle}" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <iconPacks:PackIconFontAwesome Grid.Column="0" Style="{StaticResource TitleBarIconStyle}" Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-            <TextBlock Grid.Column="1" Style="{StaticResource TitleBarTextStyle}" Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2" x:Name="CloseButton" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header =================
+             Ported from FinalWorkingCode's own bespoke HeaderBar-styled Border (replacing
+             the legacy TitleBarGridStyle/TitleBarIconStyle/TitleBarTextStyle/
+             TitleBarCloseButtonStyle idiom), matching the convention already established by
+             GLSegmentValues/GLWaitWindow/GLMessageWindow's own ports. -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" Margin="10,10,10,0" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="LayerGroupSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="Account Assignment Configurator" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- ================= Middle Content ================= -->
-        <Grid Grid.Row="1" Margin="10">
+        <Grid Grid.Row="1" Margin="10,0,10,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -122,7 +129,10 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Hierarchies:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <iconPacks:PackIconFontAwesome Kind="SitemapSolid" Width="16" Height="16" Margin="0,0,8,0" Foreground="#2E86AB" VerticalAlignment="Center"/>
+                        <TextBlock Text="Hierarchies :" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0"/>
+                    </StackPanel>
                     <ctrls:SuggestAppendComboBox x:Name="cmbHierarchy" Grid.Column="1" Height="30" HorizontalAlignment="Stretch" ItemsSource="{Binding HierarchyItems}" DisplayMemberPath="DisplayDescription" SelectedItem="{Binding SelectedHierarchy, Mode=TwoWay}" VerticalAlignment="Center" Background="{StaticResource WhiteBrush}" Foreground="{StaticResource TextPrimaryBrush}" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}" LostFocus="CmbHierarchy_LostFocus"/>
                 </Grid>
             </Border>
@@ -135,7 +145,10 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Search:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <iconPacks:PackIconFontAwesome Kind="SearchenginBrands" Width="16" Height="16" Margin="0,4,2,0" Foreground="#2E86AB" VerticalAlignment="Center"/>
+                        <TextBlock Text="Search :" Style="{StaticResource HeaderTextBlock}" Margin="0,0,2,0"/>
+                    </StackPanel>
                     <ctrls:SuggestAppendComboBox x:Name="cmbSearchType" Grid.Column="1" MinWidth="170" Height="30" Margin="0,0,8,0" ItemsSource="{Binding SearchTypes}" DisplayMemberPath="DisplayName" SelectedItem="{Binding SelectedSearchType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Background="{StaticResource WhiteBrush}" Foreground="{StaticResource TextPrimaryBrush}" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}"/>
                     <TextBox x:Name="txtSearch" Grid.Column="2" Height="30" Style="{StaticResource ModernTextBox}" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                         <TextBox.ToolTip>
@@ -158,8 +171,11 @@
 
                     <!-- Left DataGrid -->
                     <Border Grid.Column="0" Background="{StaticResource WhiteBrush}" CornerRadius="4" Margin="4">
-                        <DataGrid x:Name="dgLeft" ItemsSource="{Binding PagedSegmentValues}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Extended" SelectionUnit="FullRow" Background="{StaticResource WhiteBrush}" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Auto" MouseDoubleClick="DgLeft_MouseDoubleClick">
+                        <DataGrid x:Name="dgLeft" FontFamily="Segoe UI" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ItemsSource="{Binding PagedSegmentValues}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Extended" SelectionUnit="FullRow" Background="{StaticResource WhiteBrush}" BorderThickness="0.5" GridLinesVisibility="None" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" MouseDoubleClick="DgLeft_MouseDoubleClick">
                             <DataGrid.Resources>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
                                 <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
                                     <Setter Property="Background" Value="#E0E0E0"/>
                                     <Setter Property="Opacity" Value="1"/>
@@ -179,6 +195,38 @@
                                     <Setter Property="Padding" Value="12,10"/>
                                     <Setter Property="Height" Value="38"/>
                                     <Setter Property="FontSize" Value="12"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="DataGridColumnHeader">
+                                                <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <ContentPresenter Grid.Column="0" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                                        <Path x:Name="SortArrow" Grid.Column="1" Margin="6,0,6,0" Width="10" Height="6" Stretch="Fill" Fill="{TemplateBinding Foreground}" Visibility="Collapsed" Data="M 0 4 L 5 0 L 10 4 Z"/>
+                                                    </Grid>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" TargetName="border" Value="#389BC7"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsPressed" Value="True">
+                                                        <Setter Property="Background" TargetName="border" Value="#277596"/>
+                                                    </Trigger>
+                                                    <Trigger Property="SortDirection" Value="Ascending">
+                                                        <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                        <Setter TargetName="SortArrow" Property="Data" Value="M 0 4 L 5 0 L 10 4 Z"/>
+                                                    </Trigger>
+                                                    <Trigger Property="SortDirection" Value="Descending">
+                                                        <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                        <Setter TargetName="SortArrow" Property="Data" Value="M 0 0 L 5 4 L 10 0 Z"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
                                 </Style>
                             </DataGrid.ColumnHeaderStyle>
                             <DataGrid.RowStyle>
@@ -188,6 +236,7 @@
                                     <Setter Property="Background" Value="White"/>
                                     <Setter Property="Foreground" Value="#212529"/>
                                     <Setter Property="FontSize" Value="13"/>
+                                    <Setter Property="Height" Value="36"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsSummaryAccount}" Value="True">
                                             <Setter Property="Background" Value="#FFFFF0"/>
@@ -217,20 +266,36 @@
                                 </Style>
                             </DataGrid.CellStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Value" Binding="{Binding DisplaySegmentValue}" Width="100" IsReadOnly="True">
+                                <DataGridTextColumn Header="Value" Binding="{Binding DisplaySegmentValue}" Width="90" IsReadOnly="True">
                                     <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                            <Setter Property="ToolTip">
+                                                <Setter.Value>
+                                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                        <TextBlock Text="{Binding DisplaySegmentValue}"/>
+                                                    </ToolTip>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="Description" IsReadOnly="True" Binding="{Binding Description}" Width="*">
                                     <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                            <Setter Property="ToolTip">
+                                                <Setter.Value>
+                                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap"/>
+                                                    </ToolTip>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
-                                <DataGridTemplateColumn Header="Is-Summary" Width="90">
+                                <DataGridTemplateColumn Header="Is-Summary" Width="100">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <CheckBox HorizontalAlignment="Center" IsChecked="{Binding IsSummaryChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsSummaryAccount}">
+                                            <CheckBox Style="{StaticResource SingleClickCheckBoxStyle}" IsChecked="{Binding IsSummaryChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsSummaryAccount}">
                                                 <CheckBox.ToolTip>
                                                     <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                                         <TextBlock Text="This is a summary account" TextWrapping="Wrap" MaxWidth="300"/>
@@ -258,8 +323,11 @@
 
                     <!-- Right DataGrid -->
                     <Border Grid.Column="2" Background="{StaticResource WhiteBrush}" CornerRadius="4" Margin="4">
-                        <DataGrid x:Name="dgRight" ItemsSource="{Binding SelectedItemsRight}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" IsReadOnly="True" Background="{StaticResource WhiteBrush}" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionMode="Extended" SelectionUnit="FullRow" MouseDoubleClick="DgRight_MouseDoubleClick">
+                        <DataGrid x:Name="dgRight" FontFamily="Segoe UI" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ItemsSource="{Binding SelectedItemsRight}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" IsReadOnly="True" Background="{StaticResource WhiteBrush}" BorderThickness="0.5" GridLinesVisibility="None" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionMode="Extended" SelectionUnit="FullRow" MouseDoubleClick="DgRight_MouseDoubleClick">
                             <DataGrid.Resources>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
+                                <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#212529"/>
                                 <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
                                     <Setter Property="Background" Value="#E0E0E0"/>
                                     <Setter Property="Opacity" Value="1"/>
@@ -279,6 +347,38 @@
                                     <Setter Property="Padding" Value="12,10"/>
                                     <Setter Property="Height" Value="38"/>
                                     <Setter Property="FontSize" Value="12"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="DataGridColumnHeader">
+                                                <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <ContentPresenter Grid.Column="0" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                                        <Path x:Name="SortArrow" Grid.Column="1" Margin="6,0,6,0" Width="10" Height="6" Stretch="Fill" Fill="{TemplateBinding Foreground}" Visibility="Collapsed" Data="M 0 4 L 5 0 L 10 4 Z"/>
+                                                    </Grid>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" TargetName="border" Value="#389BC7"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsPressed" Value="True">
+                                                        <Setter Property="Background" TargetName="border" Value="#277596"/>
+                                                    </Trigger>
+                                                    <Trigger Property="SortDirection" Value="Ascending">
+                                                        <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                        <Setter TargetName="SortArrow" Property="Data" Value="M 0 4 L 5 0 L 10 4 Z"/>
+                                                    </Trigger>
+                                                    <Trigger Property="SortDirection" Value="Descending">
+                                                        <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>
+                                                        <Setter TargetName="SortArrow" Property="Data" Value="M 0 0 L 5 4 L 10 0 Z"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
                                 </Style>
                             </DataGrid.ColumnHeaderStyle>
                             <DataGrid.RowStyle>
@@ -288,6 +388,7 @@
                                     <Setter Property="Background" Value="White"/>
                                     <Setter Property="Foreground" Value="#212529"/>
                                     <Setter Property="FontSize" Value="13"/>
+                                    <Setter Property="Height" Value="36"/>
                                     <Style.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
                                             <Setter Property="Background" Value="#F0F8FF"/>
@@ -313,17 +414,52 @@
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Value1" Binding="{Binding Value1}" Width="90" IsReadOnly="True">
                                     <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                            <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                                            <Setter Property="ToolTip">
+                                                <Setter.Value>
+                                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                        <TextBlock Text="{Binding Value1}"/>
+                                                    </ToolTip>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="Value2" Binding="{Binding Value2}" Width="90" IsReadOnly="True">
                                     <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                            <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                                            <Setter Property="ToolTip">
+                                                <Setter.Value>
+                                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                        <TextBlock Text="{Binding Value2}"/>
+                                                    </ToolTip>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="Text" Value="">
+                                                    <Setter Property="ToolTip" Value="{x:Null}"/>
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding Value2}" Value="{x:Null}">
+                                                    <Setter Property="ToolTip" Value="{x:Null}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="Segment" Binding="{Binding Segment}" Width="*" IsReadOnly="True">
                                     <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}"/>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                            <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                                            <Setter Property="ToolTip">
+                                                <Setter.Value>
+                                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                                        <TextBlock Text="{Binding Segment}"/>
+                                                    </ToolTip>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                             </DataGrid.Columns>
@@ -341,24 +477,87 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
+                <!-- Left Section: Items per page -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Per Page:" Style="{StaticResource HeaderTextBlock}" VerticalAlignment="Center"/>
-                    <TextBox x:Name="txtRecordsPerPage" Width="55" Height="26" Style="{StaticResource CompactTextBox}" Text="{Binding PageSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" TextAlignment="Center" Margin="6,0,16,0"/>
+                    <iconPacks:PackIconFontAwesome Kind="FileLinesSolid" Width="14" Height="14" Foreground="#2E86AB" VerticalAlignment="Center"/>
+                    <TextBlock Text="Per Page:" Style="{StaticResource PaginationInfoText}"/>
+                    <TextBox x:Name="txtRecordsPerPage" Width="60" Height="28" Style="{StaticResource SmallTextBox}" Text="{Binding PageSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" VerticalContentAlignment="Center" Margin="4,0,16,0">
+                        <TextBox.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <StackPanel>
+                                    <TextBlock Text="Enter number of records to display per page" TextWrapping="Wrap"/>
+                                    <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Value must be greater than 0. For permanent setting, configure in User Settings window" FontSize="11" FontStyle="Italic" Foreground="Black"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </ToolTip>
+                        </TextBox.ToolTip>
+                    </TextBox>
                 </StackPanel>
+                <!-- Middle Section: Navigation buttons -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="btnFirst" Style="{StaticResource FirstPageButtonStyle}" Click="BtnFirst_Click"/>
-                    <Button x:Name="btnPrev" Style="{StaticResource PreviousPageButtonStyle}" Click="BtnPrev_Click"/>
-                    <TextBlock Text="Page" Style="{StaticResource HeaderTextBlock}" VerticalAlignment="Center" Margin="6,0,4,0"/>
-                    <TextBlock Text="{Binding CurrentPage}" Style="{StaticResource HeaderTextBlock}" VerticalAlignment="Center"/>
-                    <TextBlock Text="of" Style="{StaticResource HeaderTextBlock}" VerticalAlignment="Center" Margin="4,0"/>
-                    <TextBlock Text="{Binding TotalPages}" Style="{StaticResource HeaderTextBlock}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <Button x:Name="btnNext" Style="{StaticResource NextPageButtonStyle}" Click="BtnNext_Click"/>
-                    <Button x:Name="btnLast" Style="{StaticResource LastPageButtonStyle}" Click="BtnLast_Click"/>
-                    <TextBlock Text="{Binding PageRangeText}" Style="{StaticResource HeaderTextBlock}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    <Button x:Name="btnFirst" Width="30" Style="{StaticResource PaginationButton}" Click="BtnFirst_Click">
+                        <Button.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Go to first page" TextWrapping="Wrap"/>
+                            </ToolTip>
+                        </Button.ToolTip>
+                        <iconPacks:PackIconFontAwesome Kind="BackwardStepSolid" Width="12" Height="12" Foreground="White"/>
+                    </Button>
+                    <Button x:Name="btnPrev" Width="30" Style="{StaticResource PaginationButton}" Click="BtnPrev_Click">
+                        <Button.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Go to previous page" TextWrapping="Wrap"/>
+                            </ToolTip>
+                        </Button.ToolTip>
+                        <iconPacks:PackIconFontAwesome Kind="CaretLeftSolid" Width="12" Height="12" Foreground="White"/>
+                    </Button>
+                    <Border Background="#F8F9FA" CornerRadius="4" Padding="8,4" Margin="4,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Page" Style="{StaticResource PaginationInfoText}"/>
+                            <TextBox x:Name="txtPage" Width="25" Height="24" Style="{StaticResource SmallTextBox}" Text="{Binding CurrentPage, Mode=OneWay}" TextAlignment="Center" VerticalContentAlignment="Center" Margin="4,0" IsReadOnly="True" Background="Transparent" BorderThickness="0"/>
+                            <TextBlock Text="of" Style="{StaticResource PaginationInfoText}"/>
+                            <TextBox x:Name="txtTotalPages" Width="50" Height="24" Style="{StaticResource SmallTextBox}" Text="{Binding TotalPages, Mode=OneWay}" TextAlignment="Center" VerticalContentAlignment="Center" Margin="4,0" IsReadOnly="True" Background="Transparent" BorderThickness="0"/>
+                        </StackPanel>
+                    </Border>
+                    <Button x:Name="btnNext" Width="30" Style="{StaticResource PaginationButton}" Click="BtnNext_Click">
+                        <Button.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Go to next page" TextWrapping="Wrap"/>
+                            </ToolTip>
+                        </Button.ToolTip>
+                        <iconPacks:PackIconFontAwesome Kind="CaretRightSolid" Width="12" Height="12" Foreground="White"/>
+                    </Button>
+                    <Button x:Name="btnLast" Width="30" Style="{StaticResource PaginationButton}" Click="BtnLast_Click">
+                        <Button.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Go to last page" TextWrapping="Wrap"/>
+                            </ToolTip>
+                        </Button.ToolTip>
+                        <iconPacks:PackIconFontAwesome Kind="ForwardStepSolid" Width="12" Height="12" Foreground="White"/>
+                    </Button>
+                    <TextBox x:Name="txtRange" Height="28" MinWidth="80" MaxWidth="100" Style="{StaticResource SmallTextBox}" VerticalAlignment="Center" VerticalContentAlignment="Center" TextWrapping="NoWrap" IsReadOnly="True" Text="{Binding PageRangeText, Mode=OneWay}" TextAlignment="Center" Margin="2">
+                        <TextBox.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Shows current page's record range (e.g., 1-10, 11-20, etc.)" TextWrapping="Wrap"/>
+                            </ToolTip>
+                        </TextBox.ToolTip>
+                    </TextBox>
                 </StackPanel>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock Text="Total:" Style="{StaticResource HeaderTextBlock}" Margin="0,0,6,0"/>
-                    <TextBlock Text="{Binding TotalRecords}" Style="{StaticResource HeaderTextBlock}"/>
+                <!-- Right Section: Total items -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="DatabaseSolid" Width="14" Height="14" Foreground="#2E86AB" VerticalAlignment="Center" Margin="10,0,4,0"/>
+                    <TextBlock Text="Total:" Style="{StaticResource PaginationInfoText}"/>
+                    <TextBox x:Name="txtTotalRecords" Width="75" Height="28" Style="{StaticResource SmallTextBox}" Text="{Binding TotalRecords, Mode=OneWay}" IsReadOnly="True" TextAlignment="Center" VerticalAlignment="Center" VerticalContentAlignment="Center" Margin="4,0">
+                        <TextBox.ToolTip>
+                            <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                <TextBlock Text="Total number of records for the selected segment" TextWrapping="Wrap"/>
+                            </ToolTip>
+                        </TextBox.ToolTip>
+                    </TextBox>
                 </StackPanel>
             </Grid>
         </Border>

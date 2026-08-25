@@ -1934,6 +1934,20 @@ namespace GLSense.Addin.Core
 
                 try
                 {
+                    // Terminates the WPF Application/Dispatcher started by
+                    // WpfAppManager.EnsureApplication() (ShutdownMode.OnExplicitShutdown
+                    // means nothing else ever stops it) - see WpfAppManager.Shutdown's own
+                    // comment for why leaving this running is the most likely reason
+                    // Excel.exe lingers as an orphaned process after a real close.
+                    Utilities.WpfAppManager.Shutdown();
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogException(ex, "Shutdown: WpfAppManager.Shutdown failed");
+                }
+
+                try
+                {
                     if (FormulaCacheManager.Instance.IsInitialized && FormulaCacheManager.Instance.HasChanges)
                     {
                         FormulaCacheManager.Instance.PersistToDatabase();

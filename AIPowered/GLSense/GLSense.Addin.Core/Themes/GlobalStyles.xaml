@@ -14,14 +14,12 @@
     <Color x:Key="DangerColor">#EC616E</Color>
     <Color x:Key="TextPrimaryColor">#212529</Color>
     <Color x:Key="TextSecondaryColor">#6C757D</Color>
-    <Color x:Key="BackgroundColor">#F8F9FA</Color>
     <Color x:Key="BorderColor">#DEE2E6</Color>
     <Color x:Key="BorderLightColor">#E9ECEF</Color>
     <Color x:Key="BorderLightGrayColor">#E0E0E0</Color>
     <Color x:Key="TooltipBackgroundColor">#FFF9DB</Color>
     <Color x:Key="TooltipBorderColor">#FBB41A</Color>
     <Color x:Key="WhiteColor">#FFFFFF</Color>
-    <Color x:Key="WindowTitleBarColor">#2E86AB</Color>
 
     <!-- ==================== Brush Resources ==================== -->
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource PrimaryColor}"/>
@@ -33,69 +31,12 @@
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
-    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}"/>
     <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
     <SolidColorBrush x:Key="BorderLightBrush" Color="{StaticResource BorderLightColor}"/>
     <SolidColorBrush x:Key="TooltipBackgroundBrush" Color="{StaticResource TooltipBackgroundColor}"/>
     <SolidColorBrush x:Key="TooltipBorderBrush" Color="{StaticResource TooltipBorderColor}"/>
     <SolidColorBrush x:Key="DataGridSelectedBrush" Color="{StaticResource BorderLightGrayColor}"/>
     <SolidColorBrush x:Key="WhiteBrush" Color="{StaticResource WhiteColor}"/>
-    <SolidColorBrush x:Key="WindowTitleBarBrush" Color="{StaticResource WindowTitleBarColor}"/>
-
-    <!-- ==================== Chrome-Style ToolTip ==================== -->
-    <Style x:Key="ChromeStyleToolTip" TargetType="ToolTip">
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderBrush" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Padding" Value="0"/>
-        <Setter Property="HasDropShadow" Value="True"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ToolTip">
-                    <Border Background="{StaticResource TooltipBackgroundBrush}"
-                            BorderBrush="{StaticResource TooltipBorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="4"
-                            MaxWidth="400">
-                        <Border.Effect>
-                            <DropShadowEffect Color="Black" 
-                                              Opacity="0.15" 
-                                              BlurRadius="8" 
-                                              ShadowDepth="2" 
-                                              Direction="315"/>
-                        </Border.Effect>
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <Border Grid.Row="0" 
-                                    Background="{StaticResource TooltipBorderBrush}"
-                                    CornerRadius="4,4,0,0"
-                                    Padding="10,6">
-                                <StackPanel Orientation="Horizontal">
-                                    <iconPacks:PackIconFontAwesome Kind="LightbulbRegular"
-                                                   Width="12"
-                                                   Height="12"
-                                                   Foreground="Black"
-                                                   Margin="0,0,6,0"
-                                                   VerticalAlignment="Center"/>
-                                    <TextBlock Text="TIP"
-                                               FontWeight="Bold"
-                                               FontSize="11"
-                                               Foreground="Black"
-                                               VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                            <Border Grid.Row="1" Padding="12,10">
-                                <ContentPresenter ContentSource="Content"/>
-                            </Border>
-                        </Grid>
-                    </Border>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
 
     <Style x:Key="SimpleBrowserToolTip" TargetType="ToolTip">
         <Setter Property="Background" Value="{StaticResource TooltipBackgroundBrush}"/>
@@ -106,91 +47,6 @@
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="FontFamily" Value="Segoe UI"/>
         <Setter Property="HasDropShadow" Value="True"/>
-    </Style>
-
-    <!-- ==================== Title Bar Styles ==================== -->
-    <Style x:Key="TitleBarButtonStyle" TargetType="Button">
-        <Setter Property="Width" Value="46"/>
-        <Setter Property="Height" Value="32"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Foreground" Value="White"/>
-        <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-        <Setter Property="FontSize" Value="10"/>
-        <Setter Property="HorizontalAlignment" Value="Center"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Border Background="{TemplateBinding Background}" x:Name="border">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,2,0,0"/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#FFFFFF30"/>
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#FFFFFF20"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-        <Setter Property="Content" Value="Close"/>
-        <Setter Property="ToolTip">
-            <Setter.Value>
-                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                    <TextBlock Text="Click to close this window!"/>
-                </ToolTip>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <!-- Title-bar "X" close icon (transparent/white, title-bar sized - used in the custom
-         title bar Grid of every window). Do NOT use this for a visible dialog "Close" action
-         button - it is unreadable off the dark title bar background. Use CloseButtonStyle
-         below for that instead. -->
-    <Style x:Key="TitleBarCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource TitleBarButtonStyle}">
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Border Background="{TemplateBinding Background}" x:Name="border">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,2,0,0"/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#E81123"/>
-                            <Setter Property="Foreground" Value="White"/>
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#BF0F1A"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style x:Key="TitleBarGridStyle" TargetType="Grid">
-        <Setter Property="Background" Value="{StaticResource WindowTitleBarBrush}"/>
-        <Setter Property="Height" Value="32"/>
-    </Style>
-
-    <Style x:Key="TitleBarIconStyle" TargetType="iconPacks:PackIconFontAwesome">
-        <Setter Property="Width" Value="20"/>
-        <Setter Property="Height" Value="20"/>
-        <Setter Property="Margin" Value="12,0,0,0"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="Foreground" Value="White"/>
-    </Style>
-
-    <Style x:Key="TitleBarTextStyle" TargetType="TextBlock">
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="Margin" Value="12,0,0,0"/>
-        <Setter Property="FontSize" Value="14"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Foreground" Value="White"/>
     </Style>
 
     <!-- ==================== Icon Styles (FontAwesome) ==================== -->
@@ -214,15 +70,6 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
-    <!-- ==================== Card Styles ==================== -->
-    <Style x:Key="LoginCardStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource WhiteBrush}"/>
-        <Setter Property="CornerRadius" Value="6"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
-        <Setter Property="Padding" Value="15"/>
-    </Style>
-
     <Style x:Key="ContentBorderStyle" TargetType="Border">
         <Setter Property="Background" Value="White"/>
         <Setter Property="CornerRadius" Value="6"/>
@@ -230,32 +77,6 @@
         <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
         <Setter Property="Padding" Value="16"/>
         <Setter Property="Margin" Value="0,0,0,12"/>
-    </Style>
-
-    <!-- ==================== Label Styles ==================== -->
-    <Style x:Key="LabelWithIconStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource BackgroundBrush}"/>
-        <Setter Property="CornerRadius" Value="4"/>
-        <Setter Property="Padding" Value="8,6"/>
-    </Style>
-
-    <Style x:Key="LabelTextStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="13"/>
-        <Setter Property="FontWeight" Value="Medium"/>
-        <!-- Blue (PrimaryBrush), not TextPrimaryBrush (dark charcoal) - field-prompt
-             labels across the app were an inconsistent mix of blue (HeaderTextBlock,
-             used by GLSegmentRef/GLSegmentManager/GLSegmentValues/GLRollerGroups/
-             GLLOVs/GLJobsMonitor/GLBalanceConfigurator) and near-black (this style, and
-             every plain Label using TextPrimaryBrush). Standardized on blue everywhere. -->
-        <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-
-    <Style x:Key="LabelIconStyle" TargetType="iconPacks:PackIconFontAwesome">
-        <Setter Property="Width" Value="16"/>
-        <Setter Property="Height" Value="16"/>
-        <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
     <Style x:Key="HeaderTextBlock" TargetType="TextBlock">
@@ -397,17 +218,17 @@
         <Setter Property="Margin" Value="0,0,0,8"/>
         <Setter Property="Height" Value="Auto"/>
         <Setter Property="Width" Value="Auto"/>
-        <Setter Property="MinWidth" Value="44"/>
-        <Setter Property="MinHeight" Value="36"/>
-        <Setter Property="Padding" Value="10,6"/>
-        <Setter Property="Content">
+        <Setter Property="ContentTemplate">
             <Setter.Value>
-                <iconPacks:PackIconFontAwesome Kind="RightLongSolid" Width="20" Height="20" Foreground="White"/>
+                <DataTemplate>
+                    <iconPacks:PackIconFontAwesome Kind="RightLongSolid"
+                      Width="20" Height="20" FontWeight="Normal" VerticalAlignment="Center"/>
+                </DataTemplate>
             </Setter.Value>
         </Setter>
         <Setter Property="ToolTip">
             <Setter.Value>
-                <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                     <StackPanel>
                         <TextBlock Text="Adds the selected items to right grid" TextWrapping="Wrap"/>
                         <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
@@ -420,23 +241,26 @@
                 </ToolTip>
             </Setter.Value>
         </Setter>
+        <Setter Property="MinWidth" Value="44"/>
+        <Setter Property="MinHeight" Value="36"/>
+        <Setter Property="Padding" Value="10,6"/>
     </Style>
 
     <Style x:Key="RemoveFromRightGridButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
         <Setter Property="Margin" Value="0,0,0,8"/>
         <Setter Property="Height" Value="Auto"/>
         <Setter Property="Width" Value="Auto"/>
-        <Setter Property="MinWidth" Value="44"/>
-        <Setter Property="MinHeight" Value="36"/>
-        <Setter Property="Padding" Value="10,6"/>
-        <Setter Property="Content">
+        <Setter Property="ContentTemplate">
             <Setter.Value>
-                <iconPacks:PackIconFontAwesome Kind="LeftLongSolid" Width="20" Height="20" Foreground="White"/>
+                <DataTemplate>
+                    <iconPacks:PackIconFontAwesome Kind="LeftLongSolid"
+                  Width="20" Height="20" FontWeight="Normal" VerticalAlignment="Center"/>
+                </DataTemplate>
             </Setter.Value>
         </Setter>
         <Setter Property="ToolTip">
             <Setter.Value>
-                <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                     <StackPanel>
                         <TextBlock Text="Removes the selected items from right grid" TextWrapping="Wrap"/>
                         <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
@@ -449,23 +273,26 @@
                 </ToolTip>
             </Setter.Value>
         </Setter>
+        <Setter Property="MinWidth" Value="44"/>
+        <Setter Property="MinHeight" Value="36"/>
+        <Setter Property="Padding" Value="10,6"/>
     </Style>
 
     <Style x:Key="BetweenGridButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
         <Setter Property="Margin" Value="0,0,0,8"/>
         <Setter Property="Height" Value="Auto"/>
         <Setter Property="Width" Value="Auto"/>
-        <Setter Property="MinWidth" Value="44"/>
-        <Setter Property="MinHeight" Value="36"/>
-        <Setter Property="Padding" Value="10,6"/>
-        <Setter Property="Content">
+        <Setter Property="ContentTemplate">
             <Setter.Value>
-                <iconPacks:PackIconFontAwesome Kind="RightLeftSolid" Width="20" Height="20" Foreground="White"/>
+                <DataTemplate>
+                    <iconPacks:PackIconFontAwesome Kind="RightLeftSolid"
+                           Width="20" Height="20" FontWeight="Normal" VerticalAlignment="Center"/>
+                </DataTemplate>
             </Setter.Value>
         </Setter>
         <Setter Property="ToolTip">
             <Setter.Value>
-                <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                     <StackPanel>
                         <TextBlock Text="Adds first and last items from selection as a range to right grid" TextWrapping="Wrap"/>
                         <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
@@ -478,35 +305,30 @@
                 </ToolTip>
             </Setter.Value>
         </Setter>
+        <Setter Property="MinWidth" Value="44"/>
+        <Setter Property="MinHeight" Value="36"/>
+        <Setter Property="Padding" Value="10,6"/>
     </Style>
 
-    <!-- Group H (GLSegmentValues) addition - "Not Between" range-exclusion button, sibling
-         to BetweenGridButtonStyle above (adds the first/last selected items as an
-         excluded range, i.e. old GLSegmentValues.BtnNotBetween_Click ->
-         AddBetweenSelection(items, isExclude: true)). Now that this project uses
-         FontAwesome (see the FontAwesome icon migration), it has the same dedicated
-         "range + ban" overlay glyph FinalWorkingCode's ExcludeButtonStyle-adjacent
-         combo icon uses, instead of reusing BetweenGridButtonStyle's plain icon. -->
     <Style x:Key="NotBetweenGridButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
         <Setter Property="Margin" Value="0,0,0,8"/>
         <Setter Property="Height" Value="Auto"/>
         <Setter Property="Width" Value="Auto"/>
-        <Setter Property="MinWidth" Value="44"/>
-        <Setter Property="MinHeight" Value="36"/>
-        <Setter Property="Padding" Value="10,6"/>
-        <Setter Property="Content">
+        <Setter Property="ContentTemplate">
             <Setter.Value>
-                <Grid Width="22" Height="22">
-                    <iconPacks:PackIconFontAwesome Kind="RightLeftSolid" Width="20" Height="20" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="White"/>
-                    <iconPacks:PackIconFontAwesome Kind="BanSolid" Width="16" Height="16" Foreground="Red" VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.85"/>
-                </Grid>
+                <DataTemplate>
+                    <Grid Width="22" Height="22">
+                        <iconPacks:PackIconFontAwesome Kind="RightLeftSolid" Width="20" Height="20" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <iconPacks:PackIconFontAwesome Kind="BanSolid" Width="16" Height="16" Foreground="Red" VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.85"/>
+                    </Grid>
+                </DataTemplate>
             </Setter.Value>
         </Setter>
         <Setter Property="ToolTip">
             <Setter.Value>
-                <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                     <StackPanel>
-                        <TextBlock Text="Adds first and last items from selection as an EXCLUDED range to right grid" TextWrapping="Wrap"/>
+                        <TextBlock Text="Adds range from selected items, but excludes them from calculations" TextWrapping="Wrap"/>
                         <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
                             <StackPanel Orientation="Horizontal">
                                 <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12" Foreground="Black" Margin="0,0,6,0" VerticalAlignment="Center"/>
@@ -517,23 +339,25 @@
                 </ToolTip>
             </Setter.Value>
         </Setter>
+        <Setter Property="MinWidth" Value="44"/>
+        <Setter Property="MinHeight" Value="36"/>
+        <Setter Property="Padding" Value="10,6"/>
     </Style>
 
     <Style x:Key="ExcludeButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
         <Setter Property="Margin" Value="0,0,0,8"/>
         <Setter Property="Height" Value="Auto"/>
         <Setter Property="Width" Value="Auto"/>
-        <Setter Property="MinWidth" Value="44"/>
-        <Setter Property="MinHeight" Value="36"/>
-        <Setter Property="Padding" Value="10,6"/>
-        <Setter Property="Content">
+        <Setter Property="ContentTemplate">
             <Setter.Value>
-                <iconPacks:PackIconFontAwesome Kind="BanSolid" Width="20" Height="20" Foreground="White"/>
+                <DataTemplate>
+                    <iconPacks:PackIconFontAwesome Kind="BanSolid" Width="20" Height="20" FontWeight="Normal" VerticalAlignment="Center"/>
+                </DataTemplate>
             </Setter.Value>
         </Setter>
         <Setter Property="ToolTip">
             <Setter.Value>
-                <ToolTip Style="{StaticResource ChromeStyleToolTip}">
+                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                     <StackPanel>
                         <TextBlock Text="Adds selected items as exclusions from calculations" TextWrapping="Wrap"/>
                         <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
@@ -546,79 +370,9 @@
                 </ToolTip>
             </Setter.Value>
         </Setter>
-    </Style>
-
-    <!-- Pagination Buttons -->
-    <Style x:Key="FirstPageButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
-        <Setter Property="Margin" Value="2,0"/>
-        <Setter Property="MinWidth" Value="18"/>
+        <Setter Property="MinWidth" Value="44"/>
+        <Setter Property="MinHeight" Value="36"/>
         <Setter Property="Padding" Value="10,6"/>
-        <Setter Property="Content">
-            <Setter.Value>
-                <iconPacks:PackIconFontAwesome Kind="AnglesLeftSolid" Width="12" Height="12" Foreground="White"/>
-            </Setter.Value>
-        </Setter>
-        <Setter Property="ToolTip">
-            <Setter.Value>
-                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                    <TextBlock Text="Go to first page"/>
-                </ToolTip>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style x:Key="PreviousPageButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
-        <Setter Property="Margin" Value="2,0"/>
-        <Setter Property="MinWidth" Value="18"/>
-        <Setter Property="Padding" Value="10,6"/>
-        <Setter Property="Content">
-            <Setter.Value>
-                <iconPacks:PackIconFontAwesome Kind="CaretLeftSolid" Width="12" Height="12" Foreground="White"/>
-            </Setter.Value>
-        </Setter>
-        <Setter Property="ToolTip">
-            <Setter.Value>
-                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                    <TextBlock Text="Go to previous page"/>
-                </ToolTip>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style x:Key="NextPageButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
-        <Setter Property="Margin" Value="2,0"/>
-        <Setter Property="MinWidth" Value="18"/>
-        <Setter Property="Padding" Value="10,6"/>
-        <Setter Property="Content">
-            <Setter.Value>
-                <iconPacks:PackIconFontAwesome Kind="CaretRightSolid" Width="12" Height="12" Foreground="White"/>
-            </Setter.Value>
-        </Setter>
-        <Setter Property="ToolTip">
-            <Setter.Value>
-                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                    <TextBlock Text="Go to next page"/>
-                </ToolTip>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style x:Key="LastPageButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButton}">
-        <Setter Property="Margin" Value="2,0"/>
-        <Setter Property="MinWidth" Value="14"/>
-        <Setter Property="Padding" Value="10,6"/>
-        <Setter Property="Content">
-            <Setter.Value>
-                <iconPacks:PackIconFontAwesome Kind="AnglesRightSolid" Width="12" Height="12" Foreground="White"/>
-            </Setter.Value>
-        </Setter>
-        <Setter Property="ToolTip">
-            <Setter.Value>
-                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                    <TextBlock Text="Go to last page"/>
-                </ToolTip>
-            </Setter.Value>
-        </Setter>
     </Style>
 
     <!-- ==================== DatePicker Style ==================== -->
@@ -632,41 +386,6 @@
          windows, at a fixed, clearly visible size. PART_Popup is left as a bare Popup -
          DatePicker itself creates and assigns the Calendar into it at runtime, so no
          Calendar element needs to be declared here. -->
-    <Style x:Key="ModernDatePicker" TargetType="DatePicker">
-        <Setter Property="Background" Value="White"/>
-        <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="DatePicker">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="30"/>
-                        </Grid.ColumnDefinitions>
-                        <Border Grid.ColumnSpan="2" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4"/>
-                        <DatePickerTextBox x:Name="PART_TextBox" Grid.Column="0" Background="Transparent" BorderThickness="0" Margin="6,0,0,0" VerticalContentAlignment="Center" Focusable="{TemplateBinding IsEnabled}"/>
-                        <Button x:Name="PART_Button" Grid.Column="1" Focusable="False" Background="Transparent" BorderThickness="0" Cursor="Hand">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="Transparent">
-                                        <iconPacks:PackIconFontAwesome Kind="CalendarDaysSolid" Width="16" Height="16" Foreground="{StaticResource PrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
-                        <Popup x:Name="PART_Popup" Placement="Bottom" StaysOpen="False" AllowsTransparency="True"/>
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.55"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
     <!-- ==================== TextBox Styles ==================== -->
     <Style x:Key="ModernTextBox" TargetType="TextBox">
         <Setter Property="BorderThickness" Value="1"/>
@@ -725,65 +444,6 @@
     </Style>
 
     <!-- ==================== CheckBox Styles ==================== -->
-    <!--
-    Plain property-Trigger template (no VisualStateManager/Storyboard transitions) -
-    the default Aero2 CheckBox template's built-in animated "CheckStates"
-    VisualStateGroup is the source of a "Storyboard was never applied to this object"
-    Seek warning that fires whenever a bound CheckBox (many in this app bind IsChecked
-    directly at construction time, e.g. GLSegmentRef/GLSegmentManager/GLSegmentValues'
-    IsSummaryChecked grid column, GLBalanceConfigurator's ChkSign/ChkZeroes,
-    GLUserConfig's RunAsJob/IncludeManualJournal) has its value set/toggled before the
-    control has fully finished templating. Removing the VSM/Storyboard machinery
-    entirely removes the warning at its source rather than just silencing trace
-    output, and keeps the glyph on the same FontAwesome icon set used everywhere else
-    in this project. Shared as a keyed resource so both ModernCheckBox (below) and the
-    implicit, no-x:Key CheckBox style further down (which catches every CheckBox in
-    this app that doesn't reference ModernCheckBox/CompactCheckBox explicitly) apply
-    the exact same fix.
-    -->
-    <ControlTemplate x:Key="SafeCheckBoxTemplate" TargetType="CheckBox">
-        <Grid Background="Transparent" SnapsToDevicePixels="True">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <Border x:Name="CheckBoxBorder"
-                    Grid.Column="0"
-                    Width="16" Height="16"
-                    VerticalAlignment="Center"
-                    Background="White"
-                    BorderBrush="#ADB5BD"
-                    BorderThickness="1.5"
-                    CornerRadius="3">
-                <iconPacks:PackIconFontAwesome x:Name="CheckGlyph"
-                                                Kind="CheckSolid"
-                                                Width="10" Height="10"
-                                                Foreground="White"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Visibility="Collapsed"/>
-            </Border>
-            <ContentPresenter Grid.Column="1"
-                              Margin="{TemplateBinding Padding}"
-                              VerticalAlignment="Center"
-                              HorizontalAlignment="Left"
-                              RecognizesAccessKey="True"/>
-        </Grid>
-        <ControlTemplate.Triggers>
-            <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="CheckBoxBorder" Property="Background" Value="{StaticResource PrimaryBrush}"/>
-                <Setter TargetName="CheckBoxBorder" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-                <Setter TargetName="CheckGlyph" Property="Visibility" Value="Visible"/>
-            </Trigger>
-            <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="CheckBoxBorder" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-            </Trigger>
-            <Trigger Property="IsEnabled" Value="False">
-                <Setter Property="Opacity" Value="0.6"/>
-            </Trigger>
-        </ControlTemplate.Triggers>
-    </ControlTemplate>
-
     <Style x:Key="ModernCheckBox" TargetType="CheckBox">
         <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
         <Setter Property="FontSize" Value="13"/>
@@ -792,26 +452,24 @@
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Padding" Value="4,0,0,0"/>
         <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="Template" Value="{StaticResource SafeCheckBoxTemplate}"/>
     </Style>
 
-    <Style x:Key="CompactCheckBox" TargetType="CheckBox" BasedOn="{StaticResource ModernCheckBox}">
+    <Style x:Key="CompactCheckBox" TargetType="CheckBox">
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="FontSize" Value="11"/>
         <Setter Property="Margin" Value="4,0,0,0"/>
-    </Style>
-
-    <!-- Implicit (no x:Key) CheckBox style - applies automatically to every CheckBox
-         in this app that doesn't set an explicit Style, e.g. the DataGrid cell
-         templates in GLSegmentRef/GLSegmentManager/GLSegmentValues,
-         GLBalanceConfigurator's ChkSign/ChkZeroes, GLSegmentFunctions'
-         ChkIncludeSegmentValues, GLUserConfig's RunAsJob/IncludeManualJournal, and the
-         multi-select item template in Generic.xaml. Only sets Template so these
-         CheckBoxes keep whatever font/foreground they already declared inline -
-         it exists purely to remove the same Storyboard/VSM warning everywhere,
-         not to reskin them. -->
-    <Style TargetType="CheckBox">
-        <Setter Property="Template" Value="{StaticResource SafeCheckBoxTemplate}"/>
-        <Setter Property="Cursor" Value="Hand"/>
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                <Setter Property="Cursor" Value="Arrow"/>
+                <Setter Property="Opacity" Value="0.7"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ==================== RadioButton Styles ==================== -->
@@ -851,6 +509,16 @@
                 <Setter Property="BorderBrush" Value="#2E86AB"/>
                 <Setter Property="Foreground" Value="White"/>
             </Trigger>
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsSelected" Value="True"/>
+                    <Condition Property="IsMouseOver" Value="True"/>
+                </MultiTrigger.Conditions>
+                <MultiTrigger.Setters>
+                    <Setter Property="Background" Value="#1B6B93"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </MultiTrigger.Setters>
+            </MultiTrigger>
         </Style.Triggers>
     </Style>
 
@@ -882,53 +550,12 @@
         </Setter>
     </Style>
 
-    <Style x:Key="ModernTabItem" TargetType="TabItem">
-        <Setter Property="Padding" Value="16,8"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="FontSize" Value="14"/>
-        <Setter Property="Margin" Value="0,0,0,0"/>
-        <Setter Property="MinWidth" Value="100"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="border" Background="#E9ECEF" BorderBrush="#CED4DA" BorderThickness="1,1,1,0" CornerRadius="6,6,0,0" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
-                        <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="White"/>
-                            <Setter TargetName="border" Property="BorderBrush" Value="#2E86AB"/>
-                            <Setter TargetName="border" Property="BorderThickness" Value="1,1,1,1"/>
-                            <Setter TargetName="border" Property="Margin" Value="0,0,0,-1"/>
-                        </Trigger>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#F8F9FA"/>
-                        </Trigger>
-                        <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="border" Property="Opacity" Value="0.6"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
     <!-- ==================== ProgressBar Styles ==================== -->
     <Style x:Key="ModernProgressBar" TargetType="ProgressBar">
         <Setter Property="Background" Value="{StaticResource BorderLightBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
         <Setter Property="Height" Value="15"/>
         <Setter Property="BorderThickness" Value="0"/>
-    </Style>
-
-    <!-- ==================== Status Message Styles ==================== -->
-    <Style x:Key="SuccessMessage" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="#155724"/>
-        <Setter Property="Background" Value="#D4EDDA"/>
-        <Setter Property="FontFamily" Value="Segoe UI"/>
-        <Setter Property="FontSize" Value="12"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Padding" Value="12,8"/>
     </Style>
 
     <!-- ==================== ScrollBar Styles ==================== -->
@@ -1012,16 +639,6 @@
         <Setter Property="ToolTipService.VerticalOffset" Value="10"/>
     </Style>
 
-    <!-- ==================== Additional TextBox Focus Styles ==================== -->
-    <Style x:Key="ComboBoxFocusVisualStyle" TargetType="Control">
-        <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-    </Style>
-
-    <!-- Focus border for controls - thin like textbox -->
-    <Style TargetType="TextBox">
-        <Setter Property="FocusVisualStyle" Value="{StaticResource ComboBoxFocusVisualStyle}"/>
-    </Style>
 
     <!-- ==================== Ported from FinalWorkingCode (2026-08-19) ==================== -->
 

@@ -33,6 +33,19 @@
             </ResourceDictionary.MergedDictionaries>
             <conv:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
 
+            <!-- DataGrid Text Element Style (window-specific) - inherits Foreground from
+                 the ancestor DataGridCell (which itself inherits from DataGridRow's
+                 CellStyle Foreground binding) instead of ModernDataGridText's static
+                 TextPrimaryBrush, so selected-row text actually turns white to match
+                 RowStyle's IsSelected trigger instead of staying dark against the blue
+                 selection highlight. -->
+            <Style x:Key="LOVDataGridText" TargetType="TextBlock">
+                <Setter Property="Padding" Value="12,8"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=DataGridCell}}"/>
+            </Style>
+
             <!-- Watermark TextBox Style (window-specific, ported from FinalWorkingCode's
                  GLLOVs.xaml) - AIPowered's Comments TextBox had no hint text at all when
                  empty; FinalWorkingCode shows an italic placeholder explaining what
@@ -45,13 +58,7 @@
                         <ControlTemplate TargetType="TextBox">
                             <Grid>
                                 <ScrollViewer x:Name="PART_ContentHost" Background="Transparent" VerticalAlignment="Top" Padding="{TemplateBinding Padding}"/>
-                                <!-- MaxWidth is required here even though this window is now
-                                     SizeToContent="Manual": kept as cheap, harmless insurance
-                                     against the infinite-width remeasure bug this guarded
-                                     against under the previous SizeToContent="WidthAndHeight"
-                                     mode (CLAUDE.md section 10.1) - a hard MaxWidth forces wrapping/a
-                                     stable desired size regardless of available measure space. -->
-                                <TextBlock x:Name="WatermarkText" Text="Add your comments here. The entered text will be added as an Excel cell comment. If left blank, the selected ledger name is used instead." Foreground="{StaticResource TextSecondaryBrush}" FontStyle="Italic" Margin="8,4" MaxWidth="480" VerticalAlignment="Top" TextWrapping="Wrap" Visibility="Collapsed"/>
+                                <TextBlock x:Name="WatermarkText" Text="Add your comments here. The entered text will be added as an Excel cell comment. If left blank, the selected ledger name is used instead." Foreground="{StaticResource TextSecondaryBrush}" FontStyle="Italic" Margin="8,4" VerticalAlignment="Top" TextWrapping="Wrap" Visibility="Collapsed"/>
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="Text" Value="">
@@ -113,11 +120,8 @@
             </Grid.RowDefinitions>
 
             <!-- LOVs DataGrid -->
-            <!-- MinHeight/MaxHeight kept (CLAUDE.md sections 6.1/8.2) - FinalWorkingCode has no cap
-                 here at all, but this codebase's DataGrid-in-a-"*"-row windows need this
-                 floor/ceiling pair for reasons specific to this add-in's own layout history. -->
-            <Border Grid.Row="0" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,8" MinHeight="250" MaxHeight="400">
-                <DataGrid x:Name="dgLovs" FontFamily="Segoe UI" ItemsSource="{Binding LOVRows}" SelectedItem="{Binding SelectedLov, Mode=TwoWay}" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False" Background="White" IsReadOnly="True" SelectionUnit="FullRow" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionMode="Single">
+            <Border Grid.Row="0" Background="White" CornerRadius="6" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,0,0,8">
+                <DataGrid x:Name="dgLovs" FontFamily="Segoe UI" ItemsSource="{Binding LOVRows}" SelectedItem="{Binding SelectedLov, Mode=TwoWay}" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False" Background="White" IsReadOnly="True" SelectionUnit="FullRow" BorderThickness="0" GridLinesVisibility="None" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionMode="Single">
                     <!-- Override system selection colors -->
                     <DataGrid.Resources>
                         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
@@ -219,7 +223,7 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Available LOVs" Binding="{Binding Name}" Width="2*">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource LOVDataGridText}">
                                     <Setter Property="ToolTip">
                                         <Setter.Value>
                                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
@@ -245,7 +249,7 @@
                         </DataGridTextColumn>
                         <DataGridTextColumn Header="Items Count" Binding="{Binding ItemsCount}" Width="1*">
                             <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource LOVDataGridText}">
                                     <Setter Property="ToolTip">
                                         <Setter.Value>
                                             <!-- Amber callout styling ported from FinalWorkingCode, but the
@@ -286,10 +290,10 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Label Content="Comments" Style="{StaticResource HeaderLabel}" Grid.Row="0" Margin="0,0,0,5"/>
-                    <TextBox x:Name="TxtComments" Grid.Row="1" Style="{StaticResource WatermarkTextBox}" Height="50" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top">
+                    <TextBox x:Name="TxtComments" Grid.Row="1" Style="{StaticResource WatermarkTextBox}" Height="45" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto">
                         <TextBox.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                 <TextBlock Text="Add comments that will be attached as an Excel cell comment. If left blank the selected ledger name is used." TextWrapping="Wrap"/>

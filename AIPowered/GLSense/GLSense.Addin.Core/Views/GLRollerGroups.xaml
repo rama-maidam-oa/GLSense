@@ -60,7 +60,7 @@
         </Border>
 
         <!-- ================= Main Content ================= -->
-        <Grid Grid.Row="1" Margin="0,8,0,0">
+        <Grid Grid.Row="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -113,15 +113,7 @@
             </ScrollViewer>
 
             <!-- Dual DataGrids -->
-            <!-- MaxHeight caps how far this window grows once rows populate - without it,
-                 SizeToContent="WidthAndHeight" lets the grid (and therefore the whole
-                 window) grow to fit every row, which can exceed a smaller screen's usable
-                 height/resolution. Matches the same MaxHeight="450" convention used on
-                 GLSegmentValues' Dual DataGrids Border; the DataGrid's own internal
-                 ScrollViewer (already VerticalScrollBarVisibility="Auto") takes over once
-                 content exceeds this cap, same as with no data the Border still sizes
-                 down to MinHeight/whatever the empty-state content needs. -->
-            <Border Grid.Row="1" MaxHeight="450" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}">
+            <Border Grid.Row="1" Background="{StaticResource WhiteBrush}" CornerRadius="8" BorderThickness="1" BorderBrush="{StaticResource BorderLightBrush}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="1.2*" MinWidth="220"/>
@@ -131,7 +123,7 @@
 
                     <!-- Left DataGrid -->
                     <Border Grid.Column="0" Background="{StaticResource WhiteBrush}" CornerRadius="4" Margin="4">
-                        <DataGrid x:Name="dgLeft" ItemsSource="{Binding Rows}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Extended" SelectionUnit="FullRow" Background="{StaticResource WhiteBrush}" BorderThickness="0" GridLinesVisibility="None" CanUserSortColumns="False" ScrollViewer.VerticalScrollBarVisibility="Auto" MouseDoubleClick="DgLeft_MouseDoubleClick" IsReadOnly="True" SelectionChanged="dgLeft_SelectionChanged">
+                        <DataGrid x:Name="dgLeft" FontFamily="Segoe UI" ItemsSource="{Binding Rows}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Extended" SelectionUnit="FullRow" Background="{StaticResource WhiteBrush}" BorderThickness="0.5" GridLinesVisibility="None" CanUserSortColumns="False" ScrollViewer.VerticalScrollBarVisibility="Auto" MouseDoubleClick="DgLeft_MouseDoubleClick" IsReadOnly="True" SelectionChanged="dgLeft_SelectionChanged">
                             <DataGrid.Resources>
                                 <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
                                     <Setter Property="Background" Value="#E0E0E0"/>
@@ -340,7 +332,7 @@
 
                     <!-- Right DataGrid -->
                     <Border Grid.Column="2" Background="{StaticResource WhiteBrush}" CornerRadius="4" Margin="4">
-                        <DataGrid x:Name="dgRight" ItemsSource="{Binding SelectedItemsRight}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" IsReadOnly="True" Background="{StaticResource WhiteBrush}" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionMode="Extended" SelectionUnit="FullRow" MouseDoubleClick="DgRight_MouseDoubleClick">
+                        <DataGrid x:Name="dgRight" FontFamily="Segoe UI" ItemsSource="{Binding SelectedItemsRight}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" IsReadOnly="True" Background="{StaticResource WhiteBrush}" BorderThickness="0.5" GridLinesVisibility="None" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionMode="Extended" SelectionUnit="FullRow" MouseDoubleClick="DgRight_MouseDoubleClick">
                             <DataGrid.Resources>
                                 <Style TargetType="ScrollBar" BasedOn="{StaticResource AppScrollBarStyle}">
                                     <Setter Property="Background" Value="#E0E0E0"/>

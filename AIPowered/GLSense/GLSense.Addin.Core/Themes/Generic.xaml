@@ -15,16 +15,11 @@
                  SuggestAppendComboBox.cs's UpdateListBoxTemplate) - the FrameworkElementFactory
                  fallback built in that code-behind only runs if THIS resource is missing,
                  so it never executes while this template exists, and Padding changes made
-                 there have no visible effect. This CheckBox has no explicit Style, so it
-                 picks up GlobalStyles.xaml's implicit (no x:Key) CheckBox style, whose
-                 SafeCheckBoxTemplate wires ContentPresenter Margin="{TemplateBinding Padding}" -
-                 so setting Padding directly here IS the correct, effective way to add a
-                 gap between the check glyph and its text. -->
+                 there have no visible effect. -->
             <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
                       Content="{Binding}"
                       Padding="6,0,0,0"
-                      VerticalAlignment="Center"
-                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                      VerticalAlignment="Center"/>
         </StackPanel>
     </DataTemplate>
 
@@ -34,23 +29,6 @@
         <Setter Property="Background" Value="{StaticResource WhiteBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-        <!-- Neither this style nor PART_TextBox set FontSize anywhere, so this was the
-             one input control in the app rendering at the ambient/system default
-             (larger than intended, and inconsistent across windows) instead of a
-             deliberate, consistent value. 12 matches this codebase's existing "compact
-             control" convention (see ModernButton in GlobalStyles.xaml) - a size step
-             down from the 13 used for primary input text (ModernTextBox/Label/
-             ExcelRefEditControl), which reads well for a dense dropdown list.
-             CORRECTION: this Setter's value flows into PART_TextBox via normal
-             logical-tree inheritance (it's part of this same ControlTemplate), but NOT
-             into PART_ListBox/ListBoxItem - WPF Popups are a separate visual tree root
-             and do not participate in property-value inheritance from their logical
-             parent, so the dropdown list was still rendering at the ambient default
-             even after this Setter was added. Fixed by explicitly
-             FontSize="{TemplateBinding FontSize}" on PART_ListBox below (see that
-             element) - ListBoxItem then inherits correctly from ITS OWN parent
-             ListBox, which is now set right. -->
-        <Setter Property="FontSize" Value="12"/>
         <Setter Property="Padding" Value="6,4"/>
         <Setter Property="ArrowBrush" Value="{StaticResource PrimaryBrush}" />
         <Setter Property="ArrowWidth" Value="10"/>
@@ -105,7 +83,8 @@
                                      VerticalContentAlignment="Center"
                                      Foreground="{TemplateBinding Foreground}"
                                      Focusable="True"
-                                     SelectionBrush="{StaticResource PrimaryBrush}" >
+                                     SelectionBrush="{StaticResource PrimaryBrush}"
+                                     SelectionTextBrush="White" >
                                 <TextBox.ToolTip>
                                     <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                         <StackPanel>
@@ -120,7 +99,7 @@
                                             </StackPanel>
                                             <TextBlock x:Name="toolTipTextBlock"
                                                        FontFamily="Segoe UI" 
-                                                       Background="{StaticResource BackgroundBrush}" 
+                                                       Background="#F5F5F5"
                                                        Padding="4" 
                                                        Margin="0,6,0,0"
                                                        TextWrapping="Wrap"
@@ -154,6 +133,7 @@
                                     Grid.Column="1"
                                     Background="Transparent"
                                     BorderThickness="0"
+                                    Padding="6,0"
                                     Margin="0,0,4,0"
                                     Focusable="False"
                                     Cursor="Hand" >
@@ -233,7 +213,7 @@
                                         BorderBrush="{StaticResource BorderLightBrush}"
                                         BorderThickness="1"
                                         CornerRadius="4"
-                                        MaxHeight="240"
+                                        MaxHeight="300"
                                         SnapsToDevicePixels="True">
                                         <!-- Regression fix: PART_ListBox used to be wrapped in its own
                                              separate <ScrollViewer>, ON TOP OF the ListBox's own internal
@@ -255,14 +235,13 @@
                                              ListBox's own Resources so the themed scrollbar still applies. -->
                                         <ListBox x:Name="PART_ListBox"
                                                  FontFamily="Segoe UI"
-                                                 FontSize="{TemplateBinding FontSize}"
                                                  BorderThickness="0"
                                                  Background="Transparent"
                                                  Foreground="{StaticResource TextPrimaryBrush}"
                                                  KeyboardNavigation.TabNavigation="Cycle"
                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                 MaxHeight="200"
+                                                 MaxHeight="250"
                                                  VirtualizingStackPanel.IsVirtualizing="True"
                                                  VirtualizingStackPanel.ScrollUnit="Pixel">
                                             <ListBox.Resources>
@@ -270,7 +249,7 @@
                                             </ListBox.Resources>
                                             <ListBox.ItemContainerStyle>
                                                 <Style TargetType="ListBoxItem">
-                                                    <Setter Property="Padding" Value="8,6"/>
+                                                    <Setter Property="Padding" Value="8,4"/>
                                                     <Setter Property="HorizontalContentAlignment" Value="Left"/>
                                                     <Setter Property="VerticalContentAlignment" Value="Center"/>
                                                     <Setter Property="Background" Value="Transparent"/>
@@ -278,11 +257,10 @@
                                                     <Setter Property="Template">
                                                         <Setter.Value>
                                                             <ControlTemplate TargetType="ListBoxItem">
-                                                                <Border x:Name="Bd" 
+                                                                <Border x:Name="Bd"
                                                                         Background="{TemplateBinding Background}"
                                                                         BorderBrush="{TemplateBinding BorderBrush}"
                                                                         BorderThickness="{TemplateBinding BorderThickness}"
-                                                                        CornerRadius="3"
                                                                         Padding="{TemplateBinding Padding}">
                                                                     <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                                                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>

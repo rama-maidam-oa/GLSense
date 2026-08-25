@@ -2,6 +2,7 @@
 using GLSense.Contracts;
 using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace GLSense.Loader.Core
 {
@@ -80,20 +81,44 @@ namespace GLSense.Loader.Core
             }
         }
 
+        // AppDomain.Unload() has no built-in timeout - if any thread is still executing
+        // (or blocked in a COM call, e.g. a live Excel RCW) inside the domain being
+        // unloaded, it can block indefinitely waiting to abort that thread. Since this is
+        // called from Excel's own shutdown event handler (AddinModule_AddinBeginShutdown),
+        // a hang here previously meant Excel's own shutdown never completed either -
+        // Excel.exe lingering as an orphaned process in Task Manager even after its
+        // window closed. Running the unload on its own Task and bounding the wait means
+        // this method - and therefore Excel's shutdown sequence - can never be blocked
+        // for more than UnloadTimeoutSeconds, regardless of whether the unload itself
+        // ever actually completes. The Task's own thread is a background/thread-pool
+        // thread (IsBackground=true by default), so even if AppDomain.Unload() truly
+        // never returns, it can't by itself keep the process alive past this method
+        // returning - only a live foreground thread can do that.
+        private const int UnloadTimeoutSeconds = 5;
+
         public void Unload(IGLSenseContext ctx)
         {
             try
             {
-                if (_domain != null)
+                if (_domain == null)
                 {
-                    ctx.Logger?.LogDebug("AddinDomainLoader.Unload: unloading AppDomain.");
-                    AppDomain.Unload(_domain);
-                    _domain = null;
+                    ctx.Logger?.LogDebug("AddinDomainLoader.Unload: no AppDomain to unload (already null).");
+                    return;
+                }
+
+                var domainToUnload = _domain;
+                _domain = null;
+
+                ctx.Logger?.LogDebug("AddinDomainLoader.Unload: unloading AppDomain.");
+
+                var unloadTask = Task.Run(() => AppDomain.Unload(domainToUnload));
+                if (unloadTask.Wait(TimeSpan.FromSeconds(UnloadTimeoutSeconds)))
+                {
                     ctx.Logger?.LogDebug("AddinDomainLoader.Unload: AppDomain unloaded successfully.");
                 }
                 else
                 {
-                    ctx.Logger?.LogDebug("AddinDomainLoader.Unload: no AppDomain to unload (already null).");
+                    ctx.Logger?.LogError($"AddinDomainLoader.Unload: AppDomain.Unload did not complete within {UnloadTimeoutSeconds}s - abandoning the wait so shutdown can proceed. The domain may still be torn down asynchronously in the background.");
                 }
             }
             catch (Exception ex)

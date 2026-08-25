@@ -12,9 +12,9 @@
 //     (see GLLogin.xaml.cs / GLCubeDetails.xaml.cs for the identical pattern).
 //   - AppPaths.TempUrlsPath -> ServiceLocator.Paths.UrlsDirectory (this project's
 //     IPathProvider - already used this way by GLLogin.xaml.cs).
-//   - "SuccessMessage"/"ErrorMessage" TextBlock styles now resolve from this project's
-//     Themes\GlobalStyles.xaml (already defined there for other windows) instead of the
-//     window-local styles the original XAML declared inline.
+//   - "SuccessMessage" TextBlock style is declared window-locally in this window's own
+//     Window.Resources, matching FinalWorkingCode's placement exactly (it isn't shared
+//     by any other window here, so it doesn't belong in the global Themes\GlobalStyles.xaml).
 //   - No LogUtility usage in the original file, so nothing to re-point there.
 //
 // 2026-07-15 merge: re-synced against the old monolith's live-edited version to pick up

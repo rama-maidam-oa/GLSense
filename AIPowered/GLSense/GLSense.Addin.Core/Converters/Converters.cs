@@ -351,40 +351,4 @@ namespace GLSense.Addin.Core.Converters
             throw new NotImplementedException();
         }
     }
-
-    // GLSegmentManager addition - powers its left-hand segment list, showing a one-line
-    // summary of each SegmentModel's current selection state (direct value / cell
-    // reference / N selected values / no value) so the user can see what's already
-    // configured without clicking into every segment. New for the GLSegmentManager
-    // master-detail redesign being trialed alongside GLSegmentRef (see
-    // Views\GLSegmentManager.xaml.cs's header comment) - not referenced by GLSegmentRef or
-    // GLSegmentValues, so it has no effect on either of those.
-    public class SegmentSummaryConverter : IMultiValueConverter
-    {
-        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
-        {
-            string value = values != null && values.Length > 0 ? values[0]?.ToString() : null;
-            string reference = values != null && values.Length > 1 ? values[1]?.ToString() : null;
-            int selectedCount = values != null && values.Length > 2 && values[2] is int i ? i : 0;
-            // Testing feedback: distinguishes an untouched factory default from a value
-            // the user actively picked/typed this session - see SegmentModel.IsUserSelected's
-            // own comment for exactly when this gets set. 4th binding is optional (defaults
-            // to false/"Default") so this converter still works if a caller only ever
-            // passes the first 3 bindings.
-            bool isUserSelected = values != null && values.Length > 3 && values[3] is bool b && b;
-
-            if (!string.IsNullOrWhiteSpace(reference))
-                return $"Reference: {reference}";
-            if (!string.IsNullOrWhiteSpace(value))
-                return isUserSelected ? $"Selected: {value}" : $"Default: {value}";
-            if (selectedCount > 0)
-                return selectedCount == 1 ? "1 value selected" : $"{selectedCount} values selected";
-            return "No value set";
-        }
-
-        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
-        {
-            throw new NotImplementedException();
-        }
-    }
 }

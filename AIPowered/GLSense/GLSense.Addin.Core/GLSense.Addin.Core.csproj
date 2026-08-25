@@ -274,9 +274,6 @@
     <Compile Include="Views\GLRollerGroups.xaml.cs">
       <DependentUpon>GLRollerGroups.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Views\GLSegmentManager.xaml.cs">
-      <DependentUpon>GLSegmentManager.xaml</DependentUpon>
-    </Compile>
     <Compile Include="Views\GLSegmentRef.xaml.cs">
       <DependentUpon>GLSegmentRef.xaml</DependentUpon>
     </Compile>
@@ -398,10 +395,6 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Views\GLRollerGroups.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="Views\GLSegmentManager.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

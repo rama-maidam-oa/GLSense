@@ -102,16 +102,13 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <Label Content="Date :" Style="{StaticResource HeaderLabel}" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
-                    <DatePicker x:Name="dtpDate" Grid.Column="1" Style="{StaticResource ModernDatePicker}" Height="{StaticResource ControlHeight}" VerticalAlignment="Center" SelectedDateFormat="Short" SelectedDate="{Binding SelectedDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=False, NotifyOnValidationError=True}" IsEnabled="{Binding DateField.IsComboEnabled}" Margin="{StaticResource ControlMargin}">
+                    <DatePicker x:Name="dtpDate" Grid.Column="1" Height="{StaticResource ControlHeight}" VerticalAlignment="Center" SelectedDateFormat="Short" SelectedDate="{Binding SelectedDate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=False, NotifyOnValidationError=True}" IsEnabled="{Binding DateField.IsComboEnabled}" Margin="{StaticResource ControlMargin}">
                         <DatePicker.Resources>
                             <Style TargetType="{x:Type DatePickerTextBox}">
                                 <Setter Property="Control.Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="{x:Type DatePickerTextBox}">
-                                            <!-- BorderThickness/Background transparent - see GLDailyRates.xaml
-                                                 for why (avoids a visible nested border inside
-                                                 ModernDatePicker's own outer Border). -->
-                                            <TextBox x:Name="PART_TextBox" Height="{StaticResource ControlHeight}" MinWidth="200" HorizontalAlignment="Stretch" VerticalAlignment="Center" VerticalContentAlignment="Center" BorderThickness="0" Background="Transparent" Padding="4,0,4,0" Text="{Binding Path=SelectedDate,
+                                            <TextBox x:Name="PART_TextBox" Height="{StaticResource ControlHeight}" MinWidth="200" HorizontalAlignment="Stretch" VerticalAlignment="Center" VerticalContentAlignment="Center" BorderThickness="1" BorderBrush="{StaticResource SoftControlBorderBrush}" Background="White" Padding="4,0,4,0" Text="{Binding Path=SelectedDate,
                                                 RelativeSource={RelativeSource AncestorType={x:Type DatePicker}},
                                                 Converter={StaticResource NullableDateConverter},
                                                 Mode=TwoWay,
