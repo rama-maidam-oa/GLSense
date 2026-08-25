@@ -403,6 +403,7 @@ namespace GLSense.Drilldowns
 
             _ = Win.Dispatcher.InvokeAsync(() => Win.SetProcessMessage("Sending request to server..."));
             LogUtility.LogDebug($"DrilldownBl.FetchDrilldownDataAsync: sending request to {apiUrl}");
+
             var response = await ApiHelper.ServerAPI(apiUrl, "JSON", httpPostBody, "POST", Token);
 
             Token.ThrowIfCancellationRequested();

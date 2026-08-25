@@ -213,13 +213,18 @@ namespace GLSense.Views
                         dp.BlackoutDates.Add(new CalendarDateRange(maxDate.AddDays(1), DateTime.MaxValue));
                     }
 
+                    // Only fall back to the range boundary (earliest/latest selectable
+                    // month) when nothing is selected yet. Previously this ran
+                    // unconditionally, so reopening the calendar after already picking a
+                    // date (e.g. 2008-01-01) forced it back to minDate/maxDate's month
+                    // instead of showing the month containing the already-selected date.
                     if (dp.Name != null && dp.Name == "dtpStartDate")
                     {
-                        dp.DisplayDate = minDate;
+                        dp.DisplayDate = dp.SelectedDate ?? minDate;
                     }
                     else if (dp.Name != null && dp.Name == "dtpEndDate")
                     {
-                        dp.DisplayDate = maxDate;
+                        dp.DisplayDate = dp.SelectedDate ?? maxDate;
                     }
 
                     //// If selected date is null or outside range, and today is outside range,

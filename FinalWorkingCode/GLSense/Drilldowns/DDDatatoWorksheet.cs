@@ -101,7 +101,7 @@ namespace GLSense.Drilldowns
                     _ = DD_win.Dispatcher.InvokeAsync(() =>
                           DD_win.SetProcessMessage("Extracting meta data..."));
 
-                var metadataDict = ExtractMetadata(drillsData, DataTypeDict, FormatDict, SubTotalsDict, DisplayColumnName, ActualColumnName);
+                var metadataDict = ExtractMetadata(drillsData, DataTypeDict, FormatDict, SubTotalsDict, ActualColumnName, DisplayColumnName);
 
                 Dd_token.ThrowIfCancellationRequested();
 

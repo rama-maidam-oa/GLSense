@@ -119,17 +119,18 @@ namespace GLSense
             }
         }
 
-        public object EdgeAddinInstance { get; set; }
-
         public static object GetEdgeAddinInstance()
         {
-            var currentInstance = CurrentInstance;
-            if (currentInstance?.EdgeAddinInstance != null)
-                return currentInstance.EdgeAddinInstance;
+            if (AppState.Instance.EdgeAddinSearchCompleted)
+            {
+                LogUtility.LogDebug($"AddinModule.GetEdgeAddinInstance: already searched, using cached AppState result (found={AppState.Instance.EdgeAddinInstance != null}) instead of re-searching COMAddIns.");
+                return AppState.Instance.EdgeAddinInstance;
+            }
 
+            var currentInstance = CurrentInstance;
             var hostApplication = currentInstance?.HostApplication ?? AppState.Instance.ExcelApp;
             if (hostApplication == null)
-                return null;
+                return null; // Host not ready yet - don't mark the search completed, try again later.
 
             try
             {
@@ -149,9 +150,9 @@ namespace GLSense
                             continue;
 
                         var addinObject = addInType.InvokeMember("Object", BindingFlags.GetProperty, null, addIn, Array.Empty<object>());
-                        if (currentInstance != null)
-                            currentInstance.EdgeAddinInstance = addinObject;
-
+                        AppState.Instance.EdgeAddinInstance = addinObject;
+                        AppState.Instance.EdgeAddinSearchCompleted = true;
+                        LogUtility.LogDebug("AddinModule.GetEdgeAddinInstance: located XLEdge COM add-in, cached in AppState.");
                         return addinObject;
                     }
                 }
@@ -161,6 +162,7 @@ namespace GLSense
                 LogUtility.LogException(ex, "Failed to locate XLEdge COM add-in.");
             }
 
+            AppState.Instance.EdgeAddinSearchCompleted = true; // Not found - don't re-search on every call.
             return null;
         }
 
@@ -673,6 +675,19 @@ namespace GLSense
             WpfWarmup.WarmUpInBackground();
             WebView2Warmup.WarmUpInBackground();
             WindowLoadingPlaceholder.WarmUpInBackground();
+
+            // Pre-warm the XLEdge COM add-in lookup once here (cached in AppState) so
+            // Login/Logout/XLEdge-permission checks never pay the ~1.4s COMAddIns
+            // enumeration cost themselves - see AppState.EdgeAddinInstance/
+            // EdgeAddinSearchCompleted and AddinModule.GetEdgeAddinInstance.
+            try
+            {
+                GetEdgeAddinInstance();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "AddinModule_OnRibbonLoaded: XLEdge pre-warm lookup failed (non-fatal)");
+            }
         }
 
         private static void AddinModule_AddinInitialize(object sender, EventArgs e)
