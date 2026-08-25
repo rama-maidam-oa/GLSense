@@ -9,7 +9,7 @@
         Background="#F8F9FA"
         ResizeMode="CanResize"
         SizeToContent="Manual"
-        MinWidth="800" MaxWidth="1000"
+        MinWidth="1250" MaxWidth="1500"
         MinHeight="700"
         WindowStyle="None"
         WindowStartupLocation="CenterOwner"
@@ -318,10 +318,11 @@
                     </DataGridTemplateColumn>
 
                     <!-- Process ID -->
-                    <DataGridTextColumn Header="Process ID" 
-                        IsReadOnly="True" 
-                        Binding="{Binding ProcessId}" 
-                        Width="1.2*">
+                    <DataGridTextColumn Header="Process ID"
+                        IsReadOnly="True"
+                        Binding="{Binding ProcessId}"
+                        Width="1.2*"
+                        MinWidth="110">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
@@ -369,10 +370,11 @@
                     </DataGridTextColumn>
 
                     <!-- Job Type -->
-                    <DataGridTextColumn Header="Type" 
-                            IsReadOnly="True" 
-                            Binding="{Binding JobType}" 
-                            Width="2*">
+                    <DataGridTextColumn Header="Type"
+                            IsReadOnly="True"
+                            Binding="{Binding JobType}"
+                            Width="2*"
+                            MinWidth="90">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
@@ -390,10 +392,11 @@
                     </DataGridTextColumn>
 
                     <!-- Phase -->
-                    <DataGridTextColumn Header="Phase" 
-                            IsReadOnly="True" 
-                            Binding="{Binding Phase}" 
-                            Width="1.5*">
+                    <DataGridTextColumn Header="Phase"
+                            IsReadOnly="True"
+                            Binding="{Binding Phase}"
+                            Width="1.5*"
+                            MinWidth="100">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding PhaseColor}"/>
@@ -425,10 +428,11 @@
                     </DataGridTextColumn>
 
                     <!-- Status -->
-                    <DataGridTextColumn Header="Status" 
+                    <DataGridTextColumn Header="Status"
                             IsReadOnly="True"
-                            Binding="{Binding Status}" 
-                            Width="1.5*">
+                            Binding="{Binding Status}"
+                            Width="1.5*"
+                            MinWidth="100">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding StatusColor}"/>
@@ -461,10 +465,11 @@
                     </DataGridTextColumn>
 
                     <!-- Date -->
-                    <DataGridTextColumn Header="Date" 
+                    <DataGridTextColumn Header="Date"
                             IsReadOnly="True"
-                            Binding="{Binding DisplayDate}" 
-                            Width="2*">
+                            Binding="{Binding DisplayDate}"
+                            Width="2*"
+                            MinWidth="150">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
@@ -494,7 +499,7 @@
                     </DataGridTextColumn>
 
                     <!-- Download Icon -->
-                    <DataGridTemplateColumn Header="Download" Width="1.1*" IsReadOnly="True">
+                    <DataGridTemplateColumn Header="Download" Width="1.1*" MinWidth="110" IsReadOnly="True">
                         <DataGridTemplateColumn.HeaderStyle>
                             <Style TargetType="DataGridColumnHeader">
                                 <Setter Property="Background" Value="#2E86AB"/>
