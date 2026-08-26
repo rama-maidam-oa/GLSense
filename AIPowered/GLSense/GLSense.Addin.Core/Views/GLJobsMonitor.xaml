@@ -10,7 +10,7 @@
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   mc:Ignorable="d"
                   SizeToContent="Manual"
-                  MinWidth="1250" MaxWidth="1500"
+                  MinWidth="1000" MaxWidth="1300"
                   MinHeight="700"
                   ResizeMode="CanResize"
                   WindowStyle="None"
@@ -318,8 +318,8 @@
                     <DataGridTextColumn Header="Process ID"
                         IsReadOnly="True"
                         Binding="{Binding ProcessId}"
-                        Width="1.2*"
-                        MinWidth="110">
+                        Width="115"
+                        MinWidth="115">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
@@ -348,8 +348,8 @@
                     <DataGridTextColumn Header="Name"
                                         IsReadOnly="True"
                                         Binding="{Binding Name}"
-                                        Width="3*"
-                                        MinWidth="230">
+                                        Width="1.0*"
+                                        MinWidth="110">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
@@ -370,8 +370,8 @@
                     <DataGridTextColumn Header="Type"
                             IsReadOnly="True"
                             Binding="{Binding JobType}"
-                            Width="2*"
-                            MinWidth="90">
+                            Width="1.3*"
+                            MinWidth="85">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
@@ -392,7 +392,7 @@
                     <DataGridTextColumn Header="Phase"
                             IsReadOnly="True"
                             Binding="{Binding Phase}"
-                            Width="1.5*"
+                            Width="2.0*"
                             MinWidth="100">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
@@ -428,8 +428,8 @@
                     <DataGridTextColumn Header="Status"
                             IsReadOnly="True"
                             Binding="{Binding Status}"
-                            Width="1.5*"
-                            MinWidth="100">
+                            Width="1.6*"
+                            MinWidth="95">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding StatusColor}"/>
@@ -465,8 +465,8 @@
                     <DataGridTextColumn Header="Date"
                             IsReadOnly="True"
                             Binding="{Binding DisplayDate}"
-                            Width="2*"
-                            MinWidth="150">
+                            Width="0.8*"
+                            MinWidth="95">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
@@ -496,7 +496,7 @@
                     </DataGridTextColumn>
 
                     <!-- Download Icon -->
-                    <DataGridTemplateColumn Header="Download" Width="1.1*" MinWidth="110" IsReadOnly="True">
+                    <DataGridTemplateColumn Header="Download" Width="105" MinWidth="105" IsReadOnly="True">
                         <DataGridTemplateColumn.HeaderStyle>
                             <Style TargetType="DataGridColumnHeader">
                                 <Setter Property="Background" Value="#2E86AB"/>
