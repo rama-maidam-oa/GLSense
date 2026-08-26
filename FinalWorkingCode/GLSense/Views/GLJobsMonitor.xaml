@@ -352,7 +352,7 @@
                                         IsReadOnly="True"
                                         Binding="{Binding Name}"
                                         Width="1.0*"
-                                        MinWidth="110">
+                                        MinWidth="135">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
@@ -396,7 +396,7 @@
                             IsReadOnly="True"
                             Binding="{Binding Phase}"
                             Width="2.0*"
-                            MinWidth="100">
+                            MinWidth="75">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding PhaseColor}"/>
@@ -432,7 +432,7 @@
                             IsReadOnly="True"
                             Binding="{Binding Status}"
                             Width="1.6*"
-                            MinWidth="95">
+                            MinWidth="75">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="Foreground" Value="{Binding StatusColor}"/>
@@ -469,7 +469,7 @@
                             IsReadOnly="True"
                             Binding="{Binding DisplayDate}"
                             Width="0.8*"
-                            MinWidth="95">
+                            MinWidth="115">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
