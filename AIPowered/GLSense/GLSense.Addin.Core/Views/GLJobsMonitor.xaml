@@ -348,7 +348,7 @@
                     <DataGridTextColumn Header="Name"
                                         IsReadOnly="True"
                                         Binding="{Binding Name}"
-                                        Width="1.0*"
+                                        Width="0.85*"
                                         MinWidth="135">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
@@ -392,7 +392,7 @@
                     <DataGridTextColumn Header="Phase"
                             IsReadOnly="True"
                             Binding="{Binding Phase}"
-                            Width="2.0*"
+                            Width="0.9*"
                             MinWidth="75">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
@@ -428,7 +428,7 @@
                     <DataGridTextColumn Header="Status"
                             IsReadOnly="True"
                             Binding="{Binding Status}"
-                            Width="1.6*"
+                            Width="0.9*"
                             MinWidth="75">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
@@ -465,8 +465,8 @@
                     <DataGridTextColumn Header="Date"
                             IsReadOnly="True"
                             Binding="{Binding DisplayDate}"
-                            Width="0.8*"
-                            MinWidth="115">
+                            Width="1.6*"
+                            MinWidth="180">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource ModernDataGridText}">
                                 <Setter Property="ToolTip">
