@@ -145,7 +145,6 @@
                         </Grid.ColumnDefinitions>
                         <Label Content="Reference :" Style="{StaticResource HeaderLabel}" MinWidth="{StaticResource LabelMinWidth}" Margin="{StaticResource LabelMargin}" VerticalAlignment="Center"/>
                         <local:ExcelRefEditControl x:Name="CellReference" Grid.Column="1" Grid.ColumnSpan="2" Height="{StaticResource ControlHeight}" HorizontalAlignment="Stretch" Style="{StaticResource CompactRefEditControl}" Text="{Binding GlobalState.ReferenceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TagName="Daily Rate Cell Reference" Margin="{StaticResource ControlMargin}" VerticalAlignment="Center"/>
-                        <Border Grid.Column="2" MinWidth="{StaticResource RefEditMinWidth}" Margin="{StaticResource ControlMargin}" Background="Transparent"/>
                     </Grid>
                 </Border>
             </StackPanel>
