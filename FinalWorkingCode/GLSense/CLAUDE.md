@@ -314,3 +314,29 @@ Two distinct root causes, both fixed together per the user's request:
   `GLSegmentFunctions`/`GLBalanceConfigurator`/`GLLogin`/`GLDrilldownCustomization`/`GLAbout`
   already did this correctly and needed no changes.
   **Status: build-verified (full solution).**
+
+## `Views\GLDailyRates.xaml`
+
+- **Cell Reference field's Select/Clear buttons unclickable**: reported as "unable to
+  select or clear the reference" in `GLDailyRates`, while the same `ExcelRefEditControl`
+  worked fine in `GLGetPeriod`. `ExcelRefEditControl.xaml`'s own layout puts its
+  "Select Excel Cell" (`btnEdit`) and "Clear Reference" (`btnClear`) buttons at the
+  control's right edge (`Grid.Column="1"`/`"2"`, `Auto`-width, after a `*`-width `TextBox`
+  in column 0). In `GLDailyRates.xaml`'s Cell Reference row, the control spans
+  `Grid.Column="1" Grid.ColumnSpan="2"` of the outer row Grid - but a leftover
+  `<Border Grid.Column="2" ... Background="Transparent"/>` spacer was declared
+  immediately after it in the same Grid. WPF hit-tests a `Background="Transparent"`
+  element same as any opaque one (unlike a `null`/unset Background, which lets clicks
+  pass through), and later-declared siblings paint on top - so this spacer sat directly
+  over the right edge of the control, exactly where `btnEdit`/`btnClear` are, silently
+  swallowing every click meant for them while leaving the left portion (the read-only
+  text box) unaffected - matching the reported symptom precisely. `GLGetPeriod.xaml`'s
+  equivalent Reference row has no such trailing Border, which is why it worked there. The
+  same spacer pattern elsewhere in `GLDailyRates.xaml` (e.g. the Conversion Type row) is
+  harmless, since those rows don't have a real interactive control spanning under it.
+  Fixed by deleting the redundant spacer Border from the Cell Reference row, matching
+  `GLGetPeriod.xaml`'s pattern exactly.
+  **Status: build-verified in both codebases** (`GLSense.csproj` here; AIPowered's
+  identical `GLSense.Addin.Core\Views\GLDailyRates.xaml` got the same fix, verified with
+  `/p:SignAssembly=false`, this project's existing verification-only override for
+  `GLSense.Contracts.pfx`).
