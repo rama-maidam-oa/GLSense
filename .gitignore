@@ -23,6 +23,10 @@
 # --- FinalWorkingCode-specific excludes ---
 /FinalWorkingCode/MigrationBackup/
 
+# --- GLSenseSetup build output (generated installer MSI packages) ---
+/FinalWorkingCode/GLSense/GLSenseSetup/Debug/
+/FinalWorkingCode/GLSense/GLSenseSetup/Release/
+
 # --- AIPowered-specific excludes: bkpup1/bkpup2 are the user's own manual
 # whole-solution backups taken before/during the multi-project rewrite. Now that
 # this is under version control, git history replaces the need for them, so
