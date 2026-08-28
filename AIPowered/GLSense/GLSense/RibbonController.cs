@@ -9,16 +9,14 @@ namespace GLSense
 {
     public class RibbonController : MarshalByRefObject, IRibbonController
     {
-        private const string StateDefault = "DefaultState";
-        private const string StateLoginFailed = "LoginFailed";
         private const string StateLoggedOut = "LoggedOut";
         private const string StatePartialLoggedIn = "PartialLoggedIn";
         private const string StateLoggedIn = "LoggedIn";
-        private const string StateDrilldownSheet = "DrilldownSheet";
-        private const string StateDisableRibbon = "DisableRibbon";
-        private const string StateNoCubes = "NoCubes";
-        private const string StateProcessing = "Processing";
-        private const string StateReady = "Ready";
+
+        // Not a real login-state transition - re-evaluates the active sheet's
+        // drilldown/balance-formula ribbon state without touching IsLoggedIn. Mirrors
+        // FinalWorkingCode's Helpers\RibbonStateHelper.ApplyState("ApplySheetActiveState").
+        private const string StateApplySheetActiveState = "ApplySheetActiveState";
 
         private readonly AddinModule _addinModule;
         private readonly IRibbonUI _ribbon;
@@ -114,18 +112,30 @@ namespace GLSense
         {
             _logger?.LogDebug($"Applying ribbon state: {stateName}");
 
+            // Handled before the IsLoggedIn assignment below on purpose: this isn't a
+            // login-state transition, just an on-demand re-evaluation of the active
+            // sheet's drilldown/balance-formula ribbon state (see Drilldowns\
+            // DDDatatoWorksheet.cs / DD_EP.cs), so it must never stomp the last real
+            // login state IsLoggedIn is tracking.
+            if (stateName == StateApplySheetActiveState)
+            {
+                try
+                {
+                    _addinModule?.ApplySheetActiveState();
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError("ApplySheetActiveState (via SetState) failed", ex);
+                }
+
+                InvalidateAll();
+                return;
+            }
+
             IsLoggedIn = stateName == StateLoggedIn;
 
             switch (stateName)
             {
-                case StateDefault:
-                    ApplyDefaultState();
-                    break;
-
-                case StateLoginFailed:
-                    ApplyLoginFailedState();
-                    break;
-
                 case StateLoggedOut:
                     ApplyLoggedOutState();
                     break;
@@ -136,26 +146,6 @@ namespace GLSense
 
                 case StateLoggedIn:
                     ApplyLoggedInState();
-                    break;
-
-                case StateDrilldownSheet:
-                    ApplyDrilldownSheetState();
-                    break;
-
-                case StateDisableRibbon:
-                    ApplyDisableRibbonState();
-                    break;
-
-                case StateNoCubes:
-                    ApplyNoCubesState();
-                    break;
-
-                case StateProcessing:
-                    ApplyProcessingState();
-                    break;
-
-                case StateReady:
-                    ApplyReadyState();
                     break;
 
                 default:
@@ -169,40 +159,6 @@ namespace GLSense
         #endregion
 
         #region NEW: State Implementations
-
-        private void ApplyDefaultState()
-        {
-            try
-            {
-                DisableControls(RibbonControlIds.CommonDisabledControls);
-                EnableControls(RibbonControlIds.DefaultEnabledControls);
-
-                SetControlVisible(RibbonControlIds.RibLogin, true);
-                SetControlVisible(RibbonControlIds.RibLogout, false);
-
-                ResetPressedControls(RibbonControlIds.DefaultUnpressedControls);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError("ApplyDefaultState failed", ex);
-            }
-        }
-
-        private void ApplyLoginFailedState()
-        {
-            try
-            {
-                DisableControls(RibbonControlIds.CommonDisabledControls);
-                EnableControls(RibbonControlIds.DefaultEnabledControls);
-
-                SetControlVisible(RibbonControlIds.RibLogin, true);
-                SetControlVisible(RibbonControlIds.RibLogout, false);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError("ApplyLoginFailedState failed", ex);
-            }
-        }
 
         private void ApplyLoggedOutState()
         {
@@ -258,76 +214,18 @@ namespace GLSense
                 SetControlPressed(RibbonControlIds.RibSnapWorkbook, false);
                 SetControlPressed(RibbonControlIds.RibSnapSubmit, false);
                 SetControlPressed(RibbonControlIds.RibVersionCheck, false);
+
+                // FinalWorkingCode's RibbonStateHelper.ApplyLoggedInState re-runs the
+                // sheet-scoped drilldown/balance-formula narrowing as its own last step,
+                // since the 6 balance/journal/subledger/unified drilldown buttons are
+                // deliberately excluded from LoggedInEnabledControls above - they must
+                // only ever be enabled by what's actually on the active sheet, never by
+                // login alone. Mirrored here for parity.
+                _addinModule?.ApplySheetActiveState();
             }
             catch (Exception ex)
             {
                 _logger?.LogError("ApplyLoggedInState failed", ex);
-            }
-        }
-
-        private void ApplyDrilldownSheetState()
-        {
-            try
-            {
-                DisableControls(RibbonControlIds.DrilldownSheetDisabledControls);
-                EnableControls(RibbonControlIds.DrilldownSheetEnabledControls);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError("ApplyDrilldownSheetState failed", ex);
-            }
-        }
-
-        private void ApplyDisableRibbonState()
-        {
-            try
-            {
-                DisableControls(RibbonControlIds.DisableRibbonDisabledControls);
-                EnableControls(new[] { RibbonControlIds.RibLogin });
-
-                SetControlVisible(RibbonControlIds.RibLogin, true);
-                SetControlVisible(RibbonControlIds.RibLogout, false);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError("ApplyDisableRibbonState failed", ex);
-            }
-        }
-
-        private void ApplyNoCubesState()
-        {
-            try
-            {
-                DisableControls(RibbonControlIds.NoCubesDisabledControls);
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError("ApplyNoCubesState failed", ex);
-            }
-        }
-
-        private void ApplyProcessingState()
-        {
-            try
-            {
-                DisableControls(RibbonControlIds.ProcessingDisabledControls);
-                EnableControls(new[] { RibbonControlIds.RibLogout });
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError("ApplyProcessingState failed", ex);
-            }
-        }
-
-        private void ApplyReadyState()
-        {
-            try
-            {
-                ApplyLoggedInState();
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError("ApplyReadyState failed", ex);
             }
         }
 

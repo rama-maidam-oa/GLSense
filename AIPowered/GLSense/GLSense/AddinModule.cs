@@ -1118,7 +1118,11 @@ namespace GLSense
             }
         }
 
-        private void ApplySheetActiveState()
+        // internal (not private): called from RibbonController.ApplyLoggedInState() and
+        // RibbonController.SetState("ApplySheetActiveState") - both in this same assembly -
+        // so login and drilldown-completion can re-run this sheet-scoped narrowing pass
+        // too, matching FinalWorkingCode's RibbonStateHelper.ApplyLoggedInState/ApplyState.
+        internal void ApplySheetActiveState()
         {
             // Old monolith's RibbonStateHelper.ShouldProcessActiveState: ExcelApp != null &&
             // AppState.Instance.IsLoginCompleted. AppState lives in Addin.Core now, so the
@@ -1166,7 +1170,7 @@ namespace GLSense
                     "RibSegmentExplode", "RibExpodeAll", "RibbonExplode1Level", "RibDiscoverPeriod", "RibAsFormula", "RibRefreshRange", "RibRefreshAll", "RibRefreshBook",
                     "RibClearSheet", "RibClear", "RibHighlight", "RibCellHighlight", "RibSnapShot", "RibSnapWorksheet", "RibSnapWorkbook", "RibSnapSubmit",
                     "RibFunctionsMenu", "RibSegmentEnabledFlag", "RibSummaryFlag", "RibSegment", "RibNextSegment",
-                    "RibPreviousSegment", "RibSegmentDFF", "RibPeriod", "RibPeriodbyDate", "RibPeriodbyYear", "RibPeriodNum", "RibPeriodQtr", "RibPeriodYear",
+                    "RibPreviousSegment", "RibSegmentDFF", "RibSegmentAccountType", "RibPeriod", "RibPeriodbyDate", "RibPeriodbyYear", "RibPeriodNum", "RibPeriodQtr", "RibPeriodYear",
                     "RibPeriodStart", "RibPeriodEnd", "RibDailyRate", "RibVersionCheck", "RibHelp"
                 };
 
@@ -1177,11 +1181,12 @@ namespace GLSense
                 else
                 {
                     // Old monolith's own "else" list is identical to the disable list above
-                    // plus RibDDConfiguration/RibDrillJobs (Customization/Monitoring buttons
-                    // that a drilldown-result sheet doesn't disable, but that DO get
-                    // positively re-enabled here) - ported verbatim, asymmetry included.
+                    // plus RibDDConfiguration/RibDDDeleteConfiguration/RibDrillJobs
+                    // (Customization/Monitoring buttons that a drilldown-result sheet
+                    // doesn't disable, but that DO get positively re-enabled here) - ported
+                    // verbatim, asymmetry included.
                     _ribbonController?.EnableControls(controls);
-                    _ribbonController?.EnableControls(new[] { "RibDDConfiguration", "RibDrillJobs" });
+                    _ribbonController?.EnableControls(new[] { "RibDDConfiguration", "RibDDDeleteConfiguration", "RibDrillJobs" });
                 }
             }
             catch (Exception ex)

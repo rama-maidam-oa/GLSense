@@ -48,6 +48,7 @@ namespace GLSense
         public const string RibSubledgerDD = "RibSubledgerDD";
         public const string RibTotaDD = "RibTotaDD";
         public const string RibDDConfiguration = "RibDDConfiguration";
+        public const string RibDDDeleteConfiguration = "RibDDDeleteConfiguration";
         public const string RibDrillJobs = "RibDrillJobs";
         public const string RibFunctionsMenu = "RibFunctionsMenu";
         public const string RibSegmentEnabledFlag = "RibSegmentEnabledFlag";
@@ -56,6 +57,7 @@ namespace GLSense
         public const string RibNextSegment = "RibNextSegment";
         public const string RibPreviousSegment = "RibPreviousSegment";
         public const string RibSegmentDFF = "RibSegmentDFF";
+        public const string RibSegmentAccountType = "RibSegmentAccountType";
         public const string RibPeriod = "RibPeriod";
         public const string RibPeriodbyDate = "RibPeriodbyDate";
         public const string RibPeriodbyYear = "RibPeriodbyYear";
@@ -86,8 +88,8 @@ namespace GLSense
                 RibRefreshAll, RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight,
                 RibSnapShot, RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibDrilldownMenu,
                 RibBalanceDD, RibBalanceJournalDD, RibBalanceSubLedgerDD, RibJournalDD, RibSubledgerDD,
-                RibTotaDD, RibDDConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag,
-                RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF,
+                RibTotaDD, RibDDConfiguration, RibDDDeleteConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag,
+                RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF, RibSegmentAccountType,
                 RibPeriod, RibPeriodbyDate, RibPeriodbyYear, RibPeriodNum, RibPeriodQtr, RibPeriodYear,
                 RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibUserConfig, RibHelp
             });
@@ -115,8 +117,8 @@ namespace GLSense
                 RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight, RibSnapShot,
                 RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibDrilldownMenu, RibBalanceDD,
                 RibBalanceJournalDD, RibBalanceSubLedgerDD, RibJournalDD, RibSubledgerDD, RibTotaDD,
-                RibDDConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag, RibSummaryFlag,
-                RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF, RibPeriod,
+                RibDDConfiguration, RibDDDeleteConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag, RibSummaryFlag,
+                RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF, RibSegmentAccountType, RibPeriod,
                 RibPeriodbyDate, RibPeriodbyYear, RibPeriodNum, RibPeriodQtr, RibPeriodYear,
                 RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibUserConfig
             });
@@ -136,90 +138,22 @@ namespace GLSense
                 RibExpodeAll, RibbonExplode1Level, RibDiscoverPeriod, RibAsFormula, RibRefreshRange,
                 RibRefreshAll, RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight,
                 RibSnapShot, RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibDrilldownMenu,
-                RibBalanceDD, RibBalanceJournalDD, RibBalanceSubLedgerDD, RibJournalDD, RibSubledgerDD,
-                RibTotaDD, RibDDConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag,
-                RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF,
+                // RibBalanceDD/RibBalanceJournalDD/RibBalanceSubLedgerDD/RibJournalDD/
+                // RibSubledgerDD/RibTotaDD deliberately excluded here, matching
+                // FinalWorkingCode's RibbonStateHelper.ApplyLoggedInState: these 6 are gated
+                // per-sheet by ApplySheetActiveState/ApplyDrilldownState/
+                // EnableBalanceDrilldownControls/EnableDrilldownBasedOnSheetType
+                // (AddinModule.cs), never blanket-enabled by login alone. Previously included
+                // here, which meant every SetState("LoggedIn") call (e.g. right after cube
+                // selection) force-enabled all 6 regardless of the active sheet, until the
+                // next SheetActivate happened to narrow them back down. Removed as part of
+                // making RibbonController.ApplyLoggedInState() call ApplySheetActiveState()
+                // as its own trailing step (see that method), matching FinalWorkingCode's
+                // equivalent design exactly.
+                RibDDConfiguration, RibDDDeleteConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag,
+                RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF, RibSegmentAccountType,
                 RibPeriod, RibPeriodbyDate, RibPeriodbyYear, RibPeriodNum, RibPeriodQtr, RibPeriodYear,
                 RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibHelp, RibUserConfig
-            });
-
-        public static readonly ReadOnlyCollection<string> DrilldownSheetDisabledControls =
-            Array.AsReadOnly(new[]
-            {
-                RibDBL1, RibGetCube, RibLedger, RibAccount, RibRollerGroup, RibLOVs, RibFSG,
-                RibHideRows, RibUnHideRows, RibLiveCalc, RibSegS, RibSegmentDiscover, RigSegDiscover,
-                RibSegProperty, RibSegmentExpand, RibSegmentExplode,
-                RibExpodeAll, RibbonExplode1Level, RibDiscoverPeriod, RibAsFormula, RibRefreshRange,
-                RibRefreshAll, RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight,
-                RibSnapShot, RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibFunctionsMenu,
-                RibSegmentEnabledFlag, RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment,
-                RibSegmentDFF, RibPeriod, RibPeriodbyDate, RibPeriodbyYear, RibPeriodNum, RibPeriodQtr,
-                RibPeriodYear, RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck,
-                RibHelp, RibUserConfig
-            });
-
-        public static readonly ReadOnlyCollection<string> DrilldownSheetEnabledControls =
-            Array.AsReadOnly(new[]
-            {
-                RibBalanceDD, RibBalanceJournalDD, RibBalanceSubLedgerDD,
-                RibJournalDD, RibSubledgerDD, RibTotaDD, RibDDConfiguration, RibDrillJobs
-            });
-
-        public static readonly ReadOnlyCollection<string> DisableRibbonDisabledControls =
-            Array.AsReadOnly(new[]
-            {
-                RibDBL1, RibGetCube, RibLedger, RibAccount, RibRollerGroup, RibLOVs, RibFSG,
-                RibHideRows, RibUnHideRows, RibLiveCalc, RibSegS, RibSegmentDiscover, RigSegDiscover,
-                RibSegProperty, RibSegmentExpand, RibSegmentExplode,
-                RibExpodeAll, RibbonExplode1Level, RibDiscoverPeriod, RibAsFormula, RibRefreshRange,
-                RibRefreshAll, RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight,
-                RibSnapShot, RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibDrilldownMenu,
-                RibBalanceDD, RibBalanceJournalDD, RibBalanceSubLedgerDD, RibJournalDD, RibSubledgerDD,
-                RibTotaDD, RibDDConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag,
-                RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF,
-                RibPeriod, RibPeriodbyDate, RibPeriodbyYear, RibPeriodNum, RibPeriodQtr, RibPeriodYear,
-                RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibUserConfig, RibHelp,
-                RibLogout, RibUrl, RibDebug, RibAbout
-            });
-
-        public static readonly ReadOnlyCollection<string> NoCubesDisabledControls =
-            Array.AsReadOnly(new[]
-            {
-                RibLogin, RibLogout, RibUrl, RibDebug, RibAbout,
-                RibDBL1, RibGetCube, RibLedger, RibAccount, RibRollerGroup, RibLOVs, RibFSG,
-                RibHideRows, RibUnHideRows, RibLiveCalc, RibSegS, RibSegmentDiscover, RigSegDiscover,
-                RibSegProperty, RibSegmentExpand, RibSegmentExplode,
-                RibExpodeAll, RibbonExplode1Level, RibDiscoverPeriod, RibAsFormula, RibRefreshRange,
-                RibRefreshAll, RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight,
-                RibSnapShot, RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibDrilldownMenu,
-                RibBalanceDD, RibBalanceJournalDD, RibBalanceSubLedgerDD, RibJournalDD, RibSubledgerDD,
-                RibTotaDD, RibDDConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag,
-                RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF,
-                RibPeriod, RibPeriodbyDate, RibPeriodbyYear, RibPeriodNum, RibPeriodQtr, RibPeriodYear,
-                RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibUserConfig, RibHelp
-            });
-
-        public static readonly ReadOnlyCollection<string> ProcessingDisabledControls =
-            Array.AsReadOnly(new[]
-            {
-                RibDBL1, RibGetCube, RibLedger, RibAccount, RibRollerGroup, RibLOVs, RibFSG,
-                RibHideRows, RibUnHideRows, RibLiveCalc, RibSegS, RibSegmentDiscover, RigSegDiscover,
-                RibSegProperty, RibSegmentExpand, RibSegmentExplode,
-                RibExpodeAll, RibbonExplode1Level, RibDiscoverPeriod, RibAsFormula, RibRefreshRange,
-                RibRefreshAll, RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight,
-                RibSnapShot, RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibDrilldownMenu,
-                RibBalanceDD, RibBalanceJournalDD, RibBalanceSubLedgerDD, RibJournalDD, RibSubledgerDD,
-                RibTotaDD, RibDDConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag,
-                RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF,
-                RibPeriod, RibPeriodbyDate, RibPeriodbyYear, RibPeriodNum, RibPeriodQtr, RibPeriodYear,
-                RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibUserConfig, RibHelp,
-                RibLogin
-            });
-
-        public static readonly ReadOnlyCollection<string> LoggedInPressedControls =
-            Array.AsReadOnly(new[]
-            {
-                RibAsFormula, RibSnapWorksheet
             });
     }
 }
