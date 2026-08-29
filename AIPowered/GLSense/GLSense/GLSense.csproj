@@ -121,4 +121,7 @@
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>call "$(ProjectDir)post_build.cmd" "$(TargetDir)"</PostBuildEvent>
+  </PropertyGroup>
 </Project>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>GLSense.Build</RootNamespace>
+    <AssemblyName>GLSense.Build</AssemblyName>
+    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
+    <LangVersion>latest</LangVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      This project has no code of its own. Its only purpose is these two
+      ProjectReferences: building GLSense.Build (in whatever configuration is
+      selected for it) makes MSBuild build GLSense and GLSense.Addin.Core in
+      that same configuration first - which transitively pulls in
+      GLSense.Contracts -> GLSense.Shared -> GLSense.Loader.Core in the
+      correct dependency order, since those are already ProjectReferences of
+      GLSense/GLSense.Addin.Core themselves. Each project's own post_build.cmd
+      (including the Release-only DigiCert signing added there) still runs
+      exactly as it always did - this project doesn't duplicate or replace
+      any of that, it just gives you one thing to build that pulls all five
+      in, in order, regardless of which one you actually changed.
+    -->
+    <ProjectReference Include="..\GLSense\GLSense.csproj">
+      <Project>{2EED321B-2B13-44EE-A298-FD8EE630A3FA}</Project>
+      <Name>GLSense</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\GLSense.Addin.Core\GLSense.Addin.Core.csproj">
+      <Project>{76F5002B-6A27-4B68-ADEE-EB673A363228}</Project>
+      <Name>GLSense.Addin.Core</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>call "$(ProjectDir)post_build.cmd" "$(TargetDir)"</PostBuildEvent>
+  </PropertyGroup>
+</Project>

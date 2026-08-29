@@ -49,7 +49,33 @@ REM (a real server, no build-time folder writes into GLSense_Logs_New at all).
 REM ============================================================================
 
 echo ========================================
-echo STEP 1: Resolve version from the compiled DLL
+echo STEP 1: Sign this project's deliverables (Release only)
+echo ========================================
+
+REM Sign this project's own DLL here, once, right after it's compiled and
+REM BEFORE it gets zipped up below - the zip must contain a signed DLL.
+REM GLSense.Contracts.dll/GLSense.Shared.dll/GLSense.Loader.Core.dll also sit
+REM in CORE_BIN_DIR (copied in via ProjectReference), but they are NOT signed
+REM here - they were already signed once, in their own project's post_build.cmd,
+REM before MSBuild copied them here. Re-signing those copies would just waste
+REM a signing operation. See sign_file.cmd's own header comment for the full
+REM reasoning.
+call "%SOLUTION_DIR%\sign_file.cmd" "%CORE_BIN_DIR%\GLSense.Addin.Core.dll" "%CONFIG%"
+
+REM x86\SQLite.Interop.dll / x64\SQLite.Interop.dll already carry a valid
+REM vendor (System.Data.SQLite) signature - confirmed via
+REM Get-AuthenticodeSignature, left alone. e_sqlite3.dll (both arches) ships
+REM genuinely UNSIGNED from its NuGet package (sqlitepclraw.lib.e_sqlite3) -
+REM confirmed the same way - and it's a native DLL sitting inside the
+REM client-facing zip, so it gets signed here. sqlite_postbuild.cmd (chained
+REM before this script in GLSense.Addin.Core.csproj's PostBuildEvent) has
+REM already copied both files into CORE_BIN_DIR\x86\ and CORE_BIN_DIR\x64\ by
+REM the time this runs.
+call "%SOLUTION_DIR%\sign_file.cmd" "%CORE_BIN_DIR%\x86\e_sqlite3.dll" "%CONFIG%"
+call "%SOLUTION_DIR%\sign_file.cmd" "%CORE_BIN_DIR%\x64\e_sqlite3.dll" "%CONFIG%"
+
+echo ========================================
+echo STEP 2: Resolve version from the compiled DLL
 echo ========================================
 
 REM Read the version from the just-built DLL's file-version metadata instead of a
@@ -68,7 +94,7 @@ if "%FILE_VERSION%"=="" (
 echo Version: %FILE_VERSION%
 
 echo ========================================
-echo STEP 2: Build the zip (Addin.Core's bin output, minus *.pdb)
+echo STEP 3: Build the zip (Addin.Core's bin output, minus *.pdb)
 echo ========================================
 
 if not exist "%CORE_BIN_DIR%" (
@@ -117,7 +143,7 @@ if not exist "%OUT_ZIP%" (
 )
 
 echo ========================================
-echo STEP 3: Write manifest.json alongside the zip
+echo STEP 4: Write manifest.json alongside the zip
 echo ========================================
 
 powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 '%OUT_ZIP%').Hash" > "%TEMP%\glsense_checksum.tmp"

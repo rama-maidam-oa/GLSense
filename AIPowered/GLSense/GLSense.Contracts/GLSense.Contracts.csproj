@@ -64,4 +64,7 @@
     <None Include="GLSense.Contracts.pfx" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>call "$(ProjectDir)post_build.cmd" "$(TargetDir)"</PostBuildEvent>
+  </PropertyGroup>
 </Project>
