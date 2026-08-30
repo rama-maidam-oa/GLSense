@@ -94,5 +94,23 @@ namespace GLSense.Contracts
         /// and before a hot-reload swap, so the old AppDomain's Window doesn't linger).
         /// </summary>
         void CloseConfiguratorPaneContent();
+
+        /// <summary>
+        /// Returns the current login state (LoginUrl/LoginToken/IsLoggedIn) so the
+        /// host's RibReload picker (GLReloadSourcePicker, host-side, no dependency on
+        /// this project) can build the Online "check for update" request without
+        /// AppState (which lives entirely in this project) crossing the AppDomain
+        /// boundary directly.
+        ///
+        /// Added after the very first shipped version of this interface - any caller
+        /// MUST wrap this call in try/catch (or otherwise tolerate a
+        /// MissingMethodException/RemotingException), because the Release History
+        /// browser can reload an OLDER historical build of GLSense.Addin.Core whose own
+        /// compiled copy of this interface predates this member. Treat any failure
+        /// exactly like "not logged in". See
+        /// docs/superpowers/specs/2026-08-30-hotreload-release-history-design.md
+        /// section 9.
+        /// </summary>
+        LoginInfo GetLoginInfo();
     }
 }
