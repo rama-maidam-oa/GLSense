@@ -16,8 +16,7 @@ namespace GLSense.Loader.Core
         {
             _context = context;
 
-            string versionFolderName = $"V{_context.Version}";
-            string dllPath = Path.Combine(_context.Paths.VersionsPath, versionFolderName);
+            string dllPath = Path.Combine(_context.Paths.VersionsPath, _context.ActiveFolderName);
 
             //LogFilesInFolder(dllPath);  this is used for debugging
 

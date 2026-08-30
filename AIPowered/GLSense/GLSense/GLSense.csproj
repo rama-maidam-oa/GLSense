@@ -51,6 +51,12 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="System.Xaml">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
     <Reference Include="AddinExpress.MSO.2005">
       <HintPath>C:\Program Files (x86)\Add-in Express\Add-in Express for .NET\Bin\AddinExpress.MSO.2005.dll</HintPath>
       <Private>False</Private>
@@ -100,11 +106,27 @@
     <Compile Include="RibbonControlIds.cs" />
     <Compile Include="RibbonController.cs" />
     <Compile Include="UpdateManager.cs" />
+    <Compile Include="Views\GLReloadSourcePicker.xaml.cs">
+      <DependentUpon>GLReloadSourcePicker.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLReleaseHistoryBrowser.xaml.cs">
+      <DependentUpon>GLReleaseHistoryBrowser.xaml</DependentUpon>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="AddinModule.resx">
       <DependentUpon>AddinModule.cs</DependentUpon>
     </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="Views\GLReloadSourcePicker.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLReleaseHistoryBrowser.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\GLSense.Contracts\GLSense.Contracts.csproj">

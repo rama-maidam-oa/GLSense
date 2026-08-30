@@ -16,6 +16,7 @@ namespace GLSense.Contracts
         string Resources { get; }
         string ManifestFile { get; }
         string ManifestDirectory { get; }
+        string ReleaseHistoryFile { get; }
 
         // Version properties
         string LatestVersion { get; }        // ✅ Added

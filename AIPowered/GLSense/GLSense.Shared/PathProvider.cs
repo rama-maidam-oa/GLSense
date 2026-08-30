@@ -51,6 +51,7 @@ namespace GLSense.Shared
         // which holds the actual hot-reloadable DLL payloads.
         public string ManifestDirectory => Path.Combine(_root, "Manifest");
         public string ManifestFile => Path.Combine(ManifestDirectory, "manifest.json");
+        public string ReleaseHistoryFile => Path.Combine(_root, "ReleaseHistory.json");
 
         // Version properties
         public string LatestVersion => _latestVersion;

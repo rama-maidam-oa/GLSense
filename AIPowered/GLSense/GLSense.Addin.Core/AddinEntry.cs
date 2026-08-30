@@ -1989,6 +1989,18 @@ namespace GLSense.Addin.Core
             }
         }
 
+        /// <summary>IGLSenseAddin.GetLoginInfo() - see that interface member's own doc
+        /// comment.</summary>
+        public LoginInfo GetLoginInfo()
+        {
+            return new LoginInfo
+            {
+                LoginUrl = AppState.Instance.LoginUrl,
+                LoginToken = AppState.Instance.LoginToken,
+                IsLoggedIn = AppState.Instance.IsLoggedIn
+            };
+        }
+
         /// <summary>
         /// IGLSenseAddin.CreateConfiguratorPaneContent() - see ConfiguratorPaneHost.cs's
         /// header comment for the full HWND-reparenting rationale. Thin delegation only;

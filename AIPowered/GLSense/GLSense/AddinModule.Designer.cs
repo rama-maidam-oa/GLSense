@@ -124,6 +124,7 @@ namespace GLSense
             this.RibDebug = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.RibVersionCheck = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.RibReload = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibReleaseHistory = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonGroup11 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibAbout = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibHelp = new AddinExpress.MSO.ADXRibbonButton(this.components);
@@ -1198,6 +1199,7 @@ namespace GLSense
             this.adxRibbonGroup10.Controls.Add(this.RibDebug);
             this.adxRibbonGroup10.Controls.Add(this.RibVersionCheck);
             this.adxRibbonGroup10.Controls.Add(this.RibReload);
+            this.adxRibbonGroup10.Controls.Add(this.RibReleaseHistory);
             this.adxRibbonGroup10.Id = "adxRibbonGroup_3a9df2aa92c8498584671976a8f6d7f1";
             this.adxRibbonGroup10.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.adxRibbonGroup10.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
@@ -1259,7 +1261,17 @@ namespace GLSense
             this.RibReload.SuperTip = "Rebuild GLSense.Addin.Core, then click here to reload it without restarting Excel" +
     ".";
             this.RibReload.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReload_OnClick);
-            // 
+            //
+            // RibReleaseHistory
+            //
+            this.RibReleaseHistory.Caption = "Release History";
+            this.RibReleaseHistory.Id = "adxRibbonButton_9f2e6c1a4b7d4e3f8a1c6d9e2b5f7a3c";
+            this.RibReleaseHistory.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibReleaseHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibReleaseHistory.ScreenTip = "Release History";
+            this.RibReleaseHistory.SuperTip = "Browse every GLSense.Addin.Core release ever adopted on this machine, and load any of them without restarting Excel.";
+            this.RibReleaseHistory.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReleaseHistory_OnClick);
+            //
             // adxRibbonGroup11
             // 
             this.adxRibbonGroup11.AutoScale = true;
@@ -1417,6 +1429,7 @@ namespace GLSense
         public AddinExpress.MSO.ADXRibbonCheckBox RibDebug;
         public AddinExpress.MSO.ADXRibbonCheckBox RibVersionCheck;
         public AddinExpress.MSO.ADXRibbonButton RibReload;
+        public AddinExpress.MSO.ADXRibbonButton RibReleaseHistory;
         public AddinExpress.MSO.ADXRibbonButton RibAbout;
         public AddinExpress.MSO.ADXRibbonButton RibHelp;
         private AddinExpress.XL.ADXExcelTaskPanesManager adxExcelTaskPanesManager1;

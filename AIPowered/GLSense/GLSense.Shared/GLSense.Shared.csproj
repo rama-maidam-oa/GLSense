@@ -91,6 +91,8 @@
       <Link>Properties\GLSenseSharedVersion.cs</Link>
     </Compile>
     <Compile Include="VersionParser.cs" />
+    <Compile Include="ReleaseEntry.cs" />
+    <Compile Include="ReleaseHistoryStore.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\GLSense.Contracts\GLSense.Contracts.csproj">
