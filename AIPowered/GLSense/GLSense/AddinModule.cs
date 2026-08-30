@@ -216,6 +216,30 @@ namespace GLSense
             }
         }
 
+        private void RibReleaseHistory_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            GlobalsEx.Context?.Logger?.LogDebug($"RibReleaseHistory_OnClick fired (pressed={pressed})");
+            if (_reloadInProgress) return;
+
+            var browser = new GLReleaseHistoryBrowser();
+            bool? browserResult = browser.ShowDialog();
+            if (browserResult != true || browser.Chosen == null) return;
+
+            var chosen = browser.Chosen;
+
+            _reloadInProgress = true;
+            System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.WaitCursor;
+            try
+            {
+                ReloadAddinCore(() => chosen);
+            }
+            finally
+            {
+                System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
+                _reloadInProgress = false;
+            }
+        }
+
         /// <summary>
         /// Hot-reload orchestration: tear down the current Addin.Core instance/AppDomain
         /// and load a fresh one, re-pointing GlobalsEx.Addin so every ribbon/Excel-event
