@@ -24,40 +24,19 @@ namespace GLSense.Shared
 
         public static List<ReleaseEntry> ReadAll(string releaseHistoryFile)
         {
-            using (var mutex = new Mutex(false, MutexName))
-            {
-                bool acquired = false;
-                try
-                {
-                    acquired = mutex.WaitOne(MutexTimeout);
-                    return ReadAllUnlocked(releaseHistoryFile);
-                }
-                finally
-                {
-                    if (acquired) mutex.ReleaseMutex();
-                }
-            }
+            return WithLock(() => ReadAllUnlocked(releaseHistoryFile));
         }
 
         /// <summary>Appends one entry. Process-safe (named Mutex) and crash-safe
         /// (atomic write-then-replace).</summary>
         public static void Append(string releaseHistoryFile, ReleaseEntry entry)
         {
-            using (var mutex = new Mutex(false, MutexName))
+            WithLock(() =>
             {
-                bool acquired = false;
-                try
-                {
-                    acquired = mutex.WaitOne(MutexTimeout);
-                    var entries = ReadAllUnlocked(releaseHistoryFile);
-                    entries.Add(entry);
-                    WriteAllUnlocked(releaseHistoryFile, entries);
-                }
-                finally
-                {
-                    if (acquired) mutex.ReleaseMutex();
-                }
-            }
+                var entries = ReadAllUnlocked(releaseHistoryFile);
+                entries.Add(entry);
+                WriteAllUnlocked(releaseHistoryFile, entries);
+            });
         }
 
         /// <summary>Removes every entry whose Versions\{FolderName}\ no longer contains
@@ -67,23 +46,52 @@ namespace GLSense.Shared
         /// (b) every time the Release History browser is opened (Phase C).</summary>
         public static List<ReleaseEntry> Reconcile(string releaseHistoryFile, string versionsPath)
         {
+            return WithLock(() =>
+            {
+                var entries = ReadAllUnlocked(releaseHistoryFile);
+                var survivors = entries.Where(e => ReleaseFolderHasDlls(versionsPath, e.FolderName)).ToList();
+                if (survivors.Count != entries.Count)
+                    WriteAllUnlocked(releaseHistoryFile, survivors);
+                return survivors;
+            });
+        }
+
+        private static T WithLock<T>(Func<T> action)
+        {
             using (var mutex = new Mutex(false, MutexName))
             {
-                bool acquired = false;
+                bool acquired;
                 try
                 {
                     acquired = mutex.WaitOne(MutexTimeout);
-                    var entries = ReadAllUnlocked(releaseHistoryFile);
-                    var survivors = entries.Where(e => ReleaseFolderHasDlls(versionsPath, e.FolderName)).ToList();
-                    if (survivors.Count != entries.Count)
-                        WriteAllUnlocked(releaseHistoryFile, survivors);
-                    return survivors;
+                }
+                catch (AbandonedMutexException)
+                {
+                    // A previous holder terminated (e.g. an AppDomain.Unload-aborted thread -
+                    // see CLAUDE.md sections 29/37) without releasing the mutex. We now
+                    // legitimately own it - the catalog file itself isn't corrupted just
+                    // because a prior holder didn't release cleanly (writes are atomic, see
+                    // WriteAllUnlocked), so proceed.
+                    acquired = true;
+                }
+
+                if (!acquired)
+                    throw new TimeoutException($"Could not acquire '{MutexName}' within {MutexTimeout} - refusing to read/write ReleaseHistory.json unprotected.");
+
+                try
+                {
+                    return action();
                 }
                 finally
                 {
-                    if (acquired) mutex.ReleaseMutex();
+                    mutex.ReleaseMutex();
                 }
             }
+        }
+
+        private static void WithLock(Action action)
+        {
+            WithLock<object>(() => { action(); return null; });
         }
 
         /// <summary>Builds the Versions\ folder name for a release:
