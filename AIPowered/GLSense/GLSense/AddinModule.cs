@@ -152,9 +152,9 @@ namespace GLSense
             // connection to the manifest at all, so nothing previously read from
             // manifest.json ever actually influenced which DLLs got loaded.
             GlobalsEx.Context.Logger?.LogDebug("AddinModule_OnRibbonLoaded: resolving version to load via UpdateBootstrapper.");
-            string resolvedVersion = new UpdateBootstrapper().ResolveVersionToLoad(GlobalsEx.Context);
+            var resolved = new UpdateBootstrapper().ResolveVersionToLoad(GlobalsEx.Context);
 
-            if (string.IsNullOrEmpty(resolvedVersion))
+            if (resolved == null)
             {
                 GlobalsEx.Context.Logger?.LogError("AddinModule_OnRibbonLoaded: UpdateBootstrapper could not resolve a version to load (no zip/manifest.json in the Manifest folder and no usable local install). Skipping Addin.Core load - the add-in will be unavailable until this is resolved and Excel is restarted.");
                 MessageBox.Show(
@@ -168,17 +168,17 @@ namespace GLSense
                 return;
             }
 
-            GlobalsEx.Context.Version = resolvedVersion;
-
             // GLAbout's "Build Date" reads Context.ReleaseDate via ServiceLocator - this was
             // never actually set anywhere before (the property existed on IGLSenseContext but
             // nothing ever assigned it), so the About window always showed a blank/"Unknown"
-            // build date. Paths.LatestReleaseDate is the same manifest.json entry
-            // UpdateBootstrapper just read to resolve resolvedVersion (paths.Refresh() inside
-            // ResolveVersionToLoad guarantees it reflects the actual current file on disk), so
-            // this is always in sync with the version that's about to load.
-            GlobalsEx.Context.ReleaseDate = GlobalsEx.Context.Paths?.LatestReleaseDate;
-            GlobalsEx.Context.Logger?.LogDebug($"AddinModule_OnRibbonLoaded: resolvedVersion={resolvedVersion}, releaseDate={GlobalsEx.Context.ReleaseDate}");
+            // build date. resolved.ReleaseDate/resolved.Version/resolved.FolderName all come
+            // from the same manifest.json entry UpdateBootstrapper just resolved (paths.Refresh()
+            // inside ResolveVersionToLoad guarantees it reflects the actual current file on disk),
+            // so these are always in sync with the version that's about to load.
+            GlobalsEx.Context.Version = resolved.Version;
+            GlobalsEx.Context.ReleaseDate = resolved.ReleaseDate;
+            GlobalsEx.Context.ActiveFolderName = resolved.FolderName;
+            GlobalsEx.Context.Logger?.LogDebug($"AddinModule_OnRibbonLoaded: version={resolved.Version}, releaseDate={resolved.ReleaseDate}, folderName={resolved.FolderName}");
 
             // Load Addin.Core
 
