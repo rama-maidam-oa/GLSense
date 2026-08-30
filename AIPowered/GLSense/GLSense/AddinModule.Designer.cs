@@ -1266,8 +1266,6 @@ namespace GLSense
             //
             this.RibReleaseHistory.Caption = "Release History";
             this.RibReleaseHistory.Id = "adxRibbonButton_9f2e6c1a4b7d4e3f8a1c6d9e2b5f7a3c";
-            this.RibReleaseHistory.Image = 40;
-            this.RibReleaseHistory.ImageList = this.ImageList_16X16;
             this.RibReleaseHistory.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibReleaseHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibReleaseHistory.ScreenTip = "Release History";

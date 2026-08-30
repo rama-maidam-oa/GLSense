@@ -197,21 +197,44 @@ namespace GLSense
             GlobalsEx.Context?.Logger?.LogDebug($"RibReload_OnClick fired (pressed={pressed})");
             if (_reloadInProgress) return;
 
-            var picker = new GLReloadSourcePicker();
-            bool? pickerResult = picker.ShowDialog();
-            if (pickerResult != true) return;
-
-            string source = picker.SelectedSource;
-
             _reloadInProgress = true;
-            System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.WaitCursor;
             try
             {
-                ReloadAddinCore(() => new UpdateBootstrapper().ResolveVersionToLoad(GlobalsEx.Context, source));
+                GLReloadSourcePicker picker;
+                bool? pickerResult;
+                try
+                {
+                    picker = new GLReloadSourcePicker();
+                    new System.Windows.Interop.WindowInteropHelper(picker).Owner = GlobalsEx.Context.ExcelHandle;
+                    pickerResult = picker.ShowDialog();
+                }
+                catch (Exception ex)
+                {
+                    GlobalsEx.Context?.Logger?.LogException(ex, "RibReload_OnClick: failed to show the reload picker");
+                    MessageBox.Show(
+                        $"Could not open the reload picker: {ex.Message}",
+                        "Reload GLSense Add-in",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (pickerResult != true) return;
+
+                string source = picker.SelectedSource;
+
+                System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.WaitCursor;
+                try
+                {
+                    ReloadAddinCore(() => new UpdateBootstrapper().ResolveVersionToLoad(GlobalsEx.Context, source));
+                }
+                finally
+                {
+                    System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
+                }
             }
             finally
             {
-                System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
                 _reloadInProgress = false;
             }
         }
@@ -221,21 +244,44 @@ namespace GLSense
             GlobalsEx.Context?.Logger?.LogDebug($"RibReleaseHistory_OnClick fired (pressed={pressed})");
             if (_reloadInProgress) return;
 
-            var browser = new GLReleaseHistoryBrowser();
-            bool? browserResult = browser.ShowDialog();
-            if (browserResult != true || browser.Chosen == null) return;
-
-            var chosen = browser.Chosen;
-
             _reloadInProgress = true;
-            System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.WaitCursor;
             try
             {
-                ReloadAddinCore(() => chosen);
+                GLReleaseHistoryBrowser browser;
+                bool? browserResult;
+                try
+                {
+                    browser = new GLReleaseHistoryBrowser();
+                    new System.Windows.Interop.WindowInteropHelper(browser).Owner = GlobalsEx.Context.ExcelHandle;
+                    browserResult = browser.ShowDialog();
+                }
+                catch (Exception ex)
+                {
+                    GlobalsEx.Context?.Logger?.LogException(ex, "RibReleaseHistory_OnClick: failed to show the release history browser");
+                    MessageBox.Show(
+                        $"Could not open the release history browser: {ex.Message}",
+                        "GLSense Release History",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (browserResult != true || browser.Chosen == null) return;
+
+                var chosen = browser.Chosen;
+
+                System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.WaitCursor;
+                try
+                {
+                    ReloadAddinCore(() => chosen);
+                }
+                finally
+                {
+                    System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
+                }
             }
             finally
             {
-                System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
                 _reloadInProgress = false;
             }
         }

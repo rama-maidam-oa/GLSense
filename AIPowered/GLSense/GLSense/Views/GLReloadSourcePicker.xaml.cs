@@ -244,11 +244,33 @@ namespace GLSense
                 string manifestDir = GlobalsEx.Context.Paths.ManifestDirectory;
                 if (!Directory.Exists(manifestDir)) Directory.CreateDirectory(manifestDir);
 
-                foreach (var oldZip in Directory.GetFiles(manifestDir, "*.zip"))
-                    File.Delete(oldZip);
+                string zipDestination = Path.Combine(manifestDir, Path.GetFileName(_candidateZipPath));
+                bool zipAlreadyStaged = string.Equals(
+                    Path.GetFullPath(_candidateZipPath),
+                    Path.GetFullPath(zipDestination),
+                    StringComparison.OrdinalIgnoreCase);
 
-                File.Copy(_candidateZipPath, Path.Combine(manifestDir, Path.GetFileName(_candidateZipPath)), true);
-                File.Copy(_candidateManifestPath, GlobalsEx.Context.Paths.ManifestFile, true);
+                // Delete every OTHER zip in the Manifest folder, but never the candidate
+                // itself - if the user browsed Offline directly to the Manifest folder,
+                // the candidate zip may already be sitting there, and deleting it before
+                // the copy below would destroy the very file being staged.
+                foreach (var oldZip in Directory.GetFiles(manifestDir, "*.zip"))
+                {
+                    if (!string.Equals(Path.GetFullPath(oldZip), Path.GetFullPath(_candidateZipPath), StringComparison.OrdinalIgnoreCase))
+                        File.Delete(oldZip);
+                }
+
+                if (!zipAlreadyStaged)
+                    File.Copy(_candidateZipPath, zipDestination, true);
+
+                string manifestDestination = GlobalsEx.Context.Paths.ManifestFile;
+                bool manifestAlreadyStaged = string.Equals(
+                    Path.GetFullPath(_candidateManifestPath),
+                    Path.GetFullPath(manifestDestination),
+                    StringComparison.OrdinalIgnoreCase);
+
+                if (!manifestAlreadyStaged)
+                    File.Copy(_candidateManifestPath, manifestDestination, true);
 
                 SelectedSource = RbOnline.IsChecked == true ? "Online" : "Offline";
                 DialogResult = true;

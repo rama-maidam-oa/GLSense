@@ -4314,6 +4314,124 @@ as a verification-only override, same caveat as section 36 above).
 
 ---
 
+## 40. Release history catalog, timestamp-keyed Versions\ folders, and the standing IGLSenseAddin defensive-call discipline
+
+New subsystem: a permanent, append-only catalog (`ReleaseHistory.json`, a sibling of
+`Manifest\` and `Versions\` under `%LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs_New\`)
+of every `GLSense.Addin.Core` release ever adopted on a machine, so a tester can roll
+back to any past build without an MSI reinstall. Full design:
+`docs/superpowers/specs/2026-08-30-hotreload-release-history-design.md`. Full
+implementation plan (10 tasks, several real bugs found and fixed along the way -
+worth reading before touching any of this code again):
+`docs/superpowers/plans/2026-08-30-hotreload-release-history.md`.
+
+### 40.1 What changed
+
+- `Versions\` folders are now keyed by the release's full timestamp, not version number
+  alone: `V{version}_{releaseDateSafe}` (built once, in
+  `UpdateBootstrapper.ExtractManifestZipAndAdopt`, via
+  `ReleaseHistoryStore.BuildFolderName` - never recomputed anywhere else). This fixes a
+  real, confirmed data-loss bug: version numbers can repeat across distinct releases in
+  this project (frozen for stretches, see section 14.2), so the old `V{version}`-only
+  scheme would silently overwrite an earlier release's DLLs with a same-numbered later
+  one, defeating any rollback feature before it could exist.
+- `UpdateBootstrapper.ResolveVersionToLoad` now returns a `ResolvedRelease`
+  (Version/ReleaseDate/FolderName), not a bare version string - `IGLSenseContext`
+  gained a matching `ActiveFolderName` property, which is what `AddinDomainLoader.Load()`
+  actually uses to locate the folder (never `$"V{context.Version}"` anymore).
+- `RibReload` now opens `GLReloadSourcePicker` (host-side, `GLSense\Views\`) offering
+  Online (checks `{LoginUrl}/glsense/projectdlls` - **this server endpoint does not
+  exist yet**, client-side only) and Offline (pick a local folder) modes. Both require
+  the candidate release to be strictly newer (by `releaseDate`) than what's currently
+  loaded.
+- A new `RibReleaseHistory` button opens `GLReleaseHistoryBrowser` (also host-side),
+  listing the catalog and letting the user load ANY past release - deliberately with
+  **no version gate at all**, unlike `RibReload`. Going backward on purpose is this
+  window's entire reason to exist; do not add a gate here if you touch this file later.
+- A first-ever run on a machine is detected by **`ReleaseHistory.json`'s absence**, not
+  by whether the `Manifest\` folder exists (an earlier design was rejected for exactly
+  this reason - an ordinary Online/Offline update also populates `Manifest\`
+  transiently, so that folder's presence can't distinguish "fresh install" from
+  "ordinary update"). A fresh install seeds from an MSI-bundled manifest+zip, wipes any
+  stray `Versions\` content, then deletes the whole `Manifest\` folder.
+
+### 40.2 A real bug this surfaced and fixed: the fresh-install path broke the very next ordinary launch
+
+Fresh-install seeding deletes the whole `Manifest\` folder afterward. The very next
+ordinary Excel launch triggers `PathProvider.InitializeVersion()` (via `paths.Refresh()`),
+which finds `manifest.json` missing and lazily recreates it with **hardcoded default
+values** (`Version="11.1.0"`, `ReleaseDate=DateTime.Now`) - unrelated to whatever was
+actually just installed. The "no zip, reuse what's installed" fallback branch in
+`UpdateBootstrapper.ResolveVersionToLoad` originally recomputed `FolderName` from these
+now-wrong `paths.LatestVersion`/`paths.LatestReleaseDate` values, producing a folder
+name that didn't match the real extracted folder - the add-in failed to load entirely
+on the second ordinary launch, despite a perfectly good, cataloged release sitting on
+disk. **Fixed**: that fallback now resolves the active release from the catalog itself
+(`ReleaseHistoryStore.ReadAll`, picking the most recent entry whose folder still has
+DLLs) - never from `paths.LatestVersion`/`LatestReleaseDate`, which `PathProvider` can
+silently regenerate with unrelated values at any time. If you ever see the add-in fail
+to load on a launch immediately following a successful one, re-read this section before
+re-deriving the diagnosis from scratch.
+
+### 40.3 Standing discipline: every future `IGLSenseAddin` addition must be called defensively
+
+This is the single most important, easy-to-miss consequence of the Release History
+browser existing at all, and it is **permanent, not a one-time fix**:
+
+Because the browser can load ANY historical build, and the host (`GLSense.dll`) is
+never itself reloaded, **every member ever added to `IGLSenseAddin` from this point
+forward must be called by the host wrapped in `try`/`catch`**, tolerating
+`MissingMethodException`/`RemotingException` - an older loaded instance may genuinely
+not implement a member added after it was built, and that surfaces as a runtime
+exception, not a compile error. `IGLSenseAddin.GetLoginInfo()` (added alongside this
+feature) is the first, and its own doc comment states this explicitly; its call sites
+in `GLReloadSourcePicker.xaml.cs` already do this correctly (treat any failure exactly
+like "not logged in"). **If you add a new `IGLSenseAddin` member later, copy this
+pattern - do not assume the caller's own try/catch from a different feature will
+somehow cover you.**
+
+This risk is directional and does **not** apply to `IGLSenseContext` (also grew a
+member here: `ActiveFolderName`). Calls flow host->Addin.Core for `IGLSenseAddin` (the
+host, always on the current interface, calling into a possibly-older implementation -
+genuine crash risk); `IGLSenseContext` flows the other way (Addin.Core reading a
+context object the host constructed against its own, always-current interface). An
+older Addin.Core build's own compiled copy of `IGLSenseContext` simply doesn't declare
+newer members at all, so its code was never written to reference them - additions there
+are inert for old builds, not a crash risk. Only `IGLSenseAddin` additions need the
+defensive-call treatment.
+
+### 40.4 Host-side WPF windows must set the Excel owner and guard their own construction
+
+`GLReloadSourcePicker` and `GLReleaseHistoryBrowser` live in `GLSense` (the host
+project), not `GLSense.Addin.Core`, specifically so they keep working regardless of
+whether Addin.Core is currently loaded, mid-unload, or has never successfully loaded at
+all - the whole reason these windows exist is to recover/replace Addin.Core. That means
+they can't inherit from `BaseWindow` (`GLSense.Addin.Core\Views\BaseWindow.cs`), which
+would normally set the Excel HWND as `Owner` automatically
+(`OnSourceInitialized`) and gives every other dialog in this product its
+modal-to-Excel/centered-on-Excel behavior for free. Both ribbon click handlers
+(`RibReload_OnClick`/`RibReleaseHistory_OnClick` in `AddinModule.cs`) now do this by
+hand: `new System.Windows.Interop.WindowInteropHelper(window).Owner =
+GlobalsEx.Context.ExcelHandle;` right after constructing the window, before
+`ShowDialog()`. **If you add a third host-side WPF window later, copy this pattern too**
+- without it, the dialog isn't actually modal to Excel (can drop behind it, user can
+click back into Excel and re-trigger the ribbon button that opened it), which is
+exactly the class of bug a final whole-branch review caught here that no single task's
+own review could have seen in isolation. Both handlers also now set their
+`_reloadInProgress` re-entrancy guard **before** constructing the window (not after it
+closes), and wrap window construction + `ShowDialog()` in their own try/catch (log +
+`MessageBox`, matching this codebase's established ribbon-handler-exception-safety
+pattern from section 36) - a `ReleaseHistoryStore.Reconcile` call inside
+`GLReleaseHistoryBrowser`'s constructor can throw (a mutex timeout, or a corrupt
+catalog file), and that exception used to be able to escape all the way out to
+Excel/ADX unguarded.
+
+**Status**: implemented (both codebases: AIPowered only - `FinalWorkingCode` has no
+equivalent hot-reload/AppDomain architecture for this feature to apply to). Not yet
+rebuilt/tested by the user in a real Excel session.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
