@@ -109,6 +109,9 @@
     <Compile Include="Views\GLReloadSourcePicker.xaml.cs">
       <DependentUpon>GLReloadSourcePicker.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Views\GLReleaseHistoryBrowser.xaml.cs">
+      <DependentUpon>GLReleaseHistoryBrowser.xaml</DependentUpon>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="AddinModule.resx">
@@ -117,6 +120,10 @@
   </ItemGroup>
   <ItemGroup>
     <Page Include="Views\GLReloadSourcePicker.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLReleaseHistoryBrowser.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
