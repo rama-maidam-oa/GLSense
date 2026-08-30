@@ -61,8 +61,22 @@ namespace GLSense.Loader.Core
                     {
                         if (Directory.Exists(paths.VersionsPath))
                         {
-                            logger?.LogDebug($"UpdateBootstrapper: wiping stray Versions\\ content before first-ever seed ('{paths.VersionsPath}').");
-                            Directory.Delete(paths.VersionsPath, true);
+                            try
+                            {
+                                logger?.LogDebug($"UpdateBootstrapper: wiping stray Versions\\ content before first-ever seed ('{paths.VersionsPath}').");
+                                Directory.Delete(paths.VersionsPath, true);
+                            }
+                            catch (Exception ex)
+                            {
+                                // Non-fatal: if some stray content is locked (e.g. an
+                                // orphaned Excel.exe - see CLAUDE.md section 29), proceed
+                                // anyway rather than aborting the whole fresh-install
+                                // seed. Worst case, unrelated stray folders remain
+                                // alongside the newly seeded one - harmless clutter,
+                                // consistent with this feature's own "never auto-prune
+                                // Versions\" design.
+                                logger?.LogException(ex, "UpdateBootstrapper: failed to wipe stray Versions\\ content - proceeding with the seed anyway.");
+                            }
                         }
 
                         var seeded = ExtractManifestZipAndAdopt(context, "Install");
@@ -96,19 +110,30 @@ namespace GLSense.Loader.Core
                     }
                 }
 
-                string localVersion = paths.LatestVersion;
-                string localReleaseDate = paths.LatestReleaseDate;
-                string folderName = ReleaseHistoryStore.BuildFolderName(localVersion, localReleaseDate);
-                string versionFolder = Path.Combine(paths.VersionsPath, folderName);
-                bool haveLocalDlls = Directory.Exists(versionFolder) && Directory.GetFiles(versionFolder, "*.dll").Any();
+                // Resolve "what's already installed" from the catalog itself, NOT from
+                // paths.LatestVersion/LatestReleaseDate (manifest.json) - that file can
+                // be (and, after a fresh-install seed, always is) deleted by this class,
+                // and PathProvider lazily recreates it with unrelated hardcoded default
+                // values the moment it's missing. Recomputing FolderName from those
+                // defaults would silently point at a folder that doesn't exist, making
+                // the add-in fail to load on the very next ordinary launch after a
+                // successful install. The catalog is durable and unaffected by
+                // manifest.json's lifecycle, so it's the correct source of truth here.
+                var catalogEntries = ReleaseHistoryStore.ReadAll(paths.ReleaseHistoryFile);
+                var activeEntry = catalogEntries
+                    .Where(e => !string.IsNullOrWhiteSpace(e.FolderName) &&
+                                Directory.Exists(Path.Combine(paths.VersionsPath, e.FolderName)) &&
+                                Directory.GetFiles(Path.Combine(paths.VersionsPath, e.FolderName), "*.dll").Any())
+                    .OrderByDescending(e => e.ReleaseDate)
+                    .FirstOrDefault();
 
-                if (haveLocalDlls)
+                if (activeEntry != null)
                 {
-                    logger?.LogDebug($"UpdateBootstrapper: no zip present, but '{versionFolder}' already has DLLs - using installed version '{localVersion}'.");
-                    return new ResolvedRelease { Version = localVersion, ReleaseDate = localReleaseDate, FolderName = folderName };
+                    logger?.LogDebug($"UpdateBootstrapper: no zip present, using catalog's most recent valid entry '{activeEntry.FolderName}'.");
+                    return new ResolvedRelease { Version = activeEntry.Version, ReleaseDate = activeEntry.ReleaseDate, FolderName = activeEntry.FolderName };
                 }
 
-                logger?.LogError($"UpdateBootstrapper: no zip in '{paths.ManifestDirectory}' and no usable install at '{versionFolder}' - nothing to load.");
+                logger?.LogError($"UpdateBootstrapper: no zip in '{paths.ManifestDirectory}' and no usable entry in the catalog - nothing to load.");
                 return null;
             }
             catch (Exception ex)
@@ -136,7 +161,6 @@ namespace GLSense.Loader.Core
             Directory.CreateDirectory(versionFolder);
 
             ZipFile.ExtractToDirectory(zipPath, versionFolder);
-            File.Delete(zipPath);
 
             // Per-version manifest snapshot - a permanent, self-contained record of
             // exactly what this folder is, independent of the transient copy in
@@ -154,6 +178,12 @@ namespace GLSense.Loader.Core
                 Source = source
             };
             ReleaseHistoryStore.Append(paths.ReleaseHistoryFile, entry);
+
+            // Delete the zip only after the catalog append has genuinely succeeded -
+            // if anything above throws, the zip is still there so the next launch can
+            // retry the full extract+catalog sequence, instead of being left with DLLs
+            // on disk but no catalog entry and no way to retry (the zip already gone).
+            File.Delete(zipPath);
 
             logger?.LogDebug($"UpdateBootstrapper: extracted, catalogued (source={source}), and deleted '{zipPath}'. Adopting '{folderName}'.");
 
