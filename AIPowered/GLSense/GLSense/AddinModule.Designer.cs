@@ -176,6 +176,7 @@ namespace GLSense
             this.ImageList_16X16.Images.SetKeyName(37, "PeriodEnd_24.png");
             this.ImageList_16X16.Images.SetKeyName(38, "PeriodStart_24.png");
             this.ImageList_16X16.Images.SetKeyName(39, "SegmentDescriptiveField_24.png");
+            this.ImageList_16X16.Images.SetKeyName(40, "reload.png");
             // 
             // ImageList_32X32
             // 
@@ -893,9 +894,9 @@ namespace GLSense
             this.RibDDConfiguration.SuperTip = "Customize the drilldowns. Format the columns , add custom drilldown columns or ad" +
     "d custom formula (formulas supported by excel)";
             this.RibDDConfiguration.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibDDConfiguration_OnClick);
-            //
+            // 
             // RibDDDeleteConfiguration
-            //
+            // 
             this.RibDDDeleteConfiguration.Caption = "Delete Customization";
             this.RibDDDeleteConfiguration.Id = "adxRibbonButton_9a3e2f1c6b4d4e2f8a7c5d6e9b0f1a2c";
             this.RibDDDeleteConfiguration.Image = 33;
@@ -905,7 +906,7 @@ namespace GLSense
             this.RibDDDeleteConfiguration.ScreenTip = "Drilldowns";
             this.RibDDDeleteConfiguration.SuperTip = "Delete the drilldown customization saved locally for the current cube.";
             this.RibDDDeleteConfiguration.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibDDDeleteConfiguration_OnClick);
-            //
+            // 
             // adxRibbonGroup8
             // 
             this.adxRibbonGroup8.AutoScale = true;
@@ -1255,6 +1256,8 @@ namespace GLSense
             // 
             this.RibReload.Caption = "Reload Add-in";
             this.RibReload.Id = "adxRibbonButton_7c4a1e0b9d3f4a2ea6c8f5b1d2e7a9c4";
+            this.RibReload.Image = 40;
+            this.RibReload.ImageList = this.ImageList_16X16;
             this.RibReload.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibReload.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibReload.ScreenTip = "Reload Add-in";

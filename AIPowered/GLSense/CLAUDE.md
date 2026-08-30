@@ -4432,6 +4432,91 @@ rebuilt/tested by the user in a real Excel session.
 
 ---
 
+## 41. GLSense.dll + both adxloader stubs: four-round back-and-forth on signing, settled on a cert-expiry-aware skip check for every sign_file.cmd caller (AIPowered-only, build script)
+
+User's real-world experience: once the DigiCert signing certificate expired, Add-in Express
+refused to load the add-in at Excel startup because the loader DLLs' signatures were made
+with the now-expired cert - even though `sign_file.cmd`'s existing "skip if already validly
+signed" check (`signtool verify /pa /q`) still reported them as validly signed. Root cause:
+`verify /pa` can keep passing after a signing certificate's own expiry date purely because of
+the RFC3161 timestamp countersignature (`/tr .../ /td SHA256`) baked in at signing time -
+Windows honors that timestamp to say "this was validly signed at a point when the cert was
+good." Add-in Express's own loader-trust check apparently does **not** honor that timestamp
+the same way - it appears to check the embedded certificate's validity more directly, so a
+stale signature that still `verify /pa`s fine can nonetheless be refused by Add-in Express.
+
+This only matters for the 3 files Add-in Express itself loads/trusts at Excel startup -
+`GLSense.dll`, `adxloader.GLSense.dll`, `adxloader64.GLSense.dll` (all signed in
+`GLSense\post_build.cmd`). Every other `sign_file.cmd` caller (`GLSense.Contracts`/
+`GLSense.Shared`/`GLSense.Loader.Core`/`GLSense.Addin.Core`'s own DLL, plus the two
+`e_sqlite3.dll` copies) is a library consumed via ProjectReference/zip, not something Add-in
+Express itself evaluates trust on directly - the normal skip-if-already-signed optimization
+(avoid burning a signing operation on a rebuild that didn't change the bytes) is still correct
+and unchanged for those.
+
+**First fix tried (superseded below)**: added an optional 3rd argument to `sign_file.cmd`,
+`"FORCE"` - when passed, skips the `verify /pa` early-exit entirely and always re-signs with
+whatever certificate is currently configured in the script, every Release build. `signtool
+sign` (no `/as` flag used) replaces an existing signature rather than appending a second one,
+so this wouldn't have left old+new signatures stacked. `GLSense\post_build.cmd`'s 3
+`sign_file.cmd` calls were changed to pass `"FORCE"` as a 3rd argument.
+
+**Second round - reversed to "don't sign at all"**: the user then asked to remove these 3
+files from signing/re-signing entirely rather than force-resign them. `GLSense\post_build.cmd`
+briefly had zero `sign_file.cmd` calls for `GLSense.dll`/`adxloader.GLSense.dll`/
+`adxloader64.GLSense.dll` - the host project's post_build.cmd did nothing but echo start/
+complete banners. This traded the expired-cert-blocks-loading risk for a different real risk,
+surfaced when discussing it further: the user is shipping these files inside a digitally
+signed MSI, and asked whether that MSI-level signature was enough to avoid SmartScreen/AV
+warnings on the DLLs themselves. It is not - signing the MSI package only covers the installer
+file's own one-time SmartScreen check at install time; it does not sign (or propagate any
+signature to) the individual files the MSI extracts to disk. Those files stay exactly as
+signed/unsigned as they were when built, forever, and every subsequent Excel load of an
+unsigned `GLSense.dll`/`adxloader*.dll` is a separate trust evaluation - vulnerable to Office
+Trust Center's "Require Trusted Publisher for add-ins" policy, AV/EDR heuristics that flag
+*unsigned code loaded into a signed, trusted process* (a classic DLL side-loading detection
+pattern - Excel is a Microsoft-signed process), and WDAC/AppLocker code-integrity policies -
+none of which the MSI's own signature satisfies.
+
+**Third round - re-added plain (non-FORCE) signing**: given that trade-off, the user asked to
+re-add signing to these 3 files, "if not signed already" - i.e. the normal
+skip-if-already-signed behavior (`sign_file.cmd` called with only 2 arguments, same as every
+other project in this solution), not the FORCE mode from round one. At this point the original
+expired-cert failure mode was back and unguarded again (plain `verify /pa` still passes via the
+timestamp after the cert expires).
+
+**Fourth round - the actual settled fix: make the skip check itself cert-expiry-aware,
+solution-wide**: rather than choosing between "always force-resign" (round one, wasteful/
+blunt) and "just skip if signed" (round three, vulnerable to the exact incident that started
+this), `sign_file.cmd`'s core skip check was rewritten so BOTH of these must hold to skip
+re-signing:
+  1. `signtool verify /pa` succeeds (still checked first - confirms it's genuinely signed).
+  2. The embedded certificate's own `NotAfter` date - read via PowerShell's
+     `Get-AuthenticodeSignature -LiteralPath ... | Select SignerCertificate.NotAfter`, NOT
+     `verify /pa`'s pass/fail, since that's exactly the check that stays green past cert
+     expiry via the timestamp - is still in the future (compared against `Get-Date`).
+If either check fails (unsigned, OR signed-but-cert-expired), the file gets (re-)signed
+automatically with whatever cert is currently configured - no manual FORCE step needed, ever,
+for this specific failure mode. This is implemented once in `sign_file.cmd` itself, so it
+automatically applies to **every** caller solution-wide (`GLSense.Contracts`/`GLSense.Shared`/
+`GLSense.Loader.Core`/`GLSense.Addin.Core`'s own DLL/`e_sqlite3.dll` x2, plus `GLSense`'s own
+3 files) - not just the 3 files that triggered the original incident. This is a strict
+improvement for all of them: it can only cause a *needed* re-sign that the old check would
+have wrongly skipped, never an unnecessary one.
+
+`GLSense\post_build.cmd`'s 3 calls stay as plain 2-argument calls (no `FORCE` needed anymore -
+the improved default check already covers this). `sign_file.cmd`'s `"FORCE"` 3rd argument is
+still supported as an explicit unconditional-resign escape hatch, but is no longer the
+mechanism for handling cert expiry and no current caller passes it.
+
+**Status**: implemented (cert-expiry-aware skip check, solution-wide), AIPowered only (build
+script, no application code touched). Not independently re-verified against a real Excel load
+or a real cert-expiry scenario in this pass - the PowerShell `Get-AuthenticodeSignature`/
+`SignerCertificate.NotAfter` approach is standard, well-documented behavior, but hasn't been
+run against an actual expired-then-renewed cert here.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
