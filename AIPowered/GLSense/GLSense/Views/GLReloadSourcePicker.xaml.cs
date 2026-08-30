@@ -161,7 +161,7 @@ namespace GLSense
             return candidateReleaseDate > baselineDate;
         }
 
-        private void BtnCheckOnline_Click(object sender, RoutedEventArgs e)
+        private async void BtnCheckOnline_Click(object sender, RoutedEventArgs e)
         {
             ResetValidation();
 
@@ -185,7 +185,7 @@ namespace GLSense
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginInfo.LoginToken);
 
-                    string responseJson = client.GetStringAsync(url).GetAwaiter().GetResult();
+                    string responseJson = await client.GetStringAsync(url);
 
                     var parser = new VersionParser();
                     var result = parser.ParseVersionJson(responseJson);
@@ -203,7 +203,7 @@ namespace GLSense
                     }
 
                     string tempZip = Path.Combine(Path.GetTempPath(), $"GLSenseOnline_{Guid.NewGuid():N}.zip");
-                    var zipBytes = client.GetByteArrayAsync(result.DownloadUrl).GetAwaiter().GetResult();
+                    var zipBytes = await client.GetByteArrayAsync(result.DownloadUrl);
                     File.WriteAllBytes(tempZip, zipBytes);
 
                     string actualChecksum = ComputeSha256(tempZip);
