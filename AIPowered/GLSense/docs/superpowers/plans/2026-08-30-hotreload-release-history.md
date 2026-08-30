@@ -568,14 +568,22 @@ needed for `ReleaseHistoryStore`/`ReleaseEntry`.
 
 - [ ] **Step 4: Build to verify**
 
+**Correction found during execution** (`AddinDomainLoader.cs` does not actually call
+`ResolveVersionToLoad` at all — only `AddinModule.cs` in the separate `GLSense` host
+project does): the command that actually exercises the expected failure must target the
+host project, not `GLSense_Loader_Core`:
+
 ```powershell
-msbuild GLSense.sln /t:GLSense_Loader_Core /p:Configuration=Debug
+msbuild GLSense.sln /t:GLSense /p:Configuration=Debug
 ```
 
-Expected: build FAILS at this point with errors in `AddinDomainLoader.cs`/`AddinModule.cs`
-(both still call the old `string`-returning signature) — that's expected and gets fixed
-in Task A4. Confirm the failure is specifically about the changed `ResolveVersionToLoad`
-signature, not a syntax error in the files just written.
+Expected: build FAILS at this point with two `CS0029` errors in `GLSense\AddinModule.cs`
+(the startup call site and `ReloadAddinCore`'s call site, both still expecting the old
+`string`-returning signature) — that's expected and gets fixed in Task A4 (startup site)
+and Task B4 (`ReloadAddinCore`). Confirm the failure is specifically these two
+`ResolvedRelease`-to-`string` conversion errors, not a syntax error in the files just
+written. Separately, `msbuild GLSense.Loader.Core\GLSense.Loader.Core.csproj
+/p:Configuration=Debug` (this task's own project, in isolation) should succeed cleanly.
 
 - [ ] **Step 5: Commit**
 
@@ -687,15 +695,19 @@ method.
 
 - [ ] **Step 5: Build to verify**
 
+`ReloadAddinCore` elsewhere in `AddinModule.cs` still calls `ResolveVersionToLoad` as if
+it returned `string` (untouched by this task — Task B4 rewrites it), so a plain
+solution-wide build is still expected to fail at that one remaining call site. To verify
+this task's own 4 files are correct in isolation, temporarily comment out the body of
+`ReloadAddinCore` (e.g. replace it with `throw new NotImplementedException();`), then run:
+
 ```powershell
 msbuild GLSense.sln /t:GLSense_Loader_Core;GLSense /p:Configuration=Debug
 ```
 
-Expected: `Build succeeded.` (`ReloadAddinCore` in `AddinModule.cs` will still fail to
-compile against the new `ResolveVersionToLoad` signature — that's expected until Task
-B4; if this task is executed standalone before B4 exists, temporarily comment out
-`ReloadAddinCore`'s body to confirm A1-A4 compile in isolation, then restore it before
-starting Phase B.)
+Expected: `Build succeeded.` with `ReloadAddinCore` stubbed this way. Then restore
+`ReloadAddinCore`'s real body exactly as it was before committing — the committed state
+legitimately still fails to build solution-wide until Task B4 lands.
 
 - [ ] **Step 6: Manual verification (requires a Windows machine with Excel + this
   solution built)**
@@ -1099,15 +1111,17 @@ namespace GLSense
             TxtStatus.Text = $"Ready to reload: version {result.Version}, released {result.ReleaseDate}.\n{Path.GetFileName(zipPath)} ({new FileInfo(zipPath).Length / 1024} KB)";
         }
 
-        private bool IsStrictlyNewer(string candidateReleaseDateText)
+        // VersionParseResult.ReleaseDate is already a parsed DateTime (see
+        // VersionParser.ParseVersionJson/ParseVersionFile) - takes DateTime directly,
+        // does not re-parse a string.
+        private bool IsStrictlyNewer(DateTime candidateReleaseDate)
         {
             string baseline = GlobalsEx.Context?.ReleaseDate;
             if (string.IsNullOrWhiteSpace(baseline)) return true; // nothing loaded yet
 
-            if (!DateTime.TryParse(candidateReleaseDateText, out var candidateDate)) return false;
             if (!DateTime.TryParse(baseline, out var baselineDate)) return true;
 
-            return candidateDate > baselineDate;
+            return candidateReleaseDate > baselineDate;
         }
 
         private void BtnCheckOnline_Click(object sender, RoutedEventArgs e)
