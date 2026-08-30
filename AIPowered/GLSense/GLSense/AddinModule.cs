@@ -197,31 +197,21 @@ namespace GLSense
             GlobalsEx.Context?.Logger?.LogDebug($"RibReload_OnClick fired (pressed={pressed})");
             if (_reloadInProgress) return;
 
-            // Hot-reload has no old-monolith equivalent to port from (a single-AppDomain
-            // add-in always required a full Excel restart to pick up code changes) - this
-            // is new infrastructure. Destructive/risky enough (see the caveat below) that
-            // it warrants an explicit confirmation rather than firing on a single click.
-            var confirm = MessageBox.Show(
-                "This reloads GLSense.Addin.Core.dll from disk without restarting Excel." +
-                Environment.NewLine + Environment.NewLine +
-                "Make sure you've rebuilt it first (its post_build.cmd copies the new DLL " +
-                "into the versions folder this reads from)." +
-                Environment.NewLine + Environment.NewLine +
-                "Any drilldown/refresh/snapshot currently in progress will be interrupted - " +
-                "this does not wait for background work to finish before unloading. Continue?",
-                "Reload GLSense Add-in",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
+            var picker = new GLReloadSourcePicker();
+            bool? pickerResult = picker.ShowDialog();
+            if (pickerResult != true) return;
 
-            if (confirm != DialogResult.Yes) return;
+            string source = picker.SelectedSource;
 
             _reloadInProgress = true;
+            System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.WaitCursor;
             try
             {
-                ReloadAddinCore();
+                ReloadAddinCore(() => new UpdateBootstrapper().ResolveVersionToLoad(GlobalsEx.Context, source));
             }
             finally
             {
+                System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Default;
                 _reloadInProgress = false;
             }
         }
@@ -245,19 +235,15 @@ namespace GLSense
         /// exists specifically to surface this risk to the user rather than hide it -
         /// reload only when nothing else is actively running.
         /// </summary>
-        private void ReloadAddinCore()
+        private void ReloadAddinCore(Func<ResolvedRelease> resolveRelease)
         {
             try
             {
-                GlobalsEx.Context?.Logger?.LogDebug("Reload requested via ribbon (RibReload).");
+                GlobalsEx.Context?.Logger?.LogDebug("Reload requested via ribbon (RibReload) or Release History browser.");
 
                 var oldAddin = GlobalsEx.Addin;
                 var loader = GlobalsEx.Loader;
 
-                // 1. Let the outgoing instance tear down its own WPF-side state (currently:
-                //    closes the reparented Balance Configurator window/HWND) BEFORE the
-                //    AppDomain unloads, so the host's task pane is never left holding a
-                //    handle into a domain that no longer exists.
                 try
                 {
                     oldAddin?.Shutdown();
@@ -267,31 +253,13 @@ namespace GLSense
                     GlobalsEx.Context?.Logger?.LogException(ex, "ReloadAddinCore: old instance Shutdown failed");
                 }
 
-                // 2. Null the pointer before unloading. Every call site in this file already
-                //    goes through GlobalsEx.Addin?./GlobalsEx.Context?. null-conditionals, so
-                //    this leaves the add-in transparently "temporarily unavailable" instead
-                //    of holding a reference into a domain mid-unload.
                 GlobalsEx.Addin = null;
-
-                // 3. Unload the old AppDomain - releases the old GLSense.Addin.Core.dll (and
-                //    its shadow-copy) so a freshly rebuilt copy in the versions folder can be
-                //    picked up by the next Load().
                 loader?.Unload(GlobalsEx.Context);
 
-                // 3b. Re-run UpdateBootstrapper before reloading. Post-build no longer
-                //     xcopies a fresh DLL straight into Versions\vX\ (see
-                //     GLSense.Addin.Core\post_build.cmd / CLAUDE.md section 17) - the ONLY
-                //     way new DLLs reach that folder now is UpdateBootstrapper extracting a
-                //     zip that post-build drops directly into the local Manifest folder
-                //     (folder-only flow, no network/local-host involved - see CLAUDE.md
-                //     section 17). Without this call, Reload would just re-load whatever was
-                //     already sitting in Versions\vX\ from the last successful bootstrap -
-                //     i.e. it would silently keep reloading stale code after a rebuild,
-                //     never picking up new changes.
-                string resolvedVersion = new UpdateBootstrapper().ResolveVersionToLoad(GlobalsEx.Context);
-                if (string.IsNullOrEmpty(resolvedVersion))
+                ResolvedRelease resolved = resolveRelease();
+                if (resolved == null)
                 {
-                    GlobalsEx.Context?.Logger?.LogError("ReloadAddinCore: UpdateBootstrapper could not resolve a version to reload (no zip/manifest.json in the Manifest folder and no usable local install).");
+                    GlobalsEx.Context?.Logger?.LogError("ReloadAddinCore: could not resolve a release to load.");
                     MessageBox.Show(
                         "Reload failed - no usable add-in version was found. Make sure GLSense.Addin.Core " +
                         "has been rebuilt (its post_build.cmd publishes a zip + manifest.json into the " +
@@ -301,17 +269,12 @@ namespace GLSense
                         MessageBoxIcon.Error);
                     return;
                 }
-                GlobalsEx.Context.Version = resolvedVersion;
-                GlobalsEx.Context.ReleaseDate = GlobalsEx.Context.Paths?.LatestReleaseDate;
-                GlobalsEx.Context?.Logger?.LogDebug($"ReloadAddinCore: resolvedVersion={resolvedVersion}, releaseDate={GlobalsEx.Context.ReleaseDate}");
 
-                // 4. Load a fresh AppDomain + AddinEntry instance from whatever
-                //    UpdateBootstrapper just resolved/extracted, and re-point
-                //    GlobalsEx.Addin. Reuses the SAME GlobalsEx.Loader/GlobalsEx.Context
-                //    instances (host-side, never torn down) - AddinDomainLoader.Load only
-                //    needs calling again, no other host-side re-initialization
-                //    (RibbonController, ExcelHandle) is required since none of that lives
-                //    in the domain being replaced.
+                GlobalsEx.Context.Version = resolved.Version;
+                GlobalsEx.Context.ReleaseDate = resolved.ReleaseDate;
+                GlobalsEx.Context.ActiveFolderName = resolved.FolderName;
+                GlobalsEx.Context?.Logger?.LogDebug($"ReloadAddinCore: version={resolved.Version}, releaseDate={resolved.ReleaseDate}, folderName={resolved.FolderName}");
+
                 GlobalsEx.Addin = loader?.Load(GlobalsEx.Context);
 
                 if (GlobalsEx.Addin != null)
