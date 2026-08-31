@@ -341,3 +341,38 @@ Two distinct root causes, both fixed together per the user's request:
   different base class - `views:BaseWindow` in AIPowered here vs. `utils:DpiAwareWindow`
   elsewhere - but the same Cell Reference row/spacer shape); fixed independently on each,
   in both FinalWorkingCode and AIPowered.
+
+## `Drilldowns\DD_BL.cs` / `DD_JL.cs` / `DD_SL.cs`
+
+- **GLWaitWindow processing title missing or wrong for some drilldowns**: reported as
+  the processing/wait window not showing the drilldown's full name, or showing the wrong
+  one, for some drilldown types. `GLWaitWindow.xaml`'s `txtTitle` defaults to
+  "Refreshing Data" until `SetProcessTitle(...)` is called.
+  - `DrilldownBl.ProcessBLDrilldown` (handles ddType `BL`, `BL_JL`, `BL_SL`, and `UF` -
+    see `AddinModule.RunBalanceDrilldownAsync`) never called `SetProcessTitle` at all, so
+    the window was stuck on the XAML default "Refreshing Data" for every one of those
+    four drilldown types, regardless of which was actually running.
+  - `DrilldownJl.ProcessJLDrilldown` (handles ddType `JL`, `BLDD_SL`, and `BLDD_UF` - see
+    `AddinModule.RibJournalDD_OnClick`/`RibBalancesDDToSubLedger_OnClick`/
+    `RibBalancesDDToUnified_OnClick`) stored `_ddType` in a field but hardcoded the title
+    to the literal string `"Journals Drilldown"` regardless of its value - so the two
+    Balances-Drilldown-to-X types launched through this class showed "Journals Drilldown"
+    instead of their real names.
+  - `DrilldownSl` hardcoded `"Subledgers Drilldown"` (lowercase "l"), which only differs
+    from `DrilldownType.SL`'s canonical `[Description("SubLedgers Drilldown")]` by
+    casing, but was still inconsistent with the single source of truth for these display
+    strings.
+  `Common\DrilldownMetadata.GetDisplay(DrilldownType)` (backed by
+  `Common\DrilldownType.cs`'s `[Description(...)]` attributes) already existed as that
+  source of truth and was already used correctly elsewhere (e.g.
+  `DDDatatoWorksheet.cs`'s toast messages), just not wired into these three progress-window
+  title call sites.
+  Fixed by having `DrilldownBl`/`DrilldownJl` parse their own `_DDType`/`_ddType` field
+  via `Enum.TryParse<DrilldownType>` and pass `DrilldownMetadata.GetDisplay(ddEnum)` as
+  the title (falling back to the raw string if parsing fails), and switching `DrilldownSl`
+  to call `DrilldownMetadata.GetDisplay(DrilldownType.SL)` instead of its hardcoded
+  literal. Build-verified.
+  **Status: fixed in both FinalWorkingCode and AIPowered.** AIPowered's
+  `GLSense.Addin.Core\Drilldowns\DD_BL.cs`/`DD_JL.cs`/`DD_SL.cs` had the exact same three
+  gaps and got the identical fix - see AIPowered's `CLAUDE.md` section 42.
+  in both FinalWorkingCode and AIPowered.

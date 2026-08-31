@@ -1,4 +1,5 @@
-﻿using GLSense.Helpers;
+﻿using GLSense.Common;
+using GLSense.Helpers;
 using GLSense.Models;
 using GLSense.Utilities;
 using GLSense.Views;
@@ -85,7 +86,10 @@ namespace GLSense.Drilldowns
 
                 try
                 {
-                    await InitializeProgressWindowAsync("Journals Drilldown", "Processing request...");
+                    string title = Enum.TryParse<DrilldownType>(_ddType, out var ddEnum)
+                        ? DrilldownMetadata.GetDisplay(ddEnum)
+                        : _ddType;
+                    await InitializeProgressWindowAsync(title, "Processing request...");
 
                     string headerText = TryGetColumnHeaderText(JlWorksheet, JlRange);
                     if (!await TryRunDrilldownAsync(headerText, JlWorksheet, JlRange))
