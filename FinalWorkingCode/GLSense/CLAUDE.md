@@ -418,6 +418,6 @@ Two distinct root causes, both fixed together per the user's request:
   handler or new, triggers it), so a 20MB size-rollover in production will still re-emit the
   header into the new file, not just once per day as the header's own placement comment
   assumes. Rare in practice at 20MB and not a regression from this fix, just worth knowing.
-  **Status: fixed in FinalWorkingCode only so far.** AIPowered's
-  `GLSense.Shared\Logger.cs` has the exact same `ArchiveFileName = "...\GLSense_Logs_{#}.log"`
-  shape (lines ~93-115) and needs the identical port once requested.
+  **Status: fixed in both FinalWorkingCode and AIPowered.** AIPowered's
+  `GLSense.Shared\Logger.cs` had the exact same `ArchiveFileName = "...\GLSense_Logs_{#}.log"`
+  shape and got the identical fix - see AIPowered's `CLAUDE.md` section 43.
