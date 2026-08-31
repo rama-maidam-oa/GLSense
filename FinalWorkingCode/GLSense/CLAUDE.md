@@ -376,3 +376,48 @@ Two distinct root causes, both fixed together per the user's request:
   `GLSense.Addin.Core\Drilldowns\DD_BL.cs`/`DD_JL.cs`/`DD_SL.cs` had the exact same three
   gaps and got the identical fix - see AIPowered's `CLAUDE.md` section 42.
   in both FinalWorkingCode and AIPowered.
+
+## `Helpers\LogHelper.cs`
+
+- **20MB log-file rollover used NLog's "Legacy/unstable" archive handler, and archived
+  filenames carried no date**: `FileName` is a dynamic layout (`${date:format=dd-MMM-yyyy}`,
+  see the header comment above about the log file being per-day), and the archive config
+  additionally set `ArchiveFileName = "...\GLSense_Logs_{#}.log"`. NLog's own wiki warns
+  this combination ("Dynamic FileName Archive Logic" + an explicit `ArchiveFileName`) causes
+  "unexpected archive behavior" - confirmed by tracing NLog 6.1.4's own source
+  (`FileTarget.cs`'s `CreateFileArchiveHandler`): merely setting `ArchiveFileName` at all,
+  regardless of its content, forces the `LegacyArchiveFileNameHandler` path, which the
+  source itself comments as `"Legacy / unstable because file-move can fail because of
+  file-locks from other applications"` - a real risk here since this target also sets
+  `KeepFileOpen = true` (an exclusive lock on the active file). Separately, `{#}` is
+  deprecated syntax in NLog v6 (superseded by `ArchiveSuffixFormat`); its legacy
+  compatibility shim only strips `{#}` when preceded by `.`/`_`/`-`, so archived files
+  were named like `GLSense_Logs_00.log`, `GLSense_Logs_01.log` - the date was lost, and a
+  size-rollover on one day's file shared the same flat sequence-number pool as any other
+  day's rollovers, since nothing in the archive name distinguished dates.
+  Fixed by removing `ArchiveFileName` entirely and setting `ArchiveSuffixFormat = "({0})"`
+  instead. This routes size-based rollover through NLog 6's `RollingArchiveFileHandler`
+  ("Updated dynamic sequence handling without file-move-logic" per its own source comment)
+  - it opens a new, already-numbered file instead of renaming the full one, so there's no
+  lock contention with `KeepFileOpen`. Per `FileTarget.cs`'s `BuildFullFilePath`, the suffix
+  is only appended once `sequenceNumber > 0`, so the day's first/active chunk stays plain
+  (`GLSense_Logs_{date}.log`), and each subsequent 20MB rollover produces
+  `GLSense_Logs_{date}(1).log`, `(2).log`, etc. Numbering is naturally scoped per day too,
+  since the wildcard NLog uses internally to find the next sequence number is derived from
+  the already-dated active filename.
+  Verified two ways: (1) a standalone NLog 6.1.4 console harness reproducing this exact
+  `FileTarget` config against a 10KB threshold produced `GLSense_Logs_<date>.log` through
+  `<date>(6).log` cleanly, no overwrites; (2) a real Excel run with
+  `AppConstants.LogMaxFileSizeBytes` temporarily set to 10KB produced
+  `GLSense_Logs_31-Aug-2026.log` through `(4).log` in the real logs folder, each ~10-11KB,
+  content chronologically intact across the split (cross-checked via embedded HTTP response
+  `Date:` headers in the logged API traffic). `LogMaxFileSizeBytes` was reverted to 20MB
+  (`20 * 1024 * 1024`) after the test.
+  Note: `FileTarget.Header` (the "Environment Snapshot" block) is written by NLog whenever
+  it creates a new physical file - this was already true before this fix (any rollover, old
+  handler or new, triggers it), so a 20MB size-rollover in production will still re-emit the
+  header into the new file, not just once per day as the header's own placement comment
+  assumes. Rare in practice at 20MB and not a regression from this fix, just worth knowing.
+  **Status: fixed in FinalWorkingCode only so far.** AIPowered's
+  `GLSense.Shared\Logger.cs` has the exact same `ArchiveFileName = "...\GLSense_Logs_{#}.log"`
+  shape (lines ~93-115) and needs the identical port once requested.

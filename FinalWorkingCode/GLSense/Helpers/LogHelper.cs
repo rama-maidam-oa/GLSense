@@ -50,7 +50,18 @@ namespace GLSense.Helpers
                         DeleteOldFileOnStartup = false,
                         ArchiveAboveSize = AppConstants.LogMaxFileSizeBytes,  // 20MB archive size
                         MaxArchiveFiles = AppConstants.LogMaxArchiveFiles,
-                        ArchiveFileName = AppPaths.LogFolder + @"\GLSense_Logs_{#}.log"
+                        // Deliberately no ArchiveFileName: FileName already uses ${date} (dynamic
+                        // per-day naming), and NLog's own guidance is to never combine that with an
+                        // explicit ArchiveFileName - doing so forces the "Legacy/unstable" file-move
+                        // archive handler (FileTarget.cs's CreateFileArchiveHandler), which fights
+                        // KeepFileOpen's exclusive lock on the active file. Leaving ArchiveFileName
+                        // unset routes size-based rollover through NLog 6's RollingArchiveFileHandler
+                        // instead - it opens a new, already-numbered file rather than renaming the
+                        // full one, so there's no lock contention. ArchiveSuffixFormat only gets
+                        // appended once sequenceNumber > 0 (BuildFullFilePath), so today's first/
+                        // active chunk stays plain GLSense_Logs_{date}.log, and each subsequent
+                        // 20MB rollover produces GLSense_Logs_{date}(1).log, (2).log, etc.
+                        ArchiveSuffixFormat = "({0})"
                     };
 
                     var GLSenseLoggerConfiguration = new LoggingConfiguration();
