@@ -92,7 +92,6 @@ namespace GLSense.Shared
                     string logPath = PathProvider.Instance.Logs;
                     string fileNamePattern = logPath + @"\GLSense_Logs_${date:format=dd-MMM-yyyy}.log";
                     var fileNameLayout = NLog.Layouts.Layout.FromString(fileNamePattern);
-                    var archiveFileNamePattern = logPath + @"\GLSense_Logs_{#}.log";
 
                     var logfile = new FileTarget("logfile")
                     {
@@ -112,7 +111,19 @@ namespace GLSense.Shared
                         DeleteOldFileOnStartup = false,
                         ArchiveAboveSize = 20 * 1024 * 1024,  // 20MB archive size
                         MaxArchiveFiles = 30,
-                        ArchiveFileName = archiveFileNamePattern
+                        // Deliberately no ArchiveFileName: FileName already uses ${date} (dynamic
+                        // per-day naming), and NLog's own guidance is to never combine that with an
+                        // explicit ArchiveFileName - doing so forces the "Legacy/unstable" file-move
+                        // archive handler (FileTarget.cs's CreateFileArchiveHandler), which fights
+                        // KeepFileOpen's exclusive lock on the active file. Leaving ArchiveFileName
+                        // unset routes size-based rollover through NLog 6's RollingArchiveFileHandler
+                        // instead - it opens a new, already-numbered file rather than renaming the
+                        // full one, so there's no lock contention. ArchiveSuffixFormat only gets
+                        // appended once sequenceNumber > 0 (BuildFullFilePath), so today's first/
+                        // active chunk stays plain GLSense_Logs_{date}.log, and each subsequent
+                        // 20MB rollover produces GLSense_Logs_{date}(1).log, (2).log, etc.
+                        // Ported from FinalWorkingCode's GLSense.Helpers.LogHelper.cs (identical bug).
+                        ArchiveSuffixFormat = "({0})"
                     };
 
                     var GLSenseLoggerConfiguration = new LoggingConfiguration();

@@ -418,5 +418,6 @@ Two distinct root causes, both fixed together per the user's request:
   assumes. Rare in practice at 20MB and not a regression from this fix, just worth knowing.
   **Status**: ported from `wpfui-removal-phase1` (commit `e4ac5c4`), where it was verified
   both with a standalone NLog harness and a live Excel run as described above. AIPowered's
-  `GLSense.Shared\Logger.cs` has the exact same `ArchiveFileName = "...\GLSense_Logs_{#}.log"`
-  shape (lines ~93-115) and still needs the identical port, on every branch, once requested.
+  `GLSense.Shared\Logger.cs` had the exact same `ArchiveFileName = "...\GLSense_Logs_{#}.log"`
+  shape and got the identical fix (ported from `wpfui-removal-phase1` commit `c335a2d`) -
+  see AIPowered's `CLAUDE.md` section 39 on this branch.
