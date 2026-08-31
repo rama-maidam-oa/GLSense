@@ -4306,9 +4306,9 @@ the already-dated active filename. Identical fix shape and root cause to
 FinalWorkingCode's `Helpers\LogHelper.cs` - see that project's `CLAUDE.md` for the
 standalone-harness and live-Excel-run verification this fix originally got there.
 
-**Status**: ported from FinalWorkingCode's already-verified fix. This project's
-`GLSense.Shared` (net481, NLog 6.1.3 via `packages.config`) has the same `ArchiveSuffixFormat`
-API as FinalWorkingCode's NLog 6.1.4 - re-verify with a build before release.
+**Status**: ported from FinalWorkingCode's already-verified fix. Build-verified on
+`11.1.0-window-flash-redo` after the port (`GLSense.Addin.Core.csproj`,
+`/p:SignAssembly=false`, which pulls in `GLSense.Shared`).
 
 ---
 
