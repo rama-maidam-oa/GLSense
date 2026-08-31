@@ -4270,8 +4270,9 @@ identical fix shape to FinalWorkingCode's `DD_BL.cs`/`DD_JL.cs`/`DD_SL.cs`, conf
 have the exact same three gaps before porting.
 
 **Status**: ported from `wpfui-removal-phase1` (commit `db138b6`), fixed in both
-FinalWorkingCode and AIPowered there. Not independently rebuilt on this branch as part of
-the port - re-verify with a full solution build here before release.
+FinalWorkingCode and AIPowered there. Build-verified on `11.1.0-window-flash-redo` after
+the port (`GLSense.Addin.Core.csproj`, `/p:SignAssembly=false` - same pre-existing
+verification-only override as every other AIPowered entry in this file).
 
 ---
 

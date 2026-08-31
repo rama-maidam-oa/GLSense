@@ -373,7 +373,7 @@ Two distinct root causes, both fixed together per the user's request:
   literal. Build-verified.
   **Status**: ported from `wpfui-removal-phase1` (commit `db138b6`), fixed in both
   FinalWorkingCode and AIPowered there - see AIPowered's `CLAUDE.md` section 38 on this
-  branch. Re-verify build here before release.
+  branch. Build-verified on `11.1.0-window-flash-redo` after the port (`GLSense.csproj`).
 
 ## `Helpers\LogHelper.cs`
 
