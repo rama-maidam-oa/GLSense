@@ -80,8 +80,29 @@ namespace GLSense.Addin.Core.Helpers
             try
             {
                 string platform = Environment.Is64BitProcess ? "x64" : "x86";
-                string versionFolderName = $"V{ServiceLocator.Version}";
-                string dllPath = Path.Combine(ServiceLocator.Paths.VersionsPath, versionFolderName, platform);
+
+                // Primary source: AppDomain.CurrentDomain.BaseDirectory. AddinDomainLoader
+                // sets this AppDomain's ApplicationBase to exactly the Versions\{FolderName}\
+                // directory this Addin.Core.dll was actually loaded from (see
+                // AddinDomainLoader.Load) - reading it back here can never drift from
+                // reality, unlike reconstructing the path from Version/ActiveFolderName
+                // (which depends on that state being correctly threaded through
+                // IGLSenseContext across the AppDomain boundary - see CLAUDE.md section 40
+                // for the class of bug that caused, and the "SQLite native DLL directory
+                // not found" warning this whole area is prone to).
+                string dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, platform);
+
+                if (!Directory.Exists(dllPath))
+                {
+                    // Fallback only - should not normally be reached, since BaseDirectory
+                    // above is authoritative for how this AppDomain was actually loaded.
+                    // Kept as defense-in-depth in case this helper is ever exercised
+                    // outside the AddinDomainLoader-created AppDomain (e.g. a future unit
+                    // test host) where BaseDirectory wouldn't point at a version folder.
+                    string fallbackPath = Path.Combine(ServiceLocator.Paths.VersionsPath, ServiceLocator.ActiveFolderName, platform);
+                    ServiceLocator.Logger?.LogWarn($"SQLiteHelper.LoadNativeSQLiteDll: SQLite native DLL directory not found via AppDomain.BaseDirectory ('{dllPath}'); trying fallback: {fallbackPath}");
+                    dllPath = fallbackPath;
+                }
 
                 ServiceLocator.Logger?.LogDebug($"SQLiteHelper.LoadNativeSQLiteDll: attempting to load SQLite native DLL from: {dllPath}");
 
@@ -92,7 +113,7 @@ namespace GLSense.Addin.Core.Helpers
                 }
                 else
                 {
-                    ServiceLocator.Logger?.LogWarn($"SQLiteHelper.LoadNativeSQLiteDll: SQLite native DLL directory not found: {dllPath}");
+                    ServiceLocator.Logger?.LogWarn($"SQLiteHelper.LoadNativeSQLiteDll: SQLite native DLL directory not found (checked both AppDomain.BaseDirectory and the ActiveFolderName-derived path): {dllPath}");
                 }
             }
             catch (Exception ex)

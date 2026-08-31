@@ -6,7 +6,7 @@
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
-        Background="#FFF5F7FA">
+        Background="White">
     <Window.Resources>
         <Style x:Key="SectionHeader" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold"/>

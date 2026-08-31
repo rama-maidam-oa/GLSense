@@ -216,6 +216,7 @@ namespace GLSense
             this.ImageList_32X32.Images.SetKeyName(31, "PeriodStart_32.png");
             this.ImageList_32X32.Images.SetKeyName(32, "SegmentDescriptiveField_32.png");
             this.ImageList_32X32.Images.SetKeyName(33, "deleteDrilldowns.png");
+            this.ImageList_32X32.Images.SetKeyName(34, "versioncontrol.png");
             // 
             // orbittab
             // 
@@ -1196,11 +1197,10 @@ namespace GLSense
             this.adxRibbonGroup10.Caption = "Setup";
             this.adxRibbonGroup10.Controls.Add(this.Riburl);
             this.adxRibbonGroup10.Controls.Add(this.RibUserConfig);
+            this.adxRibbonGroup10.Controls.Add(this.RibReload);
             this.adxRibbonGroup10.Controls.Add(this.adxRibbonSeparator5);
             this.adxRibbonGroup10.Controls.Add(this.RibDebug);
             this.adxRibbonGroup10.Controls.Add(this.RibVersionCheck);
-            this.adxRibbonGroup10.Controls.Add(this.RibReload);
-            this.adxRibbonGroup10.Controls.Add(this.RibReleaseHistory);
             this.adxRibbonGroup10.Id = "adxRibbonGroup_3a9df2aa92c8498584671976a8f6d7f1";
             this.adxRibbonGroup10.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.adxRibbonGroup10.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
@@ -1264,23 +1264,28 @@ namespace GLSense
             this.RibReload.SuperTip = "Rebuild GLSense.Addin.Core, then click here to reload it without restarting Excel" +
     ".";
             this.RibReload.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReload_OnClick);
-            //
+            // 
             // RibReleaseHistory
-            //
+            // 
             this.RibReleaseHistory.Caption = "Release History";
             this.RibReleaseHistory.Id = "adxRibbonButton_9f2e6c1a4b7d4e3f8a1c6d9e2b5f7a3c";
+            this.RibReleaseHistory.Image = 34;
+            this.RibReleaseHistory.ImageList = this.ImageList_32X32;
             this.RibReleaseHistory.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibReleaseHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibReleaseHistory.ScreenTip = "Release History";
-            this.RibReleaseHistory.SuperTip = "Browse every GLSense.Addin.Core release ever adopted on this machine, and load any of them without restarting Excel.";
+            this.RibReleaseHistory.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
+            this.RibReleaseHistory.SuperTip = "Browse every GLSense.Addin.Core release ever adopted on this machine, and load an" +
+    "y of them without restarting Excel.";
             this.RibReleaseHistory.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReleaseHistory_OnClick);
-            //
+            // 
             // adxRibbonGroup11
             // 
             this.adxRibbonGroup11.AutoScale = true;
             this.adxRibbonGroup11.Caption = "About";
             this.adxRibbonGroup11.Controls.Add(this.RibAbout);
             this.adxRibbonGroup11.Controls.Add(this.RibHelp);
+            this.adxRibbonGroup11.Controls.Add(this.RibReleaseHistory);
             this.adxRibbonGroup11.Id = "adxRibbonGroup_1d62bdd090d84dab88664d84bfb01508";
             this.adxRibbonGroup11.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.adxRibbonGroup11.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;

@@ -129,6 +129,23 @@ namespace GLSense.Addin.Core.Infrastructure
         }
 
         /// <summary>
+        /// Gets the folder name (under Versions\) that the currently loaded release's DLLs
+        /// actually live in - see IGLSenseContext.ActiveFolderName. This is the correct,
+        /// current way to locate any file shipped alongside the release (e.g. native DLLs);
+        /// never reconstruct a "V{Version}"-style path from Version alone, since a release's
+        /// folder name also includes its release date (see ReleaseHistoryStore.BuildFolderName).
+        /// </summary>
+        public static string ActiveFolderName
+        {
+            get
+            {
+                if (!_isInitialized)
+                    throw new InvalidOperationException("ServiceLocator has not been initialized. Call ServiceLocator.Initialize(context) first.");
+                return _context.ActiveFolderName;
+            }
+        }
+
+        /// <summary>
         /// Gets the AllVersions from the context
         /// </summary>
         public static System.Collections.Generic.IReadOnlyList<VersionInfo> AllVersions

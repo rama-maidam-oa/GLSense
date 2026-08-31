@@ -33,19 +33,28 @@ echo Core Bin Dir: %CORE_BIN_DIR%
 REM ============================================================================
 REM FOLDER-ONLY testing flow (see CLAUDE.md section 17) - the local-host/HTTP
 REM simulation was removed after it kept failing to connect in practice (an
-REM easy-to-forget extra process to keep running). This script now drops a
-REM fresh zip + manifest.json directly into the LOCAL Manifest folder
-REM (%LOCALAPPDATA%\...\GLSense_Logs_New\Manifest\) on every build.
-REM GLSense.Loader.Core\UpdateBootstrapper.cs sees both sitting there together
-REM on the next Excel launch (or a manual "Reload Add-in" click - see
-REM AddinModule.ReloadAddinCore) and extracts the zip into Versions\V{version}\,
-REM deleting the zip afterwards - no network involved at all.
+REM easy-to-forget extra process to keep running). This script drops a fresh
+REM zip + manifest.json into ONE of two places depending on Configuration:
 REM
-REM This deliberately overrides section 14.5's "build shouldn't create
-REM deployment folders, PathProvider.cs owns that" rule, specifically for the
-REM Manifest folder, specifically for this local testing setup - once this is
-REM confirmed working, the plan is to return to real-time/online updates
-REM (a real server, no build-time folder writes into GLSense_Logs_New at all).
+REM   - Debug:   %LOCALAPPDATA%\...\GLSense_Logs_New\Manifest\ (unchanged) -
+REM              GLSense.Loader.Core\UpdateBootstrapper.cs sees both sitting
+REM              there together on the next Excel launch (or a manual
+REM              "Reload Add-in" click - see AddinModule.ReloadAddinCore) and
+REM              extracts the zip into Versions\V{version}\, deleting the zip
+REM              afterwards - no network involved at all. This is the local
+REM              hot-reload dev-loop flow and is unaffected by the Release
+REM              branch below.
+REM   - Release: "%PROJECT_DIR%\Manifests\" (this project's own folder, NOT
+REM              GLSense_Logs_New) - the main GLSense (host) project references
+REM              this fixed, source-relative path to pull the zip+manifest.json
+REM              into the shipped MSI. Created if missing.
+REM
+REM The Debug branch deliberately overrides section 14.5's "build shouldn't
+REM create deployment folders, PathProvider.cs owns that" rule, specifically
+REM for the Manifest folder, specifically for local testing - once online
+REM updates return, this build-time folder write goes away. The Release branch
+REM is a different, permanent mechanism (packaging input for the MSI), not a
+REM testing convenience, so it is not subject to that same caveat.
 REM ============================================================================
 
 echo ========================================
@@ -102,9 +111,19 @@ if not exist "%CORE_BIN_DIR%" (
     goto :SkipManifestPublish
 )
 
-set MANIFEST_DIR=%LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs_New\Manifest
+REM Debug -> local %LOCALAPPDATA% Manifest folder (hot-reload test flow, unchanged).
+REM Release -> this project's own "Manifests" folder (MSI packaging input - see
+REM the header comment above). Comparison is case-insensitive since MSBuild's
+REM $(Configuration) casing can vary by how it was invoked.
+if /I "%CONFIG%"=="Release" (
+    set MANIFEST_DIR=%PROJECT_DIR%\Manifests
+) else (
+    set MANIFEST_DIR=%LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs_New\Manifest
+)
 set OUT_ZIP=%MANIFEST_DIR%\v%FILE_VERSION%.zip
 set OUT_MANIFEST=%MANIFEST_DIR%\manifest.json
+
+echo Manifest Output Dir: %MANIFEST_DIR%
 
 REM Mirror CORE_BIN_DIR into a small staging folder first, excluding *.pdb
 REM (debug symbols aren't needed to run the add-in, just dead weight in the
@@ -127,9 +146,11 @@ echo .pdb> "%ZIP_EXCLUDE_LIST%"
 
 xcopy /Y /E /I /EXCLUDE:%ZIP_EXCLUDE_LIST% "%CORE_BIN_DIR%\*" "%ZIP_STAGE_DIR%\" 2>&1
 
-REM Manifest folder is created here on purpose (see the header comment above -
-REM this is a deliberate, temporary override of the "build doesn't create
-REM GLSense_Logs_New folders" rule, scoped to this local testing setup only).
+REM Manifest folder is created here on purpose (see the header comment above).
+REM For Debug this is a deliberate, temporary override of the "build doesn't
+REM create GLSense_Logs_New folders" rule, scoped to local testing only. For
+REM Release this is just a normal project-relative output folder, not covered
+REM by that rule at all.
 if not exist "%MANIFEST_DIR%" mkdir "%MANIFEST_DIR%"
 
 powershell -NoProfile -Command "Compress-Archive -Path '%ZIP_STAGE_DIR%\*' -DestinationPath '%OUT_ZIP%' -Force"
@@ -160,8 +181,14 @@ del "%TEMP%\glsense_releasedate.tmp" >nul 2>&1
 REM Overwritten on every build (not "seed if missing" like PathProvider's own
 REM CreateDefaultManifestFile) - the whole point is that a fresh manifest.json
 REM + zip sitting together triggers UpdateBootstrapper's extract-on-launch path
-REM every time. downloadUrl is left empty - nothing downloads this locally, the
-REM zip is already sitting right next to the manifest.
+REM every time (Debug branch) / a fresh packaging input exists for the MSI
+REM (Release branch). downloadUrl is left empty - nothing downloads this
+REM locally, the zip is already sitting right next to the manifest.
+if /I "%CONFIG%"=="Release" (
+    set MANIFEST_NOTES=Published by GLSense.Addin.Core post_build.cmd (Release - MSI packaging input)
+) else (
+    set MANIFEST_NOTES=Published by GLSense.Addin.Core post_build.cmd (folder-only test flow)
+)
 (
     echo [
     echo   {
@@ -169,7 +196,7 @@ REM zip is already sitting right next to the manifest.
     echo     "releaseDate": "%RELEASE_DATE%",
     echo     "downloadUrl": "",
     echo     "checksum": "%ZIP_CHECKSUM%",
-    echo     "notes": "Published by GLSense.Addin.Core post_build.cmd (folder-only test flow)",
+    echo     "notes": "%MANIFEST_NOTES%",
     echo     "mandatory": false
     echo   }
     echo ]

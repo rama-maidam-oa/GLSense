@@ -5,7 +5,7 @@
         Width="640" Height="420"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
-        Background="#FFF5F7FA">
+        Background="White">
     <Window.Resources>
         <Style x:Key="ActionButton" TargetType="Button">
             <Setter Property="Padding" Value="16,6"/>
@@ -29,7 +29,26 @@
         <DataGrid x:Name="GridReleases" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True"
                   SelectionMode="Single" SelectionUnit="FullRow" CanUserAddRows="False"
                   SelectionChanged="GridReleases_SelectionChanged">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
+                            <Setter Property="Background" Value="#FFE3F2FD"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
             <DataGrid.Columns>
+                <DataGridTextColumn Header="Loaded" Binding="{Binding LoadedMarker}" Width="55">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="HorizontalAlignment" Value="Center"/>
+                            <Setter Property="Foreground" Value="#FF1565C0"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
                 <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="90"/>
                 <DataGridTextColumn Header="Release Date" Binding="{Binding ReleaseDate}" Width="160"/>
                 <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="80"/>
@@ -41,9 +60,19 @@
             <TextBlock x:Name="TxtStatus" TextWrapping="Wrap" Text="Select a release, then click Load This Release."/>
         </Border>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button x:Name="BtnLoad" Content="Load This Release" Style="{StaticResource ActionButton}" IsEnabled="False" Click="BtnLoad_Click"/>
-            <Button x:Name="BtnCancel" Content="Close" Padding="16,6" Margin="6,0,0,0" Click="BtnCancel_Click"/>
-        </StackPanel>
+        <Grid Grid.Row="3" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="TxtLoadedStatus" Grid.Column="0" VerticalAlignment="Center"
+                       FontSize="11" Foreground="#FF555555" TextWrapping="Wrap"/>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnLoad" Content="Load This Release" Style="{StaticResource ActionButton}" IsEnabled="False" Click="BtnLoad_Click"/>
+                <Button x:Name="BtnCancel" Content="Close" Padding="16,6" Margin="6,0,0,0" Click="BtnCancel_Click"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>
