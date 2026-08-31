@@ -31,6 +31,7 @@
 // on AppState.cs; NotValidBalancesDict as part of the Group F refresh/recalc pass - see
 // CommonFunctions.cs/BalanceRefresh.cs), so the no-op comment was stale. Restored to the
 // old monolith's real body as part of the end-to-end completeness pass.
+using GLSense.Addin.Core.Common;
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using GLSense.Addin.Core.Models;
@@ -188,6 +189,11 @@ namespace GLSense.Addin.Core.Drilldowns
                     ServiceLocator.Logger?.LogWarn("Unable to set progress window");
                     return;
                 }
+
+                string title = Enum.TryParse<DrilldownType>(_DDType, out var ddEnum)
+                    ? DrilldownMetadata.GetDisplay(ddEnum)
+                    : _DDType;
+                _ = Win.Dispatcher.InvokeAsync(() => Win.SetProcessTitle(title));
 
                 await ValidateAndFixFormulasAsync(Win);
 
