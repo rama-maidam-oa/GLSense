@@ -3164,6 +3164,148 @@ namespace GLSense.ViewModels
             }
         }
 
+        // Captures one field's current state the same way GetFormulaFieldValue already
+        // resolves it for formula-building: Reference wins outright when present.
+        private (string? Combo, string? Ref) CaptureField(FieldBinding field)
+        {
+            if (field == null) return (null, null);
+
+            if (!string.IsNullOrWhiteSpace(field.RefValue))
+                return (null, field.RefValue);
+
+            var comboText = GetFieldValue(field);
+            return (string.IsNullOrWhiteSpace(comboText) ? null : comboText, null);
+        }
+
+        private SavedBalanceConfig CaptureCurrentAsSavedConfig(string configName)
+        {
+            var (ledgerCombo, ledgerRef) = CaptureField(LedgerField);
+            var (activityCombo, activityRef) = CaptureField(ActivityField);
+            var (btCombo, btRef) = CaptureField(BalanceTypeField);
+            var (periodCombo, periodRef) = CaptureField(PeriodField);
+            var (endPeriodCombo, endPeriodRef) = CaptureField(EndPeriodField);
+            var (startDateCombo, startDateRef) = CaptureField(StartDateField);
+            var (endDateCombo, endDateRef) = CaptureField(EndDateField);
+            var (currencyCombo, currencyRef) = CaptureField(CurrencyField);
+            var (currencyTypeCombo, currencyTypeRef) = CaptureField(CurrencyTypeField);
+            var (actualFlagCombo, actualFlagRef) = CaptureField(ActualFlagField);
+            var (budgetCombo, budgetRef) = CaptureField(BudgetField);
+            var (encumbranceCombo, encumbranceRef) = CaptureField(EncumbranceField);
+            var (journalSourceCombo, journalSourceRef) = CaptureField(JournalSourceField);
+            var (journalCategoryCombo, journalCategoryRef) = CaptureField(JournalCategoryField);
+            var (accountCombo, accountRef) = CaptureField(AccountAssignmentField);
+
+            return new SavedBalanceConfig
+            {
+                ConfigName = configName,
+                LedgerCombo = ledgerCombo,
+                LedgerRef = ledgerRef,
+                ActivityCombo = activityCombo,
+                ActivityRef = activityRef,
+                BalanceTypeCombo = btCombo,
+                BalanceTypeRef = btRef,
+                PeriodCombo = periodCombo,
+                PeriodRef = periodRef,
+                EndPeriodCombo = endPeriodCombo,
+                EndPeriodRef = endPeriodRef,
+                StartDateCombo = startDateCombo,
+                StartDateRef = startDateRef,
+                EndDateCombo = endDateCombo,
+                EndDateRef = endDateRef,
+                CurrencyCombo = currencyCombo,
+                CurrencyRef = currencyRef,
+                CurrencyTypeCombo = currencyTypeCombo,
+                CurrencyTypeRef = currencyTypeRef,
+                ActualFlagCombo = actualFlagCombo,
+                ActualFlagRef = actualFlagRef,
+                BudgetCombo = budgetCombo,
+                BudgetRef = budgetRef,
+                EncumbranceCombo = encumbranceCombo,
+                EncumbranceRef = encumbranceRef,
+                JournalSourceCombo = journalSourceCombo,
+                JournalSourceRef = journalSourceRef,
+                JournalCategoryCombo = journalCategoryCombo,
+                JournalCategoryRef = journalCategoryRef,
+                AccountAssignmentCombo = accountCombo,
+                AccountAssignmentRef = accountRef,
+                IsSignChecked = IsSignChecked,
+                FactorText = string.IsNullOrWhiteSpace(FactorText) ? "1" : FactorText,
+                IsZeroesChecked = IsZeroesChecked
+            };
+        }
+
+        private void PersistSavedConfigurations()
+        {
+            var cube = AppState.Instance.SelectedCube;
+            if (cube == null)
+            {
+                LogUtility.LogWarn("GLConfiguratorViewModel.PersistSavedConfigurations: no cube selected, cannot persist.");
+                return;
+            }
+
+            BalanceConfigXmlStore.Save(ExcelApp?.ActiveWorkbook, cube.CubeId, cube.CubeName, new List<SavedBalanceConfig>(SavedConfigurations));
+        }
+
+        /// <summary>
+        /// Saves the current field selections as a new named configuration for the current
+        /// cube. Returns false (and raises ShowWarningAction) if the name is blank or already
+        /// used by another saved configuration for this cube.
+        /// </summary>
+        public Task<bool> SaveNewConfigurationAsync(string name)
+        {
+            var trimmedName = (name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(trimmedName))
+            {
+                ShowWarningAction?.Invoke("Please enter a name for the saved configuration.");
+                return Task.FromResult(false);
+            }
+
+            bool nameExists = SavedConfigurations.Any(c =>
+                string.Equals(c.ConfigName, trimmedName, StringComparison.OrdinalIgnoreCase));
+
+            if (nameExists)
+            {
+                ShowWarningAction?.Invoke($"A saved configuration named \"{trimmedName}\" already exists for this cube. Choose a different name.");
+                return Task.FromResult(false);
+            }
+
+            var newConfig = CaptureCurrentAsSavedConfig(trimmedName);
+            SavedConfigurations.Add(newConfig);
+            PersistSavedConfigurations();
+            SelectedSavedConfig = newConfig;
+
+            LogUtility.LogDebug($"GLConfiguratorViewModel.SaveNewConfigurationAsync: saved '{trimmedName}'.");
+            return Task.FromResult(true);
+        }
+
+        /// <summary>
+        /// Overwrites SelectedSavedConfig's stored values with the current field selections.
+        /// Name is unchanged. No-op (with a warning) if nothing is selected.
+        /// </summary>
+        public Task UpdateSelectedConfigurationAsync()
+        {
+            if (SelectedSavedConfig == null)
+            {
+                ShowWarningAction?.Invoke("Select a saved configuration to update first.");
+                return Task.CompletedTask;
+            }
+
+            var index = SavedConfigurations.IndexOf(SelectedSavedConfig);
+            if (index < 0)
+            {
+                LogUtility.LogWarn("GLConfiguratorViewModel.UpdateSelectedConfigurationAsync: selected configuration no longer present in the list.");
+                return Task.CompletedTask;
+            }
+
+            var updated = CaptureCurrentAsSavedConfig(SelectedSavedConfig.ConfigName);
+            SavedConfigurations[index] = updated;
+            PersistSavedConfigurations();
+            SelectedSavedConfig = updated;
+
+            LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateSelectedConfigurationAsync: updated '{updated.ConfigName}'.");
+            return Task.CompletedTask;
+        }
+
         public void WriteFormulaToCell(Microsoft.Office.Interop.Excel.Range rng)
         {
             LogUtility.LogDebug("GLConfiguratorViewModel.WriteFormulaToCell: entry");
