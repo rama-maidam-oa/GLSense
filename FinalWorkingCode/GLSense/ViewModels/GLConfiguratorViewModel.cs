@@ -3306,6 +3306,28 @@ namespace GLSense.ViewModels
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Removes SelectedSavedConfig from the list and persists the change. Confirmation
+        /// (are you sure?) is the View's responsibility (GLBalanceConfigurator.xaml.cs) - this
+        /// method performs the delete unconditionally once invoked. No-op if nothing selected.
+        /// </summary>
+        public Task DeleteSelectedConfigurationAsync()
+        {
+            if (SelectedSavedConfig == null)
+            {
+                ShowWarningAction?.Invoke("Select a saved configuration to delete first.");
+                return Task.CompletedTask;
+            }
+
+            var removedName = SelectedSavedConfig.ConfigName;
+            SavedConfigurations.Remove(SelectedSavedConfig);
+            SelectedSavedConfig = null;
+            PersistSavedConfigurations();
+
+            LogUtility.LogDebug($"GLConfiguratorViewModel.DeleteSelectedConfigurationAsync: deleted '{removedName}'.");
+            return Task.CompletedTask;
+        }
+
         public void WriteFormulaToCell(Microsoft.Office.Interop.Excel.Range rng)
         {
             LogUtility.LogDebug("GLConfiguratorViewModel.WriteFormulaToCell: entry");
