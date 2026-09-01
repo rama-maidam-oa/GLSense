@@ -20,6 +20,11 @@
 **/Logs/
 **/*.log
 
+# --- Claude Code session artifacts (local settings, brainstorming-companion
+# mockup/state files) - personal/session-scoped, never meant to be shared ---
+**/.claude/settings.local.json
+**/.superpowers/
+
 # --- FinalWorkingCode-specific excludes ---
 /FinalWorkingCode/MigrationBackup/
 
