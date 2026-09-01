@@ -55,7 +55,7 @@ namespace GLSense.Addin.Core.Repositories
                         transaction.Rollback();
                         throw; // Will be caught by outer catch
                     }
-                });
+                }).ConfigureAwait(false);
 
                 ServiceLocator.Logger?.LogDebug($"CubeDataRepository.InsertCubeDataAsync completed successfully. CubeCount={CubeCache.AllCubes.Count}");
             }
