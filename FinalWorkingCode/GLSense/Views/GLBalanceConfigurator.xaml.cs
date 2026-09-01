@@ -639,6 +639,19 @@ namespace GLSense.Views
             if (!hasSelection)
                 return;
 
+            // SelectionChanged fires whether the ViewModel itself just assigned
+            // SelectedSavedConfig (Save New / Update, via the two-way-bound SelectedItem) or
+            // the user genuinely clicked a different combo entry. Reloading fields from the
+            // config right after Save/Update would overwrite the on-screen state with a
+            // freshly re-parsed copy of what was just captured - degrading freehand values
+            // ProcessFieldAsync had already nulled out during capture. Skip the reload for
+            // that case; the Update/Delete buttons above are still kept in sync either way.
+            if (vm.ConsumeSuppressNextSelectionLoad())
+            {
+                LogUtility.LogDebug("GLBalanceConfigurator.CmbSavedConfigurations_SelectionChanged: selection change came from Save/Update, skipping reload.");
+                return;
+            }
+
             LogUtility.LogDebug($"GLBalanceConfigurator.CmbSavedConfigurations_SelectionChanged: loading '{vm.SelectedSavedConfig.ConfigName}'");
             _ = LoadSelectedSavedConfigurationAsync(vm.SelectedSavedConfig);
         }
@@ -647,7 +660,16 @@ namespace GLSense.Views
         {
             try
             {
-                await vm.LoadSavedConfigurationAsync(config);
+                // Mirrors ReLoadConfigurator's own use of ExecuteWithBusyOverlay (see above):
+                // gives this load the same busy-overlay feedback for a potentially
+                // multi-second load, and the overlay's IsHitTestVisible blocks further clicks
+                // on the underlying controls (including this combo box) for its duration,
+                // same protection ReLoadConfigurator itself relies on - no separate
+                // re-entrancy mechanism exists in this file to reuse instead.
+                await ExecuteWithBusyOverlay($"Loading saved configuration \"{config?.ConfigName}\"", async helper =>
+                {
+                    await vm.LoadSavedConfigurationAsync(config);
+                });
             }
             catch (Exception ex)
             {

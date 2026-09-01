@@ -42,10 +42,14 @@ namespace GLSense.Common
                 return;
             }
 
-            RemoveExisting(wb, cubeId, out _);
-
             try
             {
+                // Build the new payload FIRST, before touching the existing part - this store
+                // holds hand-authored, non-recoverable user data (unlike
+                // DrilldownMetadataXmlStore, which holds a re-fetchable API response), so a
+                // serialization/XDocument failure here must not leave the user with nothing.
+                // Only the RemoveExisting + Add pair below (the actual replace) happens after
+                // the new content is known-good.
                 string rawJson = JsonSerializer.Serialize(configs ?? new List<SavedBalanceConfig>(), JsonGlobals.Options);
 
                 var root = new XElement(
@@ -54,7 +58,10 @@ namespace GLSense.Common
                     new XElement(CubeNameElementName, cubeName ?? string.Empty),
                     new XElement(PayloadElementName, new XCData(rawJson)));
 
-                wb.CustomXMLParts.Add(new XDocument(root).ToString());
+                string newPartXml = new XDocument(root).ToString();
+
+                RemoveExisting(wb, cubeId, out _);
+                wb.CustomXMLParts.Add(newPartXml);
                 LogUtility.LogDebug($"BalanceConfigXmlStore.Save: stored {configs?.Count ?? 0} saved configuration(s) for cubeId={cubeId}");
             }
             catch (Exception ex)

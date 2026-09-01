@@ -295,6 +295,29 @@ namespace GLSense.ViewModels
             }
         }
 
+        // Set immediately before SaveNewConfigurationAsync/UpdateSelectedConfigurationAsync
+        // assign SelectedSavedConfig themselves (as opposed to a genuine user click on the
+        // combo box). WPF's Selector fires SelectionChanged for either cause, and
+        // GLBalanceConfigurator.xaml.cs's CmbSavedConfigurations_SelectionChanged
+        // fire-and-forgets a full field reload from the just-saved entry - which can wipe
+        // out freehand combo values ProcessFieldAsync just captured (it sets ComboValue to
+        // null when a typed value matches no list item). Consumed (read-and-reset) by the
+        // View via ConsumeSuppressNextSelectionLoad() so the reload is skipped exactly once.
+        private bool _suppressNextSelectionLoad;
+
+        /// <summary>
+        /// Returns whether the next SelectionChanged on the saved-configurations combo was
+        /// caused by this ViewModel assigning SelectedSavedConfig itself (Save/Update), and
+        /// resets the flag. Intended to be called once, at the top of
+        /// CmbSavedConfigurations_SelectionChanged.
+        /// </summary>
+        public bool ConsumeSuppressNextSelectionLoad()
+        {
+            bool result = _suppressNextSelectionLoad;
+            _suppressNextSelectionLoad = false;
+            return result;
+        }
+
         public class ActivityModel : NotifyBase
         {
             public long CubeId { get; set; }
@@ -3272,6 +3295,7 @@ namespace GLSense.ViewModels
             var newConfig = CaptureCurrentAsSavedConfig(trimmedName);
             SavedConfigurations.Add(newConfig);
             PersistSavedConfigurations();
+            _suppressNextSelectionLoad = true;
             SelectedSavedConfig = newConfig;
 
             LogUtility.LogDebug($"GLConfiguratorViewModel.SaveNewConfigurationAsync: saved '{trimmedName}'.");
@@ -3300,6 +3324,7 @@ namespace GLSense.ViewModels
             var updated = CaptureCurrentAsSavedConfig(SelectedSavedConfig.ConfigName);
             SavedConfigurations[index] = updated;
             PersistSavedConfigurations();
+            _suppressNextSelectionLoad = true;
             SelectedSavedConfig = updated;
 
             LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateSelectedConfigurationAsync: updated '{updated.ConfigName}'.");
@@ -3438,9 +3463,9 @@ namespace GLSense.ViewModels
                 funcArgs.Add(config.AccountAssignmentRef);
                 funcValues.Add(resolved);
             }
-            else
+            else if (!string.IsNullOrWhiteSpace(config.AccountAssignmentCombo))
             {
-                var segments = (config.AccountAssignmentCombo ?? string.Empty)
+                var segments = config.AccountAssignmentCombo
                     .Split(new[] { ';' }, StringSplitOptions.None);
 
                 foreach (var segment in segments)
@@ -3450,6 +3475,12 @@ namespace GLSense.ViewModels
                     funcValues.Add(trimmed);
                 }
             }
+            // else: no account assignment was ever saved (both Combo and Ref blank) - emit no
+            // segments at index 11+ at all, instead of Split("")'s single empty-string element.
+            // LoadSavedConfigurationAsync below also explicitly clears AccountAssignmentField
+            // afterward for this same case, since ProcessAccountAssignments' per-segment branch
+            // synthesizes its own ";;;;" placeholder from ConfiguratorSegments.Count regardless
+            // of how many entries FuncArgs/FuncValues actually have at index 11+.
 
             return (funcArgs, funcValues);
         }
@@ -3473,6 +3504,24 @@ namespace GLSense.ViewModels
             var (funcArgs, funcValues) = BuildFuncArgsFromSavedConfig(config);
             LogUtility.LogDebug($"GLConfiguratorViewModel.LoadSavedConfigurationAsync: loading '{config.ConfigName}'.");
             await ApplyFormulaParamsAsync(config.IsZeroesChecked, funcArgs, funcValues);
+
+            // A config saved with no Account Assignment set at all (both Combo and Ref
+            // blank) still drives ProcessAccountAssignments' per-segment branch, which
+            // synthesizes a ";;;;"-shaped placeholder (one empty slot per COA segment) from
+            // ConfiguratorSegments.Count regardless of how short FuncArgs/FuncValues are -
+            // that placeholder is non-whitespace, so HasValidAccountAssignment would wrongly
+            // treat it as "set". Explicitly restore the field to the same null state a fresh
+            // dialog starts in.
+            if (string.IsNullOrWhiteSpace(config.AccountAssignmentCombo) && string.IsNullOrWhiteSpace(config.AccountAssignmentRef))
+            {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    AccountAssignmentField.ComboValue = null;
+                    AccountAssignmentField.ComboText = null;
+                    AccountAssignmentField.RefValue = null;
+                    AccountAssignmentField.RefreshEnableState();
+                });
+            }
         }
 
         public void WriteFormulaToCell(Microsoft.Office.Interop.Excel.Range rng)

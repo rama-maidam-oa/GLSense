@@ -142,12 +142,17 @@
                 <Expander Grid.Row="1"
                           x:Name="SavedConfigurationsExpander"
                           Style="{StaticResource BlueCircleExpanderStyle}"
-                          Header="Saved Configurations"
                           IsExpanded="False"
                           Background="White"
                           BorderThickness="0"
                           HorizontalAlignment="Stretch"
                           Margin="0,0,0,8">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
+                            <iconPacks:PackIconFontAwesome Kind="BookmarkSolid" Width="14" Height="14" Foreground="#2E86AB" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Saved Configurations" Style="{StaticResource SectionHeaderStyle1}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Expander.Header>
                     <Grid Margin="12,8,12,8">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -179,12 +184,14 @@
 
                         <Button x:Name="btnSaveNewConfig"
                                 Grid.Column="1"
+                                Style="{StaticResource DynamicContentButton}"
                                 Content="Save New"
                                 Margin="0,0,4,0"
                                 Click="BtnSaveNewConfig_Click"/>
 
                         <Button x:Name="btnUpdateConfig"
                                 Grid.Column="2"
+                                Style="{StaticResource DynamicContentButton}"
                                 Content="Update"
                                 Margin="0,0,4,0"
                                 IsEnabled="False"
@@ -192,6 +199,7 @@
 
                         <Button x:Name="btnDeleteConfig"
                                 Grid.Column="3"
+                                Style="{StaticResource DynamicContentButton}"
                                 Content="Delete"
                                 IsEnabled="False"
                                 Click="BtnDeleteConfig_Click"/>
@@ -207,8 +215,8 @@
                                      Width="220"
                                      Style="{StaticResource CompactTextBox}"
                                      Margin="0,0,8,0"/>
-                            <Button Content="Confirm" Margin="0,0,4,0" Click="BtnConfirmSaveNewConfig_Click"/>
-                            <Button Content="Cancel" Click="BtnCancelSaveNewConfig_Click"/>
+                            <Button Style="{StaticResource DynamicContentButton}" Content="Confirm" Margin="0,0,4,0" Click="BtnConfirmSaveNewConfig_Click"/>
+                            <Button Style="{StaticResource DynamicContentButton}" Content="Cancel" Click="BtnCancelSaveNewConfig_Click"/>
                         </StackPanel>
                     </Grid>
                 </Expander>
