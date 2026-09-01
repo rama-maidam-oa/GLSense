@@ -968,7 +968,7 @@ namespace GLSense
                 return PModel(ledgerName) ?? new List<PeriodModel>();
             }
 
-            private static DateTime ParsePeriodDate(object dateObj)
+            internal static DateTime ParsePeriodDate(object dateObj)
             {
                 try
                 {
@@ -1022,7 +1022,12 @@ namespace GLSense
 
             private static string FindPeriodName(IEnumerable<PeriodModel> periods, DateTime date)
             {
-                return periods.FirstOrDefault(p => p.StartDate <= date && p.EndDate >= date)?.PeriodName ?? string.Empty;
+                // Calendar-day containment, not instant containment: a period's stored EndDate is
+                // midnight of its last day (not the last instant of that day), so comparing full
+                // DateTime values would wrongly exclude the last day for any date carrying a
+                // time-of-day component. Comparing .Date matches GLPeriodByDateModel's own
+                // (already-correct) period lookup and is what "date falls within the period" means.
+                return periods.FirstOrDefault(p => p.StartDate.Date <= date.Date && p.EndDate.Date >= date.Date)?.PeriodName ?? string.Empty;
             }
 
             private static string CalculateOffsetPeriod(List<PeriodModel> periods, string basePeriod, int offset)

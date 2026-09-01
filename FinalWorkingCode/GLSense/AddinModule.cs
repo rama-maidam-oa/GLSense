@@ -2598,6 +2598,7 @@ namespace GLSense
         private void RibExpodeAll_OnClick(object sender, IRibbonControl control, bool pressed) { LogUtility.LogDebug("RibExpodeAll_OnClick clicked."); _ = SegmentDiscoverer.SegmentAction("ExplodeAll"); }
         private void RibbonExplode1Level_OnClick(object sender, IRibbonControl control, bool pressed) { LogUtility.LogDebug("RibbonExplode1Level_OnClick clicked."); _ = SegmentDiscoverer.SegmentAction("Explode1Level"); }
         private void RibDiscoverPeriod_OnClick(object sender, IRibbonControl control, bool pressed) { LogUtility.LogDebug("RibDiscoverPeriod_OnClick clicked."); _ = PeriodsDiscoverer.FillPeriods(); }
+        private void RibDiscoverPeriodByDate_OnClick(object sender, IRibbonControl control, bool pressed) { LogUtility.LogDebug("RibDiscoverPeriodByDate_OnClick clicked."); _ = PeriodsDiscoverer.FillPeriodsByDate(); }
 
         private void RigSegDiscover_OnClick(object sender, IRibbonControl control, bool pressed)
         {

@@ -65,6 +65,7 @@ namespace GLSense
             this.RibbonExplode1Level = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonMenuSeparator6 = new AddinExpress.MSO.ADXRibbonMenuSeparator(this.components);
             this.RibDiscoverPeriod = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibDiscoverPeriodByDate = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibAsFormula = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.adxRibbonGroup5 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibRefreshAll = new AddinExpress.MSO.ADXRibbonButton(this.components);
@@ -447,6 +448,7 @@ namespace GLSense
             this.RibSegmentDiscover.Controls.Add(this.RibSegmentExplode);
             this.RibSegmentDiscover.Controls.Add(this.adxRibbonMenuSeparator6);
             this.RibSegmentDiscover.Controls.Add(this.RibDiscoverPeriod);
+            this.RibSegmentDiscover.Controls.Add(this.RibDiscoverPeriodByDate);
             this.RibSegmentDiscover.Id = "adxRibbonMenu_99183c7412884ed4a1a7e4279604e191";
             this.RibSegmentDiscover.Image = 0;
             this.RibSegmentDiscover.ImageList = this.ImageList_16X16;
@@ -553,6 +555,18 @@ namespace GLSense
             this.RibDiscoverPeriod.ScreenTip = "Discover Periods";
             this.RibDiscoverPeriod.SuperTip = "Functionality to autofill periods up, down, right and left";
             this.RibDiscoverPeriod.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibDiscoverPeriod_OnClick);
+            // 
+            // RibDiscoverPeriodByDate
+            // 
+            this.RibDiscoverPeriodByDate.Caption = "Periods By Date";
+            this.RibDiscoverPeriodByDate.Id = "adxRibbonButton_6f2b1a4d8c3e4f9ab0c6d9e7f1a2b3c4";
+            this.RibDiscoverPeriodByDate.Image = 11;
+            this.RibDiscoverPeriodByDate.ImageList = this.ImageList_16X16;
+            this.RibDiscoverPeriodByDate.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibDiscoverPeriodByDate.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibDiscoverPeriodByDate.ScreenTip = "Discover Periods By Date";
+            this.RibDiscoverPeriodByDate.SuperTip = "Functionality to autofill periods up, down, right and left based on a date";
+            this.RibDiscoverPeriodByDate.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibDiscoverPeriodByDate_OnClick);
             // 
             // RibAsFormula
             // 
@@ -1355,6 +1369,7 @@ namespace GLSense
         public AddinExpress.MSO.ADXRibbonButton RibbonExplode1Level;
         public AddinExpress.MSO.ADXRibbonMenuSeparator adxRibbonMenuSeparator6;
         public AddinExpress.MSO.ADXRibbonButton RibDiscoverPeriod;
+        public AddinExpress.MSO.ADXRibbonButton RibDiscoverPeriodByDate;
         public AddinExpress.MSO.ADXRibbonCheckBox RibAsFormula;
         public AddinExpress.MSO.ADXRibbonButton RibRefreshAll;
         public AddinExpress.MSO.ADXRibbonButton RibRefreshBook;

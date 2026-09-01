@@ -163,7 +163,7 @@ namespace GLSense.Helpers
                 [
                    "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibHideRows","RibUnHideRows",
                    "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
-                   "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
+                   "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibDiscoverPeriodByDate","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
                    "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
@@ -197,7 +197,7 @@ namespace GLSense.Helpers
                    "RibLogin", "RibLogout", "Riburl", "RibDebug", "RibAbout",
                    "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibHideRows","RibUnHideRows",
                    "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
-                   "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
+                   "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibDiscoverPeriodByDate","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
                    "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
@@ -218,7 +218,7 @@ namespace GLSense.Helpers
                 [
                    "Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibHideRows","RibUnHideRows",
                    "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
-                   "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
+                   "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibDiscoverPeriodByDate","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
                    "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
@@ -249,7 +249,7 @@ namespace GLSense.Helpers
                 [
                    "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibHideRows","RibUnHideRows",
                    "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
-                   "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
+                   "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibDiscoverPeriodByDate","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
                    "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
@@ -292,7 +292,7 @@ namespace GLSense.Helpers
                      [
                        "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibHideRows","RibUnHideRows",
                        "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
-                       "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
+                       "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibDiscoverPeriodByDate","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                        "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                        "RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                        "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",
@@ -305,7 +305,7 @@ namespace GLSense.Helpers
                      [
                        "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibHideRows","RibUnHideRows",
                        "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
-                       "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
+                       "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibDiscoverPeriodByDate","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                        "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
                        "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                        "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",

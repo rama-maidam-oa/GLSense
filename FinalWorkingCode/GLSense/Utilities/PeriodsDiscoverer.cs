@@ -7,6 +7,7 @@ using Microsoft.Office.Interop.Excel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -31,11 +32,16 @@ namespace GLSense.Utilities
         private static string LedgerString { get; set; }
         private static CancellationHelper _ctsHelper;
         private static CancellationToken Token => _ctsHelper?.GetToken() ?? default;
-        public static async Task FillPeriods()
+        public static Task FillPeriods() => RunFillPeriods(isByDate: false);
+
+        public static Task FillPeriodsByDate() => RunFillPeriods(isByDate: true);
+
+        private static async Task RunFillPeriods(bool isByDate)
         {
+            string opName = isByDate ? "FillPeriodsByDate" : "FillPeriods";
             try
             {
-                LogUtility.LogDebug("PeriodsDiscoverer.FillPeriods started.");
+                LogUtility.LogDebug($"PeriodsDiscoverer.{opName} started.");
                 _ctsHelper = new CancellationHelper();
 
                 CommonMethods.DisableExcelSettings();
@@ -50,8 +56,6 @@ namespace GLSense.Utilities
 
                 if (!isValid) return;
 
-                string rngValue = CellActive.Value2.ToString();
-
                 PrWorbook = ExcelApp.ActiveWorkbook;
                 PrWorksheet = CellActive.Worksheet;
 
@@ -62,7 +66,7 @@ namespace GLSense.Utilities
 
                 if (string.IsNullOrWhiteSpace(LedgerString) && string.IsNullOrWhiteSpace(LedgerReference))
                 {
-                    LogUtility.LogWarn($"PeriodsDiscoverer.FillPeriods: no ledger found for period discover (activeCellValue={rngValue}).");
+                    LogUtility.LogWarn($"PeriodsDiscoverer.{opName}: no ledger found for period discover (activeCellValue={CellActive.Value2}).");
                     await ShowWarnMessage("No ledger found for period discover.");
                     return;
                 }
@@ -73,38 +77,88 @@ namespace GLSense.Utilities
 
                 if (Periods == null || !Periods.Any())
                 {
-                    LogUtility.LogWarn($"PeriodsDiscoverer.FillPeriods: failed in fetching period values for ledger '{LedgerString}'.");
+                    LogUtility.LogWarn($"PeriodsDiscoverer.{opName}: failed in fetching period values for ledger '{LedgerString}'.");
                     await ShowWarnMessage("Failed in fetching the period values.");
                     return;
                 }
 
-                BasePeriod = Periods.FirstOrDefault(p => p.PeriodName == rngValue);
+                string dateArgument = string.Empty;
+                int baseOffsetValue = 0;
 
-                Token.ThrowIfCancellationRequested();
-
-                if (BasePeriod == null)
+                if (isByDate)
                 {
-                    LogUtility.LogWarn($"PeriodsDiscoverer.FillPeriods: selected item \"{rngValue}\" does not exist in the periods list for ledger '{LedgerString}'.");
-                    await ShowWarnMessage($"The selected item \"{rngValue}\" does not exists in the periods list.");
-                    return;
+                    if (!TryResolveBaseDate(out DateTime baseDate, out dateArgument, out baseOffsetValue))
+                    {
+                        LogUtility.LogWarn($"PeriodsDiscoverer.{opName}: the selected cell does not contain a recognizable date.");
+                        await ShowWarnMessage("The selected cell does not contain a valid date.");
+                        return;
+                    }
+
+                    // Calendar-day containment (matches GLSenseExcelFunctions.FindPeriodName and
+                    // GLPeriodByDateModel's period lookup): a period's stored EndDate is midnight of
+                    // its last day, not the last instant of it, so comparing .Date keeps the last day
+                    // included regardless of any time-of-day component on the selected date.
+                    int dateIndex = Periods.FindIndex(p => p.StartDate.Date <= baseDate.Date && p.EndDate.Date >= baseDate.Date);
+
+                    Token.ThrowIfCancellationRequested();
+
+                    if (dateIndex < 0)
+                    {
+                        LogUtility.LogWarn($"PeriodsDiscoverer.{opName}: date '{baseDate:d}' does not fall within any period for ledger '{LedgerString}'.");
+                        await ShowWarnMessage($"The selected date \"{baseDate:d}\" does not exists in the periods list.");
+                        return;
+                    }
+
+                    // The active cell's own resolved/anchor period is the date's period
+                    // shifted by whatever offset was already baked into its formula (0
+                    // for a plain date). Filled cells' target periods - and any formulas
+                    // written for them - are computed relative to THIS anchor, not the
+                    // raw date's own period, so the fill continues the same sequence the
+                    // active cell already represents.
+                    BasePeriodIndex = dateIndex + baseOffsetValue;
+
+                    if (BasePeriodIndex < 0 || BasePeriodIndex >= Periods.Count)
+                    {
+                        LogUtility.LogWarn($"PeriodsDiscoverer.{opName}: date '{baseDate:d}' with offset {baseOffsetValue} resolves outside the periods list for ledger '{LedgerString}'.");
+                        await ShowWarnMessage($"The selected date \"{baseDate:d}\" with offset {baseOffsetValue} does not exists in the periods list.");
+                        return;
+                    }
+
+                    BasePeriod = Periods[BasePeriodIndex];
+                    LogUtility.LogDebug($"PeriodsDiscoverer.{opName}: base date '{baseDate:d}' (offset {baseOffsetValue}) resolved to period '{BasePeriod.PeriodName}' at index {BasePeriodIndex} of {Periods.Count} periods.");
+                }
+                else
+                {
+                    string rngValue = CellActive.Value2.ToString();
+
+                    BasePeriod = Periods.FirstOrDefault(p => p.PeriodName == rngValue);
+
+                    Token.ThrowIfCancellationRequested();
+
+                    if (BasePeriod == null)
+                    {
+                        LogUtility.LogWarn($"PeriodsDiscoverer.{opName}: selected item \"{rngValue}\" does not exist in the periods list for ledger '{LedgerString}'.");
+                        await ShowWarnMessage($"The selected item \"{rngValue}\" does not exists in the periods list.");
+                        return;
+                    }
+
+                    BasePeriodIndex = Periods.FindIndex(p => p.PeriodName == rngValue);
+                    LogUtility.LogDebug($"PeriodsDiscoverer.{opName}: base period '{rngValue}' resolved at index {BasePeriodIndex} of {Periods.Count} periods.");
                 }
 
-                BasePeriodIndex = Periods.FindIndex(p => p.PeriodName == rngValue);
-                LogUtility.LogDebug($"PeriodsDiscoverer.FillPeriods: base period '{rngValue}' resolved at index {BasePeriodIndex} of {Periods.Count} periods.");
-
-                await RunPeriodDiscovery();
+                await RunPeriodDiscovery(isByDate, dateArgument, baseOffsetValue);
 
                 await MessageProgressWindowAsync("Excel refreshing the formulas.");
-                LogUtility.LogDebug("PeriodsDiscoverer.FillPeriods completed.");
+                LogUtility.LogDebug($"PeriodsDiscoverer.{opName} completed.");
             }
             catch (OperationCanceledException)
             {
-                LogUtility.LogWarn("PeriodsDiscoverer.FillPeriods cancelled by user.");
+                LogUtility.LogWarn($"PeriodsDiscoverer.{opName} cancelled by user.");
                 await ShowCancelledAsync();
             }
             catch (Exception ex)
             {
-                await HandleUnexpectedErrorAsync(ex);
+                await HandleUnexpectedErrorAsync(ex, opName);
             }
             finally
             {
@@ -117,13 +171,13 @@ namespace GLSense.Utilities
                 }
                 catch (Exception ex)
                 {
-                    LogUtility.LogWarn($"FillPeriods: failed disposing CancellationHelper (non-fatal): {ex.Message}");
+                    LogUtility.LogWarn($"{opName}: failed disposing CancellationHelper (non-fatal): {ex.Message}");
                 }
                 await SafelyCloseWindowAsync();
-                CommonMethods.TryEnableExcelSettings("PeriodsDiscoverer.FillPeriods");
+                CommonMethods.TryEnableExcelSettings($"PeriodsDiscoverer.{opName}");
             }
         }
-        private static async Task RunPeriodDiscovery()
+        private static async Task RunPeriodDiscovery(bool isByDate, string dateArgument, int baseOffsetValue)
         {
 
             await MessageProgressWindowAsync("Extracting information.");
@@ -146,8 +200,8 @@ namespace GLSense.Utilities
 
             if (!string.IsNullOrWhiteSpace(ledgerRef))
             {
-                LogUtility.LogDebug($"PeriodsDiscoverer.RunPeriodDiscovery: isVertical={isVertical}, isReverse={isReverse}, ledgerRef={ledgerRef}");
-                await FillPeriodDiscoverValues(isReverse, Selection, CellActive, BasePeriodIndex, ledgerRef, Periods);
+                LogUtility.LogDebug($"PeriodsDiscoverer.RunPeriodDiscovery: isVertical={isVertical}, isReverse={isReverse}, ledgerRef={ledgerRef}, isByDate={isByDate}, baseOffsetValue={baseOffsetValue}");
+                await FillPeriodDiscoverValues(isReverse, Selection, CellActive, BasePeriodIndex, ledgerRef, Periods, isByDate, dateArgument, baseOffsetValue);
             }
             else
             {
@@ -190,7 +244,10 @@ namespace GLSense.Utilities
             Range formulaRange,
             int periodIndex,
             string ledgerRef,
-            List<PeriodModel> periods)
+            List<PeriodModel> periods,
+            bool isByDate,
+            string dateArgument,
+            int baseOffsetValue)
         {
             await MessageProgressWindowAsync("Filling period details.");
             await Task.Yield();
@@ -241,8 +298,15 @@ namespace GLSense.Utilities
                         else
                         {
                             targetCell.NumberFormat = AppConstants.General;
-                            // Offset is the relative move used by the GLSense_GetPeriod function
-                            targetCell.Value = $"=GLSense_GetPeriod({rangeRef}, {offset}, {ledgerRef})";
+                            // Offset is the relative move used by the GLSense_GetPeriod/GLSense_GetPeriodByDate
+                            // functions. For "By Date", GLSense_GetPeriodByDate's offset argument is always
+                            // relative to the raw date's own period (dateArgument never changes per target cell),
+                            // so the base cell's own already-baked-in offset (baseOffsetValue) has to be added
+                            // back in on top of the per-cell distance to keep the fill anchored on the period the
+                            // base cell actually resolves to, not the date's period.
+                            targetCell.Value = isByDate
+                                ? $"=GLSense_GetPeriodByDate({dateArgument}, {ledgerRef}, {baseOffsetValue + offset})"
+                                : $"=GLSense_GetPeriod({rangeRef}, {offset}, {ledgerRef})";
                         }
                     }
                     catch (Exception cellEx)
@@ -375,6 +439,122 @@ namespace GLSense.Utilities
             }
         }
 
+        /// <summary>
+        /// Resolves the base date for "Periods By Date" discovery from the active cell.
+        /// Handles a constant date value and any formula that evaluates to a date (e.g.
+        /// =DATE(...), a reference to another date cell) via the active cell's own
+        /// evaluated Value2. If the active cell itself already holds a
+        /// GLSense_GetPeriodByDate(...) formula, its evaluated Value2 would be a period
+        /// name (not a date), so the date argument is reverse-parsed from the formula
+        /// instead - mirroring how the ledger is already reverse-parsed in
+        /// BuildPeriodHelpers/ExtractLedgerInfo.
+        /// </summary>
+        /// <param name="dateArgument">
+        /// The text to embed as the date argument of a new GLSense_GetPeriodByDate
+        /// formula: either the reverse-parsed cell reference / literal DATE(y,m,d) from
+        /// an existing formula, or a reference to the active cell itself.
+        /// </param>
+        /// <param name="baseOffsetValue">
+        /// The offset already baked into the active cell's own GLSense_GetPeriodByDate
+        /// formula (0 for a plain date with no such formula), so the fill can anchor on
+        /// the period the active cell actually resolves to, not the raw date's period.
+        /// </param>
+        private static bool TryResolveBaseDate(out DateTime baseDate, out string dateArgument, out int baseOffsetValue)
+        {
+            baseDate = default;
+            dateArgument = string.Empty;
+            baseOffsetValue = 0;
+
+            try
+            {
+                if ((bool)CellActive.HasFormula)
+                {
+                    string formula = CellActive.Formula.ToString();
+
+                    if (formula.Contains("GLSense_GetPeriodByDate("))
+                    {
+                        var parameters = CommonFunctions.FormulaParameters(formula);
+                        var values = CommonFunctions.FormulaValues(formula);
+
+                        string param = parameters != null && parameters.Count > 0 ? parameters[0]?.ToString() : null;
+                        string value = values != null && values.Count > 0 ? values[0]?.ToString()?.Trim() : null;
+
+                        bool isCellRef = !string.IsNullOrWhiteSpace(param) && param.Contains("$");
+
+                        if (!string.IsNullOrWhiteSpace(value) && TryParseDateArgument(value, out baseDate))
+                        {
+                            dateArgument = isCellRef ? param : value;
+
+                            // offset is the 3rd GLSense_GetPeriodByDate argument (index 2); defaults to 0
+                            // (the UDF's own DefaultOffset) when omitted or unparsable.
+                            string offsetText = values != null && values.Count > 2 ? values[2]?.ToString()?.Replace("\"", "").Trim() : null;
+                            if (!string.IsNullOrWhiteSpace(offsetText) && int.TryParse(offsetText, out int parsedOffset))
+                                baseOffsetValue = parsedOffset;
+
+                            LogUtility.LogDebug($"PeriodsDiscoverer.TryResolveBaseDate: resolved from existing GLSense_GetPeriodByDate formula, dateArgument='{dateArgument}', baseDate={baseDate:d}, baseOffsetValue={baseOffsetValue}.");
+                            return true;
+                        }
+                    }
+                }
+
+                // Constant date value, or any other formula (e.g. =DATE(...), a reference to
+                // another date cell) - Excel has already evaluated the cell to a numeric
+                // OADate (or a formatted date string) by the time Value2 is read here,
+                // regardless of whether the content is a literal or a formula. No prior
+                // period offset applies here, so baseOffsetValue stays 0.
+                object rawValue = CellActive.Value2;
+                if (rawValue == null)
+                    return false;
+
+                baseDate = GLSenseExcelFunctions.XLLContainer.ParsePeriodDate(rawValue);
+                if (baseDate == default)
+                    return false;
+
+                dateArgument = $"'{CellActive.Worksheet.Name}'!{CellActive.Address[true, true]}";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "PeriodsDiscoverer.TryResolveBaseDate");
+                baseDate = default;
+                dateArgument = string.Empty;
+                baseOffsetValue = 0;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Parses a formula argument's evaluated text into a date. Handles a literal
+        /// DATE(y,m,d) argument (ClsFormulaParser returns this as-is, unevaluated, when
+        /// it appears nested inside another function's argument) in addition to
+        /// everything XLLContainer.ParsePeriodDate already handles (OADate numerics,
+        /// culture date strings, the explicit format list).
+        /// </summary>
+        private static bool TryParseDateArgument(string text, out DateTime date)
+        {
+            date = default;
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            Match match = Regex.Match(text, @"DATE\(\s*(\d{4})\s*,\s*(\d{1,2})\s*,\s*(\d{1,2})\s*\)", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                try
+                {
+                    date = new DateTime(int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value), int.Parse(match.Groups[3].Value));
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"PeriodsDiscoverer.TryParseDateArgument: invalid DATE(...) literal '{text}'");
+                    return false;
+                }
+            }
+
+            date = GLSenseExcelFunctions.XLLContainer.ParsePeriodDate(text);
+            return date != default;
+        }
+
         //Standard helpers
 
         private static async Task<bool> ValidateAsync()
@@ -448,9 +628,9 @@ namespace GLSense.Utilities
                 MessageBoxButtons.OK);
         }
 
-        private static async Task HandleUnexpectedErrorAsync(Exception ex)
+        private static async Task HandleUnexpectedErrorAsync(Exception ex, string opName = "FillPeriods")
         {
-            LogUtility.LogException(ex, "PeriodsDiscoverer.FillPeriods (unexpected)");
+            LogUtility.LogException(ex, $"PeriodsDiscoverer.{opName} (unexpected)");
             await SafelyCloseWindowAsync();
             CommonFunctions.GLSenseMessage(
                 $"An unexpected error occurred.{Environment.NewLine}{ex.Message}",
