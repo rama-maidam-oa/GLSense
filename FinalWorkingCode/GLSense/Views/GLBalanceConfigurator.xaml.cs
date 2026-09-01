@@ -629,6 +629,95 @@ namespace GLSense.Views
             LogUtility.LogDebug("GLBalanceConfigurator.BtnCancelBottom_Click invoked");
             OnCloseRequested?.Invoke();
         }
-        
+
+        private void CmbSavedConfigurations_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            bool hasSelection = vm.SelectedSavedConfig != null;
+            btnUpdateConfig.IsEnabled = hasSelection;
+            btnDeleteConfig.IsEnabled = hasSelection;
+
+            if (!hasSelection)
+                return;
+
+            LogUtility.LogDebug($"GLBalanceConfigurator.CmbSavedConfigurations_SelectionChanged: loading '{vm.SelectedSavedConfig.ConfigName}'");
+            _ = LoadSelectedSavedConfigurationAsync(vm.SelectedSavedConfig);
+        }
+
+        private async Task LoadSelectedSavedConfigurationAsync(SavedBalanceConfig config)
+        {
+            try
+            {
+                await vm.LoadSavedConfigurationAsync(config);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLBalanceConfigurator.LoadSelectedSavedConfigurationAsync");
+            }
+        }
+
+        private void BtnSaveNewConfig_Click(object sender, RoutedEventArgs e)
+        {
+            LogUtility.LogDebug("GLBalanceConfigurator.BtnSaveNewConfig_Click invoked");
+            TxtNewConfigName.Text = string.Empty;
+            SaveNamePanel.Visibility = Visibility.Visible;
+            TxtNewConfigName.Focus();
+        }
+
+        private void BtnCancelSaveNewConfig_Click(object sender, RoutedEventArgs e)
+        {
+            LogUtility.LogDebug("GLBalanceConfigurator.BtnCancelSaveNewConfig_Click invoked");
+            SaveNamePanel.Visibility = Visibility.Collapsed;
+        }
+
+        private async void BtnConfirmSaveNewConfig_Click(object sender, RoutedEventArgs e)
+        {
+            LogUtility.LogDebug($"GLBalanceConfigurator.BtnConfirmSaveNewConfig_Click invoked - name={TxtNewConfigName.Text}");
+            try
+            {
+                bool saved = await vm.SaveNewConfigurationAsync(TxtNewConfigName.Text);
+                if (saved)
+                    SaveNamePanel.Visibility = Visibility.Collapsed;
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLBalanceConfigurator.BtnConfirmSaveNewConfig_Click");
+            }
+        }
+
+        private async void BtnUpdateConfig_Click(object sender, RoutedEventArgs e)
+        {
+            LogUtility.LogDebug("GLBalanceConfigurator.BtnUpdateConfig_Click invoked");
+            try
+            {
+                await vm.UpdateSelectedConfigurationAsync();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLBalanceConfigurator.BtnUpdateConfig_Click");
+            }
+        }
+
+        private async void BtnDeleteConfig_Click(object sender, RoutedEventArgs e)
+        {
+            var configName = vm.SelectedSavedConfig?.ConfigName;
+            LogUtility.LogDebug($"GLBalanceConfigurator.BtnDeleteConfig_Click invoked - config={configName}");
+            if (configName == null)
+                return;
+
+            try
+            {
+                bool? confirmed = await AppOverlayControl.ShowConfirmAsync($"Delete saved configuration \"{configName}\"?");
+                if (confirmed == true)
+                {
+                    await vm.DeleteSelectedConfigurationAsync();
+                    btnUpdateConfig.IsEnabled = false;
+                    btnDeleteConfig.IsEnabled = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLBalanceConfigurator.BtnDeleteConfig_Click");
+            }
+        }
     }
 }

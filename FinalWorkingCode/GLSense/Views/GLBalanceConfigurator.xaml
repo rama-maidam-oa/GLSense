@@ -118,6 +118,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
@@ -137,8 +138,83 @@
                     </Grid>
                 </Border>
 
+                <!-- ================= Saved Configurations (collapsed by default) ================= -->
+                <Expander Grid.Row="1"
+                          x:Name="SavedConfigurationsExpander"
+                          Style="{StaticResource BlueCircleExpanderStyle}"
+                          Header="Saved Configurations"
+                          IsExpanded="False"
+                          Background="White"
+                          BorderThickness="0"
+                          HorizontalAlignment="Stretch"
+                          Margin="0,0,0,8">
+                    <Grid Margin="12,8,12,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ComboBox x:Name="CmbSavedConfigurations"
+                                  Grid.Column="0"
+                                  FontFamily="Segoe UI"
+                                  Height="30"
+                                  VerticalAlignment="Center"
+                                  HorizontalAlignment="Stretch"
+                                  Background="White"
+                                  Foreground="{StaticResource TextPrimaryBrush}"
+                                  BorderThickness="1"
+                                  BorderBrush="{StaticResource BorderLightBrush}"
+                                  FontSize="11"
+                                  Margin="0,0,8,0"
+                                  ItemsSource="{Binding SavedConfigurations}"
+                                  DisplayMemberPath="ConfigName"
+                                  SelectedItem="{Binding SelectedSavedConfig, Mode=TwoWay}"
+                                  SelectionChanged="CmbSavedConfigurations_SelectionChanged"/>
+
+                        <Button x:Name="btnSaveNewConfig"
+                                Grid.Column="1"
+                                Content="Save New"
+                                Margin="0,0,4,0"
+                                Click="BtnSaveNewConfig_Click"/>
+
+                        <Button x:Name="btnUpdateConfig"
+                                Grid.Column="2"
+                                Content="Update"
+                                Margin="0,0,4,0"
+                                IsEnabled="False"
+                                Click="BtnUpdateConfig_Click"/>
+
+                        <Button x:Name="btnDeleteConfig"
+                                Grid.Column="3"
+                                Content="Delete"
+                                IsEnabled="False"
+                                Click="BtnDeleteConfig_Click"/>
+
+                        <StackPanel x:Name="SaveNamePanel"
+                                    Grid.Row="1"
+                                    Grid.Column="0"
+                                    Grid.ColumnSpan="4"
+                                    Orientation="Horizontal"
+                                    Margin="0,8,0,0"
+                                    Visibility="Collapsed">
+                            <TextBox x:Name="TxtNewConfigName"
+                                     Width="220"
+                                     Style="{StaticResource CompactTextBox}"
+                                     Margin="0,0,8,0"/>
+                            <Button Content="Confirm" Margin="0,0,4,0" Click="BtnConfirmSaveNewConfig_Click"/>
+                            <Button Content="Cancel" Click="BtnCancelSaveNewConfig_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Expander>
+
                 <!-- ================= Main Controls Section ================= -->
-                <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8">
+                <Border Grid.Row="2" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" 
                                   HorizontalScrollBarVisibility="Disabled"
                                   MaxHeight="500">
@@ -701,7 +777,7 @@
                 </Border>
 
                 <!-- ================= Options Section ================= -->
-                <Border Grid.Row="2" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8" Padding="12,8">
+                <Border Grid.Row="3" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8" Padding="12,8">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -754,7 +830,7 @@
                 </Border>
 
                 <!-- ================= Action Buttons Section ================= -->
-                <Border Grid.Row="3" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8" Padding="12,8">
+                <Border Grid.Row="4" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8" Padding="12,8">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -783,7 +859,7 @@
                 </Border>
 
                 <!-- ================= Balance Parameters Section - Fills remaining space ================= -->
-                <Expander Grid.Row="4"
+                <Expander Grid.Row="5"
                           x:Name="BalanceParametersExpander"
                           Style="{StaticResource BlueCircleExpanderStyle}"
                           IsExpanded="False"
