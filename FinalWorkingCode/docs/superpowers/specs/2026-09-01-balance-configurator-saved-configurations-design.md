@@ -71,8 +71,10 @@ public class SavedBalanceConfig
     public string PeriodRef { get; set; }
     public string EndPeriodCombo { get; set; }      // CTD only
     public string EndPeriodRef { get; set; }
-    public DateTime? StartDateSelected { get; set; } // JED/JEDP/JEDU only
-    public DateTime? EndDateSelected { get; set; }
+    public string StartDateCombo { get; set; }       // JED/JEDP/JEDU only (ISO date string)
+    public string StartDateRef { get; set; }
+    public string EndDateCombo { get; set; }
+    public string EndDateRef { get; set; }
     public string CurrencyCombo { get; set; }
     public string CurrencyRef { get; set; }
     public string CurrencyTypeCombo { get; set; }
@@ -141,9 +143,10 @@ thousands) and keeps the store itself trivially simple — no per-entry XML node
   time the dialog opens (see Goal 6).
 - `SaveNewConfigurationAsync(string name)`, `UpdateSelectedConfigurationAsync()`,
   `DeleteSelectedConfigurationAsync()`, `LoadSavedConfigurationAsync(SavedBalanceConfig config)`.
-- `ApplyFormulaParamsAsync` changes from `private` to `internal` (same precedent as making
-  `GLSenseExcelFunctions.XLLContainer.ParsePeriodDate` `internal` for the Discover "Periods By
-  Date" work) so `LoadSavedConfigurationAsync` can call it directly.
+  All four live on `GLConfiguratorViewModel` itself (alongside `ApplyFormulaParamsAsync`,
+  `SplitAccountAssignmentSegments`, etc.), so `LoadSavedConfigurationAsync` calls the existing
+  `private async Task ApplyFormulaParamsAsync(...)` directly — no accessibility change needed,
+  same-class private members are already reachable from another method on that class.
 
 ### `GLBalanceConfigurator.xaml` — UI placement
 
@@ -165,7 +168,7 @@ naming) never widens past the dialog's existing 600px minimum.
    the message box.
 4. Build a `SavedBalanceConfig` by copying `RefValue`/resolved-combo-text from each
    `FieldBinding` (`LedgerField`, `ActivityField`, `BalanceTypeField`, `PeriodField`,
-   `EndPeriodField`, `StartDateSelected`/`EndDateSelected`, `CurrencyField`,
+   `EndPeriodField`, `StartDateField`/`EndDateField`, `CurrencyField`,
    `CurrencyTypeField`, `ActualFlagField`, `BudgetField`/`EncumbranceField`,
    `JournalSourceField`, `JournalCategoryField`, `AccountAssignmentField` — the last one is a
    single `FieldBinding` whose `ComboValue` is itself a delimited multi-segment literal string,
@@ -206,9 +209,15 @@ introducing a second way to populate the fields:
      literal — `ExcelRangeHelper.IsRealRange` on it returns false, so the existing `Process*`
      methods naturally treat it as a ComboValue-mode field, exactly like today's "read an
      existing formula containing a literal argument" path).
-   - Period argument is reassembled from `PeriodCombo`/`PeriodRef` (+`EndPeriodCombo`/`Ref` for
-     CTD, or `StartDateSelected`/`EndDateSelected` for JED types) using the same `~`-joining
-     `GetFinalPeriodValue()` already does for Insert.
+   - Period (index 3) is reassembled from `PeriodCombo`/`PeriodRef` (+`EndPeriodCombo`/`Ref` for
+     CTD, or `StartDateCombo`/`Ref`+`EndDateCombo`/`Ref` for JED types). `ProcessBalanceType
+     AndPeriod` (`GLConfiguratorViewModel.cs:1371-1463`) reads `FuncArgs[3]`/`FuncValues[3]`
+     as an already-tilde-joined pair and calls `.Split('~')` directly — so the two halves are
+     joined here simply as `$"{argHalf}~{argHalf2}"` / `$"{valueHalf}~{valueHalf2}"`. This is
+     *not* the same as `CombinePeriod`'s `FormatFormulaArg(x) & "~" & FormatFormulaArg(y)` —
+     that builds the literal Excel formula source text (for Insert); the loader is constructing
+     the already-parsed `FuncArgs`/`FuncValues` shape directly, bypassing formula-text
+     round-tripping entirely, so no `FormatFormulaArg`/`&` concatenation applies here.
 2. Call the **existing, unmodified** `ApplyFormulaParamsAsync(config.IsZeroesChecked,
    funcArgs, funcValues)`. Every `Process*` helper it already calls (`ProcessLedgerFieldAsync`,
    `ProcessBalanceTypeAndPeriod`, `ProcessActualFlagAndBudgetEncumbrance`, `ProcessJls`,
