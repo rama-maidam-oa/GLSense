@@ -3328,6 +3328,153 @@ namespace GLSense.ViewModels
             return Task.CompletedTask;
         }
 
+        // Mirrors ProcessLedgerFieldAsync/ProcessFieldAsync's own arg-vs-value split: when a
+        // reference was saved, the FORMULA-ARGUMENT slot is the raw reference text (so
+        // downstream Process* methods recognize it as live via ExcelRangeHelper.IsRealRange),
+        // and the VALUE slot is that reference's CURRENT resolved value - re-read from Excel
+        // now, never a frozen value from save time, since the whole point of preserving a
+        // reference is that it stays live. When a literal was saved, both slots are the same
+        // plain text (IsRealRange on it is false, so Process* naturally treats it as
+        // ComboValue-mode - exactly like today's "read an existing formula with a literal
+        // argument" path).
+        private (string Arg, string Val) ResolveSavedField(string? combo, string? refValue)
+        {
+            if (!string.IsNullOrWhiteSpace(refValue))
+            {
+                var resolved = GetRangeValueSafe(refValue) ?? string.Empty;
+                return (refValue, resolved);
+            }
+
+            var literal = combo ?? string.Empty;
+            return (literal, literal);
+        }
+
+        /// <summary>
+        /// Builds the same positional FuncArgs/FuncValues shape CommonFunctions.FormulaParameters/
+        /// FormulaValues would produce from a real =@GLSense_GetBalance(...) formula, from a
+        /// saved configuration instead of formula text. Indices match BuildFormulaArguments()
+        /// exactly: 0=sign+factor, 1=ledger, 2=activity, 3=period (or JED start~end, or CTD
+        /// period~endPeriod), 4=balanceType, 5=currency, 6=currencyType, 7=actualFlag,
+        /// 8=budget/encumbrance, 9=journalSource, 10=journalCategory, 11+=account segments.
+        /// </summary>
+        private (List<string> FuncArgs, List<string> FuncValues) BuildFuncArgsFromSavedConfig(SavedBalanceConfig config)
+        {
+            var signVal = (config.IsSignChecked ? "-" : "+") + (string.IsNullOrWhiteSpace(config.FactorText) ? "1" : config.FactorText);
+            var (ledgerArg, ledgerVal) = ResolveSavedField(config.LedgerCombo, config.LedgerRef);
+            var (activityArg, activityVal) = ResolveSavedField(config.ActivityCombo, config.ActivityRef);
+            var (btArg, btVal) = ResolveSavedField(config.BalanceTypeCombo, config.BalanceTypeRef);
+            var (currencyArg, currencyVal) = ResolveSavedField(config.CurrencyCombo, config.CurrencyRef);
+            var (currencyTypeArg, currencyTypeVal) = ResolveSavedField(config.CurrencyTypeCombo, config.CurrencyTypeRef);
+            var (actualFlagArg, actualFlagVal) = ResolveSavedField(config.ActualFlagCombo, config.ActualFlagRef);
+            var (journalSourceArg, journalSourceVal) = ResolveSavedField(config.JournalSourceCombo, config.JournalSourceRef);
+            var (journalCategoryArg, journalCategoryVal) = ResolveSavedField(config.JournalCategoryCombo, config.JournalCategoryRef);
+
+            // Period (index 3) - branches on the (possibly reference-resolved) balance type text,
+            // same three-way split GetFinalPeriodValue() already uses for Insert.
+            string btText = (btVal ?? string.Empty).Trim();
+            string periodArg, periodVal;
+
+            if (btText.Equals(AppConstants.BalanceTypeJED, StringComparison.OrdinalIgnoreCase) ||
+                btText.Equals(AppConstants.BalanceTypeJEDP, StringComparison.OrdinalIgnoreCase) ||
+                btText.Equals(AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase))
+            {
+                var (startArg, startVal) = ResolveSavedField(config.StartDateCombo, config.StartDateRef);
+                var (endArg, endVal) = ResolveSavedField(config.EndDateCombo, config.EndDateRef);
+                periodArg = $"{startArg}~{endArg}";
+                periodVal = $"{startVal}~{endVal}";
+            }
+            else if (btText.Equals(AppConstants.BalanceTypeCTD, StringComparison.OrdinalIgnoreCase))
+            {
+                var (pArg, pVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef);
+                var (epArg, epVal) = ResolveSavedField(config.EndPeriodCombo, config.EndPeriodRef);
+                periodArg = $"{pArg}~{epArg}";
+                periodVal = $"{pVal}~{epVal}";
+            }
+            else
+            {
+                (periodArg, periodVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef);
+            }
+
+            // Budget/Encumbrance (index 8) - branches on the resolved actual-flag text, same
+            // switch GetBudgetEncumbranceValue() already uses for Insert.
+            string afText = (actualFlagVal ?? string.Empty).Trim();
+            string budEncumArg, budEncumVal;
+
+            if (afText.Equals(Budget, StringComparison.OrdinalIgnoreCase) || afText == "B")
+            {
+                (budEncumArg, budEncumVal) = ResolveSavedField(config.BudgetCombo, config.BudgetRef);
+            }
+            else if (afText.Equals(Encumbrance, StringComparison.OrdinalIgnoreCase) || afText == "E" ||
+                     afText.Equals(AE, StringComparison.OrdinalIgnoreCase) ||
+                     afText.Equals(AppConstants.ActualEncumbranceShort, StringComparison.OrdinalIgnoreCase))
+            {
+                (budEncumArg, budEncumVal) = ResolveSavedField(config.EncumbranceCombo, config.EncumbranceRef);
+            }
+            else
+            {
+                budEncumArg = string.Empty;
+                budEncumVal = string.Empty;
+            }
+
+            var funcArgs = new List<string>
+            {
+                signVal, ledgerArg, activityArg, periodArg, btArg,
+                currencyArg, currencyTypeArg, actualFlagArg, budEncumArg,
+                journalSourceArg, journalCategoryArg
+            };
+            var funcValues = new List<string>
+            {
+                signVal, ledgerVal, activityVal, periodVal, btVal,
+                currencyVal, currencyTypeVal, actualFlagVal, budEncumVal,
+                journalSourceVal, journalCategoryVal
+            };
+
+            // Account assignment (index 11+) - mirrors ProcessAccountAssignments' own two shapes:
+            // a single range (index 11 only) when a reference was saved, or one plain literal
+            // per COA segment starting at index 11 when a delimited combo string was saved.
+            if (!string.IsNullOrWhiteSpace(config.AccountAssignmentRef))
+            {
+                var resolved = GetRangeValueSafe(config.AccountAssignmentRef) ?? string.Empty;
+                funcArgs.Add(config.AccountAssignmentRef);
+                funcValues.Add(resolved);
+            }
+            else
+            {
+                var segments = (config.AccountAssignmentCombo ?? string.Empty)
+                    .Split(new[] { ';' }, StringSplitOptions.None);
+
+                foreach (var segment in segments)
+                {
+                    var trimmed = segment.Trim();
+                    funcArgs.Add(trimmed);
+                    funcValues.Add(trimmed);
+                }
+            }
+
+            return (funcArgs, funcValues);
+        }
+
+        /// <summary>
+        /// Loads a saved configuration into every field, via the exact same
+        /// ApplyFormulaParamsAsync path used when the active cell already contains a balance
+        /// formula - every cascading Process* call (Journal Source/Category enablement, CTD
+        /// End Period population, ledger-change side effects) fires identically, since this
+        /// is the same method, unchanged, just fed from a saved configuration instead of a
+        /// parsed formula string.
+        /// </summary>
+        public async Task LoadSavedConfigurationAsync(SavedBalanceConfig config)
+        {
+            if (config == null)
+            {
+                LogUtility.LogWarn("GLConfiguratorViewModel.LoadSavedConfigurationAsync: config is null, aborting.");
+                return;
+            }
+
+            var (funcArgs, funcValues) = BuildFuncArgsFromSavedConfig(config);
+            LogUtility.LogDebug($"GLConfiguratorViewModel.LoadSavedConfigurationAsync: loading '{config.ConfigName}'.");
+            await ApplyFormulaParamsAsync(config.IsZeroesChecked, funcArgs, funcValues);
+        }
+
         public void WriteFormulaToCell(Microsoft.Office.Interop.Excel.Range rng)
         {
             LogUtility.LogDebug("GLConfiguratorViewModel.WriteFormulaToCell: entry");
