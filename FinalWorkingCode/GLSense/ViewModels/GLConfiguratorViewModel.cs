@@ -1,5 +1,6 @@
 ﻿using GLSense.Base;
 using GLSense.Bindings;
+using GLSense.Common;
 using GLSense.Helpers;
 using GLSense.Models;
 using GLSense.Repositories;
@@ -280,6 +281,19 @@ namespace GLSense.ViewModels
         public FieldBinding JournalSourceField { get; set; } = new FieldBinding();
         public FieldBinding JournalCategoryField { get; set; } = new FieldBinding();
         public FieldBinding AccountAssignmentField { get; set; } = new FieldBinding();
+
+        public ObservableCollection<SavedBalanceConfig> SavedConfigurations { get; set; } = new();
+
+        private SavedBalanceConfig? _selectedSavedConfig;
+        public SavedBalanceConfig? SelectedSavedConfig
+        {
+            get => _selectedSavedConfig;
+            set
+            {
+                _selectedSavedConfig = value;
+                OnPropertyChanged(nameof(SelectedSavedConfig));
+            }
+        }
 
         public class ActivityModel : NotifyBase
         {
@@ -809,6 +823,7 @@ namespace GLSense.ViewModels
             IsSignChecked = false;
             IsZeroesChecked = true;
             FactorText = "1";
+            SelectedSavedConfig = null;
         }
 
         private async Task LoadDataAsync(LedgerRecord ledger)
@@ -835,6 +850,27 @@ namespace GLSense.ViewModels
             long cubeId = appState.SelectedCube.CubeId;
             long ledgerId = ledger.LedgerId;
             long coaid = ledger.Coaid;
+
+            try
+            {
+                if (BalanceConfigXmlStore.TryRead(ExcelApp?.ActiveWorkbook, cubeId, out var savedConfigs))
+                {
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        SavedConfigurations.Clear();
+                        foreach (var saved in savedConfigs)
+                            SavedConfigurations.Add(saved);
+                    });
+                }
+                else
+                {
+                    await _dispatcher.InvokeAsync(() => SavedConfigurations.Clear());
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLConfiguratorViewModel.LoadDataAsync: failed to load saved configurations (non-fatal)");
+            }
 
             // Force a fresh pull of ledger setup data (Periods, Activity, Currencies, etc.)
             // from the source system every time the configurator loads for a ledger, instead
