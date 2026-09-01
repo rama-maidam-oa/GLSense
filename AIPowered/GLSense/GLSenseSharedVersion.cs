@@ -20,5 +20,5 @@
 // cause a duplicate-attribute compile error against this shared file.
 using System.Reflection;
 
-[assembly: AssemblyVersion("11.1.0.0")]
-[assembly: AssemblyFileVersion("11.1.0.0")]
+[assembly: AssemblyVersion("11.1.1.0")]
+[assembly: AssemblyFileVersion("11.1.1.0")]
