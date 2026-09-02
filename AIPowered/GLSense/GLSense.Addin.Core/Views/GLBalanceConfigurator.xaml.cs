@@ -67,6 +67,7 @@ using GLSense.Addin.Core.Utilities;
 using GLSense.Addin.Core.ViewModels;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -114,6 +115,14 @@ namespace GLSense.Addin.Core.Views
         /// </summary>
         public event Action OnCloseRequested;
 
+        /// <summary>
+        /// Whether the user currently has an explicit saved configuration selected. Checked
+        /// by the Excel SheetSelectionChange handler (via ConfiguratorPaneHost) so that
+        /// navigating cells while the pane is open does not override a deliberately selected
+        /// saved configuration's field values.
+        /// </summary>
+        public bool HasSavedConfigurationSelected => vm.SelectedSavedConfig != null;
+
         public GLBalanceConfigurator()
         {
             InitializeComponent();
@@ -155,6 +164,7 @@ namespace GLSense.Addin.Core.Views
             DataContext = vm;
 
             // Subscribe to events
+            vm.PropertyChanged += Vm_PropertyChanged;
             this.Loaded += OnLoaded;
             this.SizeChanged += OnSizeChanged;
             this.IsVisibleChanged += OnIsVisibleChanged;
@@ -467,10 +477,15 @@ namespace GLSense.Addin.Core.Views
                     if (BalanceParametersExpander.Dispatcher.CheckAccess())
                     {
                         BalanceParametersExpander.IsExpanded = false;
+                        SavedConfigurationsExpander.IsExpanded = false;
                     }
                     else
                     {
-                        BalanceParametersExpander.Dispatcher.Invoke(() => BalanceParametersExpander.IsExpanded = false);
+                        BalanceParametersExpander.Dispatcher.Invoke(() =>
+                        {
+                            BalanceParametersExpander.IsExpanded = false;
+                            SavedConfigurationsExpander.IsExpanded = false;
+                        });
                     }
 
                     if (!HasValidCubeAndLedger())
@@ -592,9 +607,14 @@ namespace GLSense.Addin.Core.Views
             };
         }
 
+        // Exactly one GLSense_GetBalance(...) call, not just "contains" one: a formula
+        // combining multiple balance calls (e.g. =GLSense_GetBalance(...)-GLSense_GetBalance(...))
+        // can't be represented by this dialog's single set of fields, so it's treated the
+        // same as "no formula" - the configurator falls back to default values rather than
+        // attempting to parse (and silently misrepresenting) one call out of several.
         private static bool IsBalanceFormula(Excel.Range rng)
         {
-            return rng.Formula.ToString().IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0;
+            return CommonFunctions.GetBalancesCountInCells(rng.Formula.ToString()) == 1;
         }
 
         private FormulaInfo ParseBalanceFormula(Excel.Range rng)
@@ -777,6 +797,169 @@ namespace GLSense.Addin.Core.Views
         {
             ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.BtnCancelBottom_Click invoked - raising OnCloseRequested");
             OnCloseRequested?.Invoke();
+        }
+
+        // Reacts to the ViewModel's SelectedSavedConfig changing, rather than a control-level
+        // SelectionChanged event - this works identically no matter which control
+        // CmbSavedConfigurations binds to (SuggestAppendComboBox has no SelectionChanged
+        // event at all; its SelectedItem, like every other field in this dialog, is a plain
+        // two-way-bound property, and reacting to the ViewModel's own PropertyChanged is the
+        // control-agnostic way to know it changed).
+        private void Vm_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (!string.Equals(e.PropertyName, nameof(GLConfiguratorViewModel.SelectedSavedConfig), StringComparison.Ordinal))
+                return;
+
+            bool hasSelection = vm.SelectedSavedConfig != null;
+            btnUpdateConfig.IsEnabled = hasSelection;
+            btnDeleteConfig.IsEnabled = hasSelection;
+
+            // Set immediately before SaveNewConfigurationAsync/UpdateSelectedConfigurationAsync/
+            // DeleteSelectedConfigurationAsync/ResetUIState assign SelectedSavedConfig
+            // themselves (as opposed to a genuine user action). Reloading fields right after
+            // one of those would overwrite on-screen state that was either just captured
+            // (Save/Update) or deliberately left alone (Delete/launch reset).
+            if (vm.ConsumeSuppressNextSelectionLoad())
+            {
+                ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.Vm_PropertyChanged: SelectedSavedConfig change was self-assigned, skipping reload.");
+                return;
+            }
+
+            if (hasSelection)
+            {
+                // An explicit saved-configuration selection always wins, even over a balance
+                // formula on the active cell - the user just deliberately picked it.
+                ServiceLocator.Logger?.LogDebug($"GLBalanceConfigurator.Vm_PropertyChanged: loading '{vm.SelectedSavedConfig.ConfigName}'");
+                _ = LoadSelectedSavedConfigurationAsync(vm.SelectedSavedConfig);
+            }
+            else
+            {
+                // Cleared back to empty (Clear button, backspace-to-empty, or losing focus
+                // with empty text) - defer to whatever the active cell says now.
+                ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.Vm_PropertyChanged: selection cleared by user.");
+                _ = ApplyActiveCellOrDefaultsAsync();
+            }
+        }
+
+        /// <summary>
+        /// The saved-configurations combo was cleared: re-checks the CURRENT active cell
+        /// fresh (it may have changed since the pane opened) via the same
+        /// IsBalanceFormula/ProcessBalanceFormula path ReLoadConfigurator() uses on every
+        /// launch - a single balance formula on the cell wins; no formula (or one combining
+        /// multiple GLSense_GetBalance calls, which this dialog can't represent) falls back
+        /// to defaults. Reuses ExtractCellDataAsync/ProcessBalanceFormula/
+        /// LoadConfiguratorDataAsync directly (not ReLoadConfigurator() itself) so this does
+        /// not also collapse either Expander - collapsing the "Saved Configurations" panel
+        /// the user just used to clear the combo would be jarring, and that collapse is
+        /// meant for pane launch only.
+        /// </summary>
+        private async Task ApplyActiveCellOrDefaultsAsync()
+        {
+            try
+            {
+                await ExecuteWithBusyOverlay("Restoring Defaults", async helper =>
+                {
+                    if (!HasValidCubeAndLedger())
+                    {
+                        ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.ApplyActiveCellOrDefaultsAsync: no valid cube/ledger selected, aborting.");
+                        return;
+                    }
+
+                    var cellData = await ExtractCellDataAsync();
+                    var config = ProcessBalanceFormula(cellData);
+                    await LoadConfiguratorDataAsync(config);
+                });
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "GLBalanceConfigurator.ApplyActiveCellOrDefaultsAsync");
+            }
+        }
+
+        private async Task LoadSelectedSavedConfigurationAsync(SavedBalanceConfig config)
+        {
+            try
+            {
+                // Mirrors ReLoadConfigurator's own use of ExecuteWithBusyOverlay (see above):
+                // gives this load the same busy-overlay feedback for a potentially
+                // multi-second load, and the overlay's IsHitTestVisible blocks further clicks
+                // on the underlying controls (including this combo box) for its duration,
+                // same protection ReLoadConfigurator itself relies on - no separate
+                // re-entrancy mechanism exists in this file to reuse instead.
+                await ExecuteWithBusyOverlay($"Loading saved configuration \"{config?.ConfigName}\"", async helper =>
+                {
+                    await vm.LoadSavedConfigurationAsync(config);
+                });
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "GLBalanceConfigurator.LoadSelectedSavedConfigurationAsync");
+            }
+        }
+
+        private void BtnSaveNewConfig_Click(object sender, RoutedEventArgs e)
+        {
+            ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.BtnSaveNewConfig_Click invoked");
+            TxtNewConfigName.Text = string.Empty;
+            SaveNamePanel.Visibility = Visibility.Visible;
+            TxtNewConfigName.Focus();
+        }
+
+        private void BtnCancelSaveNewConfig_Click(object sender, RoutedEventArgs e)
+        {
+            ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.BtnCancelSaveNewConfig_Click invoked");
+            SaveNamePanel.Visibility = Visibility.Collapsed;
+        }
+
+        private async void BtnConfirmSaveNewConfig_Click(object sender, RoutedEventArgs e)
+        {
+            ServiceLocator.Logger?.LogDebug($"GLBalanceConfigurator.BtnConfirmSaveNewConfig_Click invoked - name={TxtNewConfigName.Text}");
+            try
+            {
+                bool saved = await vm.SaveNewConfigurationAsync(TxtNewConfigName.Text);
+                if (saved)
+                    SaveNamePanel.Visibility = Visibility.Collapsed;
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "GLBalanceConfigurator.BtnConfirmSaveNewConfig_Click");
+            }
+        }
+
+        private async void BtnUpdateConfig_Click(object sender, RoutedEventArgs e)
+        {
+            ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.BtnUpdateConfig_Click invoked");
+            try
+            {
+                await vm.UpdateSelectedConfigurationAsync();
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "GLBalanceConfigurator.BtnUpdateConfig_Click");
+            }
+        }
+
+        private async void BtnDeleteConfig_Click(object sender, RoutedEventArgs e)
+        {
+            var configName = vm.SelectedSavedConfig?.ConfigName;
+            ServiceLocator.Logger?.LogDebug($"GLBalanceConfigurator.BtnDeleteConfig_Click invoked - config={configName}");
+            if (configName == null)
+                return;
+
+            try
+            {
+                bool? confirmed = await AppOverlayControl.ShowConfirmAsync($"Delete saved configuration \"{configName}\"?");
+                if (confirmed == true)
+                {
+                    await vm.DeleteSelectedConfigurationAsync();
+                    btnUpdateConfig.IsEnabled = false;
+                    btnDeleteConfig.IsEnabled = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "GLBalanceConfigurator.BtnDeleteConfig_Click");
+            }
         }
     }
 }

@@ -265,6 +265,26 @@ namespace GLSense
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Old monolith's GLConfiguratorPane.HasSavedConfigurationSelected(). Synchronous
+        /// (unlike RelaunchPane/ResetPaneReference above) - IGLSenseAddin.
+        /// HasSavedConfigurationSelected() blocks on Addin.Core's WPF thread via
+        /// ConfiguratorPaneHost's Dispatcher.Invoke, so the result is available immediately.
+        /// Returns false (safe default) on any failure or if Addin.Core isn't reachable.
+        /// </summary>
+        public bool HasSavedConfigurationSelected()
+        {
+            try
+            {
+                return GlobalsEx.Addin?.HasSavedConfigurationSelected() ?? false;
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "GLConfiguratorPane.HasSavedConfigurationSelected");
+                return false;
+            }
+        }
+
         private void GLConfiguratorPane_ADXBeforeTaskPaneShow(object sender, ADXBeforeTaskPaneShowEventArgs e)
         {
             try

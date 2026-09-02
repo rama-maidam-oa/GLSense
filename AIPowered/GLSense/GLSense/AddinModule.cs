@@ -1703,14 +1703,23 @@ namespace GLSense
                 var blpane = GetPaneInstance();
                 if (blpane != null && blpane.Visible)
                 {
-                    if (TryGetSingleCellFormula(rng, out string formula) &&
+                    // The Cell Reference field at the bottom of the pane always tracks the
+                    // active cell regardless of a saved-configuration selection - it's the
+                    // Insert target, not one of the loaded configuration values.
+                    _ = blpane.ResetPaneReference();
+
+                    if (blpane.HasSavedConfigurationSelected())
+                    {
+                        // A saved configuration is explicitly selected - honor it. Navigating
+                        // cells while the pane is open must not silently overwrite the
+                        // user's deliberate choice with whatever the newly-selected cell
+                        // happens to contain.
+                        GlobalsEx.Context?.Logger?.LogDebug("SheetSelectionChange: saved configuration is selected, skipping cell-driven reload.");
+                    }
+                    else if (TryGetSingleCellFormula(rng, out string formula) &&
                         formula.IndexOf(AppConstants_GlBal, StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         _ = blpane.RelaunchPane();
-                    }
-                    else
-                    {
-                        _ = blpane.ResetPaneReference();
                     }
 
                     // Regression fix: GLConfiguratorPane.EmbedContent AttachThreadInput's this

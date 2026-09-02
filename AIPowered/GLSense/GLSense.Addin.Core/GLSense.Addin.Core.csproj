@@ -117,6 +117,7 @@
     <Compile Include="AppConstants.cs" />
     <Compile Include="AppState.cs" />
     <Compile Include="Caching\FormulaCache.cs" />
+    <Compile Include="Common\BalanceConfigXmlStore.cs" />
     <Compile Include="Common\DrilldownMetadata.cs" />
     <Compile Include="Common\DrilldownMetadataXmlStore.cs" />
     <Compile Include="Common\DrilldownType.cs" />
@@ -177,6 +178,7 @@
     <Compile Include="Bindings\FieldBinding.cs" />
     <Compile Include="Interfaces\Interfaces.cs" />
     <Compile Include="Models\PeriodModels.cs" />
+    <Compile Include="Models\SavedBalanceConfig.cs" />
     <Compile Include="Models\SegmentSelectorModels.cs" />
     <Compile Include="Services\DataServiceLocator.cs" />
     <Compile Include="Services\PeriodDataService.cs" />

@@ -63,6 +63,7 @@
 //     CubeId member) - both already ported, no shape changes needed here.
 // No functional/business-logic changes vs. the original.
 using GLSense.Addin.Core.Bindings;
+using GLSense.Addin.Core.Common;
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using GLSense.Addin.Core.Models;
@@ -342,6 +343,53 @@ namespace GLSense.Addin.Core.ViewModels
         public FieldBinding JournalSourceField { get; set; } = new FieldBinding();
         public FieldBinding JournalCategoryField { get; set; } = new FieldBinding();
         public FieldBinding AccountAssignmentField { get; set; } = new FieldBinding();
+
+        public ObservableCollection<SavedBalanceConfig> SavedConfigurations { get; set; } = new();
+
+        private SavedBalanceConfig? _selectedSavedConfig;
+        public SavedBalanceConfig? SelectedSavedConfig
+        {
+            get => _selectedSavedConfig;
+            set
+            {
+                _selectedSavedConfig = value;
+                OnPropertyChanged(nameof(SelectedSavedConfig));
+                OnPropertyChanged(nameof(SavedConfigurationsHeaderText));
+            }
+        }
+
+        /// <summary>
+        /// Drives the "Saved Configurations" expander header - includes the loaded
+        /// configuration's name so the user has a visible reminder that a saved
+        /// configuration (not the active cell's formula/defaults) is what's currently
+        /// loaded. Blank/cleared selection falls back to the plain section title.
+        /// </summary>
+        public string SavedConfigurationsHeaderText =>
+            SelectedSavedConfig != null ? $"Saved Configurations: {SelectedSavedConfig.ConfigName}" : "Saved Configurations";
+
+        // Set immediately before SaveNewConfigurationAsync/UpdateSelectedConfigurationAsync
+        // assign SelectedSavedConfig themselves (as opposed to a genuine user click on the
+        // combo box). Both causes raise the same PropertyChanged for SelectedSavedConfig, and
+        // GLBalanceConfigurator.xaml.cs's Vm_PropertyChanged fire-and-forgets a full field
+        // reload from the just-saved entry - which can wipe out freehand combo values
+        // ProcessFieldAsync just captured (it sets ComboValue to null when a typed value
+        // matches no list item). Consumed (read-and-reset) by the View via
+        // ConsumeSuppressNextSelectionLoad() so the reload is skipped exactly once.
+        private bool _suppressNextSelectionLoad;
+
+        /// <summary>
+        /// Returns whether the next SelectedSavedConfig PropertyChanged was caused by this
+        /// ViewModel assigning it itself (Save/Update/ResetUIState) - Delete deliberately does
+        /// NOT set this, so its own null-assignment falls through to the normal
+        /// cell-formula-or-defaults reload like a manual combo clear. Resets the flag once
+        /// read. Intended to be called once, at the top of Vm_PropertyChanged.
+        /// </summary>
+        public bool ConsumeSuppressNextSelectionLoad()
+        {
+            bool result = _suppressNextSelectionLoad;
+            _suppressNextSelectionLoad = false;
+            return result;
+        }
 
         // Balance-Configurator-specific static-list models. Kept nested (not reused
         // anywhere else) but as plain POCOs rather than the old NotifyBase-derived
@@ -799,7 +847,12 @@ namespace GLSense.Addin.Core.ViewModels
                 await ApplyFormulaParamsAsync(ZeroesChecked, FuncArgs, FuncValues);
             }
 
-            RefreshAllFields();
+            // Same reasoning as the ApplyDefaultSelections wrap above: RefreshAllFields raises
+            // OnPropertyChanged for each field's IsRefEnabled/IsComboEnabled, which WPF's
+            // binding engine pushes synchronously into the bound (DependencyObject) controls'
+            // IsEnabled - unsafe to call without marshaling for the same reason (confirmed via
+            // the FinalWorkingCode port of this same reload pipeline).
+            await _dispatcher.InvokeAsync(() => RefreshAllFields());
             ServiceLocator.Logger?.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: completed.");
         }
 
@@ -828,6 +881,14 @@ namespace GLSense.Addin.Core.ViewModels
             IsSignChecked = false;
             IsZeroesChecked = true;
             FactorText = "1";
+
+            // The combo starts blank on every launch. Suppressed the same way Save/Update
+            // suppress their own self-triggered reload (see _suppressNextSelectionLoad) -
+            // the fields are populated separately, right after this, by
+            // ApplyDefaultSelections()/ApplyFormulaParamsAsync, so this assignment must not
+            // itself trigger another reload on top of that.
+            _suppressNextSelectionLoad = true;
+            SelectedSavedConfig = null;
         }
 
         private async Task LoadDataAsync(LedgerRecord ledger)
@@ -854,6 +915,28 @@ namespace GLSense.Addin.Core.ViewModels
             long cubeId = appState.SelectedCube.CubeId;
             long ledgerId = ledger.LedgerId;
             long coaid = ledger.Coaid;
+
+            try
+            {
+                var workbookForRead = ExcelApp?.ActiveWorkbook;
+                if (workbookForRead != null && BalanceConfigXmlStore.TryRead(workbookForRead, cubeId, out var savedConfigs))
+                {
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        SavedConfigurations.Clear();
+                        foreach (var saved in savedConfigs)
+                            SavedConfigurations.Add(saved);
+                    });
+                }
+                else
+                {
+                    await _dispatcher.InvokeAsync(() => SavedConfigurations.Clear());
+                }
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "GLConfiguratorViewModel.LoadDataAsync: failed to load saved configurations (non-fatal)");
+            }
 
             // Force a fresh pull of ledger setup data (Periods, Activity, Currencies, etc.)
             // from the source system every time the configurator loads for a ledger, instead
@@ -1156,7 +1239,13 @@ namespace GLSense.Addin.Core.ViewModels
             await ProcessJls(FuncArgs, FuncValues); //Process Journal Sources and Categories
             await ProcessAccountAssignments(FuncArgs, FuncValues);
 
-            UpdateParameterSummary();
+            // Same class of bug as ApplyDefaultSelections/RefreshAllFields (see
+            // LoadConfiguratorAsync/LoadDataAsync above): UpdateParameterSummary does a direct
+            // DependencyObject SetValue, and every other statement in this method already
+            // wraps itself in _dispatcher.InvokeAsync - this trailing bare call was the one
+            // gap, confirmed by a logged VerifyAccess() InvalidOperationException on the
+            // FinalWorkingCode port of this same reload pipeline.
+            await _dispatcher.InvokeAsync(() => UpdateParameterSummary());
             ServiceLocator.Logger?.LogDebug("GLConfiguratorViewModel.ApplyFormulaParamsAsync: completed parsing formula params.");
         }
 
@@ -3272,6 +3361,366 @@ namespace GLSense.Addin.Core.ViewModels
                     ? segments[i].Replace("\"", "")
                     : "";
                 values[ConfiguratorSegments[i].SegmentName] = segmentValue;
+            }
+        }
+
+        // Captures one field's current state the same way GetFormulaFieldValue already
+        // resolves it for formula-building: Reference wins outright when present.
+        private (string? Combo, string? Ref) CaptureField(FieldBinding field)
+        {
+            if (field == null) return (null, null);
+
+            if (!string.IsNullOrWhiteSpace(field.RefValue))
+                return (null, field.RefValue);
+
+            var comboText = GetFieldValue(field);
+            return (string.IsNullOrWhiteSpace(comboText) ? null : comboText, null);
+        }
+
+        private SavedBalanceConfig CaptureCurrentAsSavedConfig(string configName)
+        {
+            var (ledgerCombo, ledgerRef) = CaptureField(LedgerField);
+            var (activityCombo, activityRef) = CaptureField(ActivityField);
+            var (btCombo, btRef) = CaptureField(BalanceTypeField);
+            var (periodCombo, periodRef) = CaptureField(PeriodField);
+            var (endPeriodCombo, endPeriodRef) = CaptureField(EndPeriodField);
+            var (startDateCombo, startDateRef) = CaptureField(StartDateField);
+            var (endDateCombo, endDateRef) = CaptureField(EndDateField);
+            var (currencyCombo, currencyRef) = CaptureField(CurrencyField);
+            var (currencyTypeCombo, currencyTypeRef) = CaptureField(CurrencyTypeField);
+            var (actualFlagCombo, actualFlagRef) = CaptureField(ActualFlagField);
+            var (budgetCombo, budgetRef) = CaptureField(BudgetField);
+            var (encumbranceCombo, encumbranceRef) = CaptureField(EncumbranceField);
+            var (journalSourceCombo, journalSourceRef) = CaptureField(JournalSourceField);
+            var (journalCategoryCombo, journalCategoryRef) = CaptureField(JournalCategoryField);
+            var (accountCombo, accountRef) = CaptureField(AccountAssignmentField);
+
+            return new SavedBalanceConfig
+            {
+                ConfigName = configName,
+                LedgerCombo = ledgerCombo,
+                LedgerRef = ledgerRef,
+                ActivityCombo = activityCombo,
+                ActivityRef = activityRef,
+                BalanceTypeCombo = btCombo,
+                BalanceTypeRef = btRef,
+                PeriodCombo = periodCombo,
+                PeriodRef = periodRef,
+                EndPeriodCombo = endPeriodCombo,
+                EndPeriodRef = endPeriodRef,
+                StartDateCombo = startDateCombo,
+                StartDateRef = startDateRef,
+                EndDateCombo = endDateCombo,
+                EndDateRef = endDateRef,
+                CurrencyCombo = currencyCombo,
+                CurrencyRef = currencyRef,
+                CurrencyTypeCombo = currencyTypeCombo,
+                CurrencyTypeRef = currencyTypeRef,
+                ActualFlagCombo = actualFlagCombo,
+                ActualFlagRef = actualFlagRef,
+                BudgetCombo = budgetCombo,
+                BudgetRef = budgetRef,
+                EncumbranceCombo = encumbranceCombo,
+                EncumbranceRef = encumbranceRef,
+                JournalSourceCombo = journalSourceCombo,
+                JournalSourceRef = journalSourceRef,
+                JournalCategoryCombo = journalCategoryCombo,
+                JournalCategoryRef = journalCategoryRef,
+                AccountAssignmentCombo = accountCombo,
+                AccountAssignmentRef = accountRef,
+                IsSignChecked = IsSignChecked,
+                FactorText = string.IsNullOrWhiteSpace(FactorText) ? "1" : FactorText,
+                IsZeroesChecked = IsZeroesChecked
+            };
+        }
+
+        private void PersistSavedConfigurations()
+        {
+            var cube = AppState.Instance.SelectedCube;
+            if (cube == null)
+            {
+                ServiceLocator.Logger?.LogWarn("GLConfiguratorViewModel.PersistSavedConfigurations: no cube selected, cannot persist.");
+                return;
+            }
+
+            var workbookForSave = ExcelApp?.ActiveWorkbook;
+            if (workbookForSave == null)
+            {
+                ServiceLocator.Logger?.LogWarn("GLConfiguratorViewModel.PersistSavedConfigurations: no active workbook, cannot persist.");
+                return;
+            }
+
+            BalanceConfigXmlStore.Save(workbookForSave, cube.CubeId, cube.CubeName, new List<SavedBalanceConfig>(SavedConfigurations));
+        }
+
+        public const int MaxSavedConfigNameLength = 32;
+
+        /// <summary>
+        /// Saves the current field selections as a new named configuration for the current
+        /// cube. Returns false (and raises ShowWarningAction) if the name is blank, longer
+        /// than MaxSavedConfigNameLength, or already used by another saved configuration for
+        /// this cube.
+        /// </summary>
+        public Task<bool> SaveNewConfigurationAsync(string name)
+        {
+            var trimmedName = (name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(trimmedName))
+            {
+                ShowWarningAction?.Invoke("Please enter a name for the saved configuration.");
+                return Task.FromResult(false);
+            }
+
+            if (trimmedName.Length > MaxSavedConfigNameLength)
+            {
+                ShowWarningAction?.Invoke($"Configuration name cannot exceed {MaxSavedConfigNameLength} characters.");
+                return Task.FromResult(false);
+            }
+
+            bool nameExists = SavedConfigurations.Any(c =>
+                string.Equals(c.ConfigName, trimmedName, StringComparison.OrdinalIgnoreCase));
+
+            if (nameExists)
+            {
+                ShowWarningAction?.Invoke($"A saved configuration named \"{trimmedName}\" already exists for this cube. Choose a different name.");
+                return Task.FromResult(false);
+            }
+
+            var newConfig = CaptureCurrentAsSavedConfig(trimmedName);
+            SavedConfigurations.Add(newConfig);
+            PersistSavedConfigurations();
+            _suppressNextSelectionLoad = true;
+            SelectedSavedConfig = newConfig;
+
+            ServiceLocator.Logger?.LogDebug($"GLConfiguratorViewModel.SaveNewConfigurationAsync: saved '{trimmedName}'.");
+            return Task.FromResult(true);
+        }
+
+        /// <summary>
+        /// Overwrites SelectedSavedConfig's stored values with the current field selections.
+        /// Name is unchanged. No-op (with a warning) if nothing is selected.
+        /// </summary>
+        public Task UpdateSelectedConfigurationAsync()
+        {
+            if (SelectedSavedConfig == null)
+            {
+                ShowWarningAction?.Invoke("Select a saved configuration to update first.");
+                return Task.CompletedTask;
+            }
+
+            var index = SavedConfigurations.IndexOf(SelectedSavedConfig);
+            if (index < 0)
+            {
+                ServiceLocator.Logger?.LogWarn("GLConfiguratorViewModel.UpdateSelectedConfigurationAsync: selected configuration no longer present in the list.");
+                return Task.CompletedTask;
+            }
+
+            var updated = CaptureCurrentAsSavedConfig(SelectedSavedConfig.ConfigName);
+            SavedConfigurations[index] = updated;
+            PersistSavedConfigurations();
+            _suppressNextSelectionLoad = true;
+            SelectedSavedConfig = updated;
+
+            ServiceLocator.Logger?.LogDebug($"GLConfiguratorViewModel.UpdateSelectedConfigurationAsync: updated '{updated.ConfigName}'.");
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Removes SelectedSavedConfig from the list and persists the change. Confirmation
+        /// (are you sure?) is the View's responsibility (GLBalanceConfigurator.xaml.cs) - this
+        /// method performs the delete unconditionally once invoked. No-op if nothing selected.
+        /// </summary>
+        public Task DeleteSelectedConfigurationAsync()
+        {
+            if (SelectedSavedConfig == null)
+            {
+                ShowWarningAction?.Invoke("Select a saved configuration to delete first.");
+                return Task.CompletedTask;
+            }
+
+            var removedName = SelectedSavedConfig.ConfigName;
+            SavedConfigurations.Remove(SelectedSavedConfig);
+            // Deliberately NOT suppressed: deleting the active selection is meant to behave
+            // exactly like clearing the combo text (Vm_PropertyChanged's null branch) - fall
+            // back to whatever the active cell says now (its formula params, or real defaults
+            // if there's no formula or it's not a single-GetBalance one).
+            SelectedSavedConfig = null;
+            PersistSavedConfigurations();
+
+            ServiceLocator.Logger?.LogDebug($"GLConfiguratorViewModel.DeleteSelectedConfigurationAsync: deleted '{removedName}'.");
+            return Task.CompletedTask;
+        }
+
+        // Mirrors ProcessLedgerFieldAsync/ProcessFieldAsync's own arg-vs-value split: when a
+        // reference was saved, the FORMULA-ARGUMENT slot is the raw reference text (so
+        // downstream Process* methods recognize it as live via ExcelRangeHelper.IsRealRange),
+        // and the VALUE slot is that reference's CURRENT resolved value - re-read from Excel
+        // now, never a frozen value from save time, since the whole point of preserving a
+        // reference is that it stays live. When a literal was saved, both slots are the same
+        // plain text (IsRealRange on it is false, so Process* naturally treats it as
+        // ComboValue-mode - exactly like today's "read an existing formula with a literal
+        // argument" path).
+        private (string Arg, string Val) ResolveSavedField(string? combo, string? refValue)
+        {
+            if (refValue is not null && refValue.Trim().Length > 0)
+            {
+                var resolved = GetRangeValueSafe(refValue) ?? string.Empty;
+                return (refValue, resolved);
+            }
+
+            var literal = combo ?? string.Empty;
+            return (literal, literal);
+        }
+
+        /// <summary>
+        /// Builds the same positional FuncArgs/FuncValues shape CommonFunctions.FormulaParameters/
+        /// FormulaValues would produce from a real =@GLSense_GetBalance(...) formula, from a
+        /// saved configuration instead of formula text. Indices match BuildFormulaArguments()
+        /// exactly: 0=sign+factor, 1=ledger, 2=activity, 3=period (or JED start~end, or CTD
+        /// period~endPeriod), 4=balanceType, 5=currency, 6=currencyType, 7=actualFlag,
+        /// 8=budget/encumbrance, 9=journalSource, 10=journalCategory, 11+=account segments.
+        /// </summary>
+        private (List<string> FuncArgs, List<string> FuncValues) BuildFuncArgsFromSavedConfig(SavedBalanceConfig config)
+        {
+            var signVal = (config.IsSignChecked ? "-" : "+") + (string.IsNullOrWhiteSpace(config.FactorText) ? "1" : config.FactorText);
+            var (ledgerArg, ledgerVal) = ResolveSavedField(config.LedgerCombo, config.LedgerRef);
+            var (activityArg, activityVal) = ResolveSavedField(config.ActivityCombo, config.ActivityRef);
+            var (btArg, btVal) = ResolveSavedField(config.BalanceTypeCombo, config.BalanceTypeRef);
+            var (currencyArg, currencyVal) = ResolveSavedField(config.CurrencyCombo, config.CurrencyRef);
+            var (currencyTypeArg, currencyTypeVal) = ResolveSavedField(config.CurrencyTypeCombo, config.CurrencyTypeRef);
+            var (actualFlagArg, actualFlagVal) = ResolveSavedField(config.ActualFlagCombo, config.ActualFlagRef);
+            var (journalSourceArg, journalSourceVal) = ResolveSavedField(config.JournalSourceCombo, config.JournalSourceRef);
+            var (journalCategoryArg, journalCategoryVal) = ResolveSavedField(config.JournalCategoryCombo, config.JournalCategoryRef);
+
+            // Period (index 3) - branches on the (possibly reference-resolved) balance type text,
+            // same three-way split GetFinalPeriodValue() already uses for Insert.
+            string btText = (btVal ?? string.Empty).Trim();
+            string periodArg, periodVal;
+
+            if (btText.Equals(AppConstants.BalanceTypeJED, StringComparison.OrdinalIgnoreCase) ||
+                btText.Equals(AppConstants.BalanceTypeJEDP, StringComparison.OrdinalIgnoreCase) ||
+                btText.Equals(AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase))
+            {
+                var (startArg, startVal) = ResolveSavedField(config.StartDateCombo, config.StartDateRef);
+                var (endArg, endVal) = ResolveSavedField(config.EndDateCombo, config.EndDateRef);
+                periodArg = $"{startArg}~{endArg}";
+                periodVal = $"{startVal}~{endVal}";
+            }
+            else if (btText.Equals(AppConstants.BalanceTypeCTD, StringComparison.OrdinalIgnoreCase))
+            {
+                var (pArg, pVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef);
+                var (epArg, epVal) = ResolveSavedField(config.EndPeriodCombo, config.EndPeriodRef);
+                periodArg = $"{pArg}~{epArg}";
+                periodVal = $"{pVal}~{epVal}";
+            }
+            else
+            {
+                (periodArg, periodVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef);
+            }
+
+            // Budget/Encumbrance (index 8) - branches on the resolved actual-flag text, same
+            // switch GetBudgetEncumbranceValue() already uses for Insert.
+            string afText = (actualFlagVal ?? string.Empty).Trim();
+            string budEncumArg, budEncumVal;
+
+            if (afText.Equals(Budget, StringComparison.OrdinalIgnoreCase) || afText == "B")
+            {
+                (budEncumArg, budEncumVal) = ResolveSavedField(config.BudgetCombo, config.BudgetRef);
+            }
+            else if (afText.Equals(Encumbrance, StringComparison.OrdinalIgnoreCase) || afText == "E" ||
+                     afText.Equals(AE, StringComparison.OrdinalIgnoreCase) ||
+                     afText.Equals(AppConstants.ActualEncumbranceShort, StringComparison.OrdinalIgnoreCase))
+            {
+                (budEncumArg, budEncumVal) = ResolveSavedField(config.EncumbranceCombo, config.EncumbranceRef);
+            }
+            else
+            {
+                budEncumArg = string.Empty;
+                budEncumVal = string.Empty;
+            }
+
+            var funcArgs = new List<string>
+            {
+                signVal, ledgerArg, activityArg, periodArg, btArg,
+                currencyArg, currencyTypeArg, actualFlagArg, budEncumArg,
+                journalSourceArg, journalCategoryArg
+            };
+            var funcValues = new List<string>
+            {
+                signVal, ledgerVal, activityVal, periodVal, btVal ?? string.Empty,
+                currencyVal, currencyTypeVal, actualFlagVal ?? string.Empty, budEncumVal,
+                journalSourceVal, journalCategoryVal
+            };
+
+            // Account assignment (index 11+) - mirrors ProcessAccountAssignments' own two shapes:
+            // a single range (index 11 only) when a reference was saved, or one plain literal
+            // per COA segment starting at index 11 when a delimited combo string was saved.
+            var accountAssignmentRef = config.AccountAssignmentRef;
+            var accountAssignmentCombo = config.AccountAssignmentCombo;
+
+            if (accountAssignmentRef is not null && accountAssignmentRef.Trim().Length > 0)
+            {
+                var resolved = GetRangeValueSafe(accountAssignmentRef) ?? string.Empty;
+                funcArgs.Add(accountAssignmentRef);
+                funcValues.Add(resolved);
+            }
+            else if (accountAssignmentCombo is not null && accountAssignmentCombo.Trim().Length > 0)
+            {
+                var segments = accountAssignmentCombo
+                    .Split(new[] { ';' }, StringSplitOptions.None);
+
+                foreach (var segment in segments)
+                {
+                    var trimmed = segment.Trim();
+                    funcArgs.Add(trimmed);
+                    funcValues.Add(trimmed);
+                }
+            }
+            // else: no account assignment was ever saved (both Combo and Ref blank) - emit no
+            // segments at index 11+ at all, instead of Split("")'s single empty-string element.
+            // LoadSavedConfigurationAsync below also explicitly clears AccountAssignmentField
+            // afterward for this same case, since ProcessAccountAssignments' per-segment branch
+            // synthesizes its own ";;;;" placeholder from ConfiguratorSegments.Count regardless
+            // of how many entries FuncArgs/FuncValues actually have at index 11+.
+
+            return (funcArgs, funcValues);
+        }
+
+        /// <summary>
+        /// Loads a saved configuration into every field, via the exact same
+        /// ApplyFormulaParamsAsync path used when the active cell already contains a balance
+        /// formula - every cascading Process* call (Journal Source/Category enablement, CTD
+        /// End Period population, ledger-change side effects) fires identically, since this
+        /// is the same method, unchanged, just fed from a saved configuration instead of a
+        /// parsed formula string.
+        /// </summary>
+        public async Task LoadSavedConfigurationAsync(SavedBalanceConfig config)
+        {
+            if (config == null)
+            {
+                ServiceLocator.Logger?.LogWarn("GLConfiguratorViewModel.LoadSavedConfigurationAsync: config is null, aborting.");
+                return;
+            }
+
+            var (funcArgs, funcValues) = BuildFuncArgsFromSavedConfig(config);
+            ServiceLocator.Logger?.LogDebug($"GLConfiguratorViewModel.LoadSavedConfigurationAsync: loading '{config.ConfigName}'.");
+            await ApplyFormulaParamsAsync(config.IsZeroesChecked, funcArgs, funcValues);
+
+            // A config saved with no Account Assignment set at all (both Combo and Ref
+            // blank) still drives ProcessAccountAssignments' per-segment branch, which
+            // synthesizes a ";;;;"-shaped placeholder (one empty slot per COA segment) from
+            // ConfiguratorSegments.Count regardless of how short FuncArgs/FuncValues are -
+            // that placeholder is non-whitespace, so HasValidAccountAssignment would wrongly
+            // treat it as "set". Explicitly restore the field to the same null state a fresh
+            // dialog starts in.
+            if (string.IsNullOrWhiteSpace(config.AccountAssignmentCombo) && string.IsNullOrWhiteSpace(config.AccountAssignmentRef))
+            {
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    AccountAssignmentField.ComboValue = null;
+                    AccountAssignmentField.ComboText = null;
+                    AccountAssignmentField.RefValue = null;
+                    AccountAssignmentField.RefreshEnableState();
+                });
             }
         }
 

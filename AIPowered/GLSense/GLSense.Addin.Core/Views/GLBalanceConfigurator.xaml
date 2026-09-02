@@ -30,6 +30,24 @@
             <conv:JournalValidationConverter x:Key="JournalValidationConverter"/>
             <conv:NullableDateConverter x:Key="NullableDateConverter"/>
 
+            <!-- Compact button variants for the Saved Configurations row (Save New/Update/
+                 Delete/Confirm/Cancel) and the bottom Insert/Cancel row - based on the shared
+                 DynamicContentButton/InsertButtonStyle/CloseButtonStyle (Themes/GlobalStyles.xaml)
+                 but shorter, matching this dialog's compact field rows. Ported from
+                 FinalWorkingCode's identical local styles. -->
+            <Style x:Key="CompactActionButton" TargetType="Button" BasedOn="{StaticResource DynamicContentButton}">
+                <Setter Property="MinHeight" Value="26"/>
+                <Setter Property="Padding" Value="12,4"/>
+            </Style>
+            <Style x:Key="CompactInsertButtonStyle" TargetType="Button" BasedOn="{StaticResource InsertButtonStyle}">
+                <Setter Property="MinHeight" Value="26"/>
+                <Setter Property="Padding" Value="12,4"/>
+            </Style>
+            <Style x:Key="CompactCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CloseButtonStyle}">
+                <Setter Property="MinHeight" Value="26"/>
+                <Setter Property="Padding" Value="12,4"/>
+            </Style>
+
             <!-- Balance-Configurator-local styles. These are not shared/registered in the
                  project's Themes\GlobalStyles.xaml because this migration's already-ported
                  windows use a different visual convention for headers/labels/combos (WPF-UI
@@ -156,6 +174,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
@@ -175,8 +194,83 @@
                     </Grid>
                 </Border>
 
+                <!-- ================= Saved Configurations (collapsed by default) ================= -->
+                <Expander Grid.Row="1"
+                          x:Name="SavedConfigurationsExpander"
+                          Style="{StaticResource BlueCircleExpanderStyle}"
+                          IsExpanded="False"
+                          Background="White"
+                          BorderThickness="0"
+                          HorizontalAlignment="Stretch"
+                          Margin="0,0,0,8">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
+                            <iconPacks:PackIconFontAwesome Kind="BookmarkSolid" Width="14" Height="14" Foreground="#2E86AB" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding SavedConfigurationsHeaderText}" Style="{StaticResource SectionHeaderStyle1}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Expander.Header>
+                    <Grid Margin="12,8,12,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ctrls:SuggestAppendComboBox x:Name="CmbSavedConfigurations"
+                                                     Grid.Column="0"
+                                                     Style="{StaticResource CompactCombo}"
+                                                     ItemsSource="{Binding SavedConfigurations}"
+                                                     DisplayMemberPath="ConfigName"
+                                                     SelectedItem="{Binding SelectedSavedConfig, Mode=TwoWay}"
+                                                     Margin="0,0,8,0"/>
+
+                        <Button x:Name="btnSaveNewConfig"
+                                Grid.Column="1"
+                                Style="{StaticResource CompactActionButton}"
+                                Content="Save New"
+                                Margin="0,0,4,0"
+                                Click="BtnSaveNewConfig_Click"/>
+
+                        <Button x:Name="btnUpdateConfig"
+                                Grid.Column="2"
+                                Style="{StaticResource CompactActionButton}"
+                                Content="Update"
+                                Margin="0,0,4,0"
+                                IsEnabled="False"
+                                Click="BtnUpdateConfig_Click"/>
+
+                        <Button x:Name="btnDeleteConfig"
+                                Grid.Column="3"
+                                Style="{StaticResource CompactActionButton}"
+                                Content="Delete"
+                                IsEnabled="False"
+                                Click="BtnDeleteConfig_Click"/>
+
+                        <StackPanel x:Name="SaveNamePanel"
+                                    Grid.Row="1"
+                                    Grid.Column="0"
+                                    Grid.ColumnSpan="4"
+                                    Orientation="Horizontal"
+                                    Margin="0,8,0,0"
+                                    Visibility="Collapsed">
+                            <TextBox x:Name="TxtNewConfigName"
+                                     Width="220"
+                                     MaxLength="32"
+                                     Style="{StaticResource CompactTextBox}"
+                                     Margin="0,0,8,0"/>
+                            <Button Style="{StaticResource CompactActionButton}" Content="Confirm" Margin="0,0,4,0" Click="BtnConfirmSaveNewConfig_Click"/>
+                            <Button Style="{StaticResource CompactActionButton}" Content="Cancel" Click="BtnCancelSaveNewConfig_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Expander>
+
                 <!-- ================= Main Controls Section ================= -->
-                <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8">
+                <Border Grid.Row="2" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8">
                     <!-- MaxHeight bumped from 500 to 620: widening ConfigRowStyle's row
                          margin (0,3 -> 0,8, see that style's comment above) to fix the
                          "controls too close together" spacing complaint made each row
@@ -929,44 +1023,37 @@
                 </Border>
 
                 <!-- ================= Options Section ================= -->
-                <Border Grid.Row="2" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8" Padding="12,8">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="120"/>
-                        </Grid.ColumnDefinitions>
+                <Border Grid.Row="3" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8" Padding="12,8">
+                    <!-- Change Sign / Show 0's / Factor kept on one line (no stretching *
+                         column between them) so Factor sits right after the checkboxes
+                         instead of being pushed to the far right corner. -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <CheckBox x:Name="ChkSign"
+                                  Content="Change Sign"
+                                  Style="{StaticResource CompactCheckBox}"
+                                  IsChecked="{Binding IsSignChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                            <CheckBox.ToolTip>
+                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                    <TextBlock Text="Changes the value from positive to negative and vice versa"/>
+                                </ToolTip>
+                            </CheckBox.ToolTip>
+                        </CheckBox>
 
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <CheckBox x:Name="ChkSign"
-                                      Content="Change Sign"
-                                      Style="{StaticResource CompactCheckBox}"
-                                      IsChecked="{Binding IsSignChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                <CheckBox.ToolTip>
-                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                        <TextBlock Text="Changes the value from positive to negative and vice versa"/>
-                                    </ToolTip>
-                                </CheckBox.ToolTip>
-                            </CheckBox>
-                        </StackPanel>
+                        <CheckBox x:Name="ChkZeroes"
+                                  Content="Show 0's"
+                                  Style="{StaticResource CompactCheckBox}"
+                                  Margin="16,0,0,0"
+                                  IsChecked="{Binding IsZeroesChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                            <CheckBox.ToolTip>
+                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                    <TextBlock Text="Applies excel number format to displays zero or not"/>
+                                </ToolTip>
+                            </CheckBox.ToolTip>
+                        </CheckBox>
 
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                            <CheckBox x:Name="ChkZeroes"
-                                      Content="Show 0's"
-                                      Style="{StaticResource CompactCheckBox}"
-                                      IsChecked="{Binding IsZeroesChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                <CheckBox.ToolTip>
-                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
-                                        <TextBlock Text="Applies excel number format to displays zero or not"/>
-                                    </ToolTip>
-                                </CheckBox.ToolTip>
-                            </CheckBox>
-                        </StackPanel>
-
-                        <TextBlock Grid.Column="2" Text="Factor:" VerticalAlignment="Center" Style="{StaticResource SectionHeaderStyle}" HorizontalAlignment="Right"/>
+                        <TextBlock Text="Factor:" VerticalAlignment="Center" Style="{StaticResource SectionHeaderStyle}" Margin="16,0,0,0"/>
                         <TextBox x:Name="TxtFactor"
-                                 Grid.Column="3"
+                                 Width="90"
                                  Style="{StaticResource CompactTextBox}"
                                  Margin="8,0,0,0"
                                  Text="{Binding FactorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -978,11 +1065,11 @@
                                 </ToolTip>
                             </TextBox.ToolTip>
                         </TextBox>
-                    </Grid>
+                    </StackPanel>
                 </Border>
 
                 <!-- ================= Action Buttons Section ================= -->
-                <Border Grid.Row="3" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8" Padding="12,8">
+                <Border Grid.Row="4" Style="{StaticResource ContentBorderStyle}" Margin="0,0,0,8" Padding="12,8">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -1003,14 +1090,14 @@
                                                    VerticalAlignment="Center"/>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <Button x:Name="btnOKBottom" Margin="0,0,8,0" Style="{StaticResource InsertButtonStyle}" Click="BtnOKBottom_Click"/>
-                            <Button x:Name="btnCancelBottom" Style="{StaticResource CloseButtonStyle}" Click="BtnCancelBottom_Click"/>
+                            <Button x:Name="btnOKBottom" Margin="0,0,8,0" Style="{StaticResource CompactInsertButtonStyle}" Click="BtnOKBottom_Click"/>
+                            <Button x:Name="btnCancelBottom" Style="{StaticResource CompactCloseButtonStyle}" Click="BtnCancelBottom_Click"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
                 <!-- ================= Balance Parameters Section - Fills remaining space ================= -->
-                <Expander Grid.Row="4"
+                <Expander Grid.Row="5"
                           x:Name="BalanceParametersExpander"
                           Style="{StaticResource BlueCircleExpanderStyle}"
                           IsExpanded="False"

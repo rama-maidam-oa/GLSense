@@ -188,6 +188,34 @@ namespace GLSense.Addin.Core.Views
         }
 
         /// <summary>
+        /// Old monolith's GLConfiguratorPane.HasSavedConfigurationSelected() (ported as a
+        /// method here rather than a property - IGLSenseAddin is a plain method-based
+        /// cross-AppDomain contract). InvokeOnWpfThread's Dispatcher.Invoke is synchronous,
+        /// so capturing the result into a local from inside the lambda and returning it
+        /// afterward is safe - the call blocks until the WPF thread has actually run it.
+        /// Returns false (safe default) if the configurator content hasn't been created yet.
+        /// </summary>
+        public static bool HasSavedConfigurationSelected()
+        {
+            if (_content == null)
+                return false;
+
+            bool result = false;
+            try
+            {
+                Utilities.WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    result = _content.HasSavedConfigurationSelected;
+                });
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "ConfiguratorPaneHost.HasSavedConfigurationSelected");
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Tears down the hosted Window - used at Shutdown/logoff and before a hot-reload
         /// swap so the outgoing AppDomain's Window doesn't linger reparented inside the
         /// host's still-alive task pane.

@@ -2030,6 +2030,15 @@ namespace GLSense.Addin.Core
         }
 
         /// <summary>
+        /// IGLSenseAddin.HasSavedConfigurationSelected() - old monolith's
+        /// GLBalanceConfigurator.HasSavedConfigurationSelected. Thin delegation only.
+        /// </summary>
+        public bool HasSavedConfigurationSelected()
+        {
+            return Views.ConfiguratorPaneHost.HasSavedConfigurationSelected();
+        }
+
+        /// <summary>
         /// IGLSenseAddin.CloseConfiguratorPaneContent() - tears down the hosted configurator
         /// Window (used on Shutdown/logoff and before a hot-reload swap). Thin delegation
         /// only.

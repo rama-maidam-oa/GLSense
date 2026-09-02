@@ -90,6 +90,17 @@ namespace GLSense.Contracts
         void ResetConfiguratorPaneReference();
 
         /// <summary>
+        /// Group H - whether the user currently has an explicit Balance Configurator saved
+        /// configuration selected (GLConfiguratorViewModel.SelectedSavedConfig != null).
+        /// Checked by SheetSelectionChange before RelaunchConfiguratorPane, so navigating
+        /// cells while the pane is open does not override a deliberately selected saved
+        /// configuration's field values. Returns false (safe default - falls back to the
+        /// pre-existing formula/reset behavior) if the configurator content hasn't been
+        /// created yet.
+        /// </summary>
+        bool HasSavedConfigurationSelected();
+
+        /// <summary>
         /// Group H - tears down the hosted configurator Window (used on Shutdown/logoff
         /// and before a hot-reload swap, so the old AppDomain's Window doesn't linger).
         /// </summary>
