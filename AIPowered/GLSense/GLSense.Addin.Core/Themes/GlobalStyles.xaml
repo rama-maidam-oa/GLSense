@@ -794,23 +794,6 @@
         <Setter Property="Padding" Value="10,8"/>
     </Style>
 
-    <!-- ==================== Compact SuggestAppendComboBox Style ==================== -->
-    <Style x:Key="CompactCombo" TargetType="ctrls:SuggestAppendComboBox" BasedOn="{StaticResource {x:Type ctrls:SuggestAppendComboBox}}">
-        <Setter Property="FontFamily" Value="Segoe UI"/>
-        <Setter Property="Margin" Value="0,0,0,6"/>
-        <Setter Property="Height" Value="30"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="HorizontalAlignment" Value="Stretch"/>
-        <Setter Property="ArrowBrush" Value="{StaticResource PrimaryBrush}"/>
-        <Setter Property="ArrowWidth" Value="8"/>
-        <Setter Property="ArrowHeight" Value="6"/>
-        <Setter Property="Background" Value="White"/>
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
-        <Setter Property="FontSize" Value="11"/>
-    </Style>
-
     <!-- ==================== Compact RefEdit Control Style ==================== -->
     <Style x:Key="CompactRefEditControl" TargetType="views:ExcelRefEditControl">
         <Setter Property="FontFamily" Value="Segoe UI"/>

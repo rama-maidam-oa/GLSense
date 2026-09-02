@@ -324,4 +324,29 @@
         </Setter>
     </Style>
 
+    <!-- ==================== Compact SuggestAppendComboBox Style ====================
+         Moved here from GlobalStyles.xaml: its BasedOn references the base typed style
+         above by StaticResource, which only resolves within THIS dictionary's own scope
+         (or a dictionary it merges) - GlobalStyles.xaml has no MergedDictionaries at all,
+         so it can never see this dictionary's resources (Generic.xaml merges
+         GlobalStyles.xaml, not the reverse - one-directional). Living in GlobalStyles.xaml,
+         BasedOn silently failed to resolve, leaving CompactCombo with no Template - see
+         CLAUDE.md for the full investigation ("SuggestAppendComboBox 'CmbSavedConfigurations'
+         has no resolved Style/Template after Loaded"). -->
+    <Style x:Key="CompactCombo" TargetType="ctrls:SuggestAppendComboBox" BasedOn="{StaticResource {x:Type ctrls:SuggestAppendComboBox}}">
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="Margin" Value="0,0,0,6"/>
+        <Setter Property="Height" Value="30"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="ArrowBrush" Value="{StaticResource PrimaryBrush}"/>
+        <Setter Property="ArrowWidth" Value="8"/>
+        <Setter Property="ArrowHeight" Value="6"/>
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderLightBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+    </Style>
+
 </ResourceDictionary>
