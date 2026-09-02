@@ -292,24 +292,35 @@ namespace GLSense.ViewModels
             {
                 _selectedSavedConfig = value;
                 OnPropertyChanged(nameof(SelectedSavedConfig));
+                OnPropertyChanged(nameof(SavedConfigurationsHeaderText));
             }
         }
 
+        /// <summary>
+        /// Drives the "Saved Configurations" expander header - includes the loaded
+        /// configuration's name so the user has a visible reminder that a saved
+        /// configuration (not the active cell's formula/defaults) is what's currently
+        /// loaded. Blank/cleared selection falls back to the plain section title.
+        /// </summary>
+        public string SavedConfigurationsHeaderText =>
+            SelectedSavedConfig != null ? $"Saved Configurations: {SelectedSavedConfig.ConfigName}" : "Saved Configurations";
+
         // Set immediately before SaveNewConfigurationAsync/UpdateSelectedConfigurationAsync
         // assign SelectedSavedConfig themselves (as opposed to a genuine user click on the
-        // combo box). WPF's Selector fires SelectionChanged for either cause, and
-        // GLBalanceConfigurator.xaml.cs's CmbSavedConfigurations_SelectionChanged
-        // fire-and-forgets a full field reload from the just-saved entry - which can wipe
-        // out freehand combo values ProcessFieldAsync just captured (it sets ComboValue to
-        // null when a typed value matches no list item). Consumed (read-and-reset) by the
-        // View via ConsumeSuppressNextSelectionLoad() so the reload is skipped exactly once.
+        // combo box). Both causes raise the same PropertyChanged for SelectedSavedConfig, and
+        // GLBalanceConfigurator.xaml.cs's Vm_PropertyChanged fire-and-forgets a full field
+        // reload from the just-saved entry - which can wipe out freehand combo values
+        // ProcessFieldAsync just captured (it sets ComboValue to null when a typed value
+        // matches no list item). Consumed (read-and-reset) by the View via
+        // ConsumeSuppressNextSelectionLoad() so the reload is skipped exactly once.
         private bool _suppressNextSelectionLoad;
 
         /// <summary>
-        /// Returns whether the next SelectionChanged on the saved-configurations combo was
-        /// caused by this ViewModel assigning SelectedSavedConfig itself (Save/Update), and
-        /// resets the flag. Intended to be called once, at the top of
-        /// CmbSavedConfigurations_SelectionChanged.
+        /// Returns whether the next SelectedSavedConfig PropertyChanged was caused by this
+        /// ViewModel assigning it itself (Save/Update/ResetUIState) - Delete deliberately does
+        /// NOT set this, so its own null-assignment falls through to the normal
+        /// cell-formula-or-defaults reload like a manual combo clear. Resets the flag once
+        /// read. Intended to be called once, at the top of Vm_PropertyChanged.
         /// </summary>
         public bool ConsumeSuppressNextSelectionLoad()
         {
@@ -809,7 +820,16 @@ namespace GLSense.ViewModels
             if (FuncArgs == null && FuncValues == null)
             {
                 LogUtility.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: no formula params supplied, applying default selections.");
-                ApplyDefaultSelections();
+                // Unlike ApplyFormulaParamsAsync (every one of its field mutations already
+                // wraps itself in _dispatcher.InvokeAsync), this call chain
+                // (ApplyDefaultLedgerSelection sets GenericLedgerModel.IsSelected, which
+                // raises PropertyChanged -> Ledger_PropertyChanged -> UpdateParameterSummary's
+                // SetValue) was not marshaled, and by this point in the reload this method
+                // cannot rely on already being on the Dispatcher thread - confirmed by a
+                // logged InvalidOperationException ("calling thread cannot access this
+                // object") aborting ApplyDefaultSelections partway through, which is exactly
+                // why only the ledger ended up set and every other field was skipped.
+                await _dispatcher.InvokeAsync(() => ApplyDefaultSelections());
             }
             else if (FuncArgs != null && FuncValues != null)
             {
@@ -817,7 +837,11 @@ namespace GLSense.ViewModels
                 await ApplyFormulaParamsAsync(ZeroesChecked, FuncArgs, FuncValues);
             }
 
-            RefreshAllFields();
+            // Same reasoning as the ApplyDefaultSelections wrap above: RefreshAllFields raises
+            // OnPropertyChanged for each field's IsRefEnabled/IsComboEnabled, which WPF's
+            // binding engine pushes synchronously into the bound (DependencyObject) controls'
+            // IsEnabled - unsafe to call without marshaling for the same reason.
+            await _dispatcher.InvokeAsync(() => RefreshAllFields());
             LogUtility.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: exit");
         }
 
@@ -846,6 +870,13 @@ namespace GLSense.ViewModels
             IsSignChecked = false;
             IsZeroesChecked = true;
             FactorText = "1";
+
+            // The combo starts blank on every launch. Suppressed the same way Save/Update
+            // suppress their own self-triggered reload (see _suppressNextSelectionLoad) -
+            // the fields are populated separately, right after this, by
+            // ApplyDefaultSelections()/ApplyFormulaParamsAsync, so this assignment must not
+            // itself trigger another reload on top of that.
+            _suppressNextSelectionLoad = true;
             SelectedSavedConfig = null;
         }
 
@@ -876,7 +907,8 @@ namespace GLSense.ViewModels
 
             try
             {
-                if (BalanceConfigXmlStore.TryRead(ExcelApp?.ActiveWorkbook, cubeId, out var savedConfigs))
+                var workbookForRead = ExcelApp?.ActiveWorkbook;
+                if (workbookForRead != null && BalanceConfigXmlStore.TryRead(workbookForRead, cubeId, out var savedConfigs))
                 {
                     await _dispatcher.InvokeAsync(() =>
                     {
@@ -935,32 +967,44 @@ namespace GLSense.ViewModels
             var results = await Task.WhenAll(tasks);
             LogUtility.LogDebug("GLConfiguratorViewModel.LoadDataAsync: all data repository tasks completed.");
 
-            ConfiguratorSegments = results[0] as ObservableCollection<SegmentModel> ?? new ObservableCollection<SegmentModel>();
-            var ledgersData = results[1] as ObservableCollection<GenericLedgerModel> ?? new ObservableCollection<GenericLedgerModel>();
-            PopulateDynamicCollections(Ledgers, ledgersData, l => l.PropertyChanged += Ledger_PropertyChanged);
-            // Stored into the master list, not directly into the publicly-bound Activities
-            // collection - Activities is a conditionally-filtered view rebuilt by
-            // UpdateActivitiesForConditions() (called from UpdateUIAsync below), which
-            // hides Begin/End Balance while Balance Type is a JED variant (Issue-5).
-            _allActivities = results[2] as ObservableCollection<ActivityModel> ?? new ObservableCollection<ActivityModel>();
-            Periods = results[3] as ObservableCollection<PeriodModel> ?? new ObservableCollection<PeriodModel>();
-            Currencies = results[4] as ObservableCollection<CurrencyModel> ?? new ObservableCollection<CurrencyModel>();
-            Budgets = results[5] as ObservableCollection<BudgetModel> ?? new ObservableCollection<BudgetModel>();
+            // Marshaled onto the UI dispatcher like the SavedConfigurations block above -
+            // this method can be reached (via GLBalanceConfigurator.ApplyActiveCellOrDefaultsAsync)
+            // from a call chain that isn't guaranteed to still be on the Dispatcher thread by
+            // this point, and ObservableCollection.Clear()/Add() (inside PopulateDynamicCollections)
+            // throws NotSupportedException ("This type of CollectionView does not support
+            // changes to its SourceCollection from a thread different from the Dispatcher
+            // thread") if mutated off-thread while bound to a live CollectionView. Wrapping the
+            // whole tail here, not just the collection mutations, keeps every UI-bound
+            // property assignment below on the same safe thread.
+            await _dispatcher.InvokeAsync(() =>
+            {
+                ConfiguratorSegments = results[0] as ObservableCollection<SegmentModel> ?? new ObservableCollection<SegmentModel>();
+                var ledgersData = results[1] as ObservableCollection<GenericLedgerModel> ?? new ObservableCollection<GenericLedgerModel>();
+                PopulateDynamicCollections(Ledgers, ledgersData, l => l.PropertyChanged += Ledger_PropertyChanged);
+                // Stored into the master list, not directly into the publicly-bound Activities
+                // collection - Activities is a conditionally-filtered view rebuilt by
+                // UpdateActivitiesForConditions() (called from UpdateUIAsync below), which
+                // hides Begin/End Balance while Balance Type is a JED variant (Issue-5).
+                _allActivities = results[2] as ObservableCollection<ActivityModel> ?? new ObservableCollection<ActivityModel>();
+                Periods = results[3] as ObservableCollection<PeriodModel> ?? new ObservableCollection<PeriodModel>();
+                Currencies = results[4] as ObservableCollection<CurrencyModel> ?? new ObservableCollection<CurrencyModel>();
+                Budgets = results[5] as ObservableCollection<BudgetModel> ?? new ObservableCollection<BudgetModel>();
 
-            var encumbrancesData = results[6] as ObservableCollection<EncumbranceModel> ?? new ObservableCollection<EncumbranceModel>();
-            PopulateDynamicCollections(Encumbrances, encumbrancesData, e => e.PropertyChanged += Encumbrance_PropertyChanged);
-            // Enable ledger combo/ref if ledgers exist
-            try
-            {
-                IsLedgerEnabled = Ledgers != null && Ledgers.Any();
-                LedgerField.RefreshEnableState();
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "GLConfiguratorViewModel.LoadDataAsync: failed to refresh ledger field enable state (non-fatal)");
-            }
-            JournalSources = results[7] as ObservableCollection<JournalSourceModel> ?? new ObservableCollection<JournalSourceModel>();
-            JournalCategories = results[8] as ObservableCollection<JournalCategoryModel> ?? new ObservableCollection<JournalCategoryModel>();
+                var encumbrancesData = results[6] as ObservableCollection<EncumbranceModel> ?? new ObservableCollection<EncumbranceModel>();
+                PopulateDynamicCollections(Encumbrances, encumbrancesData, e => e.PropertyChanged += Encumbrance_PropertyChanged);
+                // Enable ledger combo/ref if ledgers exist
+                try
+                {
+                    IsLedgerEnabled = Ledgers != null && Ledgers.Any();
+                    LedgerField.RefreshEnableState();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "GLConfiguratorViewModel.LoadDataAsync: failed to refresh ledger field enable state (non-fatal)");
+                }
+                JournalSources = results[7] as ObservableCollection<JournalSourceModel> ?? new ObservableCollection<JournalSourceModel>();
+                JournalCategories = results[8] as ObservableCollection<JournalCategoryModel> ?? new ObservableCollection<JournalCategoryModel>();
+            });
             LogUtility.LogDebug($"GLConfiguratorViewModel.LoadDataAsync: exit. Segments={ConfiguratorSegments?.Count ?? 0}, Ledgers={Ledgers?.Count ?? 0}, Activities={Activities?.Count ?? 0}, Periods={Periods?.Count ?? 0}, Currencies={Currencies?.Count ?? 0}, Budgets={Budgets?.Count ?? 0}, Encumbrances={Encumbrances?.Count ?? 0}, JournalSources={JournalSources?.Count ?? 0}, JournalCategories={JournalCategories?.Count ?? 0}");
         }
 
@@ -1167,7 +1211,12 @@ namespace GLSense.ViewModels
             await ProcessJls(FuncArgs, FuncValues); //Process Journal Sources and Categories
             await ProcessAccountAssignments(FuncArgs, FuncValues);
 
-            UpdateParameterSummary();
+            // Same class of bug as ApplyDefaultSelections/RefreshAllFields (see
+            // LoadConfiguratorAsync): UpdateParameterSummary does a direct DependencyObject
+            // SetValue, and every other statement in this method already wraps itself in
+            // _dispatcher.InvokeAsync - this trailing bare call was the one gap, confirmed by
+            // a logged VerifyAccess() InvalidOperationException here.
+            await _dispatcher.InvokeAsync(() => UpdateParameterSummary());
             LogUtility.LogDebug("GLConfiguratorViewModel.ApplyFormulaParamsAsync: exit");
         }
 
@@ -1306,17 +1355,24 @@ namespace GLSense.ViewModels
         }
         private async Task ProcessEmptyValue()
         {
-            // Reset all IsSelected to false
+            // Reset all IsSelected to false. Marshaled like SetLedgerField below: setting
+            // IsSelected raises PropertyChanged -> Ledger_PropertyChanged ->
+            // UpdateParameterSummary's direct DependencyObject.SetValue, which throws if this
+            // method isn't on the Dispatcher thread (confirmed by a logged VerifyAccess()
+            // exception elsewhere in this same reload pipeline).
             if (Ledgers != null)
             {
-                foreach (var ledger in Ledgers)
+                await _dispatcher.InvokeAsync(() =>
                 {
-                    var isSelectedProp = ledger.GetType().GetProperty(AppConstants.PropIsSelected);
-                    if (isSelectedProp != null)
+                    foreach (var ledger in Ledgers)
                     {
-                        isSelectedProp.SetValue(ledger, false);
+                        var isSelectedProp = ledger.GetType().GetProperty(AppConstants.PropIsSelected);
+                        if (isSelectedProp != null)
+                        {
+                            isSelectedProp.SetValue(ledger, false);
+                        }
                     }
-                }
+                });
             }
 
             // Set all fields to null
@@ -1338,37 +1394,41 @@ namespace GLSense.ViewModels
                 return;
             }
 
-            // Reset all IsSelected to false
-            foreach (var ledger in Ledgers)
-            {
-                var isSelectedProp = ledger.GetType().GetProperty(AppConstants.PropIsSelected);
-                if (isSelectedProp != null)
-                {
-                    isSelectedProp.SetValue(ledger, false);
-                }
-            }
-
-            // Find existing ledgers and set IsSelected true
+            // Reset all IsSelected to false, then select the matching ledgers - marshaled
+            // for the same reason as ProcessEmptyValue above (IsSelected's PropertyChanged
+            // cascade reaches a direct DependencyObject.SetValue).
             var existingNames = new List<string>();
-
-            foreach (string name in names)
+            await _dispatcher.InvokeAsync(() =>
             {
-                var ledgerMatch = Ledgers.FirstOrDefault(x =>
+                foreach (var ledger in Ledgers)
                 {
-                    var ledgerName = x.GetType().GetProperty(AppConstants.PropLedgerName)?.GetValue(x)?.ToString();
-                    return ledgerName == name;
-                });
-
-                if (ledgerMatch != null)
-                {
-                    var isSelectedProp = ledgerMatch.GetType().GetProperty(AppConstants.PropIsSelected);
+                    var isSelectedProp = ledger.GetType().GetProperty(AppConstants.PropIsSelected);
                     if (isSelectedProp != null)
                     {
-                        isSelectedProp.SetValue(ledgerMatch, true);
+                        isSelectedProp.SetValue(ledger, false);
                     }
-                    existingNames.Add(name);
                 }
-            }
+
+                // Find existing ledgers and set IsSelected true
+                foreach (string name in names)
+                {
+                    var ledgerMatch = Ledgers.FirstOrDefault(x =>
+                    {
+                        var ledgerName = x.GetType().GetProperty(AppConstants.PropLedgerName)?.GetValue(x)?.ToString();
+                        return ledgerName == name;
+                    });
+
+                    if (ledgerMatch != null)
+                    {
+                        var isSelectedProp = ledgerMatch.GetType().GetProperty(AppConstants.PropIsSelected);
+                        if (isSelectedProp != null)
+                        {
+                            isSelectedProp.SetValue(ledgerMatch, true);
+                        }
+                        existingNames.Add(name);
+                    }
+                }
+            });
 
             // Set ComboValue only with existing names
             var comboValueToSet = existingNames.Any()
@@ -1393,16 +1453,6 @@ namespace GLSense.ViewModels
                 return;
             }
 
-            // Reset all IsSelected to false first
-            foreach (var ledger in Ledgers)
-            {
-                var isSelectedProp = ledger.GetType().GetProperty(AppConstants.PropIsSelected);
-                if (isSelectedProp != null)
-                {
-                    isSelectedProp.SetValue(ledger, false);
-                }
-            }
-
             var trimmedValue = value.Trim();
             var match = Ledgers.FirstOrDefault(x =>
             {
@@ -1410,13 +1460,31 @@ namespace GLSense.ViewModels
                 return ledgerName == trimmedValue;
             });
 
+            // Reset all IsSelected to false, then select the match - marshaled for the same
+            // reason as ProcessEmptyValue/ProcessMultipleLedgers above.
+            await _dispatcher.InvokeAsync(() =>
+            {
+                foreach (var ledger in Ledgers)
+                {
+                    var isSelectedProp = ledger.GetType().GetProperty(AppConstants.PropIsSelected);
+                    if (isSelectedProp != null)
+                    {
+                        isSelectedProp.SetValue(ledger, false);
+                    }
+                }
+
+                if (match != null)
+                {
+                    var matchIsSelectedProp = match.GetType().GetProperty(AppConstants.PropIsSelected);
+                    if (matchIsSelectedProp != null)
+                    {
+                        matchIsSelectedProp.SetValue(match, true);
+                    }
+                }
+            });
+
             if (match != null)
             {
-                var isSelectedProp = match.GetType().GetProperty(AppConstants.PropIsSelected);
-                if (isSelectedProp != null)
-                {
-                    isSelectedProp.SetValue(match, true);
-                }
                 await SetLedgerField(null, match.GetType().GetProperty(AppConstants.PropLedgerName)?.GetValue(match)?.ToString());
             }
             else
@@ -1876,22 +1944,25 @@ namespace GLSense.ViewModels
 
             var selectedEncumbrances = new List<EncumbranceModel>();
 
+            // Setting IsSelected below raises PropertyChanged -> Encumbrance_PropertyChanged
+            // -> UpdateParameterSummary's direct DependencyObject.SetValue, same class of bug
+            // as the ledger IsSelected sets above - marshaled for the same reason.
             if (value.Contains(";"))
             {
                 var names = value.Split(';').Select(n => n.Trim()).Where(n => !string.IsNullOrWhiteSpace(n));
-                foreach (string name in names)
-                {
-                    var match = Encumbrances.FirstOrDefault(x => x.EncumbranceType == name);
-                    if (match != null)
-                    {
-                        match.IsSelected = true;
-                        selectedEncumbrances.Add(match);
-                    }
-                }
-
-                var selectedText = string.Join(";", selectedEncumbrances.Select(e => e.EncumbranceType));
                 await _dispatcher.InvokeAsync(() =>
                 {
+                    foreach (string name in names)
+                    {
+                        var match = Encumbrances.FirstOrDefault(x => x.EncumbranceType == name);
+                        if (match != null)
+                        {
+                            match.IsSelected = true;
+                            selectedEncumbrances.Add(match);
+                        }
+                    }
+
+                    var selectedText = string.Join(";", selectedEncumbrances.Select(e => e.EncumbranceType));
                     EncumbranceField.ComboText = selectedText;
                     EncumbranceField.ComboValue = selectedEncumbrances.FirstOrDefault();
                 });
@@ -1901,9 +1972,9 @@ namespace GLSense.ViewModels
                 var match = Encumbrances.FirstOrDefault(x => x.EncumbranceType == value.Trim());
                 if (match != null)
                 {
-                    match.IsSelected = true;
                     await _dispatcher.InvokeAsync(() =>
                     {
+                        match.IsSelected = true;
                         EncumbranceField.ComboText = match.EncumbranceType;
                         EncumbranceField.ComboValue = match;
                     });
@@ -3266,13 +3337,23 @@ namespace GLSense.ViewModels
                 return;
             }
 
-            BalanceConfigXmlStore.Save(ExcelApp?.ActiveWorkbook, cube.CubeId, cube.CubeName, new List<SavedBalanceConfig>(SavedConfigurations));
+            var workbookForSave = ExcelApp?.ActiveWorkbook;
+            if (workbookForSave == null)
+            {
+                LogUtility.LogWarn("GLConfiguratorViewModel.PersistSavedConfigurations: no active workbook, cannot persist.");
+                return;
+            }
+
+            BalanceConfigXmlStore.Save(workbookForSave, cube.CubeId, cube.CubeName, new List<SavedBalanceConfig>(SavedConfigurations));
         }
+
+        public const int MaxSavedConfigNameLength = 32;
 
         /// <summary>
         /// Saves the current field selections as a new named configuration for the current
-        /// cube. Returns false (and raises ShowWarningAction) if the name is blank or already
-        /// used by another saved configuration for this cube.
+        /// cube. Returns false (and raises ShowWarningAction) if the name is blank, longer
+        /// than MaxSavedConfigNameLength, or already used by another saved configuration for
+        /// this cube.
         /// </summary>
         public Task<bool> SaveNewConfigurationAsync(string name)
         {
@@ -3280,6 +3361,12 @@ namespace GLSense.ViewModels
             if (string.IsNullOrWhiteSpace(trimmedName))
             {
                 ShowWarningAction?.Invoke("Please enter a name for the saved configuration.");
+                return Task.FromResult(false);
+            }
+
+            if (trimmedName.Length > MaxSavedConfigNameLength)
+            {
+                ShowWarningAction?.Invoke($"Configuration name cannot exceed {MaxSavedConfigNameLength} characters.");
                 return Task.FromResult(false);
             }
 
@@ -3346,6 +3433,10 @@ namespace GLSense.ViewModels
 
             var removedName = SelectedSavedConfig.ConfigName;
             SavedConfigurations.Remove(SelectedSavedConfig);
+            // Deliberately NOT suppressed: deleting the active selection is meant to behave
+            // exactly like clearing the combo text (Vm_PropertyChanged's null branch) - fall
+            // back to whatever the active cell says now (its formula params, or real defaults
+            // if there's no formula or it's not a single-GetBalance one).
             SelectedSavedConfig = null;
             PersistSavedConfigurations();
 
@@ -3364,7 +3455,7 @@ namespace GLSense.ViewModels
         // argument" path).
         private (string Arg, string Val) ResolveSavedField(string? combo, string? refValue)
         {
-            if (!string.IsNullOrWhiteSpace(refValue))
+            if (refValue is not null && refValue.Trim().Length > 0)
             {
                 var resolved = GetRangeValueSafe(refValue) ?? string.Empty;
                 return (refValue, resolved);
@@ -3449,23 +3540,26 @@ namespace GLSense.ViewModels
             };
             var funcValues = new List<string>
             {
-                signVal, ledgerVal, activityVal, periodVal, btVal,
-                currencyVal, currencyTypeVal, actualFlagVal, budEncumVal,
+                signVal, ledgerVal, activityVal, periodVal, btVal ?? string.Empty,
+                currencyVal, currencyTypeVal, actualFlagVal ?? string.Empty, budEncumVal,
                 journalSourceVal, journalCategoryVal
             };
 
             // Account assignment (index 11+) - mirrors ProcessAccountAssignments' own two shapes:
             // a single range (index 11 only) when a reference was saved, or one plain literal
             // per COA segment starting at index 11 when a delimited combo string was saved.
-            if (!string.IsNullOrWhiteSpace(config.AccountAssignmentRef))
+            var accountAssignmentRef = config.AccountAssignmentRef;
+            var accountAssignmentCombo = config.AccountAssignmentCombo;
+
+            if (accountAssignmentRef is not null && accountAssignmentRef.Trim().Length > 0)
             {
-                var resolved = GetRangeValueSafe(config.AccountAssignmentRef) ?? string.Empty;
-                funcArgs.Add(config.AccountAssignmentRef);
+                var resolved = GetRangeValueSafe(accountAssignmentRef) ?? string.Empty;
+                funcArgs.Add(accountAssignmentRef);
                 funcValues.Add(resolved);
             }
-            else if (!string.IsNullOrWhiteSpace(config.AccountAssignmentCombo))
+            else if (accountAssignmentCombo is not null && accountAssignmentCombo.Trim().Length > 0)
             {
-                var segments = config.AccountAssignmentCombo
+                var segments = accountAssignmentCombo
                     .Split(new[] { ';' }, StringSplitOptions.None);
 
                 foreach (var segment in segments)

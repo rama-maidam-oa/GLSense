@@ -1996,14 +1996,23 @@ namespace GLSense
                 AppState.Instance.BalancePane = GetPaneInstance();
                 if (AppState.Instance.BalancePane != null && AppState.Instance.BalancePane.Visible)
                 {
-                    if (TryGetSingleCellFormula(rng, out string formula) &&
+                    // The Cell Reference field at the bottom of the pane always tracks the
+                    // active cell regardless of a saved-configuration selection - it's the
+                    // Insert target, not one of the loaded configuration values.
+                    _ = AppState.Instance.BalancePane.ResetPaneReference();
+
+                    if (AppState.Instance.BalancePane.HasSavedConfigurationSelected())
+                    {
+                        // A saved configuration is explicitly selected - honor it. Navigating
+                        // cells while the pane is open must not silently overwrite the
+                        // user's deliberate choice with whatever the newly-selected cell
+                        // happens to contain.
+                        LogUtility.LogDebug("SheetSelectionChange: saved configuration is selected, skipping cell-driven reload.");
+                    }
+                    else if (TryGetSingleCellFormula(rng, out string formula) &&
                         formula.IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         _ = AppState.Instance.BalancePane.RelaunchPane();
-                    }
-                    else
-                    {
-                        _ = AppState.Instance.BalancePane.ResetPaneReference();
                     }
                 }
             }

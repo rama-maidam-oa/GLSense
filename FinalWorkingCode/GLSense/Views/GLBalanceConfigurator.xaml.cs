@@ -8,6 +8,7 @@ using GLSense.ViewModels;
 using MahApps.Metro.IconPacks;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,6 +46,14 @@ namespace GLSense.Views
         private readonly GLConfiguratorViewModel vm;
         private GLConfiguratorPane _parentPane;
         public event Action OnCloseRequested;
+
+        /// <summary>
+        /// Whether the user currently has an explicit saved configuration selected. Checked
+        /// by AddinModule.cs's Excel SheetSelectionChange handler (via GLConfiguratorPane) so
+        /// that navigating cells while the pane is open does not override a deliberately
+        /// selected saved configuration's field values.
+        /// </summary>
+        public bool HasSavedConfigurationSelected => vm.SelectedSavedConfig != null;
 
         public GLBalanceConfigurator(GLConfiguratorPane parentPane = null)
         {
@@ -87,6 +96,7 @@ namespace GLSense.Views
             DataContext = vm;
 
             // Subscribe to events
+            vm.PropertyChanged += Vm_PropertyChanged;
             this.Loaded += OnLoaded;
             this.SizeChanged += OnSizeChanged;
             this.IsVisibleChanged += OnIsVisibleChanged;
@@ -335,6 +345,7 @@ namespace GLSense.Views
             await ExecuteWithBusyOverlay("Reloading Configurator", async helper =>
             {
                 BalanceParametersExpander.IsExpanded = false;
+                SavedConfigurationsExpander.IsExpanded = false;
 
                 if (!HasValidCubeAndLedger())
                 {
@@ -440,9 +451,14 @@ namespace GLSense.Views
                 ZeroesChecked = zeroesChecked
             };
         }
+        // Exactly one GLSense_GetBalance(...) call, not just "contains" one: a formula
+        // combining multiple balance calls (e.g. =GLSense_GetBalance(...)-GLSense_GetBalance(...))
+        // can't be represented by this dialog's single set of fields, so it's treated the
+        // same as "no formula" - the configurator falls back to default values rather than
+        // attempting to parse (and silently misrepresenting) one call out of several.
         private static bool IsBalanceFormula(Excel.Range rng)
         {
-            return rng.Formula.ToString().IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0;
+            return CommonFunctions.GetBalancesCountInCells(rng.Formula.ToString()) == 1;
         }
 
         private FormulaInfo ParseBalanceFormula(Excel.Range rng)
@@ -630,30 +646,81 @@ namespace GLSense.Views
             OnCloseRequested?.Invoke();
         }
 
-        private void CmbSavedConfigurations_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        // Reacts to the ViewModel's SelectedSavedConfig changing, rather than a control-level
+        // SelectionChanged event - this works identically no matter which control
+        // CmbSavedConfigurations binds to (SuggestAppendComboBox has no SelectionChanged
+        // event at all; its SelectedItem, like every other field in this dialog, is a plain
+        // two-way-bound property, and reacting to the ViewModel's own PropertyChanged is the
+        // control-agnostic way to know it changed).
+        private void Vm_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
+            if (!string.Equals(e.PropertyName, nameof(GLConfiguratorViewModel.SelectedSavedConfig), StringComparison.Ordinal))
+                return;
+
             bool hasSelection = vm.SelectedSavedConfig != null;
             btnUpdateConfig.IsEnabled = hasSelection;
             btnDeleteConfig.IsEnabled = hasSelection;
 
-            if (!hasSelection)
-                return;
-
-            // SelectionChanged fires whether the ViewModel itself just assigned
-            // SelectedSavedConfig (Save New / Update, via the two-way-bound SelectedItem) or
-            // the user genuinely clicked a different combo entry. Reloading fields from the
-            // config right after Save/Update would overwrite the on-screen state with a
-            // freshly re-parsed copy of what was just captured - degrading freehand values
-            // ProcessFieldAsync had already nulled out during capture. Skip the reload for
-            // that case; the Update/Delete buttons above are still kept in sync either way.
+            // Set immediately before SaveNewConfigurationAsync/UpdateSelectedConfigurationAsync/
+            // DeleteSelectedConfigurationAsync/ResetUIState assign SelectedSavedConfig
+            // themselves (as opposed to a genuine user action). Reloading fields right after
+            // one of those would overwrite on-screen state that was either just captured
+            // (Save/Update) or deliberately left alone (Delete/launch reset).
             if (vm.ConsumeSuppressNextSelectionLoad())
             {
-                LogUtility.LogDebug("GLBalanceConfigurator.CmbSavedConfigurations_SelectionChanged: selection change came from Save/Update, skipping reload.");
+                LogUtility.LogDebug("GLBalanceConfigurator.Vm_PropertyChanged: SelectedSavedConfig change was self-assigned, skipping reload.");
                 return;
             }
 
-            LogUtility.LogDebug($"GLBalanceConfigurator.CmbSavedConfigurations_SelectionChanged: loading '{vm.SelectedSavedConfig.ConfigName}'");
-            _ = LoadSelectedSavedConfigurationAsync(vm.SelectedSavedConfig);
+            if (hasSelection)
+            {
+                // An explicit saved-configuration selection always wins, even over a balance
+                // formula on the active cell - the user just deliberately picked it.
+                LogUtility.LogDebug($"GLBalanceConfigurator.Vm_PropertyChanged: loading '{vm.SelectedSavedConfig.ConfigName}'");
+                _ = LoadSelectedSavedConfigurationAsync(vm.SelectedSavedConfig);
+            }
+            else
+            {
+                // Cleared back to empty (Clear button, backspace-to-empty, or losing focus
+                // with empty text) - defer to whatever the active cell says now.
+                LogUtility.LogDebug("GLBalanceConfigurator.Vm_PropertyChanged: selection cleared by user.");
+                _ = ApplyActiveCellOrDefaultsAsync();
+            }
+        }
+
+        /// <summary>
+        /// The saved-configurations combo was cleared: re-checks the CURRENT active cell
+        /// fresh (it may have changed since the pane opened) via the same
+        /// IsBalanceFormula/ProcessBalanceFormula path ReLoadConfigurator() uses on every
+        /// launch - a single balance formula on the cell wins; no formula (or one combining
+        /// multiple GLSense_GetBalance calls, which this dialog can't represent) falls back
+        /// to defaults. Reuses ExtractCellDataAsync/ProcessBalanceFormula/
+        /// LoadConfiguratorDataAsync directly (not ReLoadConfigurator() itself) so this does
+        /// not also collapse either Expander - collapsing the "Saved Configurations" panel
+        /// the user just used to clear the combo would be jarring, and that collapse is
+        /// meant for pane launch only.
+        /// </summary>
+        private async Task ApplyActiveCellOrDefaultsAsync()
+        {
+            try
+            {
+                await ExecuteWithBusyOverlay("Restoring Defaults", async helper =>
+                {
+                    if (!HasValidCubeAndLedger())
+                    {
+                        LogUtility.LogDebug("GLBalanceConfigurator.ApplyActiveCellOrDefaultsAsync: no valid cube/ledger selected, aborting.");
+                        return;
+                    }
+
+                    var cellData = await ExtractCellDataAsync();
+                    var config = ProcessBalanceFormula(cellData);
+                    await LoadConfiguratorDataAsync(config);
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLBalanceConfigurator.ApplyActiveCellOrDefaultsAsync");
+            }
         }
 
         private async Task LoadSelectedSavedConfigurationAsync(SavedBalanceConfig config)

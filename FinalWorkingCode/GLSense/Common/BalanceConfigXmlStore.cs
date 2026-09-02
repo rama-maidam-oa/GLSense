@@ -95,7 +95,7 @@ namespace GLSense.Common
 
                     var doc = XDocument.Parse(xml);
                     string? rawJson = doc.Root?.Element(PayloadElementName)?.Value;
-                    if (string.IsNullOrEmpty(rawJson))
+                    if (rawJson is null || rawJson.Length == 0)
                         return false;
 
                     var deserialized = JsonSerializer.Deserialize<List<SavedBalanceConfig>>(rawJson, JsonGlobals.Options);
@@ -126,7 +126,7 @@ namespace GLSense.Common
                 for (int i = cxps.Count; i >= 1; i--)
                 {
                     var part = cxps[i];
-                    if (ContainsConfigForCube(part?.XML, cubeId))
+                    if (part != null && ContainsConfigForCube(part.XML, cubeId))
                     {
                         part.Delete();
                         deletedAny = true;
@@ -144,7 +144,7 @@ namespace GLSense.Common
 
         private static bool ContainsConfigForCube(string? xml, long cubeId)
         {
-            if (string.IsNullOrEmpty(xml) || xml.IndexOf(RootElementName, StringComparison.OrdinalIgnoreCase) < 0)
+            if (xml is null || xml.Length == 0 || xml.IndexOf(RootElementName, StringComparison.OrdinalIgnoreCase) < 0)
                 return false;
 
             try

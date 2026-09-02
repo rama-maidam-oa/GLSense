@@ -231,6 +231,14 @@ namespace GLSense
                 LogUtility.LogException(ex, "GLConfiguratorPane.RelaunchPane");
             }
         }
+        /// <summary>
+        /// Whether the hosted GLBalanceConfigurator currently has an explicit saved
+        /// configuration selected. Read directly (not marshaled) - this is called from
+        /// AddinModule.cs's Excel SheetSelectionChange handler, which already runs on the
+        /// same STA/UI thread the WPF control lives on.
+        /// </summary>
+        public bool HasSavedConfigurationSelected() => _wpfControl?.HasSavedConfigurationSelected ?? false;
+
         public async Task ResetPaneReference()
         {
             try
