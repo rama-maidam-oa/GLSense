@@ -4600,6 +4600,286 @@ API as FinalWorkingCode's NLog 6.1.4 - re-verify with a build before release.
 
 ---
 
+## 44. GLReloadSourcePicker/GLReleaseHistoryBrowser: Online never enabling, and a round of UX polish (AIPowered only - both are host-side windows, no FinalWorkingCode equivalent)
+
+### 44.1 Root cause: `AppState.Instance.IsLoggedIn` was declared and reset, but never once set to `true`
+
+User report: `GLReloadSourcePicker`'s Online radio button stays disabled even after a
+normal, successful login. `InitializeModeAvailability()` gates it on
+`GlobalsEx.Addin.GetLoginInfo().IsLoggedIn`, which forwards `AppState.Instance.IsLoggedIn`
+(`AddinEntry.GetLoginInfo()`). Grepped the entire solution for every assignment to that
+property: `AppState.Reset()` and `GLLogin.xaml.cs`'s `HandleApiError` both set it to
+`false` (on logout / API failure), but **no code path anywhere ever set it to `true`** -
+confirmed via `grep -r "IsLoggedIn = true"` returning zero hits. The property's own doc
+comment ("Not necessarily the same as IsLoginCompleted... a bare successful sign-in")
+describes exactly when it should flip true; that assignment was simply never written.
+`IsLoginCompleted` (set in `GLCubeDetails.xaml.cs`, once a cube+ledger is chosen) is a
+strictly later, stricter milestone than "logged in" and isn't the right gate for Online
+mode, which only needs valid credentials/URL to hit `{LoginUrl}/glsense/projectdlls`.
+
+**Fix**: `GLLogin.xaml.cs`'s `HandleApiResult`, right where `SetState("PartialLoggedIn")`
+already fires (the moment cookies are extracted and the cube list is successfully
+fetched - a bare successful sign-in, before any cube/ledger is chosen), now also sets
+`AppState.Instance.IsLoggedIn = true;`. No other call site needed to change - `Reset()`/
+`HandleApiError` already correctly reset it to `false`, they just had nothing to undo
+before this fix.
+
+### 44.2 GLReleaseHistoryBrowser DataGrid background didn't match the window's
+
+`GridReleases` had no explicit `Background`/`RowBackground`, so the empty area below the
+last row (and any area the row `ScrollViewer` doesn't cover) fell back to the DataGrid's
+own default, which doesn't match the window's `Background="White"`. Fixed by setting
+`Background="White" RowBackground="White" AlternatingRowBackground="White"
+BorderBrush="#FFDDDDDD" BorderThickness="1"` explicitly on the `DataGrid` (matching the
+`Border` elsewhere in the same window). `AlternationCount` is left at its default (0), so
+there was never any alternating-row shading to begin with - this only affects the
+non-row-covered background area.
+
+### 44.3 Notes field: made it developer-settable and committable, and found a real cmd.exe bug doing it
+
+User's question: `manifest.json`'s `notes` field (shown in the "Notes" column) is
+hardcoded per-Configuration in `post_build.cmd` ("Published by post_build.cmd..."); since
+releases often correspond to an OISR ticket, how can that text be supplied and committed
+alongside the code change it describes, rather than hand-edited in the script itself?
+
+Added `GLSense.Addin.Core\ReleaseNotes.txt` - a plain text file, committed to source
+control, whose **first line** (only) is read by `post_build.cmd` and used as the
+manifest's `notes` value if non-blank; blank/missing falls back to the existing generic
+per-Configuration message. Workflow: before building for a specific change, put a note
+(typically an OISR reference) on line 1, build, commit the file alongside the code
+change; clear line 1 again before the next unrelated build (documented in the file's own
+header comment) so that note doesn't leak into an unrelated release.
+
+**A genuine, reproduced-by-testing cmd.exe bug turned up implementing this**, worth
+recording since it's a general trap, not specific to this feature: the first
+implementation used `set /p MANIFEST_NOTES=<"%NOTES_FILE%"` directly, with
+`set MANIFEST_NOTES=` as the "not yet set" default and an `if "%MANIFEST_NOTES%"=="" (...)`
+fallback. Building and inspecting the actual `manifest.json` produced showed `"notes": ""`
+- not the expected fallback text - so this was isolated with standalone repro `.cmd`
+scripts (run directly, output captured) rather than guessed at, revealing three
+compounding cmd.exe pitfalls:
+1. `set /p VAR=<file` does **not** reliably stop at line 1 for an LF-only text file (the
+   line-ending convention most editors and this session's own file-writing tool
+   produce) - with no CR before the first LF it silently reads the **entire file** into
+   the variable instead of just the first line.
+2. `set VAR=` (nothing after `=`) **un-defines** the variable rather than setting it to
+   an empty string - so if `set /p` then reads a genuinely blank first line, the
+   variable can end up fully undefined rather than merely empty.
+3. `%VAR:search=replace%` substring-replace syntax on an **undefined** (not just empty)
+   variable does not reliably expand to empty - confirmed producing mangled leftover
+   literal text, which is what corrupted the parenthesized `echo ... > manifest.json`
+   block once the (accidentally huge, multi-line) value from pitfall #1 was involved.
+
+**Fix**: moved the entire "read line 1, trim it, fall back to the per-Configuration
+default if blank/missing" job into one PowerShell call (`Get-Content -TotalCount 1`,
+which reads exactly one line regardless of the file's line-ending convention, with the
+blank-check and fallback also done in PowerShell), piped through a temp file and then a
+single plain `set /p` - the same "PowerShell computes -> redirect to temp file -> set /p
+reads it" idiom this script already uses for `FILE_VERSION`/`ZIP_CHECKSUM`/`RELEASE_DATE`.
+This guarantees `MANIFEST_NOTES` is always assigned from one already-resolved,
+non-empty, single-line value, so none of the three pitfalls above can occur regardless of
+how `ReleaseNotes.txt` was saved or edited. Verified with three real builds (via a real
+MSBuild toolchain available in this environment - see the Verification note below): a
+blank-first-line file correctly falls back to the generic message, a file with an actual
+note on line 1 correctly produces that exact note in `manifest.json`, and the whole
+solution still builds clean afterward.
+
+**Follow-up (same day)**: two refinements per direct user request.
+1. `ReleaseNotes.txt` is now a project item (`<None Include="ReleaseNotes.txt" />` in
+   `GLSense.Addin.Core.csproj`, alongside `app.config`/`packages.config`) so it shows up
+   in Visual Studio's Solution Explorer and can be opened/edited directly from the IDE
+   before building, instead of only being reachable by browsing the filesystem.
+2. Removed the `if /I "%CONFIG%"=="Release" (...) else (...)` branch that gave Debug and
+   Release builds two different generic fallback messages - there is now exactly one
+   fallback string (`Published by GLSense.Addin.Core post_build.cmd`), used identically
+   regardless of Configuration. `ReleaseNotes.txt`'s first line - not the Configuration -
+   is the only thing that determines the notes text now. Re-verified with a real Debug
+   build that the single fallback message appears correctly when the file's first line is
+   blank.
+
+### 44.4 Minimize/maximize removed from both windows' title bars
+
+Neither window is `BaseWindow`-derived (per section 40.4, they can't be - both must keep
+working even when Addin.Core isn't loaded), so neither has access to `BaseWindow`'s
+custom `WindowStyle="None"` title bar that other dialogs use to sidestep this same
+problem. Plain WPF has no `Window` property that hides the minimize/maximize buttons
+while keeping a normal title bar and Close button - `ResizeMode="NoResize"` (already set
+on `GLReloadSourcePicker`) only disables/grays them out, it doesn't remove them; the
+standard, well-documented workaround is stripping the `WS_MINIMIZEBOX`/`WS_MAXIMIZEBOX`
+bits from the native window style once the HWND exists (`SourceInitialized`). Added a new
+shared `GLSense\Views\WindowChromeHelper.cs` (`RemoveMinimizeMaximizeButtons(Window)`,
+registered as a `<Compile>` item in `GLSense.csproj` - this is an old-style csproj with no
+implicit file globbing) and wired `SourceInitialized += ...` in both windows'
+constructors. Resizing behavior (`GLReloadSourcePicker`'s `NoResize` /
+`GLReleaseHistoryBrowser`'s default resizable) is untouched - only the two buttons are
+removed.
+
+### 44.5 Tooltips added to every interactive control in both windows
+
+Per request, every `RadioButton`/`Button`/`TextBox`/`ProgressBar`/status `Border`/`DataGrid`
+in both windows now has a `ToolTip` explaining what it does or shows (e.g. `RbOnline`
+explains it needs a successful login this session; `BtnReload` explains it stages the
+release and interrupts any in-progress operation). `GLReleaseHistoryBrowser`'s "Load This
+Release" button's tooltip explicitly notes it has no version gate, unlike Reload's
+Online/Offline path - matching the existing code comment on `BtnLoad_Click`.
+
+### 44.6 DataGrid cell-hover tooltips showing the full value
+
+`GLReleaseHistoryBrowser`'s Version/Release Date/Source/Notes columns now show that
+cell's own full value as a tooltip on hover (`CellTooltipStyle`, a shared
+`DataGridTextColumn.ElementStyle` with `ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"`
+- reads the generated `TextBlock`'s own already-bound `Text`, so it always matches
+whatever that column is bound to without a second, separate binding path). Useful mainly
+for `Notes`, which can be long enough to truncate. The "Loaded" column (a `●` marker, not
+real per-row text) instead gets a static tooltip explaining what the marker means.
+
+### 44.7 Button styles unified between the two windows
+
+Both windows already had a byte-for-byte identical `ActionButton` style, but their
+Cancel/Close buttons had no explicit style at all (relying on the default WPF `Button`
+chrome) - meaning any future edit to one window's primary-button look had no guarantee of
+staying in sync with the other's, and neither secondary button had deliberate
+hover/disabled visuals. Gave `ActionButton` an explicit `ControlTemplate` (rather than
+just Background/Foreground Setters) with its own `IsMouseOver`/`IsEnabled` triggers -
+avoiding the default WPF Button chrome's own theme overlay washing out a custom
+Background on hover, the same bug class already fixed once for `GLMessageWindow` (section
+4, "Button hover chrome") - and added a matching `SecondaryButton` style (light
+background/bordered at rest, filled blue on hover, matching this app's established
+light-gray-at-rest/blue-on-hover convention) applied to both Cancel and Close. Both
+styles are kept identical, verbatim, in both `.xaml` files (a cross-assembly resource
+dictionary wasn't used - the host project has no reference to `GLSense.Addin.Core`'s
+theme resources by design, per the AppDomain-isolation architecture).
+
+### Verification note
+
+Unlike most entries in this file, a real Windows/.NET Framework/MSBuild toolchain (Visual
+Studio 2022's MSBuild, found at `C:\Program Files\Microsoft Visual Studio\2022\Community\
+MSBuild\Current\Bin\MSBuild.exe`) **was** available in this environment. All of the above
+was verified with actual builds, not just code review: `GLSense.Addin.Core.csproj` built
+clean (`/p:SignAssembly=false` - no real code-signing cert available here, verification
+only) and confirmed the 44.3 notes fix end-to-end via the real `post_build.cmd` producing
+a correct `manifest.json` for both the blank-notes and real-note cases; `GLSense.csproj`
+built clean (`/p:RegisterForComInterop=false` - COM unregister needs admin rights not
+available here, unrelated to these changes); the full `GLSense.sln` built clean
+end-to-end. Not yet tested live in Excel - a real Reload/Release-History run (confirming
+Online actually enables after login, the new tooltips/buttons render as intended, and a
+real OISR-style note flows through to the grid) should still happen before this is
+considered fully closed.
+
+**Status**: implemented and build-verified (AIPowered only). Not yet tested by the user
+in a live Excel session.
+
+### 44.8 Follow-up round: `ReleaseNotes.txt` as a project item, notes no longer branch by
+Configuration, DGV header/cell tooltip rules tightened, and "GLSense.Addin.Core" dropped
+from every user-facing string in both windows
+
+Three follow-up requests after 44.1-44.7 shipped and were confirmed working:
+
+- **`ReleaseNotes.txt` is now a project item**: added `<None Include="ReleaseNotes.txt" />`
+  to `GLSense.Addin.Core.csproj` (alongside `app.config`/`packages.config`), so it shows up
+  in Solution Explorer and can be opened/edited directly in the IDE, instead of only being
+  reachable by browsing the filesystem.
+- **Removed the `if /I "%CONFIG%"=="Release" (...) else (...)` branch** in `post_build.cmd`
+  that gave Debug and Release builds two different generic fallback notes strings. There is
+  now exactly one fallback (`Published by the GLSense build process`), used identically for
+  both Configurations - `ReleaseNotes.txt`'s first line (not `%CONFIG%`) is the only thing
+  that determines the notes text now.
+- **`ReleaseNotes.txt`'s first line had been edited (outside this session) to a permanent
+  description sentence** ("This is the ReleaseNotes.txt file for GLSense.Addin.Core...").
+  Since `post_build.cmd` only ever reads line 1 as the build note, that would have silently
+  broken the file's whole purpose - every future build would bake in that same description
+  instead of falling back to the generic message or an actual per-build note. Moved it back
+  down (restoring line 1 as the blank/note slot, matching 44.3's original design) rather
+  than leaving it broken or silently discarding the user's edit - the rest of the file's
+  wording didn't need to change, since it already didn't repeat the internal project name.
+
+**DGV header/cell tooltip rules, tightened**: 44.6's `CellTooltipStyle` (`ElementStyle` on
+the generated `TextBlock`, `ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"`)
+had a real gap - an empty cell's `TextBlock` collapses to near-zero size, so hovering the
+rest of that cell's rectangle doesn't hit the `TextBlock` at all. WPF's tooltip lookup then
+walks up the visual tree to the nearest ancestor that HAS a `ToolTip` set, which was this
+`DataGrid` itself - so an empty cell would incorrectly show the grid's own generic
+description as if it were that cell's tooltip. Fixed by moving the tooltip from
+`ElementStyle` (targets the `TextBlock`, whose hit-test area can shrink to nothing) to each
+column's own `CellStyle` (targets `DataGridCell`, which always fills the full cell rectangle
+regardless of content) - `ToolTip="{Binding <Field>}"` by default, with `DataTrigger`s for
+both `Value="{x:Null}"` and `Value=""` setting `ToolTipService.IsEnabled="False"` for that
+one cell. Disabling the tooltip on the actual hit element stops the ancestor lookup outright
+(unlike leaving `ToolTip` unset, which is what let it bubble up in the first place) - so an
+empty cell now shows no tooltip at all, matching "if cell is empty then empty else its text"
+exactly, with no fallback to the grid-level description. `ElementStyle` (renamed
+`TrimmedCellTextStyle`) is now truncation-only. Also added a `HeaderStyle` with a
+`ToolTip="<Column Name> - <short description>"` to every column (Loaded/Version/Release
+Date/Source/Notes), per the separate "header should show the column name and its short
+description" request - headers previously had no tooltip at all.
+
+**"GLSense.Addin.Core" removed from all user-facing text**: both windows repeated the
+internal project/DLL name ("Reload GLSense.Addin.Core", "reload GLSense.Addin.Core
+immediately", "Every GLSense.Addin.Core release...", etc.) across titles, descriptions, and
+tooltips - fine as an internal identifier, not something a business user should see
+repeated throughout a dialog. Replaced every occurrence in `GLReloadSourcePicker.xaml` and
+`GLReleaseHistoryBrowser.xaml` with the product name "GLSense" (already used in both window
+titles - "Reload GLSense Add-in" / "GLSense Release History" - so this makes the body text
+consistent with the titles rather than introducing new terminology), and reworded
+`post_build.cmd`'s fallback notes string the same way, since that string is exactly what
+ends up displayed in the Notes column the user was looking at. Left untouched: code comments
+(e.g. `WindowChromeHelper.cs`'s reference to the actual `GLSense.Addin.Core.Views.BaseWindow`
+type) and any place a literal, technically-necessary artifact name is being described (e.g.
+`post_build.cmd`'s own internal `.csproj`/`.dll` path references) - only user-visible prose
+was changed.
+
+**Status**: implemented and build-verified with real MSBuild rebuilds (both `GLSense.
+Addin.Core.csproj` alone - confirming the single-fallback notes text end-to-end via a fresh
+`manifest.json` - and the full `GLSense.sln`). Not yet tested live in Excel.
+
+### 44.9 GLSense host tooltips looked "plain" next to Addin.Core's - recreated the chrome
+style locally, plus tooltips added to GLBalanceConfigurator's Saved Configurations feature
+
+**Tooltip chrome**: user correctly identified that `GLReloadSourcePicker`/
+`GLReleaseHistoryBrowser`'s tooltips (44.5/44.6) rendered as plain default WPF tooltips,
+while windows in `GLSense.Addin.Core` look noticeably more polished. Traced the difference
+to `GLSense.Addin.Core\Themes\GlobalStyles.xaml`'s `SimpleBrowserToolTip` style (`Background
+="#FFF9DB"` warm cream, `BorderBrush="#FBB41A"` amber, `Padding="10,8"`, `HasDropShadow=
+"True"`, `FontFamily="Segoe UI"`) - applied explicitly to individual controls' `ToolTip`
+throughout that project (buttons, checkboxes, textboxes, expanders). The host `GLSense`
+project cannot reference `GLSense.Addin.Core`'s compiled resources (separate
+assembly/AppDomain, by design - see the architecture notes throughout this file), so the
+style had to be recreated rather than shared.
+
+Rather than convert every existing bare `ToolTip="..."` string attribute in both windows
+into a verbose explicit `<Control.ToolTip><ToolTip Style="...">...</ToolTip></Control.
+ToolTip>` block, added ONE **unkeyed** `<Style TargetType="ToolTip">` (no `x:Key`) to each
+window's `Window.Resources`, with `SimpleBrowserToolTip`'s exact Setters. An unkeyed style
+applies automatically to every `ToolTip` object resolved anywhere in that window's logical
+tree - including ones WPF auto-generates from a plain string `ToolTip="..."` attribute -
+so every existing tooltip in both windows (plus `GLReleaseHistoryBrowser`'s
+`CellStyle`/`HeaderStyle` `ToolTip` Setters) picked up the new look with zero changes to
+the tooltip text/wiring itself.
+
+**GLBalanceConfigurator Saved Configurations tooltips**: the "Save Configuration" feature
+(`SavedConfigurationsExpander` - pick/search a saved config via `CmbSavedConfigurations`,
+`Save New`/`Update`/`Delete` buttons, and the `TxtNewConfigName`/`Confirm`/`Cancel` name-
+entry row that appears after `Save New`) had no tooltips at all, unlike the rest of this
+window. Added one to each control, following this file's own already-established
+`<Control.ToolTip><ToolTip Style="{StaticResource SimpleBrowserToolTip}"><TextBlock .../>
+</ToolTip></Control.ToolTip>` pattern (matching the existing `ChkSign`/`ChkZeroes`/
+`TxtFactor` tooltips a little further down in the same file) rather than inventing a new
+one:
+- `SavedConfigurationsExpander` (the whole section): what it's for.
+- `CmbSavedConfigurations`: picking a saved item loads it and enables Update/Delete.
+- `btnSaveNewConfig`/`btnUpdateConfig`/`btnDeleteConfig`: what each does, and that
+  Update/Delete are only enabled once something is selected.
+- `TxtNewConfigName`: explicitly states "Cannot exceed 32 characters" (per direct request -
+  the field already enforces this via `MaxLength="32"`, but nothing explained the limit to
+  the user before this).
+- The name row's `Confirm`/`Cancel` buttons: what each does.
+
+**Status**: implemented and build-verified with real MSBuild rebuilds (`GLSense.Addin.Core.
+csproj`, `GLSense.csproj`, and the full `GLSense.sln`, all clean). Not yet tested live in
+Excel.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

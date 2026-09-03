@@ -33,6 +33,7 @@ namespace GLSense
         public GLReleaseHistoryBrowser()
         {
             InitializeComponent();
+            SourceInitialized += (s, e) => WindowChromeHelper.RemoveMinimizeMaximizeButtons(this);
             LoadEntries();
         }
 

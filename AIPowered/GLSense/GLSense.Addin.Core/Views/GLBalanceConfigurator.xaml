@@ -209,6 +209,11 @@
                             <TextBlock Text="{Binding SavedConfigurationsHeaderText}" Style="{StaticResource SectionHeaderStyle1}" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Expander.Header>
+                    <Expander.ToolTip>
+                        <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                            <TextBlock Text="Save the current field selections below as a named configuration, so you can reload the same setup again later without re-entering every field." TextWrapping="Wrap" MaxWidth="260"/>
+                        </ToolTip>
+                    </Expander.ToolTip>
                     <Grid Margin="12,8,12,8">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -227,14 +232,26 @@
                                                      ItemsSource="{Binding SavedConfigurations}"
                                                      DisplayMemberPath="ConfigName"
                                                      SelectedItem="{Binding SelectedSavedConfig, Mode=TwoWay}"
-                                                     Margin="0,0,8,0"/>
+                                                     Margin="0,0,8,0">
+                            <ctrls:SuggestAppendComboBox.ToolTip>
+                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                    <TextBlock Text="Pick (or type to search) a previously saved configuration to load its field selections. Selecting one enables the Update and Delete buttons." TextWrapping="Wrap" MaxWidth="260"/>
+                                </ToolTip>
+                            </ctrls:SuggestAppendComboBox.ToolTip>
+                        </ctrls:SuggestAppendComboBox>
 
                         <Button x:Name="btnSaveNewConfig"
                                 Grid.Column="1"
                                 Style="{StaticResource CompactActionButton}"
                                 Content="Save New"
                                 Margin="0,0,4,0"
-                                Click="BtnSaveNewConfig_Click"/>
+                                Click="BtnSaveNewConfig_Click">
+                            <Button.ToolTip>
+                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                    <TextBlock Text="Save the current field selections as a brand-new named configuration. You'll be asked for a name (up to 32 characters)." TextWrapping="Wrap" MaxWidth="240"/>
+                                </ToolTip>
+                            </Button.ToolTip>
+                        </Button>
 
                         <Button x:Name="btnUpdateConfig"
                                 Grid.Column="2"
@@ -242,14 +259,26 @@
                                 Content="Update"
                                 Margin="0,0,4,0"
                                 IsEnabled="False"
-                                Click="BtnUpdateConfig_Click"/>
+                                Click="BtnUpdateConfig_Click">
+                            <Button.ToolTip>
+                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                    <TextBlock Text="Overwrite the selected saved configuration with the current field selections. Enabled only once a saved configuration is selected above." TextWrapping="Wrap" MaxWidth="240"/>
+                                </ToolTip>
+                            </Button.ToolTip>
+                        </Button>
 
                         <Button x:Name="btnDeleteConfig"
                                 Grid.Column="3"
                                 Style="{StaticResource CompactActionButton}"
                                 Content="Delete"
                                 IsEnabled="False"
-                                Click="BtnDeleteConfig_Click"/>
+                                Click="BtnDeleteConfig_Click">
+                            <Button.ToolTip>
+                                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                    <TextBlock Text="Permanently delete the selected saved configuration (asks for confirmation first). Enabled only once a saved configuration is selected above." TextWrapping="Wrap" MaxWidth="240"/>
+                                </ToolTip>
+                            </Button.ToolTip>
+                        </Button>
 
                         <StackPanel x:Name="SaveNamePanel"
                                     Grid.Row="1"
@@ -262,9 +291,27 @@
                                      Width="220"
                                      MaxLength="32"
                                      Style="{StaticResource CompactTextBox}"
-                                     Margin="0,0,8,0"/>
-                            <Button Style="{StaticResource CompactActionButton}" Content="Confirm" Margin="0,0,4,0" Click="BtnConfirmSaveNewConfig_Click"/>
-                            <Button Style="{StaticResource CompactActionButton}" Content="Cancel" Click="BtnCancelSaveNewConfig_Click"/>
+                                     Margin="0,0,8,0">
+                                <TextBox.ToolTip>
+                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                        <TextBlock Text="Name for this saved configuration. Cannot exceed 32 characters." TextWrapping="Wrap" MaxWidth="220"/>
+                                    </ToolTip>
+                                </TextBox.ToolTip>
+                            </TextBox>
+                            <Button Style="{StaticResource CompactActionButton}" Content="Confirm" Margin="0,0,4,0" Click="BtnConfirmSaveNewConfig_Click">
+                                <Button.ToolTip>
+                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                        <TextBlock Text="Save the current field selections under the name typed above."/>
+                                    </ToolTip>
+                                </Button.ToolTip>
+                            </Button>
+                            <Button Style="{StaticResource CompactActionButton}" Content="Cancel" Click="BtnCancelSaveNewConfig_Click">
+                                <Button.ToolTip>
+                                    <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                                        <TextBlock Text="Discard the name and close this panel without saving."/>
+                                    </ToolTip>
+                                </Button.ToolTip>
+                            </Button>
                         </StackPanel>
                     </Grid>
                 </Expander>

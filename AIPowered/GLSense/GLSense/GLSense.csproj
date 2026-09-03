@@ -112,6 +112,7 @@
     <Compile Include="Views\GLReleaseHistoryBrowser.xaml.cs">
       <DependentUpon>GLReleaseHistoryBrowser.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Views\WindowChromeHelper.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="AddinModule.resx">

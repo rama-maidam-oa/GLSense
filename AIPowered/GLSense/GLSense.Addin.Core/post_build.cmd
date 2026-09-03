@@ -184,11 +184,45 @@ REM + zip sitting together triggers UpdateBootstrapper's extract-on-launch path
 REM every time (Debug branch) / a fresh packaging input exists for the MSI
 REM (Release branch). downloadUrl is left empty - nothing downloads this
 REM locally, the zip is already sitting right next to the manifest.
-if /I "%CONFIG%"=="Release" (
-    set MANIFEST_NOTES=Published by GLSense.Addin.Core post_build.cmd (Release - MSI packaging input)
-) else (
-    set MANIFEST_NOTES=Published by GLSense.Addin.Core post_build.cmd (folder-only test flow)
-)
+REM
+REM Notes text: this manifest.json "notes" field is what GLReleaseHistoryBrowser
+REM (GLSense\Views\GLReleaseHistoryBrowser.xaml) shows in its "Notes" column for
+REM this release forever after, so a generic "Published by post_build.cmd" string
+REM isn't useful for telling releases apart later. ReleaseNotes.txt (this project's
+REM own folder, included as a project item - see GLSense.Addin.Core.csproj - so it's
+REM directly editable from Solution Explorer/IDE, and committed to source control
+REM alongside whatever code change it describes) lets a developer put a real note -
+REM typically an OISR ticket reference - on its first line before building; only that
+REM first line is read (batch `set /p` reads one line). This is used the same way for
+REM BOTH Debug and Release builds - no per-Configuration branching. Leave the first
+REM line blank (or delete the file) to fall back to the generic message below.
+REM Remember to update/clear ReleaseNotes.txt's first line before your NEXT unrelated
+REM build, or that same note will get baked into that release too.
+REM The whole "read line 1, trim it, fall back to a default if blank/missing" job is
+REM done in ONE PowerShell call (piped through a temp file, then a plain `set /p` -
+REM matching the FILE_VERSION/ZIP_CHECKSUM/RELEASE_DATE pattern already used above)
+REM rather than in batch, after direct testing turned up three separate, compounding
+REM cmd.exe pitfalls with doing this in batch: (1) `set /p VAR=<file` does not
+REM reliably stop at line 1 for an LF-only text file (the kind most editors/Write
+REM tools produce) - with no CR before the first LF it silently reads the ENTIRE file
+REM into the variable instead; (2) `set VAR=` (no value) UNDEFINES the variable
+REM rather than setting it to an empty string, so `set /p` reading a blank line can
+REM leave it fully undefined, not merely empty; (3) `%VAR:search=replace%` substring
+REM syntax on an undefined (not just empty) variable does not reliably expand to
+REM empty - it can leave mangled literal text behind. Doing the trim + blank-check +
+REM default entirely in PowerShell means MANIFEST_NOTES is always set from a single,
+REM already-resolved, non-empty, single-line value - none of the three pitfalls above
+REM can occur regardless of how ReleaseNotes.txt was saved or edited.
+REM Notes always come from ReleaseNotes.txt regardless of Configuration (Debug/Release)
+REM - no per-Config branching here anymore. The only fallback is for when the file is
+REM missing or its first line is blank.
+set NOTES_FILE=%PROJECT_DIR%\ReleaseNotes.txt
+set NOTES_DEFAULT=Published by the GLSense build process
+powershell -NoProfile -Command "$n=''; if (Test-Path -LiteralPath '%NOTES_FILE%') { $f = Get-Content -LiteralPath '%NOTES_FILE%' -TotalCount 1 -ErrorAction SilentlyContinue; if ($f) { $n = $f.Trim() } }; if ([string]::IsNullOrWhiteSpace($n)) { $n = '%NOTES_DEFAULT%' }; $n" > "%TEMP%\glsense_notes.tmp"
+set /p MANIFEST_NOTES=<"%TEMP%\glsense_notes.tmp"
+del "%TEMP%\glsense_notes.tmp" >nul 2>&1
+REM Strip characters that would break the hand-rolled JSON below.
+set MANIFEST_NOTES=%MANIFEST_NOTES:"=%
 (
     echo [
     echo   {

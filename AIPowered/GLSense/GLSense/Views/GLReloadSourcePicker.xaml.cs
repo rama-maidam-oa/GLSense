@@ -23,6 +23,7 @@ namespace GLSense
         public GLReloadSourcePicker()
         {
             InitializeComponent();
+            SourceInitialized += (s, e) => WindowChromeHelper.RemoveMinimizeMaximizeButtons(this);
             InitializeModeAvailability();
         }
 

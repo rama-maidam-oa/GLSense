@@ -660,6 +660,7 @@ namespace GLSense.Addin.Core.Views
             ServiceLocator.Logger?.LogDebug($"GLLogin.HandleApiResult invoked: IsSuccess={apiResult.IsSuccess}");
             if (apiResult.IsSuccess)
             {
+                AppState.Instance.IsLoggedIn = true;
                 ServiceLocator.RibbonController?.SetState("PartialLoggedIn");
                 var result = ApiResponseHelper.Parse<List<CubeRecord>>(apiResult.Value!, JsonGlobals.Options);
 

@@ -1,0 +1,20 @@
+Migration testing
+--------------------------------------------------------------------------------
+This file feeds the "notes" field of manifest.json, which post_build.cmd writes
+alongside every build's zip. GLReleaseHistoryBrowser (GLSense\Views\
+GLReleaseHistoryBrowser.xaml) then shows that text in its "Notes" column for
+that release forever after - see post_build.cmd's own comment for details.
+
+How to use it:
+  1. Before building for a specific change, put a short note - typically an
+     OISR ticket reference - on the FIRST LINE ABOVE this comment block. Only
+     the first line is read.
+  2. Build. The note gets baked into that build's manifest.json/release-history
+     entry.
+  3. Commit this file's change alongside the code change it describes.
+  4. Before your NEXT, unrelated build, clear or replace the first line -
+     otherwise the same note gets baked into that build too.
+
+Leaving the first line blank (as it is now) falls back to a generic
+"Published by post_build.cmd" message.
+--------------------------------------------------------------------------------

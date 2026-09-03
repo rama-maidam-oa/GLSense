@@ -8,18 +8,91 @@
         ResizeMode="NoResize"
         Background="White">
     <Window.Resources>
+        <!-- Recreated from GLSense.Addin.Core\Themes\GlobalStyles.xaml's "SimpleBrowserToolTip"
+             (same colors/padding/drop-shadow) - this host project can't reference Addin.Core's
+             resources directly (separate assembly/AppDomain by design), so the look is
+             duplicated here rather than shared. Deliberately UNKEYED (no x:Key) so it applies
+             automatically to every ToolTip in this window, including the many plain
+             ToolTip="..." string attributes already below - no need to convert each one into
+             an explicit <ToolTip> element. -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#FFF9DB"/>
+            <Setter Property="Foreground" Value="#3C3C3C"/>
+            <Setter Property="BorderBrush" Value="#FBB41A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="HasDropShadow" Value="True"/>
+        </Style>
         <Style x:Key="SectionHeader" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="Foreground" Value="#FF1565C0"/>
             <Setter Property="Margin" Value="0,0,0,6"/>
         </Style>
+        <!-- ActionButton/SecondaryButton are kept byte-for-byte identical to the copies in
+             GLReleaseHistoryBrowser.xaml on purpose, so the two dialogs' buttons always look
+             and behave the same - see that file's own copy of this comment. Explicit
+             ControlTemplates are used (rather than just Background/Foreground Setters) so
+             hover/disabled states are deliberate instead of relying on the default WPF Button
+             chrome, which layers its own theme overlay on top of a custom Background and can
+             wash the color out on hover (see CLAUDE.md section 4, "Button hover chrome"). -->
         <Style x:Key="ActionButton" TargetType="Button">
             <Setter Property="Padding" Value="16,6"/>
             <Setter Property="Margin" Value="6,0,0,0"/>
             <Setter Property="Background" Value="#FF1565C0"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF0D47A1"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Padding" Value="16,6"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="Background" Value="#FFF8F9FA"/>
+            <Setter Property="Foreground" Value="#FF212121"/>
+            <Setter Property="BorderBrush" Value="#FFDDDDDD"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF1565C0"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
     <Grid Margin="16">
@@ -32,38 +105,47 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Style="{StaticResource SectionHeader}" Text="Reload GLSense.Addin.Core"/>
+        <TextBlock Grid.Row="0" Style="{StaticResource SectionHeader}" Text="Reload GLSense"/>
         <TextBlock Grid.Row="1" TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#FF555555"
-                   Text="This reloads GLSense.Addin.Core.dll from disk without restarting Excel. Any drilldown/refresh/snapshot currently in progress will be interrupted."/>
+                   Text="This reloads GLSense from disk without restarting Excel. Any drilldown/refresh/snapshot currently in progress will be interrupted."/>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
-            <RadioButton x:Name="RbOnline" Content="Online" GroupName="Mode" Margin="0,0,20,0" Checked="Mode_Checked"/>
-            <RadioButton x:Name="RbOffline" Content="Offline" GroupName="Mode" Checked="Mode_Checked"/>
+            <RadioButton x:Name="RbOnline" Content="Online" GroupName="Mode" Margin="0,0,20,0" Checked="Mode_Checked"
+                         ToolTip="Check the currently logged-in GLSense server for a newer release and download it automatically. Only available after a successful login this Excel session."/>
+            <RadioButton x:Name="RbOffline" Content="Offline" GroupName="Mode" Checked="Mode_Checked"
+                         ToolTip="Load a GLSense release from a manifest.json + zip pair already sitting in a local folder (e.g. one you built or were given)."/>
         </StackPanel>
 
         <Grid Grid.Row="3">
             <StackPanel x:Name="OnlinePanel" Visibility="Collapsed">
                 <Button x:Name="BtnCheckOnline" Content="Check for Update" HorizontalAlignment="Left"
-                        Padding="10,4" Click="BtnCheckOnline_Click"/>
-                <ProgressBar x:Name="OnlineProgress" Height="6" Margin="0,10,0,0" IsIndeterminate="True" Visibility="Collapsed"/>
+                        Padding="10,4" Click="BtnCheckOnline_Click"
+                        ToolTip="Query the logged-in GLSense server for the latest published release, download it, verify its checksum, and enable Reload if it is newer than what's currently loaded."/>
+                <ProgressBar x:Name="OnlineProgress" Height="6" Margin="0,10,0,0" IsIndeterminate="True" Visibility="Collapsed"
+                             ToolTip="Checking the server for an update..."/>
             </StackPanel>
 
             <StackPanel x:Name="OfflinePanel" Visibility="Collapsed">
                 <TextBlock Text="Folder:" Margin="0,0,0,4"/>
                 <DockPanel>
-                    <Button x:Name="BtnBrowse" Content="Browse..." DockPanel.Dock="Right" Padding="10,4" Click="BtnBrowse_Click"/>
-                    <TextBox x:Name="TxtFolder" IsReadOnly="True" Margin="0,0,8,0" Padding="4"/>
+                    <Button x:Name="BtnBrowse" Content="Browse..." DockPanel.Dock="Right" Padding="10,4" Click="BtnBrowse_Click"
+                            ToolTip="Choose a different folder to scan for a manifest.json + zip pair."/>
+                    <TextBox x:Name="TxtFolder" IsReadOnly="True" Margin="0,0,8,0" Padding="4"
+                             ToolTip="Full path to the folder currently being scanned for a manifest.json + zip pair. Read-only - use Browse... to change it."/>
                 </DockPanel>
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="4" Background="White" BorderBrush="#FFDDDDDD" BorderThickness="1" Padding="10" Margin="0,12,0,0">
+        <Border Grid.Row="4" Background="White" BorderBrush="#FFDDDDDD" BorderThickness="1" Padding="10" Margin="0,12,0,0"
+                ToolTip="Result of the last validation check - explains what will happen if you click Reload, or why Reload is not yet available.">
             <TextBlock x:Name="TxtStatus" TextWrapping="Wrap" Text="Select Online or Offline to begin."/>
         </Border>
 
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button x:Name="BtnReload" Content="Reload" Style="{StaticResource ActionButton}" IsEnabled="False" Click="BtnReload_Click"/>
-            <Button x:Name="BtnCancel" Content="Cancel" Padding="16,6" Margin="6,0,0,0" Click="BtnCancel_Click"/>
+            <Button x:Name="BtnReload" Content="Reload" Style="{StaticResource ActionButton}" IsEnabled="False" Click="BtnReload_Click"
+                    ToolTip="Stage the validated release into the Manifest folder and reload GLSense immediately, without restarting Excel. Any drilldown/refresh/snapshot in progress will be interrupted."/>
+            <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource SecondaryButton}" Click="BtnCancel_Click"
+                    ToolTip="Close this window without reloading anything."/>
         </StackPanel>
     </Grid>
 </Window>
