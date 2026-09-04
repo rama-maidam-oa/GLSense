@@ -60,7 +60,7 @@ set ADDINCORE_DEST=%TARGET_DIR%\AddinCore\Manifest
 if not exist "%ADDINCORE_SOURCE%" (
     echo WARNING: %ADDINCORE_SOURCE% not found - GLSense.Addin.Core may not have
     echo been built in this configuration yet. Skipping AddinCore manifest copy.
-    echo Build GLSense.Build.csproj instead of GLSense.csproj alone to avoid this.
+    echo Rebuild GLSense.Addin.Core ^(its post_build.cmd populates SetupFiles^) to fix this.
     goto :SkipAddinCoreCopy
 )
 

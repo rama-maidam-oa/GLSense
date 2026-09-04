@@ -4939,6 +4939,23 @@ yet, so there's no real installed user base to migrate. Old
 machine simply become dead, unread folders after this shipped; delete them by
 hand if desired.
 
+**Constraint on the eventual installer**: `PathProvider.Ensure()` creates `Versions\`/
+`Manifest\` under the install folder at runtime (not just at build time), so wherever
+`GLSense.dll` ultimately gets installed must remain writable by the running Excel
+process - fine under `%LocalAppData%\ORBIT\{Manufacturer}\{Product}\` as currently
+planned, but would break silently (add-in fails to load, error swallowed into a
+`%TEMP%` log by `PathProvider.InitializeVersion`'s catch block) if a future installer
+ever retargeted to a locked-down location like `Program Files`.
+
+**Hardened after the final review**: `ReleaseHistoryStore.Append` now skips adding a
+duplicate entry when one with the identical (Version, ReleaseDate, FolderName) already
+exists, and `PathProvider.ConfigureInstallRoot` now ignores a blank value instead of
+storing it. Without the first fix, `GLSense.Addin.Core`'s `SetupFiles` staging folder
+being persistent (see the Build-time paragraph above) meant a host-only rebuild that
+re-copied an unchanged staged zip+manifest could cause `UpdateBootstrapper` to
+re-extract and re-append an identical catalog row on every subsequent Excel launch, even
+though nothing new was actually released.
+
 Full design: `docs/superpowers/specs/2026-09-04-addincore-colocated-storage-design.md`.
 Full implementation plan: `docs/superpowers/plans/2026-09-04-addincore-colocated-storage.md`.
 
@@ -4967,11 +4984,18 @@ get lost before the next person hits it on a clean build.
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
-(`GLSense.Loader.Core\AddinDomainLoader.cs`) from a **versioned deployment folder**
-(`%LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs_New\Versions\v11.1.0\`), refreshed only
-by `GLSense.Addin.Core\post_build.cmd` (a `<PostBuildEvent>` that `xcopy`s
-`$(TargetDir)` into that versioned folder). Saving a `.xaml`/`.cs` file does **not**
-update the deployed copy - only an actual Rebuild does. And because the AppDomain is
-created once when Excel starts, **a running Excel session won't pick up a fresh build
-either** - Excel itself must be fully closed and relaunched after rebuilding. When a fix
-appears not to have taken effect, rule this out before re-investigating the code.
+(`GLSense.Loader.Core\AddinDomainLoader.cs`) from a **timestamp-keyed deployment
+folder** under `GLSense\bin\{Config}\AddinCore\Versions\V{version}_{releaseDateSafe}\`
+(colocated with `GLSense.dll` itself since section 45 - NOT under
+`%LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs_New\` any more), populated at runtime by
+`UpdateBootstrapper` extracting whatever zip+manifest.json it finds in
+`GLSense\bin\{Config}\AddinCore\Manifest\` (see section 45 for how that folder gets
+populated at build time, and section 40 for the extraction mechanism itself). Saving a
+`.xaml`/`.cs` file does **not** update the deployed copy - only an actual Rebuild does,
+and per section 45's accepted trade-off, rebuilding `GLSense.Addin.Core` alone isn't
+enough either - `GLSense` (or `GLSense.Build`) must also rebuild so its post-build can
+copy the fresh manifest+zip into place. And because the AppDomain is created once when
+Excel starts, **a running Excel session won't pick up a fresh build either** - Excel
+itself must be fully closed and relaunched after rebuilding (or use the Reload button,
+which re-runs `UpdateBootstrapper`). When a fix appears not to have taken effect, rule
+this out before re-investigating the code.

@@ -47,6 +47,15 @@ namespace GLSense.Shared
         /// </summary>
         public static void ConfigureInstallRoot(string installRoot)
         {
+            // A blank value (e.g. Assembly.Location returning "" for an assembly with no
+            // on-disk location) must never be stored - Path.Combine("", "AddinCore") would
+            // silently resolve to the RELATIVE path "AddinCore", scattering hot-reload state
+            // into whatever directory happens to be current (e.g. wherever the user last
+            // opened a workbook from) instead of falling back to the documented, stable
+            // Excel_Logs-based root.
+            if (string.IsNullOrWhiteSpace(installRoot))
+                return;
+
             _installRootOverride = installRoot;
         }
 

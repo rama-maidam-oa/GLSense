@@ -28,12 +28,23 @@ namespace GLSense.Shared
         }
 
         /// <summary>Appends one entry. Process-safe (named Mutex) and crash-safe
-        /// (atomic write-then-replace).</summary>
+        /// (atomic write-then-replace). Idempotent: if an entry with the identical
+        /// (Version, ReleaseDate, FolderName) already exists, this is a silent no-op -
+        /// re-copying the same staged zip+manifest (e.g. a GLSense-only rebuild that
+        /// re-copies GLSense.Addin.Core's unchanged SetupFiles output) must not grow the
+        /// catalog with duplicate rows for a release that was never actually re-released.</summary>
         public static void Append(string releaseHistoryFile, ReleaseEntry entry)
         {
             WithLock(() =>
             {
                 var entries = ReadAllUnlocked(releaseHistoryFile);
+                bool alreadyExists = entries.Any(e =>
+                    string.Equals(e.Version, entry.Version, StringComparison.Ordinal) &&
+                    string.Equals(e.ReleaseDate, entry.ReleaseDate, StringComparison.Ordinal) &&
+                    string.Equals(e.FolderName, entry.FolderName, StringComparison.Ordinal));
+                if (alreadyExists)
+                    return;
+
                 entries.Add(entry);
                 WriteAllUnlocked(releaseHistoryFile, entries);
             });

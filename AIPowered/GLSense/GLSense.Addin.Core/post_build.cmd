@@ -164,9 +164,11 @@ del "%TEMP%\glsense_releasedate.tmp" >nul 2>&1
 
 REM Overwritten on every build (not "seed if missing" like PathProvider's own
 REM CreateDefaultManifestFile) - the whole point is that a fresh manifest.json
-REM + zip sitting together triggers UpdateBootstrapper's extract-on-launch path
-REM every time (Debug branch) / a fresh packaging input exists for the MSI
-REM (Release branch). downloadUrl is left empty - nothing downloads this
+REM + zip sitting together in SetupFiles gives GLSense\post_build.cmd something
+REM current to copy into bin\AddinCore\Manifest\, which is what triggers
+REM UpdateBootstrapper's extract-on-launch path. No per-Configuration branching
+REM here - both Debug and Release follow the same SetupFiles path (see the
+REM header comment above). downloadUrl is left empty - nothing downloads this
 REM locally, the zip is already sitting right next to the manifest.
 REM
 REM Notes text: this manifest.json "notes" field is what GLReleaseHistoryBrowser
