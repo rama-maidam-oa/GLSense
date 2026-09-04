@@ -142,6 +142,23 @@
       <Project>{7fccdd5e-9798-455d-9e3a-c9c40802a32c}</Project>
       <Name>GLSense.Shared</Name>
     </ProjectReference>
+    <!-- Not used by any code here - GLSense.dll never calls into
+         GLSense.Addin.Core directly (that only ever happens via a child
+         AppDomain, loaded at runtime from a Versions\ hot-reload folder).
+         Added purely so MSBuild always builds GLSense.Addin.Core - and runs
+         its post_build.cmd, populating SetupFiles - before this project's
+         own post_build.cmd tries to copy from SetupFiles. Private=False so
+         GLSense.Addin.Core.dll is NOT copied into this project's own bin
+         output - unlike the GLSense.Loader.Core reference below (which
+         intentionally IS copied, since AddinDomainLoader needs it alongside
+         whatever gets zipped), Addin.Core.dll must only ever be loaded from a
+         Versions\ folder, never sit directly next to GLSense.dll. See
+         docs/superpowers/specs/2026-09-04-addincore-colocated-storage-design.md. -->
+    <ProjectReference Include="..\GLSense.Addin.Core\GLSense.Addin.Core.csproj">
+      <Project>{76F5002B-6A27-4B68-ADEE-EB673A363228}</Project>
+      <Name>GLSense.Addin.Core</Name>
+      <Private>False</Private>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
