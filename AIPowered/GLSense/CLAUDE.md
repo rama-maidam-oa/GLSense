@@ -4880,6 +4880,90 @@ Excel.
 
 ---
 
+## 45. AddinCore hot-reload state colocated with the GLSense assembly, not AppData (AIPowered only)
+
+`Manifest\`, `Versions\`, and `ReleaseHistory.json` (sections 14-40's
+hot-reload/release-history subsystem) moved from
+`%LocalAppData%\ORBIT\Excel_Logs\GLSense_Logs_New\` into a new `AddinCore\`
+folder colocated with `GLSense.dll` itself (`GLSense\bin\{Config}\AddinCore\`
+in dev). Motivation: the planned installer (modeled on
+`FinalWorkingCode\GLSense`, installing to `%LocalAppData%\ORBIT\
+{Manufacturer}\{Product}\`) removes its own product folder on uninstall, but
+has no reason to know about the separate `Excel_Logs` tree - left as-is, this
+state would become permanent trash after every uninstall, and could collide
+with a fresh reinstall. `Logs\`/`Database\`/`Temp\`/`BrowserLogs\`/
+`Resources\` deliberately stay under `Excel_Logs`, unchanged - that's
+diagnostic/runtime data meant to persist independently of install/uninstall.
+
+**Runtime**: `GLSense.Shared\PathProvider.cs` now derives
+`ManifestDirectory`/`VersionsPath`/`ReleaseHistoryFile` from a second root,
+`_installRoot` (an `AddinCore` subfolder of a configurable base path), set via
+a new static `PathProvider.ConfigureInstallRoot(string)`.
+`GLSense\GLSenseContext.cs`'s constructor calls it with
+`Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)` - evaluated
+from code inside `GLSense.dll` itself, so it reliably resolves to
+`GLSense.dll`'s own folder regardless of Excel's COM-hosting quirks (this is
+deliberately NOT `AppDomain.CurrentDomain.BaseDirectory`, which can resolve to
+Excel's own directory instead). Every downstream consumer
+(`UpdateBootstrapper`, `AddinDomainLoader`, `ReleaseHistoryStore`,
+`GLReloadSourcePicker`, `GLReleaseHistoryBrowser`) already went through
+`IPathProvider` exclusively - verified by direct code inspection - so this was
+the only runtime code change needed.
+
+**Build-time**: `GLSense.Addin.Core\post_build.cmd` now writes its
+zip+manifest.json to one uniform `SetupFiles\{Config}\Manifest\` staging
+folder (was: Debug->AppData Manifest, Release->this project's own
+`Manifests\` folder) - gitignored, transient, regenerated every build.
+`GLSense\post_build.cmd` copies from there into its own
+`bin\{Config}\AddinCore\Manifest\`, guarded to skip with a warning (not fail)
+if Addin.Core hasn't been built yet in that configuration. A new
+`Private=False` `ProjectReference` from `GLSense.csproj` to
+`GLSense.Addin.Core.csproj` (build-order only, no DLL copy - mirroring the
+existing Addin.Core->Loader.Core reference's *ordering* purpose, though that
+one deliberately DOES copy its DLL, unlike this one) guarantees Addin.Core's
+post-build always finishes first - in a standalone `GLSense.csproj` build, a
+whole-solution build, or (the intended single entry point going forward)
+`GLSense.Build.csproj` alone.
+
+**Accepted dev-loop trade-off**: rebuilding only `GLSense.Addin.Core` no
+longer immediately refreshes the auto-adopt location `UpdateBootstrapper`
+reads on next launch/Reload - that now requires `GLSense` (or
+`GLSense.Build`) to also rebuild, so its post-build can copy from Addin.Core's
+`SetupFiles`. `GLReloadSourcePicker`'s Offline mode (browse-to-a-folder)
+remains available for fast Addin.Core-only iteration, pointed directly at
+`GLSense.Addin.Core\SetupFiles\{Config}\Manifest\`.
+
+**No migration** of old data at the AppData location - no installer exists
+yet, so there's no real installed user base to migrate. Old
+`Manifest\`/`Versions\`/`ReleaseHistory.json` under `Excel_Logs` on a dev
+machine simply become dead, unread folders after this shipped; delete them by
+hand if desired.
+
+Full design: `docs/superpowers/specs/2026-09-04-addincore-colocated-storage-design.md`.
+Full implementation plan: `docs/superpowers/plans/2026-09-04-addincore-colocated-storage.md`.
+
+- **Status**: implemented and build-verified (`GLSense.Build.csproj` built
+  clean, standalone, in both Debug and Release, with `-p:SignAssembly=false`
+  as a verification-only override for this sandbox's pre-existing missing-
+  .pfx-passphrase issue - unrelated to this change). Not yet tested live in
+  Excel (no installer exists yet to test uninstall against directly).
+
+**Since discovered, unrelated, deliberately not fixed here**: while verifying
+Task 5 of this plan, a genuine, pre-existing bug turned up in
+`sign_file.cmd:112` - inside a delayed-expansion `if !errorlevel! neq 0
+(...)` block, the parenthesized phrase `(validly)` is left unescaped, unlike
+the otherwise-identical phrase two lines below at line 128
+(`^(or could not be read^)`), which correctly escapes its parens. The
+unescaped parens break batch's own `if (...)` block parsing, so any genuinely
+clean Release build crashes (exit 255, `"signed was unexpected at this
+time."`) the first time it reaches a DLL that isn't already signed. This is
+completely unrelated to this plan's own changes and was deliberately left
+unfixed here (out of scope - no task in this plan touches `sign_file.cmd`) -
+flagged here so the one-line escape fix (`(validly)` -> `^(validly^)`) doesn't
+get lost before the next person hits it on a clean build.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
