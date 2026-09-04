@@ -12,6 +12,7 @@ namespace GLSense.Shared
     {
         private readonly string _root;
         private readonly string _basePath;
+        private readonly string _installRoot;
         private static PathProvider _instance;
         public static PathProvider Instance => _instance ??= new PathProvider();
 
@@ -23,6 +24,32 @@ namespace GLSense.Shared
         private static bool _latestMandatory = false;
         private static List<VersionInfo> _allVersions = new();
 
+        // Base folder that the "AddinCore" hot-reload state (Manifest/Versions/
+        // ReleaseHistory.json) is colocated under - normally the folder
+        // GLSense.dll itself is running from, set once via ConfigureInstallRoot
+        // (see GLSenseContext's constructor). Static (not per-instance) so every
+        // PathProvider ever constructed - including PathProvider.Instance's
+        // separate lazy singleton - shares the same configured value. Falls back
+        // to the historical Excel_Logs-based root if never configured (e.g. a
+        // PathProvider constructed in a test harness with no GLSenseContext).
+        private static string _installRootOverride;
+
+        /// <summary>
+        /// Sets the folder that Manifest/Versions/ReleaseHistory.json are
+        /// colocated under (an "AddinCore" subfolder of it) - normally the
+        /// folder GLSense.dll itself is running from, so a future installer's
+        /// uninstall (which removes that whole folder) takes this state with
+        /// it too, instead of leaving it behind under the separate Excel_Logs
+        /// tree. Call this before constructing the PathProvider whose paths
+        /// matter - safe to call more than once (last call wins, and applies
+        /// to every PathProvider constructed afterward, since this is a
+        /// static field shared process-wide, not an instance field).
+        /// </summary>
+        public static void ConfigureInstallRoot(string installRoot)
+        {
+            _installRootOverride = installRoot;
+        }
+
         public PathProvider()
         {
             _basePath = Path.Combine(
@@ -30,6 +57,8 @@ namespace GLSense.Shared
                 "ORBIT", "Excel_Logs");
 
             _root = Path.Combine(_basePath, "GLSense_Logs_New");
+
+            _installRoot = Path.Combine(_installRootOverride ?? _root, "AddinCore");
 
             // Auto-initialize version when PathProvider is created
             InitializeVersion();
@@ -43,15 +72,17 @@ namespace GLSense.Shared
 
         public string LoginBrowserPath => Path.Combine(_root, "BrowserLogs", "Login");
         public string DrilldownBrowserPath => Path.Combine(_root, "BrowserLogs", "Drilldown");
-        public string VersionsPath => Path.Combine(_root, "Versions");
+        public string VersionsPath => Path.Combine(_installRoot, "Versions");
         public string Resources => Path.Combine(_root, "Resources");
 
         // "Manifest" (not "Version") since this folder/file is the update-tracking
         // record (releaseDate/version/downloadUrl/etc.), distinct from "Versions" (plural)
-        // which holds the actual hot-reloadable DLL payloads.
-        public string ManifestDirectory => Path.Combine(_root, "Manifest");
+        // which holds the actual hot-reloadable DLL payloads. Colocated with GLSense.dll's
+        // own folder (via _installRoot), NOT the Excel_Logs tree - see
+        // docs/superpowers/specs/2026-09-04-addincore-colocated-storage-design.md.
+        public string ManifestDirectory => Path.Combine(_installRoot, "Manifest");
         public string ManifestFile => Path.Combine(ManifestDirectory, "manifest.json");
-        public string ReleaseHistoryFile => Path.Combine(_root, "ReleaseHistory.json");
+        public string ReleaseHistoryFile => Path.Combine(_installRoot, "ReleaseHistory.json");
 
         // Version properties
         public string LatestVersion => _latestVersion;

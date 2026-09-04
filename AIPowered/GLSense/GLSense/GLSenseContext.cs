@@ -3,6 +3,7 @@ using GLSense.Contracts;
 using GLSense.Shared;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 
 namespace GLSense
@@ -31,6 +32,17 @@ namespace GLSense
         public GLSenseContext(object app)
         {
             ExcelApp = app ?? throw new ArgumentNullException(nameof(app));
+
+            // The AddinCore hot-reload state (Manifest/Versions/ReleaseHistory.json)
+            // is colocated with GLSense.dll's own folder so a future installer's
+            // uninstall (which removes this whole folder) takes that state with it
+            // too, instead of leaving it behind under the separate Excel_Logs tree -
+            // see docs/superpowers/specs/2026-09-04-addincore-colocated-storage-design.md.
+            // Deliberately Assembly.GetExecutingAssembly() (this class's own assembly,
+            // GLSense.dll) rather than AppDomain.CurrentDomain.BaseDirectory, which can
+            // resolve to Excel's own directory rather than the add-in's when hosted via COM.
+            string glsenseAssemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            PathProvider.ConfigureInstallRoot(glsenseAssemblyDir);
 
             // Initialize PathProvider
             Paths = new PathProvider();
