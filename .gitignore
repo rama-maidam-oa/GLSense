@@ -15,6 +15,7 @@
 **/*.user
 **/*.suo
 **/*.pdb
+**/GLSense.Addin.Core/SetupFiles/
 
 # --- Logs (both codebases write runtime logs under a Logs/ folder) ---
 **/Logs/
