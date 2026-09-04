@@ -51,5 +51,26 @@ call "%SOLUTION_DIR%\sign_file.cmd" "%TARGET_DIR%\adxloader.GLSense.dll" "%CONFI
 call "%SOLUTION_DIR%\sign_file.cmd" "%TARGET_DIR%\adxloader64.GLSense.dll" "%CONFIG%"
 
 echo ========================================
+echo Copying AddinCore manifest+zip from GLSense.Addin.Core's SetupFiles
+echo ========================================
+
+set ADDINCORE_SOURCE=%SOLUTION_DIR%\GLSense.Addin.Core\SetupFiles\%CONFIG%\Manifest
+set ADDINCORE_DEST=%TARGET_DIR%\AddinCore\Manifest
+
+if not exist "%ADDINCORE_SOURCE%" (
+    echo WARNING: %ADDINCORE_SOURCE% not found - GLSense.Addin.Core may not have
+    echo been built in this configuration yet. Skipping AddinCore manifest copy.
+    echo Build GLSense.Build.csproj instead of GLSense.csproj alone to avoid this.
+    goto :SkipAddinCoreCopy
+)
+
+if not exist "%ADDINCORE_DEST%" mkdir "%ADDINCORE_DEST%"
+xcopy /Y /I "%ADDINCORE_SOURCE%\*" "%ADDINCORE_DEST%\"
+
+echo Copied to: %ADDINCORE_DEST%
+
+:SkipAddinCoreCopy
+
+echo ========================================
 echo post_build.cmd (GLSense host) completed
 echo ========================================
