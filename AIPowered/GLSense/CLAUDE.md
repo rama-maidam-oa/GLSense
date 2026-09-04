@@ -5036,7 +5036,32 @@ dependencies in this solution.
 
 **Status**: implemented and build-verified (a real clean `GLSense.Build.csproj`
 build was run, confirming all 9 DLLs land in `GLSense\bin\Debug\` at the correct
-version). Not yet confirmed by relaunching Excel.
+version). **User-confirmed: Excel opens and the add-in loads successfully.**
+
+### 46.1 Follow-up: MSB3277 version-conflict warnings after the fix
+
+Once `GLSense.csproj` had direct references to the 9 packages above, the user's
+own rebuild logged `BuildWarnings.txt` full of `MSB3277 "Found conflicts between
+different versions"` warnings for 4 of them (`Microsoft.Bcl.AsyncInterfaces`,
+`System.IO.Pipelines`, `System.Text.Encodings.Web`, `System.Text.Json`). Root
+cause: `GLSense.Shared.csproj` referenced these 4 at version `10.0.9`, while
+`GLSense.Addin.Core.csproj` already referenced `10.0.11` of the same 4 packages -
+a pre-existing skew between those two projects that simply had no way to surface
+as a warning on `GLSense.csproj`'s own build until this section's fix gave it
+direct references to compare against Addin.Core's (via the build-order
+`ProjectReference` from section 45). Not a new bug - MSBuild's automatic
+unification (documented above) was already resolving it correctly at build time,
+these were "FYI" warnings, not errors.
+
+**Fix**: rather than leave the noise, aligned `GLSense.Shared.csproj` (+ its
+`packages.config`) and `GLSense.csproj`'s matching references onto `10.0.11` -
+the version `GLSense.Addin.Core` already uses, and already present locally in
+`packages\` (10.0.9/10.0.10/10.0.11 all present, no NuGet restore needed).
+Verified via a real rebuild: zero `MSB3277` warnings, and the copied
+`System.Text.Json.dll` is now `10.0.0.11` throughout.
+
+**Status**: implemented and build-verified. Not yet confirmed by the user's own
+rebuild.
 
 ---
 
