@@ -4965,19 +4965,22 @@ Full implementation plan: `docs/superpowers/plans/2026-09-04-addincore-colocated
   .pfx-passphrase issue - unrelated to this change). Not yet tested live in
   Excel (no installer exists yet to test uninstall against directly).
 
-**Since discovered, unrelated, deliberately not fixed here**: while verifying
-Task 5 of this plan, a genuine, pre-existing bug turned up in
+**Since discovered, unrelated to this plan's own changes, fixed separately**:
+while verifying Task 5 of this plan, a genuine, pre-existing bug turned up in
 `sign_file.cmd:112` - inside a delayed-expansion `if !errorlevel! neq 0
-(...)` block, the parenthesized phrase `(validly)` is left unescaped, unlike
+(...)` block, the parenthesized phrase `(validly)` was left unescaped, unlike
 the otherwise-identical phrase two lines below at line 128
 (`^(or could not be read^)`), which correctly escapes its parens. The
-unescaped parens break batch's own `if (...)` block parsing, so any genuinely
-clean Release build crashes (exit 255, `"signed was unexpected at this
-time."`) the first time it reaches a DLL that isn't already signed. This is
-completely unrelated to this plan's own changes and was deliberately left
-unfixed here (out of scope - no task in this plan touches `sign_file.cmd`) -
-flagged here so the one-line escape fix (`(validly)` -> `^(validly^)`) doesn't
-get lost before the next person hits it on a clean build.
+unescaped parens broke batch's own `if (...)` block parsing, so any genuinely
+clean Release build crashed (exit 255, `"signed was unexpected at this
+time."`) the first time it reached a DLL that wasn't already signed. Left
+unfixed in this plan's own commits (out of scope - no task in this plan
+touched `sign_file.cmd`), but fixed immediately afterward in its own commit
+once flagged (`(validly)` -> `^(validly^)`), verified via a standalone repro
+isolating just the if-block shape (unescaped form reproduces the exact
+crash/exit code; escaped form runs clean) rather than a real Release build,
+since that would have triggered real Authenticode signing against the
+production cert as a side effect of mere verification.
 
 ---
 
