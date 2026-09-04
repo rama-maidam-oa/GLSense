@@ -4984,6 +4984,62 @@ production cert as a side effect of mere verification.
 
 ---
 
+## 46. Excel crash on startup: FileNotFoundException for System.Text.Json, thrown from PathProvider.InitializeVersion (AIPowered only)
+
+Reported live, right after building/merging section 45: opening Excel threw
+`System.IO.FileNotFoundException: Could not load file or assembly
+'System.Text.Json, Version=10.0.0.9, ...'` from `PathProvider.InitializeVersion()`,
+called via `PathProvider..ctor()` -> `GLSenseContext..ctor()` ->
+`AddinModule_OnRibbonLoaded`.
+
+**Root cause**: `GLSense.csproj` (the host) has a plain `ProjectReference` to
+`GLSense.Shared.csproj`, which copies `GLSense.Shared.dll` itself into `GLSense\bin\
+{Config}\` - but classic (packages.config-based) `ProjectReference` does **not**
+reliably copy the referenced project's own third-party NuGet references
+transitively. `GLSense.Shared.dll` needs `System.Text.Json` (and *its* own further
+dependencies - `System.Buffers`, `System.Memory`, `System.Numerics.Vectors`,
+`System.Runtime.CompilerServices.Unsafe`, `System.Text.Encodings.Web`,
+`System.Threading.Tasks.Extensions`, `Microsoft.Bcl.AsyncInterfaces`,
+`System.IO.Pipelines`) for `PathProvider`'s `JsonSerializer` calls (in place since
+section 14's manifest.json work) - `GLSenseContext`'s constructor has always built
+a `PathProvider` directly, so this dependency was never new. Confirmed via a real
+build: `GLSense\bin\Debug\` had `GLSense.Shared.dll` and (oddly) `NLog.dll`, but
+none of `System.Text.Json.dll`'s own dependency chain - a genuine gap in this
+solution's classic-project reference-resolution, not a logic bug, and not
+something section 45's own changes altered (the `GLSenseContext` constructor code
+path this exception runs through is unchanged by that section).
+
+**Fix**: added explicit `<Reference>`/`<HintPath>` entries to `GLSense.csproj` for
+all 9 of `GLSense.Shared.csproj`'s NuGet-package references (`Microsoft.Bcl.
+AsyncInterfaces`, `NLog`, `System.Buffers`, `System.IO.Pipelines`, `System.Memory`,
+`System.Numerics.Vectors`, `System.Runtime.CompilerServices.Unsafe`, `System.Text.
+Encodings.Web`, `System.Text.Json`, `System.Threading.Tasks.Extensions`) - exact
+same version/HintPath as `GLSense.Shared.csproj` already declares, so `GLSense.
+csproj`'s own reference resolution copies them locally regardless of
+`ProjectReference` transitivity. Verified via a real clean full-chain build
+(`GLSense.Build.csproj`) that all 9 now land in `GLSense\bin\Debug\` at the correct
+version (10.0.0.9 for the `System.Text.Json` family, matching what `PathProvider`
+actually needs - a version-conflict warning appears during build against
+`GLSense.Addin.Core`'s own copy of `Microsoft.Bcl.AsyncInterfaces`, which is
+`10.0.0.11`, but MSBuild resolves it to the primary/explicit reference here
+(10.0.0.9), which is what actually gets copied and is the version `GLSense.Shared.
+dll`'s own manifest expects - confirmed by reading the copied assembly's version
+directly, not just trusting the warning text).
+
+**If a similar `FileNotFoundException` for a different transitive NuGet
+dependency turns up later** (e.g. if `GLSense.Shared`'s own package references
+change), the fix pattern is the same: add the missing package(s) as direct
+`<Reference>`/`<HintPath>` entries to `GLSense.csproj`, copied verbatim from
+whichever project's `.csproj` already has them - don't assume `ProjectReference`
+alone is sufficient for a packages.config-based project's transitive
+dependencies in this solution.
+
+**Status**: implemented and build-verified (a real clean `GLSense.Build.csproj`
+build was run, confirming all 9 DLLs land in `GLSense\bin\Debug\` at the correct
+version). Not yet confirmed by relaunching Excel.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
