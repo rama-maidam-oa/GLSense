@@ -34,14 +34,12 @@ echo.
 echo Addin.Core output:
 echo   %SOLUTION_DIR%\GLSense.Addin.Core\bin\%CONFIG%\GLSense.Addin.Core.dll
 
-if /I "%CONFIG%"=="Release" (
-    echo.
-    echo Release publish folder ^(zip + manifest.json for UpdateBootstrapper^):
-    echo   %LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs_New\Manifest\
-) else (
-    echo.
-    echo DEBUG build - no signing was performed and no Manifest zip was published.
-    echo Build in Release configuration for a client-ready, signed output.
-)
+echo.
+echo AddinCore hot-reload state (colocated with GLSense.dll - see
+echo docs/superpowers/specs/2026-09-04-addincore-colocated-storage-design.md):
+echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\AddinCore\Manifest\manifest.json
+echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\AddinCore\Manifest\v*.zip
+echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\AddinCore\Versions\   (populated at runtime by UpdateBootstrapper)
+echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\AddinCore\ReleaseHistory.json   (populated at runtime by UpdateBootstrapper)
 
 echo ========================================================================
