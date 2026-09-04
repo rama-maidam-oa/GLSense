@@ -109,7 +109,7 @@ if /I "%FORCE_MODE%"=="FORCE" goto :DoSign
 
 "%SIGNTOOL%" verify /pa /q "%TARGET_FILE%" >nul 2>&1
 if !errorlevel! neq 0 (
-    echo [sign_file] RELEASE mode - not currently (validly) signed - signing: "%TARGET_FILE%"
+    echo [sign_file] RELEASE mode - not currently ^(validly^) signed - signing: "%TARGET_FILE%"
     goto :DoSign
 )
 
