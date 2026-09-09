@@ -344,10 +344,31 @@ namespace GLSense.Addin.Core.Views
         // (Common\DrilldownMetadataXmlStore.cs) so Drilldowns\DDDatatoWorksheet.cs's
         // ExtractMetadata can use it later when UserConfig.OverwriteDrilldownMetadata is enabled
         // (Views\GLUserConfig.xaml's "Overwrite drilldown metadata with locally saved" checkbox).
+        // Prevents a second click from starting a concurrent save while the first is still
+        // running its own ShowBusyOverlayAsync/HideBusyAndShow*Async cycle on the shared
+        // AppOverlayControl - ported from FinalWorkingCode's identical fix (OISR-22349).
+        private bool _actionInProgress;
+
         private async void BtnSaveLocally_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             ServiceLocator.Logger?.LogDebug("GLDrilldownCustomization.BtnSaveLocally_Click invoked");
+            _actionInProgress = true;
+            btnSaveLocally.IsEnabled = false;
+            try
+            {
+                await BtnSaveLocally_ClickCore();
+            }
+            finally
+            {
+                _actionInProgress = false;
+                btnSaveLocally.IsEnabled = true;
+            }
+        }
 
+        private async Task BtnSaveLocally_ClickCore()
+        {
             if (AppState.Instance.SelectedCube == null)
             {
                 ServiceLocator.Logger?.LogWarn("GLDrilldownCustomization.BtnSaveLocally_Click: no selected cube, aborting save.");

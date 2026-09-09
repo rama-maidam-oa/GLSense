@@ -5089,6 +5089,67 @@ directly on the artifact.
 
 ---
 
+## 48. `Views\AppOverlay.xaml.cs` and multiple `Views\*.xaml.cs`: GLJobsMonitor "Download Logs" blurs but no success/error toast shown, intermittently on repeated clicks (ported from FinalWorkingCode - fixed in **both** codebases) (OISR-22349)
+
+Reported (GLSense MSI): on the Processed Jobs window (`GLJobsMonitor`), selecting a
+process and downloading its log sometimes leaves the window blurred with no success
+message ever shown - worse the more the user clicked. Correctly suspected as a race
+condition by the reporter.
+
+Root cause traced to two compounding gaps, both present here identically to
+FinalWorkingCode:
+1. None of `GLJobsMonitor.xaml.cs`'s footer buttons (Refresh/Download Logs/Download
+   Outputs/Delete/Delete All) had a re-entrancy guard, so a second click before the
+   first click's async operation finished started a second, concurrent call into
+   `GLSubmittedJobsViewModel`, both driving the single shared `AppOverlayControl`.
+2. `AppOverlay.HideBusyAsync()` tracked its storyboard-completion callback in one
+   instance field, `_hideBusyHandler`. When two `HideBusyAsync()` calls raced (from two
+   overlapping operations, or from the busy overlay's own Cancel button firing
+   `HideBusyAsync()` while the operation's own completion code called it again a moment
+   later - `cancelAction` doesn't actually cancel the underlying async work, it only
+   hides the overlay early), the second call unsubscribed and discarded the first
+   call's completion handler before it ever fired, and restarted the fade-out
+   storyboard from scratch. The first call's `TaskCompletionSource` was then never
+   completed, so its `await HideBusyAsync()` - called right before the success/error
+   toast in every caller (e.g. `GLSubmittedJobsViewModel.DownloadLogsAsync`) - hung
+   forever, and that toast never showed, while the overlay was left in whatever visual
+   state the second call's animation produced.
+
+Fixed in two places, mirroring FinalWorkingCode's fix exactly:
+- `AppOverlay.HideBusyAsync()`: added a `_pendingHideBusyTcs` list. If a hide animation
+  is already in flight (`_hideBusyHandler != null`) when a new `HideBusyAsync()` call
+  arrives, it no longer steals/restarts the storyboard - it adds its
+  `TaskCompletionSource` to the pending list and lets the in-flight animation's
+  completion handler (`CompletePendingHideBusy()`) resolve every pending caller at
+  once. This is shared infrastructure used by every window hosting an `AppOverlay`, so
+  it protects all of them, not just GLJobsMonitor.
+- Per-window re-entrancy guards, added to the same set of windows found affected in
+  FinalWorkingCode's audit (this project's equivalents were confirmed to have the
+  identical unguarded shape before fixing): `GLJobsMonitor.xaml.cs` (all five footer
+  buttons plus the initial `Window_Loaded` load - one shared `_actionInProgress` flag +
+  `SetActionButtonsEnabled(bool)`), `GLDrilldownCustomization.xaml.cs`
+  (`BtnSaveLocally_Click`), `GLLOVs.xaml.cs` (`CmdSubmit_Click`),
+  `GLRollerGroups.xaml.cs` (`BtnOK_Click`), `GLSegmentValues.xaml.cs` (`BtnOK_Click`) -
+  each via `if (_actionInProgress) return;` + disabling its own button for the
+  duration. `GLCubeDetails.xaml.cs`
+  (`BtnValidateCube_Click`/`BtnOK_Click`) and `GLUserConfig.xaml.cs`
+  (`CmdSave_Click`/`CmdReset_Click`) got a narrower, same-button-only guard (`if
+  (!btn.IsEnabled) return;`) rather than a guard shared across both buttons in the
+  pair, since those two already use a shared `_activeCancellation` field so that
+  clicking one deliberately cancels an in-flight operation from the other (e.g. OK
+  cancelling an in-flight Validate) - existing, intended behavior this fix does not
+  change. `GLUserConfig.xaml.cs`'s Save/Reset buttons have no `x:Name` in XAML, so the
+  guard toggles `IsEnabled` via `sender` instead of a named field.
+
+Ported identically from the `11.1.1` branch's fix (build-verified there and here via
+`GLSense.Addin.Core.csproj` with `/p:SignAssembly=false` to route around an unrelated
+local `GLSense.Contracts.pfx` import failure on this machine).
+
+**Status: fixed in both FinalWorkingCode and AIPowered, on both `11.1.1` and `11.1.2`.**
+See FinalWorkingCode's `CLAUDE.md` for the original write-up this section mirrors.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

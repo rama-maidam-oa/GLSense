@@ -677,6 +677,13 @@ namespace GLSense.Addin.Core.Views
 
         private async void BtnValidateCube_Click(object sender, RoutedEventArgs e)
         {
+            // Same-button re-entry guard - see GLJobsMonitor.xaml.cs (OISR-22349). Left as
+            // a guard on this button only (not a shared flag with BtnOK_Click) so
+            // BtnOK_Click can still deliberately cancel an in-flight validation via
+            // _activeCancellation, which is existing, intended cross-button behavior.
+            if (!btnValidateCube.IsEnabled)
+                return;
+
             if (_currentCube == null || _currentCube.ViewBased)
             {
                 return;
@@ -688,6 +695,7 @@ namespace GLSense.Addin.Core.Views
             using var cts = new CancellationHelper();
             _activeCancellation = cts;
 
+            btnValidateCube.IsEnabled = false;
             try
             {
                 LedgerModel? selectedLedger = GetSelectedLedger();
@@ -716,6 +724,7 @@ namespace GLSense.Addin.Core.Views
                 {
                     _activeCancellation = null;
                 }
+                btnValidateCube.IsEnabled = true;
             }
         }
 
@@ -732,6 +741,10 @@ namespace GLSense.Addin.Core.Views
 
         private async void BtnOK_Click(object sender, RoutedEventArgs e)
         {
+            // Same-button re-entry guard - see BtnValidateCube_Click above (OISR-22349).
+            if (!btnOK.IsEnabled)
+                return;
+
             if (_currentCube == null)
             {
                 await AppOverlayControl.ShowWarningAsync("Please select a cube before continuing.");
@@ -746,6 +759,7 @@ namespace GLSense.Addin.Core.Views
             var token = cts.GetToken();
             OperationResult result = new();
 
+            btnOK.IsEnabled = false;
             try
             {
                 _selectedLedger = GetSelectedLedger();
@@ -835,6 +849,7 @@ namespace GLSense.Addin.Core.Views
             finally
             {
                 await AppOverlayControl.HideBusyAsync();
+                btnOK.IsEnabled = true;
 
                 if (!string.IsNullOrWhiteSpace(AppState.Instance.SelectedCube?.UserName))
                 {

@@ -307,9 +307,31 @@ namespace GLSense.Addin.Core.Views
                 );
             }, DispatcherPriority.Background);
         }
+        // Prevents a second click from starting a concurrent write while the first is
+        // still running its own ShowBusyOverlayAsync/HideBusyAsync cycle on the shared
+        // AppOverlayControl - ported from FinalWorkingCode's identical fix (OISR-22349).
+        private bool _actionInProgress;
+
         private async void BtnOK_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             ServiceLocator.Logger?.LogDebug("GLSegmentValues.BtnOK_Click invoked");
+            _actionInProgress = true;
+            btnOK.IsEnabled = false;
+            try
+            {
+                await BtnOK_ClickCore();
+            }
+            finally
+            {
+                _actionInProgress = false;
+                btnOK.IsEnabled = true;
+            }
+        }
+
+        private async Task BtnOK_ClickCore()
+        {
             if (!ValidateInputs())
                 return;
 
