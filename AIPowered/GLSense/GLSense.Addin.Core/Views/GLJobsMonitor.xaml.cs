@@ -87,9 +87,31 @@ namespace GLSense.Addin.Core.Views
             }
         }
 
+        // Guards against the GLJobsMonitor buttons (Refresh/Download Logs/Download
+        // Outputs/Delete/Delete All) being clicked again while a previous click is still
+        // running its async operation - ported from FinalWorkingCode's GLJobsMonitor.xaml.cs
+        // (OISR-22349). See that file's comment for the full race explanation: two
+        // overlapping calls racing on the shared AppOverlayControl's busy-overlay
+        // Show/Hide state could leave the window blurred with the success/error toast
+        // never shown.
+        private bool _actionInProgress;
+
+        private void SetActionButtonsEnabled(bool enabled)
+        {
+            btnRefresh.IsEnabled = enabled;
+            btnDownloadLogs.IsEnabled = enabled;
+            btnDownloadOutputs.IsEnabled = enabled;
+            btnDelete.IsEnabled = enabled;
+            btnDeleteAll.IsEnabled = enabled;
+        }
+
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor.Window_Loaded invoked - loading jobs");
+            if (_actionInProgress)
+                return;
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
             try
             {
                 await vm.LoadJobsAsync();
@@ -98,6 +120,11 @@ namespace GLSense.Addin.Core.Views
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "GLJobsMonitor.Window_Loaded");
+            }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
             }
         }
 
@@ -109,7 +136,11 @@ namespace GLSense.Addin.Core.Views
 
         private async void BtnRefresh_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor.BtnRefresh_Click invoked");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
             try
             {
                 await vm.RefreshJobsAsync();
@@ -119,11 +150,20 @@ namespace GLSense.Addin.Core.Views
             {
                 ServiceLocator.Logger?.LogException(ex, "GLJobsMonitor.BtnRefresh_Click");
             }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private async void BtnDownloadLogs_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor.BtnDownloadLogs_Click invoked");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
             try
             {
                 await vm.DownloadLogsAsync();
@@ -133,11 +173,20 @@ namespace GLSense.Addin.Core.Views
             {
                 ServiceLocator.Logger?.LogException(ex, "GLJobsMonitor.BtnDownloadLogs_Click");
             }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private async void BtnDownloadOutputs_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor.BtnDownloadOutputs_Click invoked");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
             try
             {
                 await vm.DownloadOutputsAsync();
@@ -147,11 +196,20 @@ namespace GLSense.Addin.Core.Views
             {
                 ServiceLocator.Logger?.LogException(ex, "GLJobsMonitor.BtnDownloadOutputs_Click");
             }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private async void BtnDelete_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor.BtnDelete_Click invoked");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
             try
             {
                 await vm.DeleteSelectedAsync();
@@ -161,11 +219,20 @@ namespace GLSense.Addin.Core.Views
             {
                 ServiceLocator.Logger?.LogException(ex, "GLJobsMonitor.BtnDelete_Click");
             }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private async void BtnDeleteAll_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor.BtnDeleteAll_Click invoked");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
             try
             {
                 await vm.DeleteAllAsync();
@@ -174,6 +241,11 @@ namespace GLSense.Addin.Core.Views
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "GLJobsMonitor.BtnDeleteAll_Click");
+            }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
             }
         }
 

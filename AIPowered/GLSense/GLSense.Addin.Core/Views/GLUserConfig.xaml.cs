@@ -567,6 +567,15 @@ namespace GLSense.Addin.Core.Views
 
         private async void CmdSave_Click(object sender, RoutedEventArgs e)
         {
+            // Same-button re-entry guard - see GLJobsMonitor.xaml.cs (OISR-22349). Left as
+            // a guard on this button only (not shared with CmdReset_Click) so Reset can
+            // still deliberately cancel an in-flight save via _activeCancellation, which
+            // is existing, intended cross-button behavior. Neither button has an x:Name
+            // in XAML, so it's toggled via sender rather than a named field.
+            var btn = sender as System.Windows.Controls.Button;
+            if (btn != null && !btn.IsEnabled)
+                return;
+
             ServiceLocator.Logger?.LogDebug("GLUserConfig.CmdSave_Click invoked");
             _activeCancellation?.Cancel();
             _activeCancellation = null;
@@ -574,6 +583,8 @@ namespace GLSense.Addin.Core.Views
             using var cts = new CancellationHelper();
             _activeCancellation = cts;
 
+            if (btn != null)
+                btn.IsEnabled = false;
             try
             {
                 if (cts.IsCancellationRequested)
@@ -686,6 +697,8 @@ namespace GLSense.Addin.Core.Views
                 {
                     _activeCancellation = null;
                 }
+                if (btn != null)
+                    btn.IsEnabled = true;
             }
         }
 
@@ -706,12 +719,20 @@ namespace GLSense.Addin.Core.Views
 
         private async void CmdReset_Click(object sender, RoutedEventArgs e)
         {
+            // Same-button re-entry guard - see CmdSave_Click above (OISR-22349).
+            var btn = sender as System.Windows.Controls.Button;
+            if (btn != null && !btn.IsEnabled)
+                return;
+
             ServiceLocator.Logger?.LogDebug("GLUserConfig.CmdReset_Click invoked");
             _activeCancellation?.Cancel();
             _activeCancellation = null;
 
             using var cts = new CancellationHelper();
             _activeCancellation = cts;
+
+            if (btn != null)
+                btn.IsEnabled = false;
 
             string resultString = string.Empty;
             try
@@ -798,6 +819,8 @@ namespace GLSense.Addin.Core.Views
                 {
                     _activeCancellation = null;
                 }
+                if (btn != null)
+                    btn.IsEnabled = true;
             }
         }
 

@@ -1,6 +1,7 @@
 ﻿using GLSense.Addin.Core.Infrastructure;
 using MahApps.Metro.IconPacks;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,6 +19,14 @@ namespace GLSense.Addin.Core.Views
         private TaskCompletionSource<bool> _activeToastTcs;
         private RoutedEventHandler YesHandler, NoHandler, CancelHandler, BusyCancelHandler;
         private EventHandler _hideBusyHandler;
+        // Concurrent HideBusyAsync() callers (e.g. the busy overlay's own Cancel button
+        // firing HideBusyAsync while the operation's own code independently calls
+        // HideBusyAsync a moment later on completion) must all observe the SAME hide
+        // finishing - not have an earlier caller's completion silently discarded when a
+        // later caller replaces _hideBusyHandler and restarts the storyboard. See
+        // HideBusyAsync below. Ported from FinalWorkingCode's AppOverlay.xaml.cs
+        // (OISR-22349).
+        private readonly List<TaskCompletionSource<bool>> _pendingHideBusyTcs = new();
 
         // 2026-07-15 fix: confirm popup clipping (see ConfirmPopup's XAML comment).
         // The owning window (e.g. GLWaitWindow, SizeToContent="Height" + a small
@@ -346,6 +355,7 @@ namespace GLSense.Addin.Core.Views
         {
             ServiceLocator.Logger?.LogDebug("AppOverlay.HideBusyAsync invoked");
             var tcs = new TaskCompletionSource<bool>();
+            _pendingHideBusyTcs.Add(tcs);
 
             await Dispatcher.InvokeAsync(() =>
             {
@@ -354,12 +364,20 @@ namespace GLSense.Addin.Core.Views
                     StopBusyTimer();
                     BusyOverlay.Visibility = Visibility.Collapsed;
                     this.Visibility = Visibility.Collapsed;
-                    tcs.TrySetResult(true);
+                    CompletePendingHideBusy();
                     return;
                 }
 
+                // A hide animation is already in flight (e.g. the busy overlay's Cancel
+                // button called HideBusyAsync and the operation's own completion code is
+                // now calling it again) - don't steal/restart it out from under the first
+                // caller, just let this caller's tcs ride along and resolve when the
+                // in-flight animation actually completes.
                 if (_hideBusyHandler != null)
-                    sb.Completed -= _hideBusyHandler;
+                {
+                    ServiceLocator.Logger?.LogDebug("AppOverlay.HideBusyAsync: hide already in progress, joining existing completion");
+                    return;
+                }
 
                 _hideBusyHandler = (s, e) =>
                 {
@@ -371,7 +389,7 @@ namespace GLSense.Addin.Core.Views
 
                     sb.Completed -= _hideBusyHandler;
                     _hideBusyHandler = null;
-                    tcs.TrySetResult(true);
+                    CompletePendingHideBusy();
                 };
 
                 sb.Completed += _hideBusyHandler;
@@ -381,6 +399,16 @@ namespace GLSense.Addin.Core.Views
             });
 
             await tcs.Task;
+        }
+
+        // Resolves every HideBusyAsync() caller currently waiting on the busy overlay to
+        // finish hiding, not just the one that happened to start the in-flight animation.
+        private void CompletePendingHideBusy()
+        {
+            var pending = new List<TaskCompletionSource<bool>>(_pendingHideBusyTcs);
+            _pendingHideBusyTcs.Clear();
+            foreach (var t in pending)
+                t.TrySetResult(true);
         }
 
         private void StopBusyTimer()
