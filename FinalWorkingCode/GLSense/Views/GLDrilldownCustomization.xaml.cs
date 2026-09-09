@@ -264,10 +264,32 @@ namespace GLSense.Views
             Close();
         }
 
+        // Prevents a second click from starting a concurrent save while the first is still
+        // running its own ShowBusyOverlayAsync/HideBusyAndShow*Async cycle on the shared
+        // AppOverlayControl - same overlapping-async-operation shape found and fixed in
+        // GLJobsMonitor.xaml.cs. (OISR-22349)
+        private bool _actionInProgress;
+
         private async void BtnSaveLocally_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             LogUtility.LogDebug("GLDrilldownCustomization.BtnSaveLocally_Click invoked");
+            _actionInProgress = true;
+            btnSaveLocally.IsEnabled = false;
+            try
+            {
+                await BtnSaveLocally_ClickCore();
+            }
+            finally
+            {
+                _actionInProgress = false;
+                btnSaveLocally.IsEnabled = true;
+            }
+        }
 
+        private async Task BtnSaveLocally_ClickCore()
+        {
             if (AppState.Instance.SelectedCube == null)
             {
                 LogUtility.LogWarn("GLDrilldownCustomization.BtnSaveLocally_Click: no selected cube, aborting save.");

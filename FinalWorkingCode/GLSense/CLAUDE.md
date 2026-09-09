@@ -421,3 +421,64 @@ Two distinct root causes, both fixed together per the user's request:
   **Status: fixed in both FinalWorkingCode and AIPowered.** AIPowered's
   `GLSense.Shared\Logger.cs` had the exact same `ArchiveFileName = "...\GLSense_Logs_{#}.log"`
   shape and got the identical fix - see AIPowered's `CLAUDE.md` section 43.
+
+## `Views\AppOverlay.xaml.cs` and multiple `Views\*.xaml.cs` (GLJobsMonitor et al.) (OISR-22349)
+
+- **GLJobsMonitor "Download Logs" window blurs but no success/error toast shown,
+  intermittently on repeated clicks**: reported as the window going blurred without a
+  message after clicking Download Logs, worse the more the user clicked - correctly
+  suspected as a race condition. Root cause traced to two compounding gaps:
+  1. None of `GLJobsMonitor.xaml.cs`'s footer buttons (Refresh/Download Logs/Download
+     Outputs/Delete/Delete All) had a re-entrancy guard, so a second click before the
+     first click's async operation finished started a second, concurrent call into
+     `GLSubmittedJobsViewModel`, both driving the single shared `AppOverlayControl`.
+  2. `AppOverlay.HideBusyAsync()` tracked its storyboard-completion callback in one
+     instance field, `_hideBusyHandler`. When two `HideBusyAsync()` calls raced (from
+     two overlapping operations, or from the busy overlay's own Cancel button firing
+     `HideBusyAsync()` while the operation's own completion code called it again a
+     moment later - `cancelAction` here doesn't actually cancel the underlying async
+     work, it only hides the overlay early), the second call unsubscribed and
+     discarded the first call's completion handler before it ever fired, and
+     restarted the fade-out storyboard from scratch. The first call's
+     `TaskCompletionSource` was then never completed, so its `await HideBusyAsync()` -
+     called right before the success/error toast in every caller (e.g.
+     `GLSubmittedJobsViewModel.DownloadLogsAsync`) - hung forever, and that toast never
+     showed, while the overlay was left in whatever visual state the second call's
+     animation produced.
+  Fixed in two places:
+  - `AppOverlay.HideBusyAsync()`: added a `_pendingHideBusyTcs` list. If a hide
+    animation is already in flight (`_hideBusyHandler != null`) when a new
+    `HideBusyAsync()` call arrives, it no longer steals/restarts the storyboard - it
+    just adds its `TaskCompletionSource` to the pending list and lets the in-flight
+    animation's completion handler (`CompletePendingHideBusy()`) resolve every pending
+    caller at once. This is shared infrastructure used by every window that hosts an
+    `AppOverlay`, so this half of the fix protects all of them, not just
+    GLJobsMonitor.
+  - Per-window re-entrancy guards, added to every window found (via a full audit of
+    `Views\*.xaml.cs`) to have an `async void` button-click handler that touches the
+    shared overlay with no existing guard: `GLJobsMonitor.xaml.cs` (all five footer
+    buttons, plus the initial `Window_Loaded` load - one shared `_actionInProgress`
+    flag + `SetActionButtonsEnabled(bool)`, since only one of these operations should
+    ever run at a time regardless of which button started it),
+    `GLDrilldownCustomization.xaml.cs` (`BtnSaveLocally_Click`), `GLLOVs.xaml.cs`
+    (`CmdSubmit_Click`), `GLRollerGroups.xaml.cs` (`BtnOK_Click`),
+    `GLSegmentValues.xaml.cs` (`BtnOK_Click`) - each via `if (_actionInProgress)
+    return;` + disabling its own button for the duration, mirroring the pattern
+    `GLSegmentDiscovery.xaml.cs`'s `BtnSubmit_Click` already used for the unrelated
+    Explode-All double-click freeze bug (see that section above) - `if
+    (!btnSubmit.IsEnabled) return;`.
+    `GLCubeDetails.xaml.cs` (`BtnValidateCube_Click`/`BtnOK_Click`) and
+    `GLUserConfig.xaml.cs` (`CmdSave_Click`/`CmdReset_Click`) got a narrower,
+    same-button-only guard (`if (!btn.IsEnabled) return;`, toggled per-button) rather
+    than a guard shared across both buttons in the pair, since those two already use a
+    shared `_activeCancellation` field so that clicking one deliberately cancels an
+    in-flight operation from the other (e.g. OK cancelling an in-flight Validate) -
+    existing, intended behavior this fix does not change. `GLUserConfig.xaml.cs`'s
+    Save/Reset buttons have no `x:Name` in XAML, so the guard toggles `IsEnabled` via
+    `sender` instead of a named field.
+  Audited every `Views\*.xaml.cs` file for this shape; windows with only synchronous
+  click handlers (no `async void` touching the overlay) were left unchanged since they
+  can't race this way.
+  Ported identically from the `11.1.1` branch's fix (build-verified there and here).
+  **Status: fixed in FinalWorkingCode on `11.1.1` and `11.1.2`; AIPowered ported on
+  `11.1.1`, port to `11.1.2`'s AIPowered pending/in progress.**

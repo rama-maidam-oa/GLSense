@@ -115,9 +115,32 @@ namespace GLSense.Views
                 );
             }, DispatcherPriority.Background);
         }
+        // Prevents a second click from starting a concurrent submit while the first is
+        // still running its own ShowBusyOverlayAsync/HideBusyAsync cycle on the shared
+        // AppOverlayControl - same overlapping-async-operation shape found and fixed in
+        // GLJobsMonitor.xaml.cs. (OISR-22349)
+        private bool _actionInProgress;
+
         private async void CmdSubmit_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             LogUtility.LogDebug("GLLOVs.CmdSubmit_Click invoked");
+            _actionInProgress = true;
+            CmdSubmit.IsEnabled = false;
+            try
+            {
+                await CmdSubmit_ClickCore();
+            }
+            finally
+            {
+                _actionInProgress = false;
+                CmdSubmit.IsEnabled = true;
+            }
+        }
+
+        private async Task CmdSubmit_ClickCore()
+        {
             CancellationHelper ctsHelper = new();
             var SelLov = vm.SelectedLov;
 

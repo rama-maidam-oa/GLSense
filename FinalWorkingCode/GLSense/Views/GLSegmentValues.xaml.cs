@@ -238,9 +238,32 @@ namespace GLSense.Views
                 );
             }, DispatcherPriority.Background);
         }
+        // Prevents a second click from starting a concurrent write while the first is
+        // still running its own ShowBusyOverlayAsync/HideBusyAsync cycle on the shared
+        // AppOverlayControl - same overlapping-async-operation shape found and fixed in
+        // GLJobsMonitor.xaml.cs. (OISR-22349)
+        private bool _actionInProgress;
+
         private async void BtnOK_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             LogUtility.LogDebug("GLSegmentValues.BtnOK_Click invoked");
+            _actionInProgress = true;
+            btnOK.IsEnabled = false;
+            try
+            {
+                await BtnOK_ClickCore();
+            }
+            finally
+            {
+                _actionInProgress = false;
+                btnOK.IsEnabled = true;
+            }
+        }
+
+        private async Task BtnOK_ClickCore()
+        {
             if (!ValidateInputs())
             {
                 LogUtility.LogDebug("GLSegmentValues.BtnOK_Click: validation failed, aborting");
