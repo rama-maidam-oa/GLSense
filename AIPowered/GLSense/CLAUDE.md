@@ -5065,6 +5065,30 @@ rebuild.
 
 ---
 
+## 47. Leadership presentation: "Reload, Don't Reinstall" (GLSense Classic vs. GLSense Modular architecture pitch)
+
+A 9-slide executive deck was built to get leadership approval for standardizing on the
+AIPowered hot-reload architecture (branded in the deck as **GLSense Modular**) as
+GLSense's delivery model going forward, replacing FinalWorkingCode's single-installer
+model (branded as **GLSense Classic** - the internal `AIPowered`/`FinalWorkingCode`
+folder names were deliberately not used anywhere in the deck itself, since leadership
+doesn't recognize them). Covers: the cost of the current single-installer model, the
+host-shim/AppDomain-boundary split architecture (diagram), the deployment-flow
+comparison (diagram), the Release History/rollback safety net (diagram), the two
+fail-safe design rules that keep the boundary from taking Excel down, an honest
+accounting of the added engineering discipline this required, a side-by-side business
+comparison table, and a closing ask.
+
+**Link**: https://claude.ai/code/artifact/0b8df48e-a423-4891-b36f-26197e3cb1ea
+
+**Status**: published, not yet shared publicly/with colleagues for comment as of
+2026-09-06 - share it via the artifact page's own Share menu before circulating (this
+is a manual step on the page itself, not something done from this repo). Once shared
+and colleagues start leaving comments on it, those can be triaged and addressed
+directly on the artifact.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
