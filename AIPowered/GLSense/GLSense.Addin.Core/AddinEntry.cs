@@ -74,6 +74,12 @@ namespace GLSense.Addin.Core
                 // Initialize ServiceLocator - this is the ONLY place where context is set
                 ServiceLocator.Initialize(_ctx);
 
+                // Retries transient "Excel is busy" COM rejections instead of letting them
+                // throw immediately - see CommonMethods.cs's Disable/EnableExcelSettings
+                // retry fix for the row hide/unhide hang this addresses (ported from
+                // FinalWorkingCode's identical fix).
+                ComMessageFilter.Register();
+
                 // No handler anywhere previously caught a truly unhandled exception in
                 // THIS AppDomain (only WPF-dispatcher-thread exceptions are covered
                 // elsewhere) - a background Task or COM callback thread throwing
@@ -1980,6 +1986,15 @@ namespace GLSense.Addin.Core
                 // context/logger are still valid, means this runs before the unload rather
                 // than being an implicit side effect of it, and costs nothing. Deliberately
                 // last: every log line above this still needs ServiceLocator.Logger to work.
+                try
+                {
+                    ComMessageFilter.Revoke();
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogException(ex, "Shutdown: ComMessageFilter.Revoke failed");
+                }
+
                 try
                 {
                     ServiceLocator.Reset();

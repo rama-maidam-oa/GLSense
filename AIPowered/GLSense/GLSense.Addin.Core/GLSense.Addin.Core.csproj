@@ -198,6 +198,7 @@
     <Compile Include="ViewModels\GLLovViewModel.cs" />
     <Compile Include="ViewModels\SimpleSegmentViewModel.cs" />
     <Compile Include="ViewModels\SegmentSelectorViewModel.cs" />
+    <Compile Include="Utilities\ComMessageFilter.cs" />
     <Compile Include="Utilities\CommonFunctions.cs" />
     <Compile Include="Utilities\CommonMethods.cs" />
     <Compile Include="Utilities\MouseWheelFocusHelper.cs" />

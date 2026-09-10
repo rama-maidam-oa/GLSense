@@ -5183,6 +5183,53 @@ Ported identically from the `11.1.1` branch's fix (build-verified there and here
 
 **Status: fixed in both FinalWorkingCode and AIPowered, on both `11.1.1` and `11.1.2`.**
 
+## 51. `Utilities\CommonMethods.cs` / new `Utilities\ComMessageFilter.cs`: Excel hangs on Hide Rows with Zeros / Unhide Rows if the user clicks into Excel while the process popup is showing (ported from FinalWorkingCode - fixed in **both** codebases, AIPowered on `11.1.2` only) (OISR-22374)
+
+Reported via `GLSense_Logs_10-Sep-2026.log` (GLSense 11.1.0). `RowVisibilityProcessor`'s
+hide/unhide loop (FinalWorkingCode: `AddinModule.RowProcessor.ExecuteAsync`) disables
+`ScreenUpdating`/`DisplayAlerts`/`EnableEvents`, shows `GLWaitWindow` non-modally, then
+loops setting `RowHeight` on Excel COM ranges with yields between batches. Because the
+popup is non-modal and the loop repeatedly yields to the message pump, a user click into
+Excel during that window races with GLSense's own in-flight COM calls - Excel's
+automation layer rejects the incoming call as busy (`COMException 0x800AC472`,
+`VBA_E_IGNORE`). Neither codebase had an `IOleMessageFilter`/`CoRegisterMessageFilter`
+registered anywhere, the standard mechanism that would otherwise retry a busy-rejected
+automation call transparently instead of throwing. That exception then cascaded into
+cleanup: `CommonMethods.EnableExcelSettings()` set `ScreenUpdating`/`DisplayAlerts`/
+`EnableEvents` back to `true` sequentially with no per-property handling - if the first
+line hit the same busy rejection, the method threw immediately and never reached the
+other two properties, and `TryEnableExcelSettings` just logged and swallowed it with no
+retry, leaving `ScreenUpdating` stuck at `false` - Excel stops redrawing and looks
+completely hung.
+
+Fixed identically to FinalWorkingCode's fix (see that repo's `CLAUDE.md`), re-pointed to
+this project's `ServiceLocator.ExcelApp`/`ServiceLocator.Logger` instead of
+`AppState.Instance.ExcelApp`/`LogUtility`:
+1. New `Utilities\ComMessageFilter.cs` (identical logic, just the namespace changed):
+   registers the OLE busy-retry `IOleMessageFilter` in `AddinEntry.Initialize()` (this
+   project's equivalent of `AddinModule_AddinInitialize` - the host calls this once per
+   AppDomain load/hot-reload), revoked in `AddinEntry.Shutdown()`.
+2. `CommonMethods.cs`: `DisableExcelSettings()`/`EnableExcelSettings()` now set each of
+   the three properties independently through a `TrySetComProperty()` helper that
+   retries up to 3 times (150ms apart) on a `COMException` before giving up, instead of
+   abandoning the remaining properties when one throws. `DisableExcelSettings()` also
+   rolls back whatever it did manage to disable if it can't fully succeed.
+
+Build-verified (`GLSense.Addin.Core.csproj`, Debug config, `/p:SignAssembly=false` for
+this local verification only since `GLSense.Contracts.pfx` needs a password not
+available non-interactively in this environment - a pre-existing, unrelated build
+environment limitation, not something this fix touched or changed).
+
+Per request, ported to AIPowered on `11.1.2` **only** (not `11.1.0`/`11.1.1`) - see
+FinalWorkingCode's `CLAUDE.md` for the full `Show()`/`ShowDialog()` audit (found the
+identical non-modal `GLWaitWindow` exposure in `BalanceRefresh`, `DD_BL`, `DD_JL`,
+`DD_SL`, `DD_ExcelPrecedents`, `DrillCellHighlighter`, `PeriodsDiscoverer`,
+`SegmentDiscoverer` - all covered by this same fix since they route through the same
+`CommonMethods.Disable/EnableExcelSettings`).
+
+**Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2`; fixed in
+AIPowered on `11.1.2` only (not ported to AIPowered `11.1.0`/`11.1.1`, per request).**
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
