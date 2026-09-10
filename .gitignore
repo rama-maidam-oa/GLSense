@@ -16,6 +16,10 @@
 **/*.suo
 **/*.pdb
 
+# --- Editor/tooling scratch state (Claude Code skills, GitHub Copilot config) ---
+**/.github/
+**/.superpowers/
+
 # --- Logs (both codebases write runtime logs under a Logs/ folder) ---
 **/Logs/
 **/*.log
@@ -29,3 +33,6 @@
 # they're left on disk but not tracked. Revisit if you want them tracked instead. ---
 /AIPowered/bkpup1/
 /AIPowered/bkpup2/
+
+# SetupFiles is local build output (manifest.json/zip) from packaging the add-in, not source.
+/AIPowered/GLSense/GLSense.Addin.Core/SetupFiles/
