@@ -25,6 +25,7 @@
 # mockup/state files) - personal/session-scoped, never meant to be shared ---
 **/.claude/settings.local.json
 **/.superpowers/
+**/.github/
 
 # --- FinalWorkingCode-specific excludes ---
 /FinalWorkingCode/MigrationBackup/

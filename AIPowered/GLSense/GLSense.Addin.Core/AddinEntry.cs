@@ -1259,6 +1259,15 @@ namespace GLSense.Addin.Core
 
             long cubeId = AppState.Instance.SelectedCube.CubeId;
 
+            var confirmResult = CommonFunctions.GLSenseMessage(
+                "Are you sure you want to delete the saved drilldown customization for the selected cube? Once deleted, it cannot be restored.",
+                MessageBoxImage.Question, MessageBoxButton.YesNo);
+            if (confirmResult != MessageBoxResult.Yes)
+            {
+                ServiceLocator.Logger?.LogDebug("AddinEntry.DeleteDrilldownCustomization: deletion cancelled by user.");
+                return;
+            }
+
             try
             {
                 var wb = ServiceLocator.ExcelApp?.ActiveWorkbook;

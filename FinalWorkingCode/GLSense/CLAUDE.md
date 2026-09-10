@@ -480,5 +480,33 @@ Two distinct root causes, both fixed together per the user's request:
   click handlers (no `async void` touching the overlay) were left unchanged since they
   can't race this way.
   Ported identically from the `11.1.1` branch's fix (build-verified there and here).
-  **Status: fixed in FinalWorkingCode on `11.1.1` and `11.1.2`; AIPowered ported on
-  `11.1.1`, port to `11.1.2`'s AIPowered pending/in progress.**
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2`; fixed in AIPowered on `11.1.1` and `11.1.2` (AIPowered on `11.1.0` not yet ported).**
+
+## `AddinModule.cs` (OISR-22371)
+
+- **No confirmation before deleting a saved drilldown customization**: `RibDDDeleteConfiguration_OnClick`
+  deleted the saved customization for the selected cube (`DrilldownMetadataXmlStore.Delete`)
+  immediately on click, with no chance to back out of an accidental click.
+  Fixed by prompting with the existing `GLMessageWindow` (via
+  `CommonFunctions.GLSenseMessage(..., MessageBoxIcon.Question, MessageBoxButtons.YesNo)`,
+  the same pattern already used elsewhere, e.g. the chart-of-account-change prompt in
+  `RunBalanceDrilldownAsync`) before deleting, with wording calling out that the deletion
+  cannot be undone. Anything other than `Yes` (`No`, or closing the window) returns
+  without touching the store.
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2`; fixed in AIPowered on `11.1.1` and `11.1.2` (AIPowered on `11.1.0` not yet ported).**
+
+## `ViewModels\GLConfiguratorViewModel.cs` (OISR-22369)
+
+- **Budget accidentally hidden from Actual Flag when Balance Type is CTD**: `IsBalanceTypeSupportingBudget()`
+  only allowed PTD/YTD/QTD/PJTD, omitting CTD - so `UpdateActualFlagsForConditions()`
+  (which calls it to decide `hideBudget`) hid `Budget` from the Actual Flag dropdown
+  whenever Balance Type was CTD, even though Budget is a valid Actual Flag for CTD.
+  This contradicted the code's own intent elsewhere in the same file:
+  `UpdateBalanceTypesForConditions()`'s Issue-3 comment already documents "ActualFlag=Budget
+  restricts Balance Type to PTD/YTD/QTD/CTD/PJTD" and always keeps CTD in the rebuilt
+  `BalanceTypes` list regardless of Actual Flag, i.e. CTD+Budget was always meant to be a
+  valid combination in that direction - `IsBalanceTypeSupportingBudget()` just never
+  matched it in the reverse direction (Balance Type → Actual Flag options).
+  Fixed by adding `AppConstants.BalanceTypeCTD` to `IsBalanceTypeSupportingBudget()`'s
+  allowed list.
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2`; fixed in AIPowered on `11.1.1` and `11.1.2` (AIPowered on `11.1.0` not yet ported).**

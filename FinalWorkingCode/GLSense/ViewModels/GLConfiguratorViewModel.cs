@@ -2257,7 +2257,7 @@ namespace GLSense.ViewModels
                     try { UpdateActivitiesForConditions(); }
                     catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateActivitiesForConditions (BalanceType) failed (non-fatal)"); }
 
-                    // Actual Flag excludes Budget when Balance Type doesn't support it (PTD/YTD/QTD/PJTD only).
+                    // Actual Flag excludes Budget when Balance Type doesn't support it (PTD/YTD/QTD/PJTD/CTD only).
                     try { UpdateActualFlagsForConditions(); }
                     catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateActualFlagsForConditions (BalanceType) failed (non-fatal)"); }
 
@@ -2464,7 +2464,7 @@ namespace GLSense.ViewModels
             try { UpdateActivitiesForConditions(); }
             catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessBalanceType: UpdateActivitiesForConditions failed (non-fatal)"); }
 
-            // Actual Flag excludes Budget when Balance Type doesn't support it (PTD/YTD/QTD/PJTD only).
+            // Actual Flag excludes Budget when Balance Type doesn't support it (PTD/YTD/QTD/PJTD/CTD only).
             try { UpdateActualFlagsForConditions(); }
             catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessBalanceType: UpdateActualFlagsForConditions failed (non-fatal)"); }
         }
@@ -2837,7 +2837,7 @@ namespace GLSense.ViewModels
                 bt.Equals(AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase));
         }
 
-        // Budget is only valid for PTD/YTD/QTD/PJTD Balance Types.
+        // Budget is valid for PTD/YTD/QTD/PJTD/CTD Balance Types.
         private bool IsBalanceTypeSupportingBudget()
         {
             var bt = GetBalanceTypeText();
@@ -2845,7 +2845,8 @@ namespace GLSense.ViewModels
             return bt.Equals(AppConstants.BalanceTypePTD, StringComparison.OrdinalIgnoreCase)
                 || bt.Equals(AppConstants.BalanceTypeYTD, StringComparison.OrdinalIgnoreCase)
                 || bt.Equals("QTD", StringComparison.OrdinalIgnoreCase)
-                || bt.Equals("PJTD", StringComparison.OrdinalIgnoreCase);
+                || bt.Equals("PJTD", StringComparison.OrdinalIgnoreCase)
+                || bt.Equals(AppConstants.BalanceTypeCTD, StringComparison.OrdinalIgnoreCase);
         }
 
         // Issue-1/2/3: Balance Type excludes JED/JEDP/JEDU whenever Activity is Begin/End
