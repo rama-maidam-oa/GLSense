@@ -204,6 +204,7 @@
     <Compile Include="Service\SegmentDataService.cs" />
     <Compile Include="Service\ServiceLocator.cs" />
     <Compile Include="Utilities\BatchCalcScope.cs" />
+    <Compile Include="Utilities\ComMessageFilter.cs" />
     <Compile Include="Utilities\CommonFunctions.cs" />
     <Compile Include="Utilities\CommonMethods.cs" />
     <Compile Include="Utilities\DpiAwarenessHelper.cs" />

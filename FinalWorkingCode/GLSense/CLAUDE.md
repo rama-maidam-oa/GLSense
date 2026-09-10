@@ -510,3 +510,83 @@ Two distinct root causes, both fixed together per the user's request:
   Fixed by adding `AppConstants.BalanceTypeCTD` to `IsBalanceTypeSupportingBudget()`'s
   allowed list.
   **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2`; fixed in AIPowered on `11.1.1` and `11.1.2` (AIPowered on `11.1.0` not yet ported).**
+
+## `Utilities\CommonMethods.cs` / new `Utilities\ComMessageFilter.cs` (OISR-22374)
+
+- **Excel hangs on Hide Rows with Zeros / Unhide Rows if the user clicks into Excel while
+  the process popup is showing** (reported via `GLSense_Logs_10-Sep-2026.log`, GLSense
+  11.1.0 - confirmed present, byte-identical row-hide/unhide code and `CommonMethods.cs`
+  between `11.1.0` and `11.1.1`). `RowProcessor.ExecuteAsync` (`AddinModule.cs`) disables
+  `ScreenUpdating`/`DisplayAlerts`/`EnableEvents`, shows `GLWaitWindow` **non-modally**
+  (`DpiAwareWindow.ShowWithOwner()` just calls `this.Show()`, not `ShowDialog()` - Excel
+  behind the popup stays fully interactive), then loops setting `RowHeight` on Excel COM
+  ranges with `await Task.Yield()`/`Dispatcher.InvokeAsync` between batches. Because the
+  popup is non-modal and the loop repeatedly yields to the message pump, a user click into
+  Excel during that window races with GLSense's own in-flight COM calls - Excel's
+  automation layer rejects the incoming call as busy (`COMException 0x800AC472`,
+  `VBA_E_IGNORE`). The codebase had no `IOleMessageFilter`/`CoRegisterMessageFilter`
+  registered anywhere, which is the standard mechanism that would otherwise retry a
+  busy-rejected automation call transparently instead of throwing. That exception then
+  cascaded into cleanup: `CommonMethods.EnableExcelSettings()` set `ScreenUpdating`/
+  `DisplayAlerts`/`EnableEvents` back to `true` **sequentially with no per-property
+  handling** - if the first line (`ScreenUpdating = true`) hit the same busy rejection,
+  the method threw immediately and never reached the other two properties, and
+  `TryEnableExcelSettings` (the `finally`-block wrapper) just logged and swallowed it with
+  no retry. Result: `ScreenUpdating` stuck at `false` with no recovery path - Excel stops
+  redrawing and looks completely hung. The log's `16:17:33` and `17:31:22` entries show
+  this exact sequence: `GetBalanceTotalRange`/`RowHeight` COM error → `Failed to enable
+  Excel settings` → `Failed to restore Excel settings after RowProcessor.ExecuteAsync`.
+  Fixed two ways:
+  1. New `Utilities\ComMessageFilter.cs`: registers the classic OLE busy-retry
+     `IOleMessageFilter` (`CoRegisterMessageFilter`) for the whole process, in
+     `AddinModule_AddinInitialize`, revoked in `AddinModule_AddinBeginShutdown`. This lets
+     a transient "Excel is busy" rejection retry automatically instead of throwing,
+     addressing the underlying race for every COM call made from this add-in, not just
+     the row hide/unhide path.
+  2. `CommonMethods.cs`: `DisableExcelSettings()`/`EnableExcelSettings()` now set each of
+     the three properties independently through a new `TrySetComProperty()` helper that
+     retries up to 3 times (150ms apart) on a `COMException` before giving up, and no
+     longer abandon the remaining properties when one throws. `DisableExcelSettings()`
+     additionally rolls back whatever it did manage to disable if it can't fully succeed,
+     so a partial failure never leaves e.g. `ScreenUpdating` stuck `false` with nothing
+     queued to restore it (previously, `RowProcessor.ExecuteAsync` called
+     `TryDisableExcelSettings` *before* its own `try`/`finally`, so a partial-disable
+     failure there returned early with no `EnableExcelSettings` call ever reached).
+  Since every `GLWaitWindow` non-modal-popup call site (`BalanceRefresh.cs`, `DD_BL.cs`,
+  `DD_JL.cs`, `DD_SL.cs`, `DD_ExcelPrecedents.cs`, `DrillCellHighlighter.cs`,
+  `PeriodsDiscoverer.cs`, `SegmentDiscoverer.cs` - found via a full `Show()`/
+  `ShowDialog()` audit, see below) already routes through this same
+  `CommonMethods.Disable/EnableExcelSettings`, this fix covers the identical race in all
+  of them, not only Hide/Unhide Rows.
+  Build-verified (`GLSense.csproj`, Debug config).
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2` (cherry-picked
+  cleanly onto `11.1.1`; only this doc conflicted onto `11.1.2`, code applied cleanly) -
+  fixed in AIPowered on `11.1.2` only, per request (not ported to AIPowered `11.1.0`/`11.1.1`).**
+
+  **`Show()` vs `ShowDialog()` audit (requested alongside this fix)**: repo-wide search of
+  every `Window.Show()`/`ShowDialog()`/`ShowWithOwner()`/`ShowDialogWithOwner()` call in
+  `GLSense\**\*.cs`.
+  - **Non-modal on purpose, same exposure as the bug above (all `GLWaitWindow`
+    progress/busy popups, all go through `CommonMethods.Disable/EnableExcelSettings`,
+    now covered by the fix above)**: `AddinModule.cs` (`RowProcessor` - the reported bug),
+    `Drilldowns\BalanceRefresh.cs`, `Drilldowns\DD_BL.cs`, `Drilldowns\DD_JL.cs`,
+    `Drilldowns\DD_SL.cs`, `Drilldowns\DD_ExcelPrecedents.cs` (calls `SetExcelOwner()` +
+    `Show()` directly instead of the `ShowWithOwner()` helper, same non-modal shape),
+    `Drilldowns\DrillCellHighlighter.cs`, `Utilities\PeriodsDiscoverer.cs`,
+    `Utilities\SegmentDiscoverer.cs`.
+  - **Non-modal on purpose, unrelated to this bug (no Excel COM loop running while
+    shown)**: `AddinModule.cs`'s `blpane.Show()` (a docked `ADXTaskPane` UserControl, not
+    a `Window`), `Utilities\WebView2NavigationResilience.cs`'s `popup.Show()`,
+    `Utilities\WindowLoadingPlaceholder.cs` (the shared cross-window loading placeholder),
+    `Utilities\WpfWarmup.cs`'s off-screen invisible warm-up window (see the "Blank window
+    on open" section above - deliberately never shown to the user).
+  - **Everything else already modal** via `ShowDialogWithOwner()`/`ShowDialog()` - the
+    large majority of real data/config windows, plus `Helpers\SnapshotDialogHelper.cs`,
+    `Views\GLAccountsRef.xaml.cs`, and `GLMessageWindow` (`Utilities\CommonFunctions.cs`).
+  No changes made from this audit alone - the `GLWaitWindow` popups are non-modal by
+  design (so their Cancel button/live progress text stay usable while a long operation
+  runs), and the message-filter + retry fix above addresses the actual race without
+  changing that UX. Flagging in case there's an appetite to also make `GLWaitWindow`
+  application-modal as a second layer of defense - that would prevent this specific race
+  outright (no click can reach Excel while it's up) but is a bigger behavior change than
+  what was asked for here.
