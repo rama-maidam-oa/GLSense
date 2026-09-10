@@ -4662,6 +4662,35 @@ change).
 
 ---
 
+## 45. `AddinEntry.cs`: no confirmation before deleting a saved drilldown customization (ported from FinalWorkingCode - fixed in **both** codebases) (OISR-22371)
+
+`DeleteDrilldownCustomization()` deleted the saved customization for the selected cube
+(`DrilldownMetadataXmlStore.Delete`) immediately on click, with no chance to back out of
+an accidental click. Fixed by prompting with the existing `GLMessageWindow` (via
+`CommonFunctions.GLSenseMessage(..., MessageBoxImage.Question, MessageBoxButton.YesNo)`)
+before deleting, with wording calling out that the deletion cannot be undone - mirrors
+FinalWorkingCode's `AddinModule.cs::RibDDDeleteConfiguration_OnClick` fix exactly, just
+using this project's WPF `MessageBoxImage`/`MessageBoxButton` enums instead of the
+monolith's WinForms `MessageBoxIcon`/`MessageBoxButtons`. Anything other than `Yes` (`No`,
+or closing the window) returns without touching the store.
+
+**Status: fixed in both FinalWorkingCode and AIPowered.**
+
+## 46. `ViewModels\GLConfiguratorViewModel.cs`: Budget accidentally hidden from Actual Flag when Balance Type is CTD (ported from FinalWorkingCode - fixed in **both** codebases) (OISR-22369)
+
+`IsBalanceTypeUnsupportedForBudget()` only recognized PTD/YTD/QTD/PJTD as supporting
+Budget, so CTD fell into the "unsupported" branch and `UpdateActualFlagsForConditions()`
+hid `Budget` from the Actual Flag dropdown whenever Balance Type was CTD - even though
+Budget is a valid Actual Flag for CTD, and this project's own `UpdateBalanceTypesForConditions()`
+already keeps CTD in the rebuilt `BalanceTypes` list regardless of Actual Flag (i.e.
+CTD+Budget was always meant to be valid in that direction; `IsBalanceTypeUnsupportedForBudget()`
+just never matched it in reverse). Fixed by adding `AppConstants.BalanceTypeCTD` to the
+`budgetSupportedTypes` array. Same root cause and fix as FinalWorkingCode's
+`IsBalanceTypeSupportingBudget()`, just the inverted ("unsupported") predicate this
+project's port uses.
+
+**Status: fixed in both FinalWorkingCode and AIPowered.**
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

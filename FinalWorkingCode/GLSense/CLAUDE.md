@@ -482,4 +482,33 @@ Two distinct root causes, both fixed together per the user's request:
   Build-verified (full solution). Needs the identical port to AIPowered's
   `GLSense.Addin.Core\Views\AppOverlay.xaml.cs`/`GLJobsMonitor.xaml.cs` (confirmed to
   have the exact same `_hideBusyHandler` shape) and its other affected windows.
-  **Status: fixed in FinalWorkingCode; AIPowered port pending.**
+  **Status: fixed in FinalWorkingCode and AIPowered.**
+
+## `AddinModule.cs`
+
+- **No confirmation before deleting a saved drilldown customization**: `RibDDDeleteConfiguration_OnClick`
+  deleted the saved customization for the selected cube (`DrilldownMetadataXmlStore.Delete`)
+  immediately on click, with no chance to back out of an accidental click.
+  Fixed by prompting with the existing `GLMessageWindow` (via
+  `CommonFunctions.GLSenseMessage(..., MessageBoxIcon.Question, MessageBoxButtons.YesNo)`,
+  the same pattern already used elsewhere, e.g. the chart-of-account-change prompt in
+  `RunBalanceDrilldownAsync`) before deleting, with wording calling out that the deletion
+  cannot be undone. Anything other than `Yes` (`No`, or closing the window) returns
+  without touching the store.
+  **Status: fixed in FinalWorkingCode and AIPowered.**
+
+## `ViewModels\GLConfiguratorViewModel.cs`
+
+- **Budget accidentally hidden from Actual Flag when Balance Type is CTD**: `IsBalanceTypeSupportingBudget()`
+  only allowed PTD/YTD/QTD/PJTD, omitting CTD - so `UpdateActualFlagsForConditions()`
+  (which calls it to decide `hideBudget`) hid `Budget` from the Actual Flag dropdown
+  whenever Balance Type was CTD, even though Budget is a valid Actual Flag for CTD.
+  This contradicted the code's own intent elsewhere in the same file:
+  `UpdateBalanceTypesForConditions()`'s Issue-3 comment already documents "ActualFlag=Budget
+  restricts Balance Type to PTD/YTD/QTD/CTD/PJTD" and always keeps CTD in the rebuilt
+  `BalanceTypes` list regardless of Actual Flag, i.e. CTD+Budget was always meant to be a
+  valid combination in that direction - `IsBalanceTypeSupportingBudget()` just never
+  matched it in the reverse direction (Balance Type → Actual Flag options).
+  Fixed by adding `AppConstants.BalanceTypeCTD` to `IsBalanceTypeSupportingBudget()`'s
+  allowed list.
+  **Status: fixed in FinalWorkingCode and AIPowered.**

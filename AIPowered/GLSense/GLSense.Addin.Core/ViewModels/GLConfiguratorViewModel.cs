@@ -2259,7 +2259,7 @@ namespace GLSense.Addin.Core.ViewModels
                     try { UpdateActivitiesForConditions(); }
                     catch (Exception ex) { ServiceLocator.Logger?.LogWarn($"OnFieldDependencyChanged: UpdateActivitiesForConditions (BalanceType) failed (non-fatal): {ex.Message}"); }
 
-                    // Issue-6: BalanceType other than PTD/YTD/QTD/PJTD hides Budget in Actual Flag.
+                    // Issue-6: BalanceType other than PTD/YTD/QTD/PJTD/CTD hides Budget in Actual Flag.
                     try { UpdateActualFlagsForConditions(); }
                     catch (Exception ex) { ServiceLocator.Logger?.LogWarn($"OnFieldDependencyChanged: UpdateActualFlagsForConditions (BalanceType) failed (non-fatal): {ex.Message}"); }
 
@@ -2450,7 +2450,7 @@ namespace GLSense.Addin.Core.ViewModels
             try { UpdateActivitiesForConditions(); }
             catch (Exception ex) { ServiceLocator.Logger?.LogWarn($"ProcessBalanceType: UpdateActivitiesForConditions failed (non-fatal): {ex.Message}"); }
 
-            // Issue-6: BalanceType other than PTD/YTD/QTD/PJTD hides Budget in Actual Flag.
+            // Issue-6: BalanceType other than PTD/YTD/QTD/PJTD/CTD hides Budget in Actual Flag.
             try { UpdateActualFlagsForConditions(); }
             catch (Exception ex) { ServiceLocator.Logger?.LogWarn($"ProcessBalanceType: UpdateActualFlagsForConditions failed (non-fatal): {ex.Message}"); }
         }
@@ -2807,14 +2807,14 @@ namespace GLSense.Addin.Core.ViewModels
                    t.Equals("E", StringComparison.OrdinalIgnoreCase);
         }
 
-        // Budget is only supported for PTD/YTD/QTD/PJTD Balance Types. An empty/unselected
+        // Budget is supported for PTD/YTD/QTD/PJTD/CTD Balance Types. An empty/unselected
         // Balance Type is treated as supported so this doesn't restrict the Actual Flag LOV
         // before the user has actually picked an unsupported Balance Type.
         private bool IsBalanceTypeUnsupportedForBudget()
         {
             var bt = GetBalanceTypeText();
             if (string.IsNullOrWhiteSpace(bt)) return false;
-            var budgetSupportedTypes = new[] { AppConstants.BalanceTypePTD, AppConstants.BalanceTypeYTD, "QTD", "PJTD" };
+            var budgetSupportedTypes = new[] { AppConstants.BalanceTypePTD, AppConstants.BalanceTypeYTD, "QTD", "PJTD", AppConstants.BalanceTypeCTD };
             return !budgetSupportedTypes.Any(v => v.Equals(bt, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -2887,7 +2887,7 @@ namespace GLSense.Addin.Core.ViewModels
         // Issue-4: Actual Flag excludes Budget whenever Currency Type is
         // Translated/Converted/Entered.
         // Issue-6: Actual Flag also excludes Budget whenever Balance Type is anything other
-        // than PTD/YTD/QTD/PJTD (CTD/JED/JEDP/JEDU) - Budget balances aren't supported for
+        // than PTD/YTD/QTD/PJTD/CTD (JED/JEDP/JEDU) - Budget balances aren't supported for
         // those. Clears ActualFlagField if its current value is no longer in the rebuilt list
         // (ResetField naturally re-runs the existing OnFieldDependencyChanged ActualFlag
         // cascade - IsBudgetEnabled/BudgetField/etc.).
