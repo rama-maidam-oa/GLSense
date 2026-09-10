@@ -522,6 +522,16 @@ namespace GLSense
 
                 // Release COM objects
                 ReleaseAllComObjectsProperly();
+
+                // Revoke the busy-retry message filter registered in AddinInitialize.
+                try
+                {
+                    GLSense.Utilities.ComMessageFilter.Revoke();
+                }
+                catch (Exception ex)
+                {
+                    ShutdownLogger.LogError("Error revoking ComMessageFilter", ex);
+                }
             }
             catch (Exception ex)
             {
@@ -694,6 +704,9 @@ namespace GLSense
         {
             try
             {
+                // Retries transient "Excel is busy" COM rejections instead of letting them
+                // throw immediately - see the row hide/unhide hang fix in CommonMethods.cs.
+                GLSense.Utilities.ComMessageFilter.Register();
 
                 // 1. Ensure DB file + tables exist
                 SQLiteHelper.InitializeDatabase();
