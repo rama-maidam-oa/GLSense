@@ -55,16 +55,21 @@ namespace GLSense.Views
             vm.PropertyChanged += Vm_PropertyChanged;
         }
 
-        // Keeps the Overwrite/Insert radio buttons (bound to IsMultipleRowsEnabled for their
+        // Keeps the Overwrite/Insert radio buttons (bound to IsMultipleRowsChecked for their
         // IsEnabled state) from getting stuck on a stale "Insert" selection once they're
-        // disabled - e.g. the user picks Insert while a single segment is selected, then
-        // selects items from a second segment, which disables the whole row-mode section.
-        // Forcing rbOverwrite back on here (rather than just letting both radios grey out)
-        // guarantees the write path this window actually takes matches what's visibly shown -
-        // an unchecked, disabled "Insert" would otherwise still read as IsChecked=true.
+        // disabled - e.g. the user picks Insert while multiple rows/columns is checked, then
+        // unchecks it (either directly, or indirectly by selecting items from a second
+        // segment, which forces IsMultipleRowsChecked back to false too - see
+        // SegmentSelectorViewModel.UpdateNonRefWindowState). Forcing rbOverwrite back on here
+        // (rather than just letting both radios grey out) guarantees the write path this
+        // window actually takes matches what's visibly shown - an unchecked, disabled
+        // "Insert" would otherwise still read as IsChecked=true (OISR-15241: PerformInsertIfNeeded
+        // only checks rbInsert.IsChecked, so this was a real functional bug, not just visual -
+        // unchecking "Write to Multiple Rows/Columns" after picking Insert still inserted a row
+        // before writing the single concatenated cell).
         private void Vm_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(SegmentSelectorViewModel.IsMultipleRowsEnabled) && !vm.IsMultipleRowsEnabled)
+            if (e.PropertyName == nameof(SegmentSelectorViewModel.IsMultipleRowsChecked) && !vm.IsMultipleRowsChecked)
             {
                 rbOverwrite.IsChecked = true;
                 rbByRows.IsChecked = true;
