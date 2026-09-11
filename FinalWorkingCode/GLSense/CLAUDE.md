@@ -672,3 +672,37 @@ Two distinct root causes, both fixed together per the user's request:
   application-modal as a second layer of defense - that would prevent this specific race
   outright (no click can reach Excel while it's up) but is a bigger behavior change than
   what was asked for here.
+
+## `Views\GLSegmentValues.xaml`/`.xaml.cs` and `Views\GLRollerGroups.xaml`/`.xaml.cs`
+
+- **Overwrite/Insert and By Rows/By Columns stayed enabled after unchecking "Write to
+  Multiple Rows/Columns"** (reported via `MultiRows.png`, showing all four radio buttons
+  still enabled/clickable with the checkbox unchecked). `IsMultipleRowsEnabled` and
+  `IsMultipleRowsChecked` are two different things on both windows' ViewModels
+  (`SegmentSelectorViewModel`/`SimpleSegmentViewModel`): `Enabled` is true only when the
+  right-grid's selected items all belong to a single distinct segment (i.e. whether the
+  checkbox is *available* at all), while `Checked` is the actual on/off state the user
+  toggles - unchecking it means every selected value gets written into one single cell,
+  at which point Overwrite/Insert (which cell(s) to write into) and By Rows/By Columns
+  (which orientation to spread across) have nothing left to act on. Both XAML files had
+  all four radio buttons' `IsEnabled` bound to `IsMultipleRowsEnabled` instead of
+  `IsMultipleRowsChecked` - so unchecking the box while the selection still belonged to a
+  single segment (leaving `Enabled=true`) left all four looking and behaving as if still
+  live, exactly matching the screenshot.
+  This was more than cosmetic: both code-behinds' `PerformInsertIfNeeded` only checks
+  `rbInsert.IsChecked` (not any enabled/disabled state) before inserting a row/column and
+  shifting existing content - so a user who picked Insert while checked, then unchecked
+  the box, still got a spurious Insert-and-shift on the single-cell write path.
+  Fixed by rebinding all four radios' `IsEnabled` to `IsMultipleRowsChecked` in both XAML
+  files, and updating both code-behinds' `Vm_PropertyChanged` (previously resetting
+  `rbOverwrite`/`rbByRows` back to checked-by-default only when `IsMultipleRowsEnabled`
+  went false) to key off `IsMultipleRowsChecked` going false instead - this still covers
+  the pre-existing multi-segment-disables-the-checkbox case (which also drives
+  `IsMultipleRowsChecked` to false, per `UpdateNonRefWindowState`/the equivalent in
+  `SimpleSegmentViewModel`), plus the newly-reachable manual-uncheck case.
+  `GLSegmentRef.xaml` (the third window sharing `SegmentSelectorViewModel`, in "Ref"
+  mode) has no equivalent UI at all - confirmed via grep, out of scope.
+  Build-verified (`GLSense.sln`, Debug config, full solution).
+  **Status: fixed in FinalWorkingCode on `11.1.1`, `11.1.2` (needs the identical port to
+  AIPowered's `GLSense.Addin.Core\Views\GLSegmentValues.xaml(.cs)`/
+  `GLRollerGroups.xaml(.cs)` on `11.1.2`).**
