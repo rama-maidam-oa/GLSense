@@ -373,11 +373,18 @@ namespace GLSense.Views
             finally
             {
                 // 🟢 Hide busy overlay safely on UI thread
-                await Dispatcher.InvokeAsync(async () =>
+                // Dispatcher.InvokeAsync(async () => ...) doesn't wait for the inner Task - the
+                // DispatcherOperation completes as soon as the delegate hits its first await, so
+                // "webView.Visibility = Visible" could run (or this whole await return) before
+                // HideBusyAsync actually finished. Route through a named async local function +
+                // a non-async delegate so Task.Unwrap() awaits the real completion (see
+                // GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+                async Task HideBusyAndShowWebView()
                 {
                     await AppOverlayControl.HideBusyAsync();
                     webView.Visibility = Visibility.Visible;
-                });
+                }
+                await Dispatcher.InvokeAsync(HideBusyAndShowWebView).Task.Unwrap();
             }
         }
 
@@ -685,11 +692,18 @@ namespace GLSense.Views
             finally
             {
                 // 🟢 Hide busy overlay safely on UI thread
-                await Dispatcher.InvokeAsync(async () =>
+                // Dispatcher.InvokeAsync(async () => ...) doesn't wait for the inner Task - the
+                // DispatcherOperation completes as soon as the delegate hits its first await, so
+                // "webView.Visibility = Visible" could run (or this whole await return) before
+                // HideBusyAsync actually finished. Route through a named async local function +
+                // a non-async delegate so Task.Unwrap() awaits the real completion (see
+                // GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+                async Task HideBusyAndShowWebView()
                 {
                     await AppOverlayControl.HideBusyAsync();
                     webView.Visibility = Visibility.Visible;
-                });
+                }
+                await Dispatcher.InvokeAsync(HideBusyAndShowWebView).Task.Unwrap();
             }
         }
         private static async Task<ApiResult<string>> GetDataFromApi(CancellationToken ct)

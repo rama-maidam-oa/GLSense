@@ -220,10 +220,11 @@ namespace GLSense
                 LogUtility.LogDebug("GLConfiguratorPane.RelaunchPane invoked.");
                 if (_wpfControl != null && _wpfControl.Dispatcher != null)
                 {
-                    await _wpfControl.Dispatcher.InvokeAsync(async () =>
-                    {
-                        await _wpfControl.ReLoadConfigurator();
-                    });
+                    // Dispatcher.InvokeAsync(async () => ...) doesn't wait for the inner Task -
+                    // the DispatcherOperation completes as soon as the delegate hits its first
+                    // await. Use a non-async delegate + Task.Unwrap() so the real completion is
+                    // awaited (see GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+                    await _wpfControl.Dispatcher.InvokeAsync(() => _wpfControl.ReLoadConfigurator()).Task.Unwrap();
                 }
             }
             catch (Exception ex)

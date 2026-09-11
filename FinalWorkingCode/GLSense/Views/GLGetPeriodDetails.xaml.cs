@@ -49,11 +49,13 @@ namespace GLSense.Views
             {
                 ExcelApp = AppState.Instance.ExcelApp.Application, // Pass the Excel application instance to the ViewModel
                 ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
-                ShowWarningAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowWarningAsync(msg)),
-                ShowBusyAction = async (txt, cancel) =>
-                        await Dispatcher.InvokeAsync(async () =>
-                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
-                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync())
+                // Dispatcher.InvokeAsync(async () => await X()) doesn't wait for X() to finish -
+                // the DispatcherOperation completes as soon as the delegate hits its first
+                // await. Use a non-async delegate + Task.Unwrap() so the real completion is
+                // awaited (see GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+                ShowWarningAsyncAction = (msg) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowWarningAsync(msg)).Task.Unwrap(),
+                ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
             DataContext = vm;
 
@@ -225,7 +227,7 @@ namespace GLSense.Views
                     // Swallow dispose exceptions (Excel COM weirdness) but still log for diagnostics.
                     LogUtility.LogWarn($"GLGetPeriodDetails.LoadLedgerSegmentsWithProgressAsync: exception disposing CancellationHelper (ignored): {ex.Message}");
                 }
-                await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync());
+                await Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap();
                 ctsHelper.Dispose();
             }
         }

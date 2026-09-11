@@ -329,7 +329,13 @@ namespace GLSense.Views
 
         private async Task UpdateGridAsync(List<LedgerModel> data, bool hasWarnings = false)
         {
-            await Dispatcher.InvokeAsync(async () =>
+            // Dispatcher.InvokeAsync(async () => ...) doesn't wait for the inner Task - the
+            // DispatcherOperation completes as soon as the delegate hits its first await, which
+            // let the caller's finally { HideBusyAsync() } hide the busy overlay before
+            // DgGridUpdate actually finished. Route through a named async local function + a
+            // non-async delegate so Task.Unwrap() can await the real completion (see
+            // GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+            async Task UpdateGridCore()
             {
                 dgCubes.ItemsSource = data;
 
@@ -346,8 +352,9 @@ namespace GLSense.Views
                 dgCubes.Items.Refresh();
 
                 await DgGridUpdate(data);
+            }
 
-            }, DispatcherPriority.Normal);
+            await Dispatcher.InvokeAsync(UpdateGridCore, DispatcherPriority.Normal).Task.Unwrap();
         }
         private bool changeSelection()
         {
