@@ -484,6 +484,73 @@ Two distinct root causes, both fixed together per the user's request:
   have the exact same `_hideBusyHandler` shape) and its other affected windows.
   **Status: fixed in FinalWorkingCode; AIPowered port pending.**
 
+- **Correction - the fix above didn't fully resolve it: toast still appeared while the
+  busy overlay was still visible, and closed without waiting its full duration**
+  (reported via `videoframe_26987.png`, showing the "Downloading logs..." spinner and
+  the "Logs downloaded to..." toast on screen at once). Root cause is a second, deeper
+  bug the `_hideBusyHandler`/re-entrancy fix above never touched: `GLJobsMonitor.xaml.cs`
+  wired `ShowInfoAsyncAction`/`ShowWarningAsyncAction`/`ShowStatusAsyncAction`/
+  `ShowBusyAction`/`HideBusyAsyncAction` as `async () => await
+  Dispatcher.InvokeAsync(async () => await AppOverlayControl.XyzAsync(...))`. This is a
+  classic WPF `Dispatcher.InvokeAsync` gotcha: since the inner delegate is itself
+  `async`, C# infers `Dispatcher.InvokeAsync<TResult>(Func<TResult> callback)` with
+  `TResult = Task` - the `DispatcherOperation<Task>` is considered *complete* as soon as
+  the delegate returns control at its own first `await` (handing back a still-pending
+  `Task` as its "result"), not when that inner `Task` actually finishes. The outer
+  `await Dispatcher.InvokeAsync(...)` awaits the operation, receives that pending `Task`,
+  and never awaits it further - so `HideBusyAsyncAction()`/`ShowInfoAsyncAction()` were
+  returning to `GLSubmittedJobsViewModel.DownloadLogsAsync` (and every other caller)
+  almost immediately: before `AppOverlay.HideBusyAsync()` had actually collapsed the busy
+  overlay, and before `ShowInfoAsync()`'s toast had run for its real duration - explaining
+  both halves of the reported symptom (overlay+toast overlapping, and the toast's
+  lifetime no longer being honored by anything awaiting it).
+  This exact shape (and its fix) already existed once in this codebase -
+  `GLWaitWindow.ShowConfirmToastAsync` uses `Dispatcher.InvokeAsync(() =>
+  AppOverlayControl.ShowConfirmAsync(message)).Task.Unwrap()` specifically to avoid it -
+  but `GLJobsMonitor.xaml.cs`'s constructor wiring (added independently) never used that
+  pattern.
+  Fixed by switching all five `GLJobsMonitor.xaml.cs` delegates to the same non-async
+  delegate + `.Task.Unwrap()` shape: e.g. `HideBusyAsyncAction = () =>
+  Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()`. Passing
+  a plain (non-`async`) lambda makes `Dispatcher.InvokeAsync<Task>` hand back the real
+  inner `Task` from `.Task` (a `Task<Task>`), and `.Unwrap()` turns that into a single
+  `Task` that only completes when the real async work does. Needed a new `using
+  System.Threading.Tasks;` in `GLJobsMonitor.xaml.cs` for `Unwrap()` to resolve.
+  This same `Dispatcher.InvokeAsync(async () => await ...)` shape also existed in several
+  other windows' constructors and helper methods, and was fixed there too in a follow-up
+  pass (same `.Task.Unwrap()` treatment throughout):
+  - `GLBalanceConfigurator.xaml.cs`, `GLDailyRates.xaml.cs`, `GLGetPeriod.xaml.cs`,
+    `GLGetPeriodByDate.xaml.cs`, `GLGetPeriodByYear.xaml.cs`, `GLGetPeriodDetails.xaml.cs`,
+    `GLGetPeriodStartEnd.xaml.cs`, `GLRollerGroups.xaml.cs`, `GLSegmentFunctions.xaml.cs`,
+    `GLSegmentRef.xaml.cs`, `GLSegmentValues.xaml.cs`, `GLLOVs.xaml.cs` - ctor wiring of
+    `ShowBusyAction`/`ShowWarningAsyncAction`/`HideBusyAsyncAction` (and, for the five
+    `GLGetPeriod*` windows, a second standalone `HideBusyAsync()` call later in the
+    file). `GLLOVs.xaml.cs`'s `HideBusyAsyncAction` had a slightly different but equally
+    broken variant - `async () => await Dispatcher.InvokeAsync(() => ...)` (inner
+    delegate not async, but the outer `await` on the `DispatcherOperation<Task>` still
+    only unwraps to the inner `Task` once and never awaits *that* - same missing
+    `.Task.Unwrap()` fix applies).
+  - `GLConfiguratorPane.RelaunchPane()` and `GLCubeDetails.UpdateGridAsync()` - same
+    shape, not overlay-related (a WPF control reload and a DataGrid population + a
+    trailing async `DgGridUpdate` call respectively); the latter could let its caller's
+    `finally { HideBusyAsync() }` hide the busy overlay before the grid actually finished
+    populating. Both split into a named async local function passed (undecorated) to
+    `Dispatcher.InvokeAsync(...).Task.Unwrap()`, since their bodies do real synchronous
+    work before/around the inner `await`, not just a single call to forward.
+  - `GLLogin.xaml.cs` (two identical `finally` blocks) - `await Dispatcher.InvokeAsync(async
+    () => { await AppOverlayControl.HideBusyAsync(); webView.Visibility = Visibility.Visible;
+    });` had the same issue: `webView.Visibility` could be set (or the whole await return)
+    before `HideBusyAsync()` genuinely finished. Same named-local-function fix.
+  - `GLUserConfig.xaml.cs` - six near-identical `Hide-busy-and-show-<Error/Success/Warn/
+    Info>Async` helpers all had this exact shape (`Dispatcher.InvokeAsync(async () => {
+    await AppOverlayControl.HideBusyAsync(); await AppOverlayControl.ShowXAsync(...); })`)
+    - the same class of bug as the originally-reported GLJobsMonitor symptom, just not
+    reported for this window yet.
+  Each file needing it got `using System.Threading.Tasks;` added for `.Unwrap()` to
+  resolve (`GLJobsMonitor.xaml.cs`, `GLDailyRates.xaml.cs`) - most already had it.
+  Build-verified (`GLSense.sln`, Debug config, full solution).
+  **Status: fixed in FinalWorkingCode only so far** - not yet ported to AIPowered.
+
 ## `AddinModule.cs`
 
 - **No confirmation before deleting a saved drilldown customization**: `RibDDDeleteConfiguration_OnClick`
