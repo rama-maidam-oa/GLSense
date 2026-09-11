@@ -32,10 +32,13 @@ namespace GLSense.Views
             {
                 ExcelApp = AppState.Instance.ExcelApp.Application,  // Pass the Excel application instance to the ViewModel
                 ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
-                ShowBusyAction = async (txt, cancel) =>
-                        await Dispatcher.InvokeAsync(async () =>
-                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
-                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync())
+                // Dispatcher.InvokeAsync(...) doesn't wait for the inner Task unless it's
+                // unwrapped - the DispatcherOperation<Task> completes once the delegate returns
+                // (handing back a still-pending Task that a plain `await` on the operation never
+                // awaits further). Use Task.Unwrap() so the real completion is awaited (see
+                // GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+                ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
             this.DataContext = vm;
         }

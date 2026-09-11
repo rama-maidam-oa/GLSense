@@ -5,6 +5,7 @@ using GLSense.Utilities;
 using GLSense.ViewModels;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -28,10 +29,12 @@ namespace GLSense.Views
             {
                 ExcelApp = AppState.Instance.ExcelApp.Application, // Pass the Excel application instance to the ViewModel
                 ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
-                ShowBusyAction = async (txt, cancel) =>
-                        await Dispatcher.InvokeAsync(async () =>
-                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
-                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync())
+                // Dispatcher.InvokeAsync(async () => await X()) doesn't wait for X() to finish -
+                // the DispatcherOperation completes as soon as the delegate hits its first
+                // await. Use a non-async delegate + Task.Unwrap() so the real completion is
+                // awaited (see GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+                ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
             DataContext = vm;
 
