@@ -53,11 +53,13 @@ namespace GLSense.Addin.Core.Views
             {
                 ExcelApp = ServiceLocator.ExcelApp, // Pass the Excel application instance to the ViewModel
                 ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
-                ShowWarningAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowWarningAsync(msg)),
-                ShowBusyAction = async (txt, cancel) =>
-                        await Dispatcher.InvokeAsync(async () =>
-                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
-                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync())
+                // OISR-22349: Dispatcher.InvokeAsync(async () => await X()) doesn't wait for
+                // X() to finish - the DispatcherOperation completes as soon as the delegate
+                // hits its first await. Use a non-async delegate + Task.Unwrap() so the real
+                // completion is awaited (ported from FinalWorkingCode's fix).
+                ShowWarningAsyncAction = (msg) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowWarningAsync(msg)).Task.Unwrap(),
+                ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
             DataContext = vm;
 
@@ -241,7 +243,7 @@ namespace GLSense.Addin.Core.Views
                 {
                     // Swallow dispose exceptions (Excel COM weirdness)
                 }
-                await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync());
+                await Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap();
             }
         }
 

@@ -547,7 +547,22 @@ Two distinct root causes, both fixed together per the user's request:
   Each file needing it got `using System.Threading.Tasks;` added for `.Unwrap()` to
   resolve (`GLJobsMonitor.xaml.cs`, `GLDailyRates.xaml.cs`) - most already had it.
   Build-verified (`GLSense.sln`, Debug config, full solution).
-  **Status: fixed in FinalWorkingCode only so far** - not yet ported to AIPowered.
+  Ported to AIPowered's identical `GLSense.Addin.Core\Views\*.xaml.cs` on this branch
+  (`11.1.2`) only, in the same pass: `GLJobsMonitor.xaml.cs`, `GLBalanceConfigurator.xaml.cs`,
+  `GLGetPeriod.xaml.cs`/`GLGetPeriodByDate.xaml.cs`/`GLGetPeriodByYear.xaml.cs`/
+  `GLGetPeriodDetails.xaml.cs`/`GLGetPeriodStartEnd.xaml.cs`, `GLSegmentFunctions.xaml.cs`,
+  `GLSegmentRef.xaml.cs`, `GLSegmentValues.xaml.cs`, `GLLOVs.xaml.cs`, `GLLogin.xaml.cs`
+  (two identical `finally` blocks), `GLUserConfig.xaml.cs` (six helpers), and
+  `GLCubeDetails.xaml.cs`'s `UpdateGridAsync`. AIPowered's `GLDailyRates.xaml.cs`/
+  `GLRollerGroups.xaml.cs`/`GLConfiguratorPane.cs` don't use this wiring pattern at all in
+  this project (different architecture per-window - `GLRollerGroups.xaml.cs` e.g. already
+  calls `HideBusyAsync()` directly with no `Dispatcher.InvokeAsync` wrapper), so nothing to
+  fix there. Build-verified (`GLSense.sln` under `AIPowered\GLSense`, full solution) - had
+  to pass `/p:SignAssembly=false` for this local verification build only, since this
+  machine can't unlock `GLSense.Contracts.pfx` (MSB3325/MSB3321, pre-existing, unrelated to
+  this change) to strong-name-sign `GLSense.Contracts.csproj`; not committed anywhere.
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2`; fixed in
+  AIPowered on `11.1.2` only so far** - AIPowered on `11.1.0`/`11.1.1` not yet ported.
 
 ## `AddinModule.cs` (OISR-22371)
 

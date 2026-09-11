@@ -440,11 +440,18 @@ namespace GLSense.Addin.Core.Views
             }
             finally
             {
-                await Dispatcher.InvokeAsync(async () =>
+                // OISR-22349: Dispatcher.InvokeAsync(async () => ...) doesn't wait for the
+                // inner Task - the DispatcherOperation completes as soon as the delegate hits
+                // its first await, so "webView.Visibility = Visible" could run (or this whole
+                // await return) before HideBusyAsync actually finished. Route through a named
+                // async local function + a non-async delegate so Task.Unwrap() awaits the real
+                // completion (ported from FinalWorkingCode's fix).
+                async Task HideBusyAndShowWebView()
                 {
                     await AppOverlayControl.HideBusyAsync();
                     webView.Visibility = Visibility.Visible;
-                });
+                }
+                await Dispatcher.InvokeAsync(HideBusyAndShowWebView).Task.Unwrap();
             }
         }
 
@@ -749,11 +756,18 @@ namespace GLSense.Addin.Core.Views
             }
             finally
             {
-                await Dispatcher.InvokeAsync(async () =>
+                // OISR-22349: Dispatcher.InvokeAsync(async () => ...) doesn't wait for the
+                // inner Task - the DispatcherOperation completes as soon as the delegate hits
+                // its first await, so "webView.Visibility = Visible" could run (or this whole
+                // await return) before HideBusyAsync actually finished. Route through a named
+                // async local function + a non-async delegate so Task.Unwrap() awaits the real
+                // completion (ported from FinalWorkingCode's fix).
+                async Task HideBusyAndShowWebView()
                 {
                     await AppOverlayControl.HideBusyAsync();
                     webView.Visibility = Visibility.Visible;
-                });
+                }
+                await Dispatcher.InvokeAsync(HideBusyAndShowWebView).Task.Unwrap();
             }
         }
 

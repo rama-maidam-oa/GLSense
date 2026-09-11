@@ -337,7 +337,13 @@ namespace GLSense.Addin.Core.Views
 
         private async Task UpdateGridAsync(List<LedgerModel> data, bool hasWarnings = false)
         {
-            await Dispatcher.InvokeAsync(async () =>
+            // OISR-22349: Dispatcher.InvokeAsync(async () => ...) doesn't wait for the inner
+            // Task - the DispatcherOperation completes as soon as the delegate hits its first
+            // await, which could let a caller's finally { HideBusyAsync() } hide the busy
+            // overlay before DgGridUpdate actually finished. Route through a named async local
+            // function + a non-async delegate so Task.Unwrap() can await the real completion
+            // (ported from FinalWorkingCode's fix).
+            async Task UpdateGridCore()
             {
                 dgCubes.ItemsSource = data;
 
@@ -362,8 +368,9 @@ namespace GLSense.Addin.Core.Views
                 // DpiAwareWindow's model (task 2 of the WPF-UI removal plan) - that engine
                 // re-fits on RenderSizeChanged/DPI-change on its own, so no manual resettle
                 // call is needed here any more.
+            }
 
-            }, DispatcherPriority.Normal);
+            await Dispatcher.InvokeAsync(UpdateGridCore, DispatcherPriority.Normal).Task.Unwrap();
         }
 
         private bool changeSelection()

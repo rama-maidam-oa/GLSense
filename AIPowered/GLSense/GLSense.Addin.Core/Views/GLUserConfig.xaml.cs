@@ -403,14 +403,22 @@ namespace GLSense.Addin.Core.Views
             });
         }
 
+        // OISR-22349 (all six Hide-busy-and-show-* helpers below): Dispatcher.InvokeAsync(
+        // async () => ...) doesn't wait for the inner Task - the DispatcherOperation
+        // completes as soon as the delegate hits its first await, so these could return (and
+        // the busy overlay could still be visible, or the toast cut short) before
+        // HideBusyAsync/ShowXAsync actually finished. Routed through a named async local
+        // function + a non-async delegate so Task.Unwrap() awaits the real completion (ported
+        // from FinalWorkingCode's fix).
         private async Task HandleLoadFailureAsync(string message)
         {
             ServiceLocator.Logger?.LogWarn($"Failed to load/read user preferences. {message}");
-            await Dispatcher.InvokeAsync(async () =>
+            async Task Core()
             {
                 await AppOverlayControl.HideBusyAsync();
                 await AppOverlayControl.ShowErrorAsync("Failed to load user preferences.");
-            });
+            }
+            await Dispatcher.InvokeAsync(Core).Task.Unwrap();
         }
 
         private async Task HandleParseFailureAsync(string message)
@@ -422,56 +430,61 @@ namespace GLSense.Addin.Core.Views
                 displayMsg = message;
             }
 
-            await Dispatcher.InvokeAsync(async () =>
+            async Task Core()
             {
                 await AppOverlayControl.HideBusyAsync();
                 await AppOverlayControl.ShowErrorAsync($"Failed to load preferences: {displayMsg}");
-            });
+            }
+            await Dispatcher.InvokeAsync(Core).Task.Unwrap();
         }
 
         private async Task HideBusyAndShowErrorAsync(string errorMsg)
         {
-            await Dispatcher.InvokeAsync(async () =>
+            async Task Core()
             {
                 await AppOverlayControl.HideBusyAsync();
                 if (!string.IsNullOrWhiteSpace(errorMsg))
                 {
                     await AppOverlayControl.ShowErrorAsync(errorMsg);
                 }
-            });
+            }
+            await Dispatcher.InvokeAsync(Core).Task.Unwrap();
         }
         private async Task HideBusyAndShowSuccessAsync(string successMsg)
         {
-            await Dispatcher.InvokeAsync(async () =>
+            async Task Core()
             {
                 await AppOverlayControl.HideBusyAsync();
                 if (!string.IsNullOrWhiteSpace(successMsg))
                 {
                     await AppOverlayControl.ShowSuccessAsync(successMsg);
                 }
-            });
+            }
+            await Dispatcher.InvokeAsync(Core).Task.Unwrap();
         }
         private async Task HideBusyAndShowWarnAsync(string warnMsg)
         {
-            await Dispatcher.InvokeAsync(async () =>
+            async Task Core()
             {
                 await AppOverlayControl.HideBusyAsync();
                 if (!string.IsNullOrWhiteSpace(warnMsg))
                 {
                     await AppOverlayControl.ShowWarningAsync(warnMsg);
                 }
-            });
+            }
+            await Dispatcher.InvokeAsync(Core).Task.Unwrap();
         }
         private async Task HideBusyAndShowInfoAsync(string infoMsg)
         {
-            await Dispatcher.InvokeAsync(async () =>
+            async Task Core()
             {
                 await AppOverlayControl.HideBusyAsync();
                 if (!string.IsNullOrWhiteSpace(infoMsg))
                 {
                     await AppOverlayControl.ShowInfoAsync(infoMsg);
                 }
-            });
+            }
+            await Dispatcher.InvokeAsync(Core).Task.Unwrap();
         }
 
         private void CmbOptions_SelectionCommitted(object obj)

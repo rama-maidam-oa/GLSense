@@ -32,6 +32,7 @@ using GLSense.Addin.Core.Models;
 using GLSense.Addin.Core.ViewModels;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -57,14 +58,17 @@ namespace GLSense.Addin.Core.Views
                 ExcelApp = ServiceLocator.ExcelApp,
                 ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
                 ShowInfoAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowInfo(msg)),
-                ShowInfoAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowInfoAsync(msg)),
-                ShowWarningAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowWarningAsync(msg)),
-                ShowStatusAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowStatusAsync(msg)),
+                // OISR-22349: Dispatcher.InvokeAsync(async () => await X()) doesn't wait for
+                // X() to finish - the DispatcherOperation completes as soon as the delegate
+                // hits its first await. Use a non-async delegate + Task.Unwrap() so the real
+                // completion is awaited (see GLWaitWindow.ShowConfirmToastAsync for the same
+                // pattern; ported from FinalWorkingCode's GLJobsMonitor.xaml.cs fix).
+                ShowInfoAsyncAction = (msg) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowInfoAsync(msg)).Task.Unwrap(),
+                ShowWarningAsyncAction = (msg) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowWarningAsync(msg)).Task.Unwrap(),
+                ShowStatusAsyncAction = (msg) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowStatusAsync(msg)).Task.Unwrap(),
                 ShowConfirmAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowConfirmAsync(msg)),
-                ShowBusyAction = async (txt, cancel) =>
-                        await Dispatcher.InvokeAsync(async () =>
-                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
-                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync())
+                ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
 
             DataContext = vm;

@@ -45,10 +45,13 @@ namespace GLSense.Addin.Core.Views
             {
                 ExcelApp = ServiceLocator.ExcelApp,
                 ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
-                ShowBusyAction = async (txt, cancel) =>
-                        await Dispatcher.InvokeAsync(async () =>
-                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
-                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()),
+                // OISR-22349: Dispatcher.InvokeAsync(...) doesn't wait for the inner Task
+                // unless it's unwrapped - the DispatcherOperation<Task> completes once the
+                // delegate returns (handing back a still-pending Task that a plain `await` on
+                // the operation never awaits further). Use Task.Unwrap() so the real
+                // completion is awaited (ported from FinalWorkingCode's fix).
+                ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap(),
             };
             this.DataContext = vm;
         }
