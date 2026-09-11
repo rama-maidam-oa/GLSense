@@ -703,6 +703,11 @@ Two distinct root causes, both fixed together per the user's request:
   `GLSegmentRef.xaml` (the third window sharing `SegmentSelectorViewModel`, in "Ref"
   mode) has no equivalent UI at all - confirmed via grep, out of scope.
   Build-verified (`GLSense.sln`, Debug config, full solution).
-  **Status: fixed in FinalWorkingCode on `11.1.1`, `11.1.2` (needs the identical port to
-  AIPowered's `GLSense.Addin.Core\Views\GLSegmentValues.xaml(.cs)`/
-  `GLRollerGroups.xaml(.cs)` on `11.1.2`).**
+  Ported to AIPowered's identical `GLSense.Addin.Core\Views\GLSegmentValues.xaml(.cs)`/
+  `GLRollerGroups.xaml(.cs)` on this branch (`11.1.2`) only, same shape, same fix.
+  Build-verified (`GLSense.sln` under `AIPowered\GLSense`, full solution, `/p:SignAssembly=
+  false` for this local verification only - see the `OISR-22349` entry above for why).
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, `11.1.2`; fixed in AIPowered
+  on `11.1.2` only so far** - AIPowered on `11.1.0`/`11.1.1` not yet ported (also cherry-
+  pick candidates once requested, since FinalWorkingCode's own `11.1.0` copy of this
+  feature was byte-identical pre-fix).
