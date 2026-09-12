@@ -44,12 +44,13 @@ namespace GLSense.Addin.Core.Views
         // re-entry shape guarded elsewhere (e.g. GLJobsMonitor.xaml.cs's BtnDelete_Click).
         private bool _actionInProgress;
 
-        public GLDrilldownDeleteCustomization(long cubeId, IReadOnlyList<(string DdType, int RecordCount)> savedTypes)
+        public GLDrilldownDeleteCustomization(long cubeId, string cubeName, IReadOnlyList<(string DdType, int RecordCount)> savedTypes)
         {
             InitializeComponent();
-            ServiceLocator.Logger?.LogDebug($"GLDrilldownDeleteCustomization constructor invoked, cubeId={cubeId}, savedTypes.Count={savedTypes?.Count ?? 0}");
+            ServiceLocator.Logger?.LogDebug($"GLDrilldownDeleteCustomization constructor invoked, cubeId={cubeId}, cubeName={cubeName}, savedTypes.Count={savedTypes?.Count ?? 0}");
 
             _cubeId = cubeId;
+            txtCubeName.Text = cubeName ?? string.Empty;
             _types = new ObservableCollection<GLDrilldownTypeModel>(
                 (savedTypes ?? Array.Empty<(string DdType, int RecordCount)>())
                     .Select(t => new GLDrilldownTypeModel

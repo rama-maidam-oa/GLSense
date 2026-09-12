@@ -1273,7 +1273,7 @@ namespace GLSense.Addin.Core
                 return;
             }
 
-            ShowGroupCWindow("DeleteDrilldownCustomization", () => new GLDrilldownDeleteCustomization(cubeId, savedTypes));
+            ShowGroupCWindow("DeleteDrilldownCustomization", () => new GLDrilldownDeleteCustomization(cubeId, AppState.Instance.SelectedCube.CubeName, savedTypes));
         }
 
         /// <summary>
