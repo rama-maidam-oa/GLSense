@@ -1742,13 +1742,13 @@ namespace GLSense.Drilldowns
                     return null;
                 }
 
-                if (!DrilldownMetadataXmlStore.TryRead(wb, cube.CubeId, out string rawJson))
+                var ddEnum = DrilldownHelpers.ParseOrDefault(DD_Type, fallback: DrilldownType.BL);
+                string recordsKey = GetLocalMetadataRecordsKey(ddEnum);
+
+                if (!DrilldownMetadataXmlStore.TryRead(wb, cube.CubeId, recordsKey, out string rawJson))
                 {
                     return null;
                 }
-
-                var ddEnum = DrilldownHelpers.ParseOrDefault(DD_Type, fallback: DrilldownType.BL);
-                string recordsKey = GetLocalMetadataRecordsKey(ddEnum);
 
                 return DrilldownMetadataXmlStore.ExtractDrilldownTypeMetadata(rawJson, recordsKey);
             }
