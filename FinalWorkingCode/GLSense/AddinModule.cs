@@ -2320,7 +2320,7 @@ namespace GLSense
 
             SafeInvokeWpf(() =>
             {
-                var win = new GLDrilldownDeleteCustomization(cubeId, savedTypes);
+                var win = new GLDrilldownDeleteCustomization(cubeId, AppState.Instance.SelectedCube.CubeName, savedTypes);
                 win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
             });
         }
