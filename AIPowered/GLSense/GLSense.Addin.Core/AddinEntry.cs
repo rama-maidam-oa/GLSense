@@ -1245,13 +1245,12 @@ namespace GLSense.Addin.Core
 
         /// <summary>
         /// Ported from FinalWorkingCode\GLSense\AddinModule.cs's RibDDDeleteConfiguration_OnClick
-        /// (single-project monolith, does everything inline there). Deletes the saved
-        /// DRILLDOWNMETADATA CustomXMLPart for the currently selected cube
-        /// (Common\DrilldownMetadataXmlStore.cs::Delete), letting the user remove a locally
-        /// saved drilldown customization (GLDrilldownCustomization's "Save Locally" button)
-        /// without having to save a new one in its place. Unlike ShowDrilldownCustomization
-        /// above, this doesn't open a window - it just performs the delete and reports the
-        /// result via CommonFunctions.GLSenseMessage, same as other simple ribbon actions.
+        /// (OISR-22390 - replaces the old all-or-nothing "delete everything for this cube"
+        /// confirm with GLDrilldownDeleteCustomization, a picker letting the user delete saved
+        /// drilldown types individually). Still doesn't open a window when there's nothing
+        /// saved - safeguard (a) is handled here exactly like the old version did, via
+        /// CommonFunctions.GLSenseMessage - only the has-something-saved path now opens the
+        /// picker via ShowGroupCWindow instead of confirming/deleting inline.
         /// </summary>
         private void DeleteDrilldownCustomization()
         {
@@ -1264,37 +1263,17 @@ namespace GLSense.Addin.Core
             }
 
             long cubeId = AppState.Instance.SelectedCube.CubeId;
+            var wb = ServiceLocator.ExcelApp?.ActiveWorkbook;
 
-            var confirmResult = CommonFunctions.GLSenseMessage(
-                "Are you sure you want to delete the saved drilldown customization for the selected cube? Once deleted, it cannot be restored.",
-                MessageBoxImage.Question, MessageBoxButton.YesNo);
-            if (confirmResult != MessageBoxResult.Yes)
+            var savedTypes = DrilldownMetadataXmlStore.GetSavedTypeSummaries(wb, cubeId);
+            if (savedTypes.Count == 0)
             {
-                ServiceLocator.Logger?.LogDebug("AddinEntry.DeleteDrilldownCustomization: deletion cancelled by user.");
+                ServiceLocator.Logger?.LogDebug($"AddinEntry.DeleteDrilldownCustomization: no saved drilldown customizations found for cubeId={cubeId}.");
+                CommonFunctions.GLSenseMessage("No drilldown customizations exist for the selected cube.", MessageBoxImage.Exclamation, MessageBoxButton.OK);
                 return;
             }
 
-            try
-            {
-                var wb = ServiceLocator.ExcelApp?.ActiveWorkbook;
-                bool deleted = DrilldownMetadataXmlStore.Delete(wb, cubeId);
-
-                if (deleted)
-                {
-                    ServiceLocator.Logger?.LogDebug($"AddinEntry.DeleteDrilldownCustomization: deleted saved drilldown customization for cubeId={cubeId}.");
-                    CommonFunctions.GLSenseMessage("Saved drilldown customization deleted successfully.", MessageBoxImage.Information, MessageBoxButton.OK);
-                }
-                else
-                {
-                    ServiceLocator.Logger?.LogDebug($"AddinEntry.DeleteDrilldownCustomization: no saved drilldown customization found for cubeId={cubeId}.");
-                    CommonFunctions.GLSenseMessage("No saved drilldown customization exists for the current cube.", MessageBoxImage.Exclamation, MessageBoxButton.OK);
-                }
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex, "AddinEntry.DeleteDrilldownCustomization");
-                CommonFunctions.GLSenseMessage("Failed to delete the saved drilldown customization.", MessageBoxImage.Error, MessageBoxButton.OK);
-            }
+            ShowGroupCWindow("DeleteDrilldownCustomization", () => new GLDrilldownDeleteCustomization(cubeId, savedTypes));
         }
 
         /// <summary>

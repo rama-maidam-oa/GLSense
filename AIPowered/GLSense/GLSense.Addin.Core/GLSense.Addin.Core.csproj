@@ -166,6 +166,7 @@
     <Compile Include="Models\BalanceDtoModel.cs" />
     <Compile Include="Models\UdfModels.cs" />
     <Compile Include="Models\GLJobModel.cs" />
+    <Compile Include="Models\GLDrilldownTypeModel.cs" />
     <Compile Include="Models\CubeModels.cs" />
     <Compile Include="Models\LedgerModel.cs" />
     <Compile Include="Models\LedgerQueryModels.cs" />
@@ -260,6 +261,9 @@
     </Compile>
     <Compile Include="Views\GLDrilldownCustomization.xaml.cs">
       <DependentUpon>GLDrilldownCustomization.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLDrilldownDeleteCustomization.xaml.cs">
+      <DependentUpon>GLDrilldownDeleteCustomization.xaml</DependentUpon>
     </Compile>
     <Compile Include="Views\ConfiguratorPaneHost.cs" />
     <Compile Include="Views\GLJobsMonitor.xaml.cs">
@@ -378,6 +382,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Views\GLDrilldownCustomization.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLDrilldownDeleteCustomization.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
