@@ -2306,37 +2306,23 @@ namespace GLSense
             }
 
             long cubeId = AppState.Instance.SelectedCube.CubeId;
+            var wb = AppState.Instance.ExcelApp?.ActiveWorkbook;
 
-            var confirmResult = CommonFunctions.GLSenseMessage(
-                "Are you sure you want to delete the saved drilldown customization for the selected cube? Once deleted, it cannot be restored.",
-                MessageBoxIcon.Question, MessageBoxButtons.YesNo);
-            if (confirmResult != MessageBoxResult.Yes)
+            // Safeguard (a): nothing saved for this cube at all - tell the user and don't
+            // even open the picker.
+            var savedTypes = GLSense.Common.DrilldownMetadataXmlStore.GetSavedTypeSummaries(wb, cubeId);
+            if (savedTypes.Count == 0)
             {
-                LogUtility.LogDebug("RibDDDeleteConfiguration_OnClick: deletion cancelled by user.");
+                LogUtility.LogDebug($"RibDDDeleteConfiguration_OnClick: no saved drilldown customizations found for cubeId={cubeId}.");
+                CommonFunctions.GLSenseMessage("No drilldown customizations exist for the selected cube.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
                 return;
             }
 
-            try
+            SafeInvokeWpf(() =>
             {
-                var wb = AppState.Instance.ExcelApp?.ActiveWorkbook;
-                bool deleted = GLSense.Common.DrilldownMetadataXmlStore.Delete(wb, cubeId);
-
-                if (deleted)
-                {
-                    LogUtility.LogDebug($"RibDDDeleteConfiguration_OnClick: deleted saved drilldown customization for cubeId={cubeId}.");
-                    CommonFunctions.GLSenseMessage("Saved drilldown customization deleted successfully.", MessageBoxIcon.Information, MessageBoxButtons.OK);
-                }
-                else
-                {
-                    LogUtility.LogDebug($"RibDDDeleteConfiguration_OnClick: no saved drilldown customization found for cubeId={cubeId}.");
-                    CommonFunctions.GLSenseMessage("No saved drilldown customization exists for the current cube.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "RibDDDeleteConfiguration_OnClick");
-                CommonFunctions.GLSenseMessage("Failed to delete the saved drilldown customization.", MessageBoxIcon.Error, MessageBoxButtons.OK);
-            }
+                var win = new GLDrilldownDeleteCustomization(cubeId, savedTypes);
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
         }
 
         private static async Task RunBalanceDrilldownAsync(string ddType)

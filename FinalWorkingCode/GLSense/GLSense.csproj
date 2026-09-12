@@ -187,6 +187,7 @@
     <Compile Include="Models\AllModels.cs" />
     <Compile Include="Models\ApiResult.cs" />
     <Compile Include="Models\BalanceDtoModel.cs" />
+    <Compile Include="Models\GLDrilldownTypeModel.cs" />
     <Compile Include="Models\GLJobModel.cs" />
     <Compile Include="Models\SavedBalanceConfig.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -261,6 +262,9 @@
     </Compile>
     <Compile Include="Views\GLDrilldownCustomization.xaml.cs">
       <DependentUpon>GLDrilldownCustomization.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\GLDrilldownDeleteCustomization.xaml.cs">
+      <DependentUpon>GLDrilldownDeleteCustomization.xaml</DependentUpon>
     </Compile>
     <Compile Include="Views\GLGetPeriod.xaml.cs">
       <DependentUpon>GLGetPeriod.xaml</DependentUpon>
@@ -381,6 +385,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Views\GLDrilldownCustomization.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLDrilldownDeleteCustomization.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
