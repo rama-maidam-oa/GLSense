@@ -48,6 +48,14 @@
 
         <!-- ================= Cube Name Info ================= -->
         <Border Grid.Row="1" Background="White" CornerRadius="8" BorderThickness="1" BorderBrush="#E9ECEF" Margin="0,12,0,0" Padding="12,8">
+            <Border.ToolTip>
+                <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
+                    <StackPanel>
+                        <TextBlock Text="Cube Name" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="txtCubeNameTooltip" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </ToolTip>
+            </Border.ToolTip>
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Cube Name:" FontWeight="SemiBold" Foreground="#212529" VerticalAlignment="Center"/>
                 <TextBlock x:Name="txtCubeName" Margin="6,0,0,0" Foreground="#212529" VerticalAlignment="Center"/>
@@ -66,6 +74,7 @@
                       SelectionUnit="FullRow"
                       BorderThickness="0"
                       GridLinesVisibility="None"
+                      EnableRowVirtualization="False"
                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
                       ScrollViewer.VerticalScrollBarVisibility="Auto">
 
@@ -143,7 +152,9 @@
                         <EventSetter Event="PreviewMouseLeftButtonDown" Handler="DgTypesRow_PreviewMouseLeftButtonDown"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                <Setter Property="Background" Value="#FFF8E1"/>
+                                <Setter Property="Background" Value="#9bcee4"/>
+                                <Setter Property="BorderBrush" Value="#2E86AB"/>
+                                <Setter Property="Foreground" Value="White"/>
                             </DataTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter Property="Background" Value="#F0F8FF"/>

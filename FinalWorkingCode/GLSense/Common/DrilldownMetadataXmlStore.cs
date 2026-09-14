@@ -77,7 +77,7 @@ namespace GLSense.Common
                 return;
             }
 
-            LogUtility.LogInfo(rawJson);
+            LogUtility.LogDebug(rawJson);
 
             try
             {

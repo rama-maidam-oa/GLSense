@@ -660,6 +660,56 @@ Two distinct root causes, both fixed together per the user's request:
   outright (no click can reach Excel while it's up) but is a bigger behavior change than
   what was asked for here.
 
+## `Views\GLDrilldownDeleteCustomization.xaml`/`.xaml.cs`, `Common\DrilldownMetadataXmlStore.cs`, `AddinModule.cs`
+
+- **Testing-only `LogInfo` call left dumping the full raw drilldown-metadata JSON**:
+  `DrilldownMetadataXmlStore.Save` had `LogUtility.LogInfo(rawJson)` at its top, added
+  while testing the reading of drilldown customization removal - `LogInfo` writes
+  regardless of the ribbon's Debug-mode toggle (see `LogUtility.cs`), so this was
+  logging the entire raw API response on every save in production too. Switched to
+  `LogUtility.LogDebug(rawJson)`, matching this same method's own `LogDebug` a few lines
+  below it.
+
+- **Delete window listed drilldown types with 0 columns saved**: `GLDrilldownDeleteCustomization`'s
+  picker showed every DD type `DrilldownMetadataXmlStore.GetSavedTypeSummaries` returned
+  for the cube, including ones with `RecordCount == 0` (e.g. `SubLedgers`/`Unified` on a
+  cube where those types were saved but ended up empty) - nothing meaningful to delete
+  for those rows. Fixed by filtering `savedTypes` to `RecordCount >= 1` right where
+  `AddinModule.RibDDDeleteConfiguration_OnClick` fetches them, before both the "nothing
+  saved for this cube" safeguard check and the window construction - so a cube whose
+  only saved types are all empty now correctly hits the "no drilldown customizations
+  exist" message instead of opening a picker with 0 meaningful rows.
+
+- **Row-selection color matched Segment Configurator's "summary account" highlight**
+  instead of a real "selected" color: the DataGrid's `RowStyle` had a
+  `DataTrigger Binding="{Binding IsSelected}"` (checkbox-driven selection, since native
+  `DataGridRow.IsSelected`/`HighlightBrushKey` are deliberately overridden to transparent
+  in this window) set to `#FFF8E1` - visually indistinguishable from `#FFFFF0`, the color
+  `GLSegmentValues.xaml`/`GLSegmentRef.xaml`/`GLLOVs.xaml` use for their unrelated
+  `IsSummaryAccount` highlight, not an actual selection color. Every other DGV in this
+  codebase that has a real "selected" indicator (`GLCubeDetails`, `GLJobsMonitor`'s native
+  `IsSelected` trigger, `GLSegmentValues`/`GLSegmentRef`'s primary grids, `GLLOVs`) uses
+  `#9bcee4` background + `#2E86AB` border + white foreground. Changed this window's
+  checkbox-driven `IsSelected` `DataTrigger` to the same three setters, so a checked row
+  now reads visually the same as "selected" everywhere else in the app.
+
+- **DataGrid showed a scrollbar for a handful of rows that should have fit**: this
+  window builds `_types`/sets `dgTypes.ItemsSource` synchronously in its constructor
+  (no async grid load, unlike `GLSegmentValues`/`GLSegmentRef`), but `DpiAwareWindow`'s
+  own auto-fit pass (`FitToAvailableWorkArea`, run once from `OnSourceInitialized`) still
+  measures the content before the DataGrid's rows have gone through a real
+  Arrange/render pass, occasionally undersizing the window by a few pixels relative to
+  what the fully-rendered grid actually needs - just enough for the DataGrid's own
+  internal `ScrollViewer` (`VerticalScrollBarVisibility="Auto"`) to show a scrollbar for
+  as few as 3-4 rows. Fixed by hooking `Loaded` to call the same
+  `await Dispatcher.InvokeAsync(() => RefreshWindowLayout(), DispatcherPriority.Render);`
+  pattern `GLSegmentValues.xaml.cs`/`GLSegmentRef.xaml.cs` already use after their own
+  async grid loads - re-running the fit pass once the window has actually rendered
+  re-measures against the fully realized grid, so the window settles within its existing
+  `MinHeight`/`MaxHeight` (380/560) with no scrollbar unless the data genuinely exceeds
+  `MaxHeight`, in which case the DataGrid's own scrollbar still correctly takes over.
+  Build-verified (`GLSense.sln`, Debug config, full solution).
+
 ## `Views\GLSegmentValues.xaml`/`.xaml.cs` and `Views\GLRollerGroups.xaml`/`.xaml.cs`
 
 - **Overwrite/Insert and By Rows/By Columns stayed enabled after unchecking "Write to
