@@ -673,7 +673,7 @@ Two distinct root causes, both fixed together per the user's request:
   outright (no click can reach Excel while it's up) but is a bigger behavior change than
   what was asked for here.
 
-## `Views\GLDrilldownDeleteCustomization.xaml`/`.xaml.cs`, `Common\DrilldownMetadataXmlStore.cs`, `AddinModule.cs`
+## `Views\GLDrilldownDeleteCustomization.xaml`/`.xaml.cs`, `Common\DrilldownMetadataXmlStore.cs`, `AddinModule.cs` (OISR-22390 follow-up)
 
 - **Testing-only `LogInfo` call left dumping the full raw drilldown-metadata JSON**:
   `DrilldownMetadataXmlStore.Save` had `LogUtility.LogInfo(rawJson)` at its top, added
@@ -706,22 +706,55 @@ Two distinct root causes, both fixed together per the user's request:
   checkbox-driven `IsSelected` `DataTrigger` to the same three setters, so a checked row
   now reads visually the same as "selected" everywhere else in the app.
 
-- **DataGrid showed a scrollbar for a handful of rows that should have fit**: this
-  window builds `_types`/sets `dgTypes.ItemsSource` synchronously in its constructor
-  (no async grid load, unlike `GLSegmentValues`/`GLSegmentRef`), but `DpiAwareWindow`'s
-  own auto-fit pass (`FitToAvailableWorkArea`, run once from `OnSourceInitialized`) still
-  measures the content before the DataGrid's rows have gone through a real
-  Arrange/render pass, occasionally undersizing the window by a few pixels relative to
-  what the fully-rendered grid actually needs - just enough for the DataGrid's own
-  internal `ScrollViewer` (`VerticalScrollBarVisibility="Auto"`) to show a scrollbar for
-  as few as 3-4 rows. Fixed by hooking `Loaded` to call the same
-  `await Dispatcher.InvokeAsync(() => RefreshWindowLayout(), DispatcherPriority.Render);`
-  pattern `GLSegmentValues.xaml.cs`/`GLSegmentRef.xaml.cs` already use after their own
-  async grid loads - re-running the fit pass once the window has actually rendered
-  re-measures against the fully realized grid, so the window settles within its existing
-  `MinHeight`/`MaxHeight` (380/560) with no scrollbar unless the data genuinely exceeds
-  `MaxHeight`, in which case the DataGrid's own scrollbar still correctly takes over.
-  Build-verified (`GLSense.sln`, Debug config, full solution).
+- **Cube Name tooltip showed the label but a blank value**: added a tooltip to the Cube
+  Name info bar (reported missing, then reported blank once added) whose value
+  `TextBlock` originally used `{Binding Text, ElementName=txtCubeName}` - `ElementName`
+  bindings can't resolve across a `ToolTip`'s own separate `NameScope` (like
+  `ContextMenu`/`Popup`, a `ToolTip`'s content is a logically disconnected tree until it
+  opens), so the binding silently returned nothing even though the label rendered fine.
+  Fixed by naming the tooltip's own value `TextBlock` (`txtCubeNameTooltip` - still
+  reachable as a code-behind field regardless of `NameScope`, since `x:Name`
+  field-generation via `InitializeComponent`/`IComponentConnector.Connect` isn't affected
+  by it) and setting its `Text` directly in the constructor alongside `txtCubeName.Text`,
+  instead of relying on a binding at all.
+
+- **DataGrid intermittently clipped or scrolled its last row, even for as few as 2-4
+  rows**: initial diagnosis (disabling row virtualization, then a `Loaded`-triggered
+  `RefreshWindowLayout()` re-fit pass) reduced but didn't fully fix this - a live test
+  comparing a 2-row cube against a 4-row cube showed both opening at the *exact same*
+  window height, proving the real row count never affected the computed window size at
+  all. Root cause: WPF measures a Grid `Star` (`Height="*"`) row as effectively
+  zero-height whenever the Grid itself is measured under an infinite constraint (there's
+  no "total" to distribute a Star share of) - which is exactly what `DpiAwareWindow.
+  FitToAvailableWorkArea` does (`root.Measure(Infinity, Infinity)`) to auto-size this
+  window to its content from `OnSourceInitialized`. So the DataGrid's own row (`Grid.Row=
+  "2"`, `Height="*"`) never contributed to the window's measured desired height,
+  regardless of row count - the window just settled at whatever `MinHeight`/other-chrome
+  size it always would, and the DataGrid was squeezed into whatever leftover space that
+  left, clipping/scrolling as soon as there were more than a couple of rows. A
+  `RowDefinition`'s (or a child's own) explicit `MinHeight` IS honored even under this
+  "Star measured as zero" behavior, so `dgTypes.MinHeight` is now set explicitly in the
+  constructor to the DataGrid's real required height - column header (38) + one row (36)
+  per saved type - plus a 24px slack buffer (a real 4-row test showed the exact sum alone
+  still clipped the bottom row by roughly half its height, from a rounding/DPI difference
+  between the infinite measure pass and the window's real, finite Arrange pass). The
+  window now grows to fit however many rows exist (still capped by the existing
+  `MinHeight`/`MaxHeight` - 380/560 - and `DpiAwareWindow`'s own work-area clamp), with no
+  scrollbar unless the data genuinely exceeds `MaxHeight`. `EnableRowVirtualization=
+  "False"` was also added to the DataGrid from the initial diagnosis pass (harmless,
+  negligible cost since this list is never more than the 4 known drilldown types) and the
+  `Loaded`-triggered `await Dispatcher.InvokeAsync(() => RefreshWindowLayout(),
+  DispatcherPriority.Render);` call (matching `GLSegmentValues.xaml.cs`/`GLSegmentRef.
+  xaml.cs`'s own post-async-load pattern) is kept as a safety net for DPI changes, but
+  neither of those was the actual fix - `dgTypes.MinHeight` is.
+  Build-verified (`GLSense.sln`, Debug config and Release config, full solution).
+
+**Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2` (cherry-picked
+cleanly onto all three - same feature/files present on all of them). Ported to AIPowered
+on `11.1.2` **only** (per request) - see AIPowered's `CLAUDE.md` item 52 for that port;
+the underlying per-type delete picker feature (item 49 there) doesn't exist on AIPowered's
+`11.1.0`/`11.1.1`/`main` yet, so there was nothing to port these follow-up fixes onto
+there.**
 
 ## `Views\GLSegmentValues.xaml`/`.xaml.cs` and `Views\GLRollerGroups.xaml`/`.xaml.cs`
 
