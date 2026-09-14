@@ -1265,7 +1265,12 @@ namespace GLSense.Addin.Core
             long cubeId = AppState.Instance.SelectedCube.CubeId;
             var wb = ServiceLocator.ExcelApp?.ActiveWorkbook;
 
-            var savedTypes = DrilldownMetadataXmlStore.GetSavedTypeSummaries(wb, cubeId);
+            // Only types with at least one column saved are shown - a type with 0 columns
+            // saved has nothing meaningful to delete (ported from FinalWorkingCode's
+            // AddinModule.RibDDDeleteConfiguration_OnClick, OISR-22390 follow-up).
+            var savedTypes = DrilldownMetadataXmlStore.GetSavedTypeSummaries(wb, cubeId)
+                .Where(t => t.RecordCount >= 1)
+                .ToList();
             if (savedTypes.Count == 0)
             {
                 ServiceLocator.Logger?.LogDebug($"AddinEntry.DeleteDrilldownCustomization: no saved drilldown customizations found for cubeId={cubeId}.");

@@ -5230,6 +5230,77 @@ identical non-modal `GLWaitWindow` exposure in `BalanceRefresh`, `DD_BL`, `DD_JL
 **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2`; fixed in
 AIPowered on `11.1.2` only (not ported to AIPowered `11.1.0`/`11.1.1`, per request).**
 
+## 52. `Views\GLDrilldownDeleteCustomization.xaml(.cs)` / `AddinEntry.cs`: blank cube-name tooltip, empty types listed, wrong selection color, and DataGrid clipping its last row (ported from FinalWorkingCode - fixed in **both** codebases, AIPowered on `11.1.2` only) (OISR-22390)
+
+Follow-up round of fixes to the Delete Drilldown Customizations picker (see item 49
+above for the original per-type picker feature this window was built from). All four
+issues were reported live against FinalWorkingCode's window and fixed there first; this
+port carries the same fixes across with only the usual `BaseWindow`/`ServiceLocator`
+naming adjustments (see this window's own header comment) - no logic changes.
+
+1. **Types with 0 columns saved were still listed as deletable**: `AddinEntry.
+   DeleteDrilldownCustomization()` passed `DrilldownMetadataXmlStore.
+   GetSavedTypeSummaries(wb, cubeId)` straight to the picker with no filtering. Fixed by
+   filtering to `RecordCount >= 1` before both the "nothing saved" safeguard and the
+   window construction, matching FinalWorkingCode's `AddinModule.
+   RibDDDeleteConfiguration_OnClick`.
+2. **Row-selection color matched Segment Configurator's unrelated "summary account"
+   highlight** (`#FFF8E1`) instead of the `#9bcee4`/`#2E86AB`/white scheme every other
+   DataGrid in the app uses for a real "selected" row (`GLCubeDetails`, `GLJobsMonitor`'s
+   native trigger, `GLSegmentValues`/`GLSegmentRef`'s primary grids, `GLLOVs`). Changed
+   the checkbox-driven `IsSelected` `DataTrigger` in `GLDrilldownDeleteCustomization.xaml`
+   to the same three setters.
+3. **Cube Name tooltip showed the label but a blank value**: the tooltip's value
+   `TextBlock` used `{Binding Text, ElementName=txtCubeName}` - `ElementName` bindings
+   can't resolve across a `ToolTip`'s own separate `NameScope`, so the binding silently
+   returned nothing. Fixed by naming the tooltip's own value `TextBlock`
+   (`txtCubeNameTooltip` - still reachable as a code-behind field regardless of
+   `NameScope`, since `x:Name` field-generation isn't affected by it) and setting its
+   `Text` directly in the constructor alongside `txtCubeName.Text`.
+4. **DataGrid intermittently clipped/scrolled its last row even for 2-4 rows**: WPF
+   measures a Grid `Star` (`Height="*"`) row as effectively zero-height whenever the Grid
+   itself is measured under an infinite constraint - exactly what `BaseWindow.
+   FitToAvailableWorkArea` does (`root.Measure(Infinity, Infinity)`) to auto-size this
+   window to its content. So the DataGrid's real row count never contributed to the
+   window's computed height at all - confirmed on the FinalWorkingCode original: a 2-row
+   cube and a 4-row cube opened at the identical window height, with the 4-row case's
+   grid then too short for its own content. A `RowDefinition`'s (or a child's own)
+   explicit `MinHeight` IS honored even under this "Star measured as zero" behavior, so
+   `dgTypes.MinHeight` is now set explicitly in the constructor to the DataGrid's real
+   required height - column header (38) + one row (36) per saved type - plus a 24px
+   slack buffer (a real 4-row test showed the exact sum alone still clipped the bottom
+   row by roughly half its height, from a rounding/DPI difference between the infinite
+   measure pass and the window's real, finite Arrange pass). Also added
+   `EnableRowVirtualization="False"` to the DataGrid (this list is never more than the 4
+   known drilldown types, so the cost is negligible) - carried over from the
+   FinalWorkingCode fix for parity, though the `MinHeight` change is what actually
+   resolves the clipping.
+
+Unlike FinalWorkingCode's version of this window, `GLDrilldownDeleteCustomization.
+xaml.cs` here does **not** add a `Loaded`-triggered `RefreshWindowLayout()` call -
+`GLSegmentValues.xaml.cs`'s own header comment already documents that `BaseWindow`
+re-applies DPI/work-area layout on its own `Loaded`/`SourceInitialized` handlers, making
+an explicit call redundant on this project's `BaseWindow` (unlike FinalWorkingCode's
+`DpiAwareWindow`, where it was added as an extra safety net). The `dgTypes.MinHeight` fix
+alone is sufficient here since it's set before the window is ever shown, so `BaseWindow`'s
+own first automatic measure pass already sees it.
+
+`DrilldownMetadataXmlStore.Save` in this codebase never had FinalWorkingCode's
+testing-only `LogUtility.LogInfo(rawJson)` line ported over in the first place (it already
+only logs via `LogDebug`/`LogWarn`), so there was nothing to change here for that part of
+the FinalWorkingCode fix.
+
+Build-verified (`GLSense.Addin.Core.csproj`, Release config, `/p:SignAssembly=false` for
+this local verification only - same pre-existing, unrelated `GLSense.Contracts.pfx`
+password limitation as item 51 above).
+
+Per request, ported to AIPowered on `11.1.2` **only** (not `11.1.0`/`11.1.1`/`main`) -
+this whole picker feature doesn't exist on those other branches/`main` yet (only on
+FinalWorkingCode's `11.1.0`/`11.1.1`/`11.1.2` and AIPowered's `11.1.2`).
+
+**Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2`; fixed in
+AIPowered on `11.1.2` only, per request.**
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

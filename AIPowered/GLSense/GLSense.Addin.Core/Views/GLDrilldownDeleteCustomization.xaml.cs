@@ -51,6 +51,7 @@ namespace GLSense.Addin.Core.Views
 
             _cubeId = cubeId;
             txtCubeName.Text = cubeName ?? string.Empty;
+            txtCubeNameTooltip.Text = cubeName ?? string.Empty;
             _types = new ObservableCollection<GLDrilldownTypeModel>(
                 (savedTypes ?? Array.Empty<(string DdType, int RecordCount)>())
                     .Select(t => new GLDrilldownTypeModel
@@ -70,6 +71,32 @@ namespace GLSense.Addin.Core.Views
             }
 
             dgTypes.ItemsSource = _types;
+
+            // Root cause of the DataGrid showing a scrollbar/clipping its last row even
+            // for a handful of rows (ported from FinalWorkingCode, OISR-22390 follow-up):
+            // the DataGrid sits in a Grid RowDefinition with Height="*" (Views\
+            // GLDrilldownDeleteCustomization.xaml, row 2) so it can fill whatever space is
+            // left over once the window is sized - but WPF's Grid measures a Star row as
+            // an effectively empty/zero-height cell whenever the Grid itself is measured
+            // under an infinite constraint (there is no "total" to distribute a Star share
+            // of), which is exactly what BaseWindow.FitToAvailableWorkArea does
+            // (root.Measure(Infinity, Infinity)) to size this window to its content. So the
+            // DataGrid's real row count never contributed to the measured desired height at
+            // all - confirmed empirically on the FinalWorkingCode original: a 2-row cube and
+            // a 4-row cube both opened at the exact same window height, with the 4-row
+            // case's DataGrid then too short for its own content.
+            // A RowDefinition's (or a child's own) explicit MinHeight IS honored even under
+            // this "Star measured as zero" behavior, so setting dgTypes.MinHeight here to
+            // the DataGrid's own real required height (column header + one row per saved
+            // type, plus a small slack buffer for measure/DPI rounding - confirmed via a
+            // real 4-row test that the exact sum alone still clipped the bottom row by
+            // roughly half its height) makes FitToAvailableWorkArea's measure pass see the
+            // DataGrid's true size need and grow the window height to match (still capped by
+            // MinHeight/MaxHeight - 380/560 - and by BaseWindow's own work-area clamp).
+            const double HeaderRowHeight = 38d;
+            const double DataRowHeight = 36d;
+            const double VerticalSlack = 24d;
+            dgTypes.MinHeight = HeaderRowHeight + (_types.Count * DataRowHeight) + VerticalSlack;
         }
 
         // Maps a saved records-key (BALANCE/JOURNAL/SUBLEDGER/UNIFIED) to the same
