@@ -2309,8 +2309,11 @@ namespace GLSense
             var wb = AppState.Instance.ExcelApp?.ActiveWorkbook;
 
             // Safeguard (a): nothing saved for this cube at all - tell the user and don't
-            // even open the picker.
-            var savedTypes = GLSense.Common.DrilldownMetadataXmlStore.GetSavedTypeSummaries(wb, cubeId);
+            // even open the picker. Only types with at least one column saved are shown -
+            // a type with 0 columns saved has nothing meaningful to delete.
+            var savedTypes = GLSense.Common.DrilldownMetadataXmlStore.GetSavedTypeSummaries(wb, cubeId)
+                .Where(t => t.RecordCount >= 1)
+                .ToList();
             if (savedTypes.Count == 0)
             {
                 LogUtility.LogDebug($"RibDDDeleteConfiguration_OnClick: no saved drilldown customizations found for cubeId={cubeId}.");
