@@ -581,6 +581,7 @@ namespace GLSense.Utilities
             try
             {
                 var match = SegmentValues.FirstOrDefault(sv =>
+                    sv.SegmentName.Equals(AppState.Instance.DefaultSegment, StringComparison.OrdinalIgnoreCase) &&
                     sv.SegmentValue.Equals(value, StringComparison.OrdinalIgnoreCase) &&
                     sv.SummaryFlag != "RG" && sv.EnabledFlag != "RG");
                 return await LoadHierarchySegmentValuesAsync(match, oneLevel);
@@ -877,6 +878,7 @@ namespace GLSense.Utilities
                 sValue = sValue.Trim().Replace("--", "").Replace("~", "");
 
                 var match = SegmentValues.FirstOrDefault(sv =>
+                    sv.SegmentName.Equals(AppState.Instance.DefaultSegment, StringComparison.OrdinalIgnoreCase) &&
                     sv.SegmentValue.Equals(sValue, StringComparison.OrdinalIgnoreCase) &&
                     sv.SummaryFlag != "RG" && sv.EnabledFlag != "RG");
 
@@ -1001,6 +1003,7 @@ namespace GLSense.Utilities
             {
                 var match = SegmentValues
                     .FirstOrDefault(sv =>
+                        sv.SegmentName.Equals(AppState.Instance.DefaultSegment, StringComparison.OrdinalIgnoreCase) &&
                         sv.SegmentValue.Equals(segmentValue, StringComparison.OrdinalIgnoreCase) &&
                         sv.SummaryFlag != "RG" && sv.EnabledFlag != "RG");
 
