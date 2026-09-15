@@ -709,6 +709,14 @@ namespace GLSense
         {
             try
             {
+                // Must run here, early, on Excel's own main thread - see
+                // WpfAppManager.EnsureMainThreadSynchronizationContext's own doc comment
+                // for the root cause it fixes (await continuations losing this thread
+                // throughout the Balance Configurator's WPF/ViewModel code, surfacing as
+                // InvalidOperationException/NotSupportedException from unrelated-looking
+                // call sites).
+                WpfAppManager.EnsureMainThreadSynchronizationContext();
+
                 // The busy-retry message filter (GLSense.Utilities.ComMessageFilter) used
                 // to be registered here, process-wide, for the life of the add-in. Confirmed
                 // via controlled A/B testing (twice, with opposite results both times) that

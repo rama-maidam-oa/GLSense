@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -8,6 +9,45 @@ namespace GLSense.Utilities
     {
         private static readonly object _lock = new object();
         private static bool _dispatcherInitialized = false;
+
+        /// <summary>Installs a DispatcherSynchronizationContext for the CURRENT thread, so
+        /// that any `await` executed on this thread reliably resumes back on this same
+        /// thread afterward, instead of on an arbitrary threadpool thread.
+        ///
+        /// Root cause this fixes: Excel's main STA thread - where every COM event handler,
+        /// ribbon click, and (once GLBalanceConfiguratorForm/GLConfiguratorPane construct
+        /// their WPF content on it) WPF DependencyObject lives - never had a
+        /// SynchronizationContext installed on it at all (confirmed via [ThreadDiag]
+        /// logging: SynchronizationContext.Current was null there). A normal WPF app gets
+        /// this for free from Application.Run(); this add-in never calls that on Excel's
+        /// own thread, so `await` had nothing to marshal its continuation through and fell
+        /// back to the default threadpool scheduler. That surfaced repeatedly as
+        /// InvalidOperationException/NotSupportedException ("a different thread owns it" /
+        /// "changes to its SourceCollection from a thread different from the Dispatcher
+        /// thread") from unrelated-looking places across GLConfiguratorViewModel
+        /// (LoadDataAsync, UpdateParameterSummary via ApplyDefaultSelections) and
+        /// GLBalanceConfigurator (ReLoadConfigurator) - every one of them just a different
+        /// `await` in the same call tree losing the thread the same way. Call this once,
+        /// early, on Excel's own thread (AddinModule_AddinInitialize) rather than patching
+        /// every individual call site as each one surfaces.</summary>
+        public static void EnsureMainThreadSynchronizationContext()
+        {
+            try
+            {
+                if (SynchronizationContext.Current is DispatcherSynchronizationContext)
+                {
+                    return;
+                }
+
+                SynchronizationContext.SetSynchronizationContext(
+                    new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+                LogUtility.LogDebug("WpfAppManager.EnsureMainThreadSynchronizationContext: installed DispatcherSynchronizationContext for this thread.");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "WpfAppManager.EnsureMainThreadSynchronizationContext");
+            }
+        }
 
         public static void EnsureApplication()
         {
