@@ -375,12 +375,23 @@ namespace GLSense.Views
             }
         }
 
-        private async Task ShowBusyOverlayAsync(CancellationHelper helper, string message)
+        private Task ShowBusyOverlayAsync(CancellationHelper helper, string message)
         {
-            LogThreadDiag("ShowBusyOverlayAsync: before Dispatcher.InvokeAsync");
-            await Dispatcher.InvokeAsync(() =>
+            LogThreadDiag("ShowBusyOverlayAsync: before Dispatcher.Invoke");
+            // Synchronous Dispatcher.Invoke, not the async Dispatcher.InvokeAsync+await
+            // this used to use. Confirmed via [ThreadDiag] logging that this VSTO add-in's
+            // WPF thread does NOT reliably resume an awaited DispatcherOperation's
+            // continuation back on the dispatcher thread it started on: the continuation
+            // jumped from thread 1 (correct) to a threadpool thread the instant the await
+            // completed, which is exactly why everything downstream in ReLoadConfigurator
+            // (BalanceParametersExpander.IsExpanded and beyond) then threw
+            // InvalidOperationException ("a different thread owns it"). This is the same
+            // documented limitation RibLOVs_OnClick already works around this same way -
+            // see its own comment on why every UI touch-point in this codebase re-marshals
+            // explicitly via Dispatcher.Invoke/InvokeAsync after an await rather than
+            // trusting the continuation to land back on the right thread by itself.
+            Dispatcher.Invoke(() =>
             {
-                LogThreadDiag("ShowBusyOverlayAsync: inside InvokeAsync callback");
                 AppOverlayControl.ShowBusyasyn(
                     message: message + " (Click cancel to stop)",
                     cancelAction: async () =>
@@ -394,8 +405,9 @@ namespace GLSense.Views
                                               // HideBusyAsync() is already called in the overlay's handler
                     }
                 );
-            }, DispatcherPriority.Background);
-            LogThreadDiag("ShowBusyOverlayAsync: after Dispatcher.InvokeAsync");
+            });
+            LogThreadDiag("ShowBusyOverlayAsync: after Dispatcher.Invoke");
+            return Task.CompletedTask;
         }
         public async Task ExecuteWithBusyOverlay(
                 string message,
