@@ -9,6 +9,7 @@ using MahApps.Metro.IconPacks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -103,6 +104,55 @@ namespace GLSense.Views
             {
                 _parentPane.Resize += OnParentPaneResize;
             }
+
+            // TEMPORARY DIAGNOSTIC: companion to the [EditModeDiag] WM_* logging in
+            // GLBalanceConfiguratorForm.WndProc, which proved a click during Excel
+            // cell-edit mode never reaches the Form's own WndProc - it's consumed
+            // entirely inside WPF's own input system (ElementHost fills the Form's whole
+            // client area). These handlers instead observe what WPF itself sees for the
+            // same click, to find where - if anywhere - it gets lost. Remove once the
+            // edit-mode-click issue is root-caused.
+            PreviewMouseDown += (s, e) => LogWpfDiagnostic($"PreviewMouseDown(btn={e.ChangedButton})", e.OriginalSource);
+            PreviewMouseUp += (s, e) => LogWpfDiagnostic($"PreviewMouseUp(btn={e.ChangedButton})", e.OriginalSource);
+            GotKeyboardFocus += (s, e) => LogWpfDiagnostic("GotKeyboardFocus", e.NewFocus);
+            LostKeyboardFocus += (s, e) => LogWpfDiagnostic("LostKeyboardFocus(old)", e.OldFocus);
+        }
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetFocus();
+
+        private void LogWpfDiagnostic(string eventName, object source)
+        {
+            try
+            {
+                LogUtility.LogDebug(
+                    $"[EditModeDiag][WPF] {eventName} source={DescribeElement(source)} " +
+                    $"keyboardFocus={DescribeElement(Keyboard.FocusedElement)} " +
+                    $"foregroundHwnd=0x{GetForegroundWindow().ToInt64():X} " +
+                    $"focusHwnd=0x{GetFocus().ToInt64():X}");
+            }
+            catch
+            {
+                // diagnostic-only, never let logging failure affect input handling
+            }
+        }
+
+        private static string DescribeElement(object element)
+        {
+            if (element == null)
+            {
+                return "null";
+            }
+
+            if (element is FrameworkElement fe)
+            {
+                return $"{fe.GetType().Name}(Name={fe.Name})";
+            }
+
+            return element.GetType().Name;
         }
 
         // Centralizes ALL wheel-scrolling through MainScrollViewer, regardless of which
