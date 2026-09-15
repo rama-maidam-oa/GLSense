@@ -155,6 +155,17 @@ namespace GLSense.Views
                     hostDisabled = true;
                 }
 
+                // EnableEvents=false already stops Excel from raising SheetSelectionChange
+                // at all while the native InputBox below is up - this control is shared by
+                // every RefEdit field in the app (13 windows: Periods, Segments, LOVs,
+                // Daily Rates, the Balance Configurator's own fields, etc.), so this one
+                // guard already protects all of them from spuriously triggering the Balance
+                // Configurator's relaunch/hide logic while the user is picking a cell
+                // reference somewhere else entirely. IsBulkExcelOperationRunning is set as
+                // defense-in-depth for the same boundary-timing reason as everywhere else it's
+                // used (see AppState's own comment on it) - EnableEvents alone should already
+                // be sufficient here.
+                AppState.Instance.IsBulkExcelOperationRunning = true;
                 AppState.Instance.ExcelApp.EnableEvents = false;
                 AppState.Instance.ExcelApp.DisplayAlerts = false;
 
@@ -195,6 +206,8 @@ namespace GLSense.Views
             }
             finally
             {
+                AppState.Instance.IsBulkExcelOperationRunning = false;
+
                 // Safely restore settings
                 try
                 {
