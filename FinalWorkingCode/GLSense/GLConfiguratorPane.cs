@@ -233,7 +233,7 @@ namespace GLSense
                 LogUtility.LogException(ex, "GLConfiguratorPane.RelaunchPane");
             }
         }
-        public async Task ResetPaneReference()
+        public Task ResetPaneReference()
         {
             try
             {
@@ -250,6 +250,8 @@ namespace GLSense
             {
                 LogUtility.LogException(ex, "GLConfiguratorPane.ResetPaneReference");
             }
+
+            return Task.CompletedTask;
         }
         private void GLConfiguratorPane_ADXBeforeTaskPaneShow(object sender, ADXBeforeTaskPaneShowEventArgs e)
         {

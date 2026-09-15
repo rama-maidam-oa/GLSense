@@ -488,15 +488,16 @@ namespace GLSense.Views
         {
             return !string.IsNullOrWhiteSpace(cellData.LedgerName);
         }
-        private async Task<CellData> ExtractCellDataAsync()
+        private Task<CellData> ExtractCellDataAsync()
         {
-            return Dispatcher.Invoke(() =>
+            var cellData = Dispatcher.Invoke(() =>
             {
                 var rng = AppState.Instance.ExcelApp.ActiveCell;
-                var cellData = ParseCellData(rng);
-                GlobalStateViewModel.Instance.ReferenceText = cellData.Address;
-                return cellData;
+                var data = ParseCellData(rng);
+                GlobalStateViewModel.Instance.ReferenceText = data.Address;
+                return data;
             });
+            return Task.FromResult(cellData);
         }
         private CellData ParseCellData(Excel.Range rng)
         {

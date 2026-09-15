@@ -809,7 +809,7 @@ namespace GLSense.ViewModels
             LogUtility.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: exit");
         }
 
-        private async Task UpdateUIAsync()
+        private Task UpdateUIAsync()
         {
             LogUtility.LogDebug("GLConfiguratorViewModel.UpdateUIAsync: entry");
             // Synchronous Dispatcher.Invoke, not await ...InvokeAsync: confirmed (the same
@@ -833,6 +833,7 @@ namespace GLSense.ViewModels
                 OnPropertyChanged(nameof(JournalSources));
                 OnPropertyChanged(nameof(JournalCategories));
             });
+            return Task.CompletedTask;
         }
 
         private void ResetUIState()
@@ -1035,7 +1036,7 @@ namespace GLSense.ViewModels
             OnPropertyChanged(nameof(ActualFlags));
         }
 
-        private async Task ResetWindowAsync()
+        private Task ResetWindowAsync()
         {
             LogUtility.LogDebug("GLConfiguratorViewModel.ResetWindowAsync: entry");
             _dispatcher.Invoke(() =>
@@ -1130,6 +1131,7 @@ namespace GLSense.ViewModels
                     LogUtility.LogException(ex, "GLConfiguratorViewModel.ResetWindowAsync");
                 }
             });
+            return Task.CompletedTask;
         }
 
         private async Task ApplyFormulaParamsAsync(bool zeroesChecked, List<string> FuncArgs, List<string> FuncValues)
@@ -1160,7 +1162,7 @@ namespace GLSense.ViewModels
         }
 
         // Sign and Factor Processing from formula
-        private async Task ProcessSignAndFactor(string rawValue)
+        private Task ProcessSignAndFactor(string rawValue)
         {
             LogUtility.LogDebug($"GLConfiguratorViewModel.ProcessSignAndFactor: rawValue={rawValue}");
             string cleanedArg = rawValue.Replace("\"", "");
@@ -1182,6 +1184,7 @@ namespace GLSense.ViewModels
                 IsSignChecked = operatorStr == "-";
                 FactorText = valueStr;
             });
+            return Task.CompletedTask;
         }
 
         // End of Sign and Factor Processing from formula
@@ -1202,7 +1205,7 @@ namespace GLSense.ViewModels
             }
         }
 
-        private async Task SetLedgerField(string? refValue, string? comboValue)
+        private Task SetLedgerField(string? refValue, string? comboValue)
         {
             LogUtility.LogDebug($"GLConfiguratorViewModel.SetLedgerField: refValue={refValue}, comboValue={comboValue}");
             _dispatcher.Invoke(() =>
@@ -1271,6 +1274,7 @@ namespace GLSense.ViewModels
                 LedgerField.ComboValue = finalComboValue;
                 LedgerField.ComboText = finalComboValue;
             });
+            return Task.CompletedTask;
         }
 
         private async Task HandleLedgerValue(string value)
@@ -1540,7 +1544,7 @@ namespace GLSense.ViewModels
                 await ProcessFieldAsync(10, JournalCategoryField, JournalCategories, x => x.CategoryName, FuncArgs, FuncValues);
             }
         }
-        private async Task ProcessPeriodPart(string partArg, string partValue, dynamic field, IEnumerable<dynamic> periods)
+        private Task ProcessPeriodPart(string partArg, string partValue, dynamic field, IEnumerable<dynamic> periods)
         {
             LogUtility.LogDebug($"GLConfiguratorViewModel.ProcessPeriodPart: partArg={partArg}, partValue={partValue}");
             string cleanArg = partArg.Replace("\"", "");
@@ -1573,11 +1577,12 @@ namespace GLSense.ViewModels
                     }
                 });
             }
+            return Task.CompletedTask;
         }
 
         // End of Processing Period and BalanceType from formula
 
-        private async Task ProcessFieldAsync<T>(int index, dynamic field, IEnumerable<T> items, Func<T, string> selector, List<string> FuncArgs, List<string> FuncValues) where T : class
+        private Task ProcessFieldAsync<T>(int index, dynamic field, IEnumerable<T> items, Func<T, string> selector, List<string> FuncArgs, List<string> FuncValues) where T : class
         {
             string arg = FuncArgs[index].Replace("\"", "");
             string value = FuncValues[index].Replace("\"", "").Trim();
@@ -1608,8 +1613,9 @@ namespace GLSense.ViewModels
                     field.ComboValue = match;
                 });
             }
+            return Task.CompletedTask;
         }
-        private async Task ProcessFieldAsync_Activity<T>(int index, dynamic field, IEnumerable<T> items, Func<T, string> selector, List<string> FuncArgs, List<string> FuncValues) where T : class
+        private Task ProcessFieldAsync_Activity<T>(int index, dynamic field, IEnumerable<T> items, Func<T, string> selector, List<string> FuncArgs, List<string> FuncValues) where T : class
         {
             string arg = FuncArgs[index].Replace("\"", "");
             string value = FuncValues[index].Replace("\"", "").Trim();
@@ -1654,8 +1660,9 @@ namespace GLSense.ViewModels
                     });
                 }
             }
+            return Task.CompletedTask;
         }
-        private async Task ProcessFieldAsync_CurrencyType<T>(int index, dynamic field, IEnumerable<T> items, Func<T, string> selector, List<string> FuncArgs, List<string> FuncValues) where T : class
+        private Task ProcessFieldAsync_CurrencyType<T>(int index, dynamic field, IEnumerable<T> items, Func<T, string> selector, List<string> FuncArgs, List<string> FuncValues) where T : class
         {
             string arg = FuncArgs[index].Replace("\"", "");
             string value = FuncValues[index].Replace("\"", "").Trim();
@@ -1700,8 +1707,9 @@ namespace GLSense.ViewModels
                     });
                 }
             }
+            return Task.CompletedTask;
         }
-        private async Task ProcessActualFlagFieldAsync(int index, dynamic field, List<string> FuncArgs, List<string> FuncValues)
+        private Task ProcessActualFlagFieldAsync(int index, dynamic field, List<string> FuncArgs, List<string> FuncValues)
         {
             string arg = FuncArgs[index].Replace("\"", "");
             string value = FuncValues[index].Replace("\"", "").Trim();
@@ -1733,6 +1741,7 @@ namespace GLSense.ViewModels
                     });
                 }
             }
+            return Task.CompletedTask;
         }
         private static bool ValidateBudgetForCurrencyType(List<string> FuncValues)
         {
@@ -1806,7 +1815,7 @@ namespace GLSense.ViewModels
             }
         }
 
-        private async Task ProcessSimpleField(int index, dynamic field, List<string> FuncArgs, List<string> FuncValues)
+        private Task ProcessSimpleField(int index, dynamic field, List<string> FuncArgs, List<string> FuncValues)
         {
             string arg = FuncArgs[index].Replace("\"", "");
             string value = FuncValues[index].Replace("\"", "").Trim();
@@ -1828,9 +1837,10 @@ namespace GLSense.ViewModels
                     field.ComboValue = value;
                 });
             }
+            return Task.CompletedTask;
         }
 
-        private async Task ProcessEncumbranceField(int index, List<string> FuncArgs, List<string> FuncValues)
+        private Task ProcessEncumbranceField(int index, List<string> FuncArgs, List<string> FuncValues)
         {
             string arg = FuncArgs[index].Replace("\"", "");
             string value = FuncValues[index].Replace("\"", "");
@@ -1843,7 +1853,7 @@ namespace GLSense.ViewModels
                     EncumbranceField.ComboValue = null;
                     EncumbranceField.RefValue = arg;
                 });
-                return;
+                return Task.CompletedTask;
             }
 
             _dispatcher.Invoke(() =>
@@ -1897,6 +1907,7 @@ namespace GLSense.ViewModels
                     });
                 }
             }
+            return Task.CompletedTask;
         }
 
         private void ProcessAccountAssignments(FieldBinding field, string refText, string? rngValue)
@@ -1906,7 +1917,7 @@ namespace GLSense.ViewModels
             AccountAssignmentField.RefreshEnableState();
         }
 
-        private async Task ProcessAccountAssignments(List<string> FuncArgs, List<string> FuncValues)
+        private Task ProcessAccountAssignments(List<string> FuncArgs, List<string> FuncValues)
         {
             string arg11 = GetFormulaTextAt(FuncArgs, 11);
             string val11 = GetFormulaTextAt(FuncValues, 11);
@@ -1936,6 +1947,7 @@ namespace GLSense.ViewModels
                     AccountAssignmentField.ComboValue = finalResult;
                 });
             }
+            return Task.CompletedTask;
         }
 
         private static string GetFormulaTextAt(IReadOnlyList<string> values, int index)
