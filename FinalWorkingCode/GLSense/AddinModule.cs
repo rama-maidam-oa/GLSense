@@ -2803,21 +2803,27 @@ namespace GLSense
         /// "If FSGForm Is Nothing OrElse FSGForm.IsDisposed Then New FormFSG(...) Else If
         /// Not FSGForm.Visible Then FSGForm.Visible = True".
         ///
-        /// Only the "construct a brand-new window" branch is wrapped in SafeInvokeWpf -
-        /// matching the only established precedent for that helper elsewhere in this
-        /// codebase (safely constructing a new WPF object, ensuring
-        /// WpfAppManager.EnsureApplication() has run). Wrapping the "re-show/relaunch an
-        /// existing window" path in it too previously caused
-        /// GLBalanceConfiguratorForm.RelaunchWindow's fire-and-forget async continuation
-        /// to resume off the WPF dispatcher thread and throw InvalidOperationException
-        /// ("a different thread owns it") on BalanceParametersExpander.IsExpanded -
-        /// Dispatcher.Invoke only guarantees the dispatcher thread for the synchronous
-        /// portion of the wrapped call, not for continuations that run later, after the
-        /// async method's first await, by which point Invoke has already returned.
-        /// Callers of an already-open window's methods run on Excel's main STA thread,
-        /// which is already the WPF dispatcher thread - no extra marshaling needed there,
-        /// same as the original (pre-Show Always) SheetSelectionChange code called
-        /// RelaunchWindow directly, unwrapped.</summary>
+        /// Deliberately NOT wrapped in SafeInvokeWpf. That helper's only real precedent
+        /// elsewhere in this codebase is constructing a short-lived MODAL dialog
+        /// (ShowDialogWithOwner) on WpfAppManager's own dedicated background WPF thread -
+        /// appropriate there because ShowDialog() blocks, and running it on a separate
+        /// thread keeps Excel's own UI thread responsive while it's up. This window is
+        /// different: it's shown non-modally (ShowFloating/Show, never blocks) and, unlike
+        /// a modal dialog, needs to be touched repeatedly over its whole open lifetime by
+        /// many different Excel-thread-originated event handlers (SheetSelectionChange,
+        /// SheetActivate, WorkbookActivate, ribbon clicks). Constructing it via
+        /// SafeInvokeWpf put its ElementHost/WPF content's Dispatcher on that separate
+        /// dedicated thread instead of Excel's own - every later call from those Excel
+        /// COM event handlers then touched WPF DependencyObjects from the wrong thread,
+        /// throwing InvalidOperationException ("a different thread owns it") on
+        /// BalanceParametersExpander.IsExpanded inside ReLoadConfigurator, and the window
+        /// itself was found to silently stop functioning (BalanceWindow kept coming back
+        /// null on the next check, triggering a full reconstruction, over and over - logs
+        /// showed a fresh GLBalanceConfiguratorForm.ctor on almost every single
+        /// WorkbookActivate). Constructing directly here, on whichever thread the caller
+        /// is already on (always Excel's own main STA thread, same as
+        /// GLConfiguratorPane's construction - the task pane never had this problem),
+        /// avoids all of it.</summary>
         private GLBalanceConfiguratorForm GetOrCreateBalanceWindow()
         {
             var existing = AppState.Instance.BalanceWindow;
@@ -2830,20 +2836,16 @@ namespace GLSense
                 return existing;
             }
 
-            GLBalanceConfiguratorForm win = null;
-            SafeInvokeWpf(() =>
+            var win = new GLBalanceConfiguratorForm();
+            AppState.Instance.BalanceWindow = win;
+            win.FormClosed += (s, e) =>
             {
-                win = new GLBalanceConfiguratorForm();
-                AppState.Instance.BalanceWindow = win;
-                win.FormClosed += (s, e) =>
+                if (AppState.Instance.BalanceWindow == win)
                 {
-                    if (AppState.Instance.BalanceWindow == win)
-                    {
-                        AppState.Instance.BalanceWindow = null;
-                    }
-                };
-                win.ShowFloating((IntPtr)AppState.Instance.ExcelApp.Hwnd);
-            });
+                    AppState.Instance.BalanceWindow = null;
+                }
+            };
+            win.ShowFloating((IntPtr)AppState.Instance.ExcelApp.Hwnd);
             return win;
         }
 
@@ -2868,19 +2870,35 @@ namespace GLSense
             }
         }
 
-        /// <summary>Shared by SheetSelectionChange and SheetActivate to keep the floating
-        /// Balance Configurator window in sync with the current selection, mirroring the
-        /// VB.NET sibling's FSGShow-conditional logic in both of its equivalent handlers.
-        /// currentSelection may be a multi-cell range (from SheetActivate's
-        /// ExcelApp.Selection) or null.</summary>
+        /// <summary>Shared by SheetSelectionChange, SheetActivate and WorkbookActivate to
+        /// keep the floating Balance Configurator window in sync with the current
+        /// selection. currentSelection may be a multi-cell range (from SheetActivate's/
+        /// WorkbookActivate's ExcelApp.Selection/ActiveCell) or null.</summary>
         private void ApplyBalanceWindowVisibility(Excel.Range currentSelection)
         {
             try
             {
+                var existing = AppState.Instance.BalanceWindow;
+                bool windowIsOpen = existing != null && !existing.IsDisposed;
+
                 if (AppState.Instance.BalanceWindowShowAlways)
                 {
-                    var win = GetOrCreateBalanceWindow();
-                    _ = win.RelaunchWindow();
+                    // Show Always only keeps an ALREADY-OPEN window in sync across
+                    // selection/sheet/workbook changes - confirmed via testing that it
+                    // must never resurrect a window the user explicitly closed while the
+                    // checkbox stayed checked (closing, then switching workbooks,
+                    // reopened it - not wanted). Only RibFSGWindow_OnClick constructs a
+                    // brand-new window.
+                    if (!windowIsOpen)
+                    {
+                        return;
+                    }
+
+                    if (!existing.Visible)
+                    {
+                        existing.Visible = true;
+                    }
+                    _ = existing.RelaunchWindow();
                     return;
                 }
 
@@ -2892,8 +2910,7 @@ namespace GLSense
                     return;
                 }
 
-                var existing = AppState.Instance.BalanceWindow;
-                if (existing == null || existing.IsDisposed || !existing.Visible)
+                if (!windowIsOpen || !existing.Visible)
                 {
                     return;
                 }
