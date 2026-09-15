@@ -5,6 +5,7 @@ using System;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using Excel = Microsoft.Office.Interop.Excel;
 
@@ -213,6 +214,12 @@ namespace GLSense.Views
                     {
                         parentWindow.IsEnabled = true;
                         parentWindow.Activate();
+
+                        var parentHwnd = new WindowInteropHelper(parentWindow).Handle;
+                        if (parentHwnd != IntPtr.Zero)
+                        {
+                            ExcelWindowHelper.ForceSetForegroundWindow(parentHwnd);
+                        }
                     }
                     else if (hostDisabled && hostContainer != null)
                     {

@@ -84,21 +84,16 @@ namespace GLSense.Helpers
         }
 
         /// <summary>
-        /// Reliably brings <paramref name="hWnd"/> to the foreground.
-        /// A plain SetForegroundWindow call is not enough here: Windows silently
-        /// refuses it (it just flashes the taskbar icon instead) whenever some other
-        /// process currently holds the "foreground activation" right - which is exactly
-        /// what happens if the user was interacting with another app (e.g. reading the
-        /// debug log in Notepad) while a long-running GLSense operation (balance
-        /// refresh, snapshot, drilldown, etc.) was still in progress. This was reported
-        /// as: after a Balance Refresh finished, focus stayed on Notepad instead of
-        /// returning to Excel.
-        /// The standard workaround is to temporarily attach this thread's input queue
-        /// to whichever thread currently owns the foreground window - that grants us
-        /// the right to steal foreground focus - call SetForegroundWindow, then detach
-        /// again immediately.
+        /// Reliably brings <paramref name="hWnd"/> to the foreground. A plain
+        /// SetForegroundWindow call is not enough on its own: Windows silently refuses it
+        /// (it just flashes the taskbar icon instead) whenever some other process currently
+        /// holds the "foreground activation" right - attaching this thread's input queue to
+        /// whichever thread currently owns the foreground window temporarily grants that
+        /// right. Generic (not Excel-specific) despite living on this class - reused by
+        /// GLBalanceConfiguratorWindow to reclaim focus after Excel's native cell-picker
+        /// InputBox closes.
         /// </summary>
-        private static void ForceSetForegroundWindow(IntPtr hWnd)
+        public static void ForceSetForegroundWindow(IntPtr hWnd)
         {
             if (SetForegroundWindow(hWnd))
                 return;
