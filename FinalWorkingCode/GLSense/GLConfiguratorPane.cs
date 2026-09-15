@@ -220,11 +220,12 @@ namespace GLSense
                 LogUtility.LogDebug("GLConfiguratorPane.RelaunchPane invoked.");
                 if (_wpfControl != null && _wpfControl.Dispatcher != null)
                 {
-                    // Dispatcher.InvokeAsync(async () => ...) doesn't wait for the inner Task -
-                    // the DispatcherOperation completes as soon as the delegate hits its first
-                    // await. Use a non-async delegate + Task.Unwrap() so the real completion is
-                    // awaited (see GLWaitWindow.ShowConfirmToastAsync for the same pattern).
-                    await _wpfControl.Dispatcher.InvokeAsync(() => _wpfControl.ReLoadConfigurator()).Task.Unwrap();
+                    // Synchronous Dispatcher.Invoke<Task> (not the old InvokeAsync+Task.Unwrap
+                    // pattern - that was only needed to flatten InvokeAsync's
+                    // Task<Task<Task>>-shaped result). Invoke<Task> already returns the single
+                    // Task ReLoadConfigurator() itself produces - it starts synchronously, on
+                    // the dispatcher thread, and awaiting it here waits for the real completion.
+                    await _wpfControl.Dispatcher.Invoke(() => _wpfControl.ReLoadConfigurator());
                 }
             }
             catch (Exception ex)
@@ -239,7 +240,7 @@ namespace GLSense
                 LogUtility.LogDebug("GLConfiguratorPane.ResetPaneReference invoked.");
                 if (_wpfControl != null && _wpfControl.Dispatcher != null)
                 {
-                    await _wpfControl.Dispatcher.InvokeAsync(() =>
+                    _wpfControl.Dispatcher.Invoke(() =>
                     {
                         GLBalanceConfigurator.ResetCellReference();
                     });

@@ -787,7 +787,13 @@ namespace GLSense.ViewModels
         private async Task UpdateUIAsync()
         {
             LogUtility.LogDebug("GLConfiguratorViewModel.UpdateUIAsync: entry");
-            await _dispatcher.InvokeAsync(() =>
+            // Synchronous Dispatcher.Invoke, not await ...InvokeAsync: confirmed (the same
+            // way ShowBusyOverlayAsync was) that awaiting a DispatcherOperation doesn't
+            // reliably resume on the dispatcher thread in this hosting environment -
+            // everything LoadConfiguratorAsync ran after "await UpdateUIAsync()"
+            // (ApplyDefaultSelections, RefreshAllFields) was landing on the wrong thread
+            // as a direct result, throwing from whichever WPF/collection touch came first.
+            _dispatcher.Invoke(() =>
             {
                 ResetUIState();
                 InitializeStaticCollections();
@@ -1007,7 +1013,7 @@ namespace GLSense.ViewModels
         private async Task ResetWindowAsync()
         {
             LogUtility.LogDebug("GLConfiguratorViewModel.ResetWindowAsync: entry");
-            await _dispatcher.InvokeAsync(() =>
+            _dispatcher.Invoke(() =>
             {
                 try
                 {
@@ -1109,7 +1115,7 @@ namespace GLSense.ViewModels
                 LogUtility.LogWarn("GLConfiguratorViewModel.ApplyFormulaParamsAsync: FuncArgs or FuncValues is null, aborting formula param application.");
                 return;
             }
-            await _dispatcher.InvokeAsync(() =>
+            _dispatcher.Invoke(() =>
             {
                 IsZeroesChecked = zeroesChecked;
             });
@@ -1146,7 +1152,7 @@ namespace GLSense.ViewModels
                 }
             }
 
-            await _dispatcher.InvokeAsync(() =>
+            _dispatcher.Invoke(() =>
             {
                 IsSignChecked = operatorStr == "-";
                 FactorText = valueStr;
@@ -1174,7 +1180,7 @@ namespace GLSense.ViewModels
         private async Task SetLedgerField(string? refValue, string? comboValue)
         {
             LogUtility.LogDebug($"GLConfiguratorViewModel.SetLedgerField: refValue={refValue}, comboValue={comboValue}");
-            await _dispatcher.InvokeAsync(() =>
+            _dispatcher.Invoke(() =>
             {
                 // Set RefValue - if null, set as null
                 LedgerField.RefValue = refValue;
@@ -1393,7 +1399,7 @@ namespace GLSense.ViewModels
             // Handle CTD (end period) logic
             if (string.Equals(btText, AppConstants.BalanceTypeCTD, StringComparison.OrdinalIgnoreCase) || IsBalanceTypeCtd())
             {
-                await _dispatcher.InvokeAsync(() => IsEndPeriodsEnabled = true);
+                _dispatcher.Invoke(() => IsEndPeriodsEnabled = true);
                 string periodArg = FuncArgs[3].Replace("\"", "");
                 string periodValues = FuncValues[3].Replace("\"", "");
                 if (!string.IsNullOrEmpty(periodArg) && periodArg.Contains("~"))
@@ -1410,7 +1416,7 @@ namespace GLSense.ViewModels
             else if (!string.IsNullOrWhiteSpace(btText) && (btText.Equals(AppConstants.BalanceTypeJED, StringComparison.OrdinalIgnoreCase) || btText.Equals(AppConstants.BalanceTypeJEDP, StringComparison.OrdinalIgnoreCase) || btText.Equals(AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase)))
             {
                 // JED variants: Period is not used. Parse StartDate~EndDate from arg/values (index 3)
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     // disable end periods UI
                     IsEndPeriodsEnabled = false;
@@ -1468,7 +1474,7 @@ namespace GLSense.ViewModels
             }
             else
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     IsEndPeriodsEnabled = false;
                     EndPeriodField.ComboValue = null;
@@ -1494,7 +1500,7 @@ namespace GLSense.ViewModels
 
             if (!validBt || !validActivity || !validCurrencyType)
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     JournalSourceField.ComboValue = null;
                     JournalSourceField.RefValue = null;
@@ -1516,7 +1522,7 @@ namespace GLSense.ViewModels
             string cleanValue = partValue.Replace("\"", "");
             if (ExcelRangeHelper.IsRealRange(cleanArg))
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.ComboValue = null;
                     field.RefValue = cleanArg;
@@ -1524,12 +1530,12 @@ namespace GLSense.ViewModels
             }
             else
             {
-                await _dispatcher.InvokeAsync(() => field.RefValue = null);
+                _dispatcher.Invoke(() => field.RefValue = null);
             }
             var match = periods.FirstOrDefault(x => x.PeriodName == cleanValue);
             if (match != null)
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.ComboValue = match;
                     if (field == PeriodField)
@@ -1554,7 +1560,7 @@ namespace GLSense.ViewModels
 
             if (ExcelRangeHelper.IsRealRange(arg))
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.ComboValue = null;
                     field.RefValue = arg;
@@ -1562,7 +1568,7 @@ namespace GLSense.ViewModels
             }
             else
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.RefValue = null;
                     field.ComboValue = null;
@@ -1572,7 +1578,7 @@ namespace GLSense.ViewModels
 
             if (match != null)
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.ComboValue = match;
                 });
@@ -1586,7 +1592,7 @@ namespace GLSense.ViewModels
 
             if (ExcelRangeHelper.IsRealRange(arg))
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.ComboValue = null;
                     field.RefValue = arg;
@@ -1594,7 +1600,7 @@ namespace GLSense.ViewModels
             }
             else
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.RefValue = null;
                     field.ComboValue = null;
@@ -1617,7 +1623,7 @@ namespace GLSense.ViewModels
 
                 if (match != null)
                 {
-                    await _dispatcher.InvokeAsync(() =>
+                    _dispatcher.Invoke(() =>
                     {
                         field.ComboValue = match;
                     });
@@ -1632,7 +1638,7 @@ namespace GLSense.ViewModels
 
             if (ExcelRangeHelper.IsRealRange(arg))
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.ComboValue = null;
                     field.RefValue = arg;
@@ -1640,7 +1646,7 @@ namespace GLSense.ViewModels
             }
             else
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.RefValue = null;
                     field.ComboValue = null;
@@ -1663,7 +1669,7 @@ namespace GLSense.ViewModels
 
                 if (match != null)
                 {
-                    await _dispatcher.InvokeAsync(() =>
+                    _dispatcher.Invoke(() =>
                     {
                         field.ComboValue = match;
                     });
@@ -1678,7 +1684,7 @@ namespace GLSense.ViewModels
 
             if (ExcelRangeHelper.IsRealRange(arg))
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.ComboValue = null;
                     field.RefValue = arg;
@@ -1686,7 +1692,7 @@ namespace GLSense.ViewModels
             }
             else
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.RefValue = null;
                     field.ComboValue = null;
@@ -1696,7 +1702,7 @@ namespace GLSense.ViewModels
 
                 if (match != null)
                 {
-                    await _dispatcher.InvokeAsync(() =>
+                    _dispatcher.Invoke(() =>
                     {
                         field.ComboValue = match;
                     });
@@ -1724,7 +1730,7 @@ namespace GLSense.ViewModels
 
                 if (afType == "B" && !ValidateBudgetForCurrencyType(FuncValues))
                 {
-                    await _dispatcher.InvokeAsync(() =>
+                    _dispatcher.Invoke(() =>
                     {
                         ActualFlagField.ComboValue = null;
                         ActualFlagField.RefValue = null;
@@ -1742,7 +1748,7 @@ namespace GLSense.ViewModels
 
                 if (afType == "B")
                 {
-                    await _dispatcher.InvokeAsync(() =>
+                    _dispatcher.Invoke(() =>
                     {
                         IsBudgetEnabled = true;
                         IsEncumbranceEnabled = false;
@@ -1752,7 +1758,7 @@ namespace GLSense.ViewModels
                 }
                 else if (afType == "E" || afType == AppConstants.ActualEncumbranceShort)
                 {
-                    await _dispatcher.InvokeAsync(() =>
+                    _dispatcher.Invoke(() =>
                     {
                         IsBudgetEnabled = false;
                         IsEncumbranceEnabled = true;
@@ -1763,7 +1769,7 @@ namespace GLSense.ViewModels
                 }
                 else
                 {
-                    await _dispatcher.InvokeAsync(() =>
+                    _dispatcher.Invoke(() =>
                     {
                         IsBudgetEnabled = false;
                         IsEncumbranceEnabled = false;
@@ -1783,7 +1789,7 @@ namespace GLSense.ViewModels
 
             if (ExcelRangeHelper.IsRealRange(arg))
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.ComboValue = null;
                     field.RefValue = arg;
@@ -1791,7 +1797,7 @@ namespace GLSense.ViewModels
             }
             else
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     field.RefValue = null;
                     field.ComboValue = value;
@@ -1807,7 +1813,7 @@ namespace GLSense.ViewModels
 
             if (ExcelRangeHelper.IsRealRange(arg))
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     EncumbranceField.ComboValue = null;
                     EncumbranceField.RefValue = arg;
@@ -1815,7 +1821,7 @@ namespace GLSense.ViewModels
                 return;
             }
 
-            await _dispatcher.InvokeAsync(() =>
+            _dispatcher.Invoke(() =>
             {
                 EncumbranceField.RefValue = null;
 
@@ -1847,7 +1853,7 @@ namespace GLSense.ViewModels
                 }
 
                 var selectedText = string.Join(";", selectedEncumbrances.Select(e => e.EncumbranceType));
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     EncumbranceField.ComboText = selectedText;
                     EncumbranceField.ComboValue = selectedEncumbrances.FirstOrDefault();
@@ -1859,7 +1865,7 @@ namespace GLSense.ViewModels
                 if (match != null)
                 {
                     match.IsSelected = true;
-                    await _dispatcher.InvokeAsync(() =>
+                    _dispatcher.Invoke(() =>
                     {
                         EncumbranceField.ComboText = match.EncumbranceType;
                         EncumbranceField.ComboValue = match;
@@ -1883,7 +1889,7 @@ namespace GLSense.ViewModels
 
             if (ExcelRangeHelper.IsRealRange(arg11) && val11.Contains(";"))
             {
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     AccountAssignmentField.RefValue = arg11;
                     AccountAssignmentField.ComboValue = val11;
@@ -1899,7 +1905,7 @@ namespace GLSense.ViewModels
                 }
 
                 string finalResult = string.Join(";", segList);
-                await _dispatcher.InvokeAsync(() =>
+                _dispatcher.Invoke(() =>
                 {
                     AccountAssignmentField.RefValue = null;
                     AccountAssignmentField.ComboValue = finalResult;

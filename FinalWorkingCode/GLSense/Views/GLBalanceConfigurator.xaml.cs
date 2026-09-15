@@ -490,7 +490,7 @@ namespace GLSense.Views
         }
         private async Task<CellData> ExtractCellDataAsync()
         {
-            return await Dispatcher.InvokeAsync(() =>
+            return Dispatcher.Invoke(() =>
             {
                 var rng = AppState.Instance.ExcelApp.ActiveCell;
                 var cellData = ParseCellData(rng);
@@ -628,13 +628,13 @@ namespace GLSense.Views
             }
 
             await vm.LoadConfiguratorAsync(cellData.ZeroesChecked, ledger, funcArgs, funcValues);
-            await Dispatcher.InvokeAsync(() => CmbLedgers.Text = formulaLedgerNames.Count > 0 ? string.Join(";", formulaLedgerNames) : ledgerName);
+            Dispatcher.Invoke(() => CmbLedgers.Text = formulaLedgerNames.Count > 0 ? string.Join(";", formulaLedgerNames) : ledgerName);
 
             // Update datepicker tooltips after periods load so the tooltip shows the
             // dynamic available date range (start..end).
             try
             {
-                await Dispatcher.InvokeAsync(() =>
+                Dispatcher.Invoke(() =>
                 {
                     try { dtpStartDate.UpdateTooltip(); } catch { LogUtility.LogWarn($"Exception in setting start date tooltip"); }
                     try { dtpEndDate.UpdateTooltip(); } catch { LogUtility.LogWarn($"Exception in setting end date tooltip"); }
