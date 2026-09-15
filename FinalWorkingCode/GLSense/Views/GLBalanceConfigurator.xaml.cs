@@ -351,10 +351,36 @@ namespace GLSense.Views
             string cellAddress = rng.Address[true, true, Excel.XlReferenceStyle.xlA1, false];
             return $"'{sheetName}'!{cellAddress}";
         }
+        // TEMPORARY DIAGNOSTIC: the ReLoadConfigurator call chain has thrown
+        // InvalidOperationException ("a different thread owns it") on
+        // BalanceParametersExpander.IsExpanded, from GLBalanceConfiguratorForm's
+        // RelaunchWindow, across two rounds of hypothesis-driven fixes (removing
+        // SafeInvokeWpf from the call sites, then from window construction) that did not
+        // resolve it. Logs the managed thread ID at each hop through this async chain -
+        // this.Dispatcher.Thread is the control's OWN owning thread (what VerifyAccess()
+        // checks against) - to find exactly where execution lands on the wrong thread,
+        // instead of guessing a third fix blind. Remove once root-caused.
+        private void LogThreadDiag(string checkpoint)
+        {
+            try
+            {
+                LogUtility.LogDebug(
+                    $"[ThreadDiag] {checkpoint} currentThread={Thread.CurrentThread.ManagedThreadId} " +
+                    $"controlDispatcherThread={Dispatcher.Thread.ManagedThreadId} " +
+                    $"syncContext={SynchronizationContext.Current?.GetType().Name ?? "null"}");
+            }
+            catch
+            {
+                // diagnostic-only
+            }
+        }
+
         private async Task ShowBusyOverlayAsync(CancellationHelper helper, string message)
         {
+            LogThreadDiag("ShowBusyOverlayAsync: before Dispatcher.InvokeAsync");
             await Dispatcher.InvokeAsync(() =>
             {
+                LogThreadDiag("ShowBusyOverlayAsync: inside InvokeAsync callback");
                 AppOverlayControl.ShowBusyasyn(
                     message: message + " (Click cancel to stop)",
                     cancelAction: async () =>
@@ -369,17 +395,20 @@ namespace GLSense.Views
                     }
                 );
             }, DispatcherPriority.Background);
+            LogThreadDiag("ShowBusyOverlayAsync: after Dispatcher.InvokeAsync");
         }
         public async Task ExecuteWithBusyOverlay(
                 string message,
                 Func<CancellationHelper, Task> action)
         {
             LogUtility.LogDebug($"GLBalanceConfigurator.ExecuteWithBusyOverlay invoked - message={message}");
+            LogThreadDiag("ExecuteWithBusyOverlay: entry");
             var helper = new CancellationHelper();
 
             try
             {
                 await ShowBusyOverlayAsync(helper, message);
+                LogThreadDiag("ExecuteWithBusyOverlay: after ShowBusyOverlayAsync, before action(helper)");
                 await action(helper);
             }
             finally
@@ -392,6 +421,7 @@ namespace GLSense.Views
             LogUtility.LogDebug("GLBalanceConfigurator.ReLoadConfigurator invoked");
             await ExecuteWithBusyOverlay("Reloading Configurator", async helper =>
             {
+                LogThreadDiag("ReLoadConfigurator: before BalanceParametersExpander.IsExpanded = false");
                 BalanceParametersExpander.IsExpanded = false;
 
                 if (!HasValidCubeAndLedger())

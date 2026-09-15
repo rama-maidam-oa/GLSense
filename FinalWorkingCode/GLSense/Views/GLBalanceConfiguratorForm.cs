@@ -283,12 +283,24 @@ namespace GLSense.Views
                 Math.Min(Math.Max(Height, minHeightPx), maxHeightPx));
         }
 
+        /// <summary>The Excel top-level window this Form is currently owned by. Mirrors
+        /// the VB.NET sibling's FormFSG.ExcelHWND - RibFSGWindow_OnClick compares this
+        /// against the currently active Excel window to decide whether the Form needs to
+        /// be re-shown under a new owner (Book1/Book2 are separate top-level Excel
+        /// windows; an owned window otherwise stays tied to its original owner even after
+        /// that owner is no longer the active workbook).</summary>
+        public IntPtr ExcelHwnd { get; private set; }
+
         /// <summary>
-        /// Shows this Form non-modally, owned by Excel's main window.
+        /// Shows this Form non-modally, owned by Excel's main window. Safe to call again
+        /// on an already-constructed Form to re-parent it to a different Excel window -
+        /// same as the VB.NET sibling's FormFSG.Show(New WindowWrapper(excelHwnd)),
+        /// called again whenever FSGForm.ExcelHWND changes.
         /// </summary>
         public void ShowFloating(IntPtr excelHwnd)
         {
             LogUtility.LogDebug($"GLBalanceConfiguratorForm.ShowFloating invoked. excelHwnd={excelHwnd}");
+            ExcelHwnd = excelHwnd;
             Show(new Win32Window(excelHwnd));
         }
 
@@ -298,6 +310,12 @@ namespace GLSense.Views
             try
             {
                 LogUtility.LogDebug("GLBalanceConfiguratorForm.RelaunchWindow invoked.");
+                // TEMPORARY DIAGNOSTIC: baseline checkpoint - the caller's thread (an
+                // Excel COM event or ribbon click) before crossing into the WPF control.
+                // See GLBalanceConfigurator.LogThreadDiag for the rest of the chain.
+                LogUtility.LogDebug(
+                    $"[ThreadDiag] RelaunchWindow: entry currentThread={System.Threading.Thread.CurrentThread.ManagedThreadId} " +
+                    $"formInvokeRequired={InvokeRequired}");
                 if (_configuratorControl != null)
                 {
                     await _configuratorControl.ReLoadConfigurator();

@@ -2773,23 +2773,36 @@ namespace GLSense
                 // Without this, every click spawns another independent floating
                 // configurator (the pane path above just toggles the one pane).
                 var existing = AppState.Instance.BalanceWindow;
-                if (existing != null && !existing.IsDisposed && existing.Visible)
+                if (existing == null || existing.IsDisposed)
                 {
-                    LogUtility.LogDebug("RibFSGWindow_OnClick: Balance Configurator window already open, activating it.");
+                    GetOrCreateBalanceWindow();
+                    return;
+                }
+
+                var currentExcelHwnd = (IntPtr)AppState.Instance.ExcelApp.Hwnd;
+                if (existing.Visible && existing.ExcelHwnd == currentExcelHwnd)
+                {
+                    LogUtility.LogDebug("RibFSGWindow_OnClick: Balance Configurator window already open on this workbook's window, activating it.");
                     existing.Activate();
                     return;
                 }
 
-                // A hidden-but-still-referenced window (see ApplyBalanceWindowVisibility)
-                // is re-shown rather than rebuilt - re-creating it here is exactly the
-                // slow reload/repaint the VB.NET sibling avoids by hiding instead of
-                // closing FSGForm.
-                bool wasHidden = existing != null && !existing.IsDisposed;
-                var win = GetOrCreateBalanceWindow();
-                if (wasHidden)
+                // Either hidden, or open but owned by a DIFFERENT, now-inactive Excel
+                // window (Book1/Book2 are separate top-level windows - an owned window
+                // otherwise just stays tied to whichever one owned it originally). Hide
+                // it (if currently shown) and re-show under the CURRENT window instead,
+                // mirroring the VB.NET sibling's RibFSG_OnClick (FSGForm.ExcelHWND <>
+                // excelHwnd -> UpdateExcelHandle + hide + re-Show(new owner)). Calling
+                // Activate() on a window still owned by a different, inactive workbook
+                // window would bring that stale owner to the foreground right alongside
+                // it - confirmed by testing to be exactly the confusing result this
+                // avoids.
+                if (existing.Visible)
                 {
-                    _ = win.RelaunchWindow();
+                    existing.Visible = false;
                 }
+                existing.ShowFloating(currentExcelHwnd);
+                _ = existing.RelaunchWindow();
             }
             catch (Exception ex)
             {
