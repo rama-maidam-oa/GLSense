@@ -3,7 +3,7 @@
                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                       xmlns:local="clr-namespace:GLSense.Views"
                       xmlns:utils="clr-namespace:GLSense.Utilities"
-                      xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
+                      Title="Balance Configurator"
                       Background="#F8F9FA" SizeToContent="Manual"
                       MinWidth="600" MaxWidth="1000" MinHeight="300" MaxHeight="900"
                       Width="650" Height="700"
@@ -21,19 +21,27 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <iconPacks:PackIconFontAwesome Kind="CalculatorSolid" Style="{StaticResource LargeIcon}"/>
-                    <TextBlock Text="Balance Configurator" Style="{StaticResource TitleHeaderTextBlock}"/>
-                </StackPanel>
-                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
-            </Grid>
+        <!-- ================= Drag strip =================
+             Deliberately NOT a header bar: the hosted GLBalanceConfigurator control
+             already renders its own HeaderBar (calculator icon, "Balance Configurator"
+             title and a working close button wired to OnCloseRequested, which this
+             window subscribes to), so an icon/title/close button here would simply be
+             a second, visually identical header stacked on top of it.
+
+             The Border itself must stay, though. This is a WindowStyle="None" window
+             whose only drag mechanism is EnhancedDragDropHelper.EnableWindowDrag, and
+             that helper's IsInteractiveControl treats ScrollViewer as a drag-suppressing
+             ancestor (Helpers\EnhancedDragDropHelper.cs:20). GLBalanceConfigurator's
+             root element IS a ScrollViewer (MainScrollViewer), so nothing inside the
+             hosted control can initiate a window drag - this thin strip above it is the
+             window's only draggable surface. It needs a non-null Background to be
+             hit-testable; the grip bar is just an affordance hinting that it is
+             draggable. Neither the Border nor the Rectangle is in the helper's
+             _interactiveTypes set, so mouse-down here bubbles to the window and drags. -->
+        <Border Grid.Row="0" Background="#F8F9FA" Height="12" Cursor="SizeAll"
+                ToolTip="Drag to move this window">
+            <Rectangle Width="44" Height="3" RadiusX="1.5" RadiusY="1.5"
+                       Fill="#C8CDD2" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <ContentControl x:Name="ConfiguratorHost" Grid.Row="1"/>
     </Grid>

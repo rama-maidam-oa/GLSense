@@ -2750,6 +2750,19 @@ namespace GLSense
             {
                 SafeInvokeWpf(() =>
                 {
+                    // Without this, every click spawns another independent floating
+                    // configurator (the pane path above just toggles the one pane).
+                    // Activate() is enough here - the window's own ForceSetForegroundWindow
+                    // reclaim runs on open, and this is an explicit user click on the
+                    // ribbon, so Excel already owns the foreground.
+                    var existing = AppState.Instance.BalanceWindow;
+                    if (existing != null && existing.IsVisible)
+                    {
+                        LogUtility.LogDebug("RibFSGWindow_OnClick: Balance Configurator window already open, activating it.");
+                        existing.Activate();
+                        return;
+                    }
+
                     var win = new GLBalanceConfiguratorWindow();
                     AppState.Instance.BalanceWindow = win;
                     win.Closed += (s, e) =>

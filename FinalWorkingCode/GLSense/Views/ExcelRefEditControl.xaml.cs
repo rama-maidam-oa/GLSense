@@ -215,10 +215,23 @@ namespace GLSense.Views
                         parentWindow.IsEnabled = true;
                         parentWindow.Activate();
 
-                        var parentHwnd = new WindowInteropHelper(parentWindow).Handle;
-                        if (parentHwnd != IntPtr.Zero)
+                        // Focus reclaim is best-effort: this sits in a nested finally, so an
+                        // exception escaping here would escape BtnEdit_Click entirely and
+                        // lose the cell the user just picked. Guarded the same way the other
+                        // call site wraps it (Helpers\ExcelWindowPositioning.cs,
+                        // ActivateExcelMainWindow) and the same way the Excel-settings
+                        // restore above is guarded.
+                        try
                         {
-                            ExcelWindowHelper.ForceSetForegroundWindow(parentHwnd);
+                            var parentHwnd = new WindowInteropHelper(parentWindow).Handle;
+                            if (parentHwnd != IntPtr.Zero)
+                            {
+                                ExcelWindowHelper.ForceSetForegroundWindow(parentHwnd);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogException(ex, "ExcelRefEditControl.BtnEdit_Click: restoring foreground focus to the host window");
                         }
                     }
                     else if (hostDisabled && hostContainer != null)

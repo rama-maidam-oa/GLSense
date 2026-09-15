@@ -3,7 +3,6 @@ using GLSense.Utilities;
 using System;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Input;
 using System.Windows.Interop;
 
 namespace GLSense.Views
@@ -35,6 +34,29 @@ namespace GLSense.Views
             // MaxHeight in this window's XAML are plain WPF Window properties, already
             // enforced natively by ResizeMode="CanResize" independent of this flag, so
             // there is nothing to disable here.
+
+            // DpiAwareWindow.FitToAvailableWorkArea overwrites MaxWidth/MaxHeight at
+            // runtime from MaxWidthCap/MaxHeightCap (Utilities\DpiAwareWindow.cs:574-578,
+            // 951-958), NOT from the MaxWidth/MaxHeight declared in this window's XAML.
+            // Left at their defaults (1400d / null) the XAML's MaxWidth="1000"
+            // MaxHeight="900" would silently be replaced by 1400 and by a work-area-derived
+            // height. Mirror the XAML values here so the base class clamps to the intended
+            // size instead of overriding it.
+            MaxWidthCap = 1000d;
+            MaxHeightCap = 900d;
+
+            // The task pane cannot be Escape-closed at all, and Escape here is worse than
+            // merely inconsistent: DpiAwareWindow.OnWindowPreviewKeyDown only suppresses
+            // Escape while IsInteractionOverlayVisible() is true, and that method resolves
+            // the overlay with FindName("AppOverlayControl") against the WINDOW's own XAML
+            // namescope. Every other DpiAwareWindow declares <views:AppOverlay
+            // x:Name="AppOverlayControl"/> in its own xaml; this one does not - its overlay
+            // lives inside the hosted GLBalanceConfigurator control, a separate namescope -
+            // so the lookup always returns null here and Escape would close the window even
+            // mid-operation (e.g. while "Reloading Configurator" is showing). Reaching into
+            // the hosted control's namescope would be fragile; disabling Escape entirely
+            // matches the task pane and is the safe behaviour.
+            EnableEscapeToClose = false;
 
             InitializeComponent();
 
@@ -85,21 +107,86 @@ namespace GLSense.Views
             // content so the very first keystroke after opening lands in a field here,
             // not wherever WPF keyboard focus last was.
             ReclaimForegroundFocus();
-            MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+            FocusFirstDataField();
         }
 
-        private void BtnClose_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Puts initial keyboard focus on the first real data field of the hosted
+        /// configurator.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately NOT MoveFocus(FocusNavigationDirection.First). In visual-tree
+        /// order the first focusable element under this window is the close button in
+        /// GLBalanceConfigurator's own HeaderBar (Views\GLBalanceConfigurator.xaml:136),
+        /// declared before any data control, and CustomWindowCloseButtonStyle does not set
+        /// Focusable="False" - so a First traversal lands on the X and the very first
+        /// Space/Enter keystroke after opening closes the window. Targeting the Ledger
+        /// combo explicitly avoids that. If it cannot take focus (e.g. still disabled
+        /// while the configurator loads), focus simply stays on the window itself, which
+        /// is harmless - no button is focused, so no keystroke can activate one.
+        /// </remarks>
+        private void FocusFirstDataField()
         {
-            LogUtility.LogDebug("GLBalanceConfiguratorWindow.BtnClose_Click invoked");
-            Close();
+            try
+            {
+                bool focused = ConfiguratorControl?.CmbLedgers?.Focus() ?? false;
+                if (!focused)
+                {
+                    LogUtility.LogDebug("GLBalanceConfiguratorWindow.FocusFirstDataField: first data field did not take focus; leaving focus on the window");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLBalanceConfiguratorWindow.FocusFirstDataField");
+            }
         }
 
-        public Task RelaunchWindow() => ConfiguratorControl.ReLoadConfigurator();
-
-        public Task ResetWindowReference()
+        /// <summary>
+        /// Mirrors GLConfiguratorPane.RelaunchPane (GLConfiguratorPane.cs:216-234),
+        /// including its try/catch + LogUtility.LogException wrapper: both are called
+        /// fire-and-forget from AddinModule's SheetSelectionChange handler, so without the
+        /// catch an exception would be swallowed by the discarded Task with no log line.
+        /// </summary>
+        public async Task RelaunchWindow()
         {
-            GLBalanceConfigurator.ResetCellReference();
-            return Task.CompletedTask;
+            try
+            {
+                LogUtility.LogDebug("GLBalanceConfiguratorWindow.RelaunchWindow invoked.");
+                if (ConfiguratorControl != null && ConfiguratorControl.Dispatcher != null)
+                {
+                    // Dispatcher.InvokeAsync(async () => ...) doesn't wait for the inner Task -
+                    // the DispatcherOperation completes as soon as the delegate hits its first
+                    // await. Use a non-async delegate + Task.Unwrap() so the real completion is
+                    // awaited (same pattern as GLConfiguratorPane.RelaunchPane).
+                    await ConfiguratorControl.Dispatcher.InvokeAsync(() => ConfiguratorControl.ReLoadConfigurator()).Task.Unwrap();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLBalanceConfiguratorWindow.RelaunchWindow");
+            }
+        }
+
+        /// <summary>
+        /// Mirrors GLConfiguratorPane.ResetPaneReference (GLConfiguratorPane.cs:235-252).
+        /// </summary>
+        public async Task ResetWindowReference()
+        {
+            try
+            {
+                LogUtility.LogDebug("GLBalanceConfiguratorWindow.ResetWindowReference invoked.");
+                if (ConfiguratorControl != null && ConfiguratorControl.Dispatcher != null)
+                {
+                    await ConfiguratorControl.Dispatcher.InvokeAsync(() =>
+                    {
+                        GLBalanceConfigurator.ResetCellReference();
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLBalanceConfiguratorWindow.ResetWindowReference");
+            }
         }
     }
 }
