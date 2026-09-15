@@ -778,10 +778,13 @@ namespace GLSense
                 LogUtility.LogDebug($"SheetActivate fired. Sheet={(hostObj as Excel.Worksheet)?.Name ?? "<unknown>"}");
                 _ribbonHelper.ApplyState("ApplySheetActiveState");
 
-                // Fires on both worksheet AND workbook switches (a workbook switch also
-                // activates that workbook's active sheet) - mirrors the VB.NET sibling's
-                // AdxExcelAppEvents1_SheetActivate, which is the only place FSGForm reacts
-                // to a workbook switch; WorkbookActivate itself never touches FSGForm.
+                // Covers switching sheets within the SAME workbook. Switching BETWEEN
+                // open workbooks does not fire this event in this add-in's event wiring
+                // (confirmed via logging: zero SheetActivate hits across several
+                // WorkbookActivate-driven workbook switches, unlike the VB.NET sibling
+                // this was ported from, where SheetActivate is the only place FSGForm
+                // reacts to a workbook switch too) - that case is handled by
+                // adxExcelAppEvents1_WorkbookActivate below instead.
                 SafeInvokeWpf(() => ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.Selection as Excel.Range));
             }
             catch (Exception ex)
@@ -2124,6 +2127,13 @@ namespace GLSense
                 LogUtility.LogDebug($"WorkbookActivate fired. Workbook={AppState.Instance.ExcelApp?.ActiveWorkbook?.Name}");
                 _ribbonHelper.ApplyState("LoggedIn");
                 SyncRibbonSelectionWithAppState();
+
+                // Confirmed via logging that switching BETWEEN open workbooks fires this
+                // event but never SheetActivate (unlike the VB.NET sibling, where
+                // SheetActivate alone was assumed to cover it) - so the floating window has
+                // to react here, checking the newly active workbook's own active cell for a
+                // balance formula, same as a normal selection change would.
+                SafeInvokeWpf(() => ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.ActiveCell as Excel.Range));
             }
             catch (Exception ex)
             {

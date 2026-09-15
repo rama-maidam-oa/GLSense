@@ -161,7 +161,7 @@ namespace GLSense.Helpers
             {
                 DisableControls(
                 [
-                   "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibHideRows","RibUnHideRows",
+                   "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibShowAlways","RibHideRows","RibUnHideRows",
                    "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
                    "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
@@ -195,7 +195,7 @@ namespace GLSense.Helpers
                 DisableControls(
                 [
                    "RibLogin", "RibLogout", "Riburl", "RibDebug", "RibAbout",
-                   "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibHideRows","RibUnHideRows",
+                   "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibShowAlways","RibHideRows","RibUnHideRows",
                    "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
                    "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
@@ -216,7 +216,7 @@ namespace GLSense.Helpers
             {
                 DisableControls(
                 [
-                   "Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibHideRows","RibUnHideRows",
+                   "Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibShowAlways","RibHideRows","RibUnHideRows",
                    "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
                    "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
@@ -247,7 +247,7 @@ namespace GLSense.Helpers
             {
                 EnableControls(
                 [
-                   "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibHideRows","RibUnHideRows",
+                   "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibShowAlways","RibHideRows","RibUnHideRows",
                    "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
                    "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                    "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
@@ -290,7 +290,7 @@ namespace GLSense.Helpers
                 {
                     DisableControls(
                      [
-                       "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibHideRows","RibUnHideRows",
+                       "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibShowAlways","RibHideRows","RibUnHideRows",
                        "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
                        "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                        "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
@@ -303,7 +303,7 @@ namespace GLSense.Helpers
                 {
                     EnableControls(
                      [
-                       "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibHideRows","RibUnHideRows",
+                       "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibFSGWindow","RibShowAlways","RibHideRows","RibUnHideRows",
                        "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
                        "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
                        "RibClearSheet","RibClear","RibHighlight","RibCellHighlight","RibSnapShot","RibSnapWorksheet","RibSnapWorkbook","RibSnapSubmit",
