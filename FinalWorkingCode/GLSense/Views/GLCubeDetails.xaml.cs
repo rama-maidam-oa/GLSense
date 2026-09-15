@@ -820,12 +820,12 @@ namespace GLSense.Views
                 if (AppState.Instance.SelectedCube?.CubeId != _currentCube.CubeId)
                 {
                     result = await ProcessCubeSelectionNew(_currentCube, _selectedLedger, token);
-                    ConfiguratorRelaunch();
+                    AddinModule.HideBalanceConfiguratorIfOpen();
                 }
                 else if (AppState.Instance.SelectedLedger?.LedgerId != _selectedLedger.LedgerId)
                 {
                     result = await ProcessCubeSelectionReload(_currentCube, _selectedLedger, cts);
-                    ConfiguratorRelaunch();
+                    AddinModule.HideBalanceConfiguratorIfOpen();
                 }
                 else
                 {
@@ -1091,16 +1091,6 @@ namespace GLSense.Views
             {
                 LogUtility.LogException(ex, "GLCubeDetails.ProcessCubeSelectionReload");
                 return new OperationResult { IsSuccess = false, Message = ex.Message, Exception = ex };
-            }
-        }
-
-        private static void ConfiguratorRelaunch()
-        {
-            AppState.Instance.BalancePane = AddinModule.CurrentInstance.GetPaneInstance();
-
-            if (AppState.Instance.BalancePane != null && AppState.Instance.BalancePane.Visible)
-            {
-                _ = AppState.Instance.BalancePane.RelaunchPane();
             }
         }
 

@@ -2094,6 +2094,38 @@ namespace GLSense
             }
         }
 
+        /// <summary>Hides the Balance Configurator (pane and/or floating window) if either
+        /// is currently visible. Matches the VB.NET sibling's RibLedger_OnChange and
+        /// FormCubes cube-selection-commit handlers: on a genuine ledger or cube/chart-of-
+        /// accounts change, the currently-loaded configurator state (segments,
+        /// currencies, balance types, etc.) is tied to the OLD ledger/cube and would be
+        /// stale/invalid - rather than trying to reload it in place, VB.NET just hides it
+        /// (never reloads), same as this app already does when the user clicks off a
+        /// balance formula cell. The user reopens it fresh via the ribbon button once
+        /// ready. Call only when the change is confirmed/genuine (same gating the two
+        /// callers already apply before calling this).</summary>
+        public static void HideBalanceConfiguratorIfOpen()
+        {
+            try
+            {
+                var pane = AddinModule.CurrentInstance?.GetPaneInstance();
+                if (pane != null && pane.Visible)
+                {
+                    pane.Visible = false;
+                }
+
+                var win = AppState.Instance.BalanceWindow;
+                if (win != null && !win.IsDisposed && win.Visible)
+                {
+                    win.Visible = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "AddinModule.HideBalanceConfiguratorIfOpen");
+            }
+        }
+
         private void SyncRibbonSelectionWithAppState()
         {
             if (!AppState.Instance.IsLoginCompleted)
@@ -3121,11 +3153,7 @@ namespace GLSense
                 if (shouldContinue)
                 {
                     await PerformLedgerChangeAsync(ledger, sheetClear, token, win);
-                    AppState.Instance.BalancePane = GetPaneInstance();
-                    if (AppState.Instance.BalancePane != null && AppState.Instance.BalancePane.Visible)
-                    {
-                        _ = AppState.Instance.BalancePane.RelaunchPane();
-                    }
+                    HideBalanceConfiguratorIfOpen();
                 }
             }
             catch (OperationCanceledException)
