@@ -56,10 +56,18 @@ namespace GLSense.Views
 
             Text = "Balance Configurator";
             StartPosition = FormStartPosition.CenterParent;
-            FormBorderStyle = FormBorderStyle.Sizable;
-            MaximizeBox = false;
+            // No native title bar/caption: GLBalanceConfigurator (the hosted WPF control)
+            // already draws its own header (icon, title, close button) - a native caption
+            // on top of that would duplicate it, the same bug the earlier WPF Window
+            // implementation hit and fixed by removing its own duplicate header. The
+            // CreateParams override below adds WS_THICKFRAME so the Form stays resizable
+            // by dragging its edges despite having no visible border/caption, and the
+            // WndProc override below turns the WPF content's own header area into a drag
+            // handle (HTCAPTION) so the window can still be moved, since removing the
+            // native caption also removes the native drag-to-move behavior it provided.
+            FormBorderStyle = FormBorderStyle.None;
             AutoScaleMode = AutoScaleMode.Dpi;
-            Size = new Size(650, 700);
+            Size = new Size(680, 800);
 
             // See GLConfiguratorPane.cs's own "REVERT NOTE" comment for why this scope
             // matters: constructing the WPF object here does NOT create its native HWND
@@ -94,6 +102,76 @@ namespace GLSense.Views
             ApplyDpiAwareSizing(DefaultDpi);
             HandleCreated += GLBalanceConfiguratorForm_HandleCreated;
             DpiChanged += (s, e) => ApplyDpiAwareSizing(e.DeviceDpiNew);
+        }
+
+        /// <summary>
+        /// WS_EX_TOOLWINDOW matches the VB.NET sibling's FormFSG.vb CreateParams override
+        /// (tested against the cell-edit-mode click issue - did NOT resolve it, that is
+        /// still unexplained and needs real investigation rather than another guess; kept
+        /// anyway since it's still a reasonable, harmless taskbar/Alt-Tab visibility
+        /// choice matching FormFSG). WS_THICKFRAME restores native resize-by-dragging-edges
+        /// now that FormBorderStyle=None has removed the visible border that normally
+        /// provides it.
+        /// </summary>
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                const int WS_EX_TOOLWINDOW = 0x80;
+                const int WS_THICKFRAME = 0x00040000;
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_TOOLWINDOW;
+                cp.Style |= WS_THICKFRAME;
+                return cp;
+            }
+        }
+
+        // Approximate height (DIPs) of GLBalanceConfigurator's own header Border
+        // (Views\GLBalanceConfigurator.xaml:125, styled by the "HeaderBar" style in
+        // Themes\GlobalStyles.xaml - Padding="10,8" around an icon + title, no explicit
+        // Height, sized to content) - used below to turn that area into a drag handle.
+        // Approximate rather than measured from the live WPF element (PointToScreen on
+        // the actual header Border) because this only needs to be "close enough to feel
+        // right when dragging", not pixel-exact; a too-generous strip just means the user
+        // can start a drag a few pixels into the content area, which is harmless.
+        private const int HeaderDragHeightDip = 44;
+
+        // Reserved width (DIPs) at the right edge of the header strip, excluded from the
+        // drag region, approximating where GLBalanceConfigurator's own close button sits -
+        // without this, dragging would swallow clicks meant for that button.
+        private const int HeaderCloseButtonReserveDip = 60;
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_NCHITTEST = 0x0084;
+            const int HTCLIENT = 1;
+            const int HTCAPTION = 2;
+
+            base.WndProc(ref m);
+
+            if (m.Msg == WM_NCHITTEST && m.Result.ToInt32() == HTCLIENT)
+            {
+                try
+                {
+                    int x = unchecked((short)(long)m.LParam);
+                    int y = unchecked((short)((long)m.LParam >> 16));
+                    Point clientPoint = PointToClient(new Point(x, y));
+
+                    double scale = GetEffectiveDpi() / (double)DefaultDpi;
+                    int headerHeight = (int)Math.Round(HeaderDragHeightDip * scale);
+                    int closeReserve = (int)Math.Round(HeaderCloseButtonReserveDip * scale);
+
+                    if (clientPoint.Y >= 0 && clientPoint.Y <= headerHeight &&
+                        clientPoint.X >= 0 && clientPoint.X < ClientSize.Width - closeReserve)
+                    {
+                        m.Result = (IntPtr)HTCAPTION;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "GLBalanceConfiguratorForm.WndProc(WM_NCHITTEST)");
+                }
+            }
         }
 
         private void GLBalanceConfiguratorForm_HandleCreated(object sender, EventArgs e)
