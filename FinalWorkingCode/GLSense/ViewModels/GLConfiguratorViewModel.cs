@@ -3741,6 +3741,12 @@ namespace GLSense.ViewModels
             }
 
             ValidateRequired(PeriodField, "Period");
+
+            var bt = GetFieldValue(BalanceTypeField);
+            if (!string.IsNullOrWhiteSpace(bt) && bt.Equals(AppConstants.BalanceTypeCTD, StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequired(EndPeriodField, "End Period is required for CTD Balance Type.");
+            }
         }
 
         private void ValidateDateRange()
