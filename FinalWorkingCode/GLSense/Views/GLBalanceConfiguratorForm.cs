@@ -56,7 +56,11 @@ namespace GLSense.Views
             LogUtility.LogDebug("GLBalanceConfiguratorForm.ctor invoked");
 
             Text = "Balance Configurator";
-            StartPosition = FormStartPosition.CenterParent;
+            // Manual, not CenterParent: position is set explicitly below in
+            // GLBalanceConfiguratorForm_HandleCreated, matching the VB.NET sibling's
+            // FrmFSG_Load positioning exactly (flush against the right edge of the
+            // primary screen's working area, 50px up from the bottom).
+            StartPosition = FormStartPosition.Manual;
             // No native title bar/caption: GLBalanceConfigurator (the hosted WPF control)
             // already draws its own header (icon, title, close button) - a native caption
             // on top of that would duplicate it, the same bug the earlier WPF Window
@@ -228,6 +232,22 @@ namespace GLSense.Views
             }
 
             ApplyDpiAwareSizing(GetEffectiveDpi());
+            ApplyVbNetStylePosition();
+        }
+
+        /// <summary>Matches the VB.NET sibling's FrmFSG_Load exactly: "Me.Location = New
+        /// Point(Screen.PrimaryScreen.WorkingArea.Width - Me.Width,
+        /// Screen.PrimaryScreen.WorkingArea.Height - Me.Height - 50)" - flush against the
+        /// right edge of the PRIMARY screen's working area (not necessarily the screen
+        /// Excel itself is on - the VB.NET version has this same quirk), 50px up from the
+        /// bottom. Called after ApplyDpiAwareSizing so Width/Height already reflect the
+        /// real per-monitor-scaled size.</summary>
+        private void ApplyVbNetStylePosition()
+        {
+            var workingArea = Screen.PrimaryScreen.WorkingArea;
+            Location = new Point(
+                workingArea.Width - Width,
+                workingArea.Height - Height - 50);
         }
 
         private int GetEffectiveDpi()
@@ -287,22 +307,6 @@ namespace GLSense.Views
             {
                 LogUtility.LogException(ex, "GLBalanceConfiguratorForm.RelaunchWindow");
             }
-        }
-
-        /// <summary>Mirrors GLConfiguratorPane.ResetPaneReference (GLConfiguratorPane.cs:235-252).</summary>
-        public Task ResetWindowReference()
-        {
-            try
-            {
-                LogUtility.LogDebug("GLBalanceConfiguratorForm.ResetWindowReference invoked.");
-                GLBalanceConfigurator.ResetCellReference();
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "GLBalanceConfiguratorForm.ResetWindowReference");
-            }
-
-            return Task.CompletedTask;
         }
 
         /// <summary>Minimal IWin32Window wrapper for Show(owner) - same pattern as the

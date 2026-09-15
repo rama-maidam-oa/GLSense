@@ -52,6 +52,7 @@ namespace GLSense
             this.adxRibbonBox4 = new AddinExpress.MSO.ADXRibbonBox(this.components);
             this.RibFSG = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibFSGWindow = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibShowAlways = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.RibLiveCalc = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.adxRibbonGroup4 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibSegS = new AddinExpress.MSO.ADXRibbonComboBox(this.components);
@@ -384,6 +385,7 @@ namespace GLSense
             this.adxRibbonBox4.BoxStyle = AddinExpress.MSO.ADXRibbonXBoxStyle.Vertical;
             this.adxRibbonBox4.Controls.Add(this.RibFSG);
             this.adxRibbonBox4.Controls.Add(this.RibFSGWindow);
+            this.adxRibbonBox4.Controls.Add(this.RibShowAlways);
             this.adxRibbonBox4.Controls.Add(this.RibLiveCalc);
             this.adxRibbonBox4.Id = "adxRibbonBox_22c42e40ef204c2981fc8005b1855550";
             this.adxRibbonBox4.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
@@ -411,7 +413,17 @@ namespace GLSense
             this.RibFSGWindow.ScreenTip = "Balance (Floating Window)";
             this.RibFSGWindow.SuperTip = "Opens the Balance Configurator as a floating window instead of the docked task pane (preview)";
             this.RibFSGWindow.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibFSGWindow_OnClick);
-            // 
+            //
+            // RibShowAlways
+            //
+            this.RibShowAlways.Caption = "Show Always";
+            this.RibShowAlways.Id = "adxRibbonCheckBox_7d4e9a2c1f6b4830a5d8e3c9b7f1a204";
+            this.RibShowAlways.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibShowAlways.ScreenTip = "Show";
+            this.RibShowAlways.SuperTip = "Keep the Balance Configurator window open when selecting other cells, instead o" +
+                "f hiding it automatically when the selection leaves a balance formula cell.";
+            this.RibShowAlways.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibShowAlways_OnClick);
+            //
             // RibLiveCalc
             // 
             this.RibLiveCalc.Caption = "Calculate Now";
@@ -1357,6 +1369,7 @@ namespace GLSense
         public AddinExpress.MSO.ADXRibbonBox adxRibbonBox4;
         public AddinExpress.MSO.ADXRibbonButton RibFSG;
         public AddinExpress.MSO.ADXRibbonButton RibFSGWindow;
+        public AddinExpress.MSO.ADXRibbonCheckBox RibShowAlways;
         public AddinExpress.MSO.ADXRibbonCheckBox RibLiveCalc;
         public AddinExpress.MSO.ADXRibbonComboBox RibSegS;
         public AddinExpress.MSO.ADXRibbonBox adxRibbonBox5;

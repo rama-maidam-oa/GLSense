@@ -103,6 +103,12 @@ namespace GLSense
         //  focus back to Excel's grid in this in-process, same-thread hosting context.
         public GLBalanceConfiguratorForm BalanceWindow { get; set; }
 
+        // Mirrors the VB.NET sibling's "Show Always" ribbon checkbox (FSGShow) - when
+        // true, the window stays open and live-refreshes on every cell/sheet selection
+        // instead of auto-hiding when the selection leaves a GLSense_GetBalance cell. See
+        // RibShowAlways_OnClick and AddinModule.ApplyBalanceWindowVisibility.
+        public bool BalanceWindowShowAlways { get; set; }
+
         // Data caches
         public System.Data.DataTable CalculatedBalances { get; set; } = new System.Data.DataTable();
         public Dictionary<string,object> PreComputedBalances { get; set; } = new Dictionary<string, object>();

@@ -777,6 +777,12 @@ namespace GLSense
             {
                 LogUtility.LogDebug($"SheetActivate fired. Sheet={(hostObj as Excel.Worksheet)?.Name ?? "<unknown>"}");
                 _ribbonHelper.ApplyState("ApplySheetActiveState");
+
+                // Fires on both worksheet AND workbook switches (a workbook switch also
+                // activates that workbook's active sheet) - mirrors the VB.NET sibling's
+                // AdxExcelAppEvents1_SheetActivate, which is the only place FSGForm reacts
+                // to a workbook switch; WorkbookActivate itself never touches FSGForm.
+                SafeInvokeWpf(() => ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.Selection as Excel.Range));
             }
             catch (Exception ex)
             {
@@ -2023,8 +2029,7 @@ namespace GLSense
 
                 LogUtility.LogDebug($"SheetSelectionChange fired. Sheet={(sheet as Excel.Worksheet)?.Name}, Cell={rng.Address}");
 
-                bool isBalanceFormulaCell = TryGetSingleCellFormula(rng, out string formula) &&
-                    formula.IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isBalanceFormulaCell = HasBalanceFormula(rng);
 
                 AppState.Instance.BalancePane = GetPaneInstance();
                 if (AppState.Instance.BalancePane != null && AppState.Instance.BalancePane.Visible)
@@ -2039,17 +2044,7 @@ namespace GLSense
                     }
                 }
 
-                if (AppState.Instance.BalanceWindow != null && AppState.Instance.BalanceWindow.Visible)
-                {
-                    if (isBalanceFormulaCell)
-                    {
-                        _ = AppState.Instance.BalanceWindow.RelaunchWindow();
-                    }
-                    else
-                    {
-                        _ = AppState.Instance.BalanceWindow.ResetWindowReference();
-                    }
-                }
+                SafeInvokeWpf(() => ApplyBalanceWindowVisibility(rng));
             }
             catch (Exception ex)
             {
@@ -2770,28 +2765,124 @@ namespace GLSense
                     // Without this, every click spawns another independent floating
                     // configurator (the pane path above just toggles the one pane).
                     var existing = AppState.Instance.BalanceWindow;
-                    if (existing != null && existing.Visible)
+                    if (existing != null && !existing.IsDisposed && existing.Visible)
                     {
                         LogUtility.LogDebug("RibFSGWindow_OnClick: Balance Configurator window already open, activating it.");
                         existing.Activate();
                         return;
                     }
 
-                    var win = new GLBalanceConfiguratorForm();
-                    AppState.Instance.BalanceWindow = win;
-                    win.FormClosed += (s, e) =>
+                    // A hidden-but-still-referenced window (see ApplyBalanceWindowVisibility)
+                    // is re-shown rather than rebuilt - re-creating it here is exactly the
+                    // slow reload/repaint the VB.NET sibling avoids by hiding instead of
+                    // closing FSGForm.
+                    bool wasHidden = existing != null && !existing.IsDisposed;
+                    var win = GetOrCreateBalanceWindow();
+                    if (wasHidden)
                     {
-                        if (AppState.Instance.BalanceWindow == win)
-                        {
-                            AppState.Instance.BalanceWindow = null;
-                        }
-                    };
-                    win.ShowFloating((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                        _ = win.RelaunchWindow();
+                    }
                 });
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex);
+            }
+        }
+
+        /// <summary>Returns the existing Balance Configurator window (re-showing it if it
+        /// was hidden) or creates a fresh one. Mirrors the VB.NET sibling's FSGForm
+        /// construction pattern in AdxExcelAppEvents1_SheetSelectionChange/SheetActivate:
+        /// "If FSGForm Is Nothing OrElse FSGForm.IsDisposed Then New FormFSG(...) Else If
+        /// Not FSGForm.Visible Then FSGForm.Visible = True".</summary>
+        private GLBalanceConfiguratorForm GetOrCreateBalanceWindow()
+        {
+            var existing = AppState.Instance.BalanceWindow;
+            if (existing != null && !existing.IsDisposed)
+            {
+                if (!existing.Visible)
+                {
+                    existing.Visible = true;
+                }
+                return existing;
+            }
+
+            var win = new GLBalanceConfiguratorForm();
+            AppState.Instance.BalanceWindow = win;
+            win.FormClosed += (s, e) =>
+            {
+                if (AppState.Instance.BalanceWindow == win)
+                {
+                    AppState.Instance.BalanceWindow = null;
+                }
+            };
+            win.ShowFloating((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            return win;
+        }
+
+        private void RibShowAlways_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            LogUtility.LogDebug($"RibShowAlways_OnClick clicked. Pressed={pressed}");
+            try
+            {
+                AppState.Instance.BalanceWindowShowAlways = pressed;
+
+                // Mirrors RibDisable_OnClick in the VB.NET sibling: unchecking "Show Always"
+                // while parked on a non-balance-formula cell hides the window immediately,
+                // rather than waiting for the next selection change to catch up.
+                if (!pressed)
+                {
+                    SafeInvokeWpf(() => ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.ActiveCell as Excel.Range));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
+        /// <summary>Shared by SheetSelectionChange and SheetActivate to keep the floating
+        /// Balance Configurator window in sync with the current selection, mirroring the
+        /// VB.NET sibling's FSGShow-conditional logic in both of its equivalent handlers.
+        /// currentSelection may be a multi-cell range (from SheetActivate's
+        /// ExcelApp.Selection) or null.</summary>
+        private void ApplyBalanceWindowVisibility(Excel.Range currentSelection)
+        {
+            try
+            {
+                if (AppState.Instance.BalanceWindowShowAlways)
+                {
+                    var win = GetOrCreateBalanceWindow();
+                    _ = win.RelaunchWindow();
+                    return;
+                }
+
+                // Multi-cell selection: leave the window exactly as it is, same as the
+                // VB.NET sibling's early return here (only the ShowAlways branch above
+                // ignores selection shape).
+                if (currentSelection == null || currentSelection.Rows.Count > 1 || currentSelection.Columns.Count > 1)
+                {
+                    return;
+                }
+
+                var existing = AppState.Instance.BalanceWindow;
+                if (existing == null || existing.IsDisposed || !existing.Visible)
+                {
+                    return;
+                }
+
+                if (HasBalanceFormula(currentSelection))
+                {
+                    _ = existing.RelaunchWindow();
+                }
+                else
+                {
+                    existing.Visible = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "ApplyBalanceWindowVisibility");
             }
         }
 
@@ -3084,10 +3175,26 @@ namespace GLSense
 
         private void LoggOff()
         {
+            // AppState.Reset() below blanks the BalanceWindow reference via reflection
+            // without touching the actual Form - unlike HideTaskPanes() for the pane
+            // (called by the GLSenseLogout caller above), nothing else closes it. Left
+            // alone, the window would stay open and visible with no way to reference it
+            // again. Mirrors the VB.NET sibling's LogoutSession(), which closes FSGForm
+            // before dropping its reference - silently, no confirmation message.
+            SafeInvokeWpf(() =>
+            {
+                var win = AppState.Instance.BalanceWindow;
+                if (win != null && !win.IsDisposed)
+                {
+                    win.Close();
+                }
+            });
+
             AppState.Instance.Reset();
             Ribledger.Items.Clear();
             Ribledger.Text = string.Empty;
             RibGetCube.Caption = "Cube:  Select cube";
+            RibShowAlways.Pressed = false;
             RibbonHelper.ApplyState("LoggedOut");
         }
 
