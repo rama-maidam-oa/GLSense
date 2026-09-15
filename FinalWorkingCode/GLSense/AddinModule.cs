@@ -2022,7 +2022,7 @@ namespace GLSense
                     }
                 }
 
-                if (AppState.Instance.BalanceWindow != null && AppState.Instance.BalanceWindow.IsVisible)
+                if (AppState.Instance.BalanceWindow != null && AppState.Instance.BalanceWindow.Visible)
                 {
                     if (isBalanceFormulaCell)
                     {
@@ -2752,20 +2752,17 @@ namespace GLSense
                 {
                     // Without this, every click spawns another independent floating
                     // configurator (the pane path above just toggles the one pane).
-                    // Activate() is enough here - the window's own ForceSetForegroundWindow
-                    // reclaim runs on open, and this is an explicit user click on the
-                    // ribbon, so Excel already owns the foreground.
                     var existing = AppState.Instance.BalanceWindow;
-                    if (existing != null && existing.IsVisible)
+                    if (existing != null && existing.Visible)
                     {
                         LogUtility.LogDebug("RibFSGWindow_OnClick: Balance Configurator window already open, activating it.");
                         existing.Activate();
                         return;
                     }
 
-                    var win = new GLBalanceConfiguratorWindow();
+                    var win = new GLBalanceConfiguratorForm();
                     AppState.Instance.BalanceWindow = win;
-                    win.Closed += (s, e) =>
+                    win.FormClosed += (s, e) =>
                     {
                         if (AppState.Instance.BalanceWindow == win)
                         {

@@ -98,7 +98,10 @@ namespace GLSense
         public bool displayConfigurator { get; set; } = false;
 
         //Balance Configurator floating window (Option A prototype - task pane above is untouched)
-        public GLBalanceConfiguratorWindow BalanceWindow { get; set; }
+        //  WinForms Form (not a pure WPF Window) - see GLBalanceConfiguratorForm's own
+        //  doc comment for why: a plain WPF Window repeatedly lost real Win32 keyboard
+        //  focus back to Excel's grid in this in-process, same-thread hosting context.
+        public GLBalanceConfiguratorForm BalanceWindow { get; set; }
 
         // Data caches
         public System.Data.DataTable CalculatedBalances { get; set; } = new System.Data.DataTable();

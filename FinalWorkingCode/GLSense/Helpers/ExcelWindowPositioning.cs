@@ -90,8 +90,8 @@ namespace GLSense.Helpers
         /// holds the "foreground activation" right - attaching this thread's input queue to
         /// whichever thread currently owns the foreground window temporarily grants that
         /// right. Generic (not Excel-specific) despite living on this class - reused by
-        /// GLBalanceConfiguratorWindow to reclaim focus after Excel's native cell-picker
-        /// InputBox closes.
+        /// ExcelRefEditControl's Window-hosted reactivation path after Excel's native
+        /// cell-picker InputBox closes.
         /// </summary>
         public static void ForceSetForegroundWindow(IntPtr hWnd)
         {
