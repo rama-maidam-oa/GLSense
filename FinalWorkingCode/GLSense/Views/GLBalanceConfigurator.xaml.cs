@@ -46,6 +46,12 @@ namespace GLSense.Views
         private GLConfiguratorPane _parentPane;
         public event Action OnCloseRequested;
 
+        /// <summary>Raised when the header bar is pressed with the left mouse button.
+        /// Only GLBalanceConfiguratorForm subscribes to this (to forward the press to
+        /// Windows as a native caption drag) - GLConfiguratorPane never does, so this
+        /// header stays inert when hosted in the task pane, unchanged from before.</summary>
+        public event Action OnHeaderDragRequested;
+
         public GLBalanceConfigurator(GLConfiguratorPane parentPane = null)
         {
             LogUtility.LogDebug($"GLBalanceConfigurator.ctor invoked - parentPane={(parentPane != null)}");
@@ -630,6 +636,25 @@ namespace GLSense.Views
         {
             LogUtility.LogDebug("GLBalanceConfigurator.BtnCancelBottom_Click invoked");
             OnCloseRequested?.Invoke();
+        }
+
+        // The header Border is drawn by this WPF control and, when hosted in
+        // GLBalanceConfiguratorForm, is rendered inside an ElementHost that fills the
+        // Form's entire client area. Win32 hit-testing (WM_NCHITTEST) and mouse button
+        // messages for any point inside that child HWND's rect go straight to the
+        // ElementHost/WPF input system - they never reach the parent Form's own WndProc,
+        // confirmed by diagnostic logging showing zero WM_NCLBUTTONDOWN/WM_LBUTTONDOWN
+        // reaching GLBalanceConfiguratorForm.WndProc despite repeated header-drag
+        // attempts. So a Form-level WM_NCHITTEST-to-HTCAPTION override (the approach that
+        // works for a header drawn directly by the Form itself) can never fire here; the
+        // drag has to be initiated from WPF instead, by forwarding this press to Windows
+        // as a native caption drag.
+        private void HeaderBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ButtonState == MouseButtonState.Pressed)
+            {
+                OnHeaderDragRequested?.Invoke();
+            }
         }
         
     }

@@ -122,7 +122,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- ================= Header ================= -->
-                <Border Grid.Row="0" Style="{StaticResource HeaderBar}">
+                <Border Grid.Row="0" Style="{StaticResource HeaderBar}" MouseLeftButtonDown="HeaderBorder_MouseLeftButtonDown">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>

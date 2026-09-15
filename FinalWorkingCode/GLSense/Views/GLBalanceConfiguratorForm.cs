@@ -62,10 +62,9 @@ namespace GLSense.Views
             // on top of that would duplicate it, the same bug the earlier WPF Window
             // implementation hit and fixed by removing its own duplicate header. The
             // CreateParams override below adds WS_THICKFRAME so the Form stays resizable
-            // by dragging its edges despite having no visible border/caption, and the
-            // WndProc override below turns the WPF content's own header area into a drag
-            // handle (HTCAPTION) so the window can still be moved, since removing the
-            // native caption also removes the native drag-to-move behavior it provided.
+            // by dragging its edges despite having no visible border/caption. Since removing
+            // the native caption also removes its native drag-to-move behavior, that is
+            // restored below via OnHeaderDragRequested/StartCaptionDrag instead.
             FormBorderStyle = FormBorderStyle.None;
             AutoScaleMode = AutoScaleMode.Dpi;
             Size = new Size(680, 800);
@@ -92,6 +91,19 @@ namespace GLSense.Views
             }
 
             _configuratorControl.OnCloseRequested += () => Close();
+
+            // FormBorderStyle=None removed the native caption, so there is no native
+            // drag-to-move affordance left. A Form-level WM_NCHITTEST-to-HTCAPTION
+            // override (the usual borderless-Form drag trick) cannot substitute for it
+            // here: the header is WPF content hosted in an ElementHost that fills this
+            // Form's entire client area, so mouse messages over the header go straight to
+            // that child HWND and never reach this Form's own WndProc at all (confirmed
+            // via diagnostic logging - see git history for GLBalanceConfiguratorForm.cs).
+            // Instead, GLBalanceConfigurator raises OnHeaderDragRequested when its header
+            // Border is pressed, and StartCaptionDrag below forwards that press to Windows
+            // as a native caption drag on this Form's own window - the same mechanism
+            // WM_NCLBUTTONDOWN/HTCAPTION drives for a real title bar.
+            _configuratorControl.OnHeaderDragRequested += StartCaptionDrag;
 
             // Puts initial keyboard focus on the Ledger field once the Form is actually
             // shown, so the first keystroke after opening lands in a real data field
@@ -127,20 +139,25 @@ namespace GLSense.Views
             }
         }
 
-        // Approximate height (DIPs) of GLBalanceConfigurator's own header Border
-        // (Views\GLBalanceConfigurator.xaml:125, styled by the "HeaderBar" style in
-        // Themes\GlobalStyles.xaml - Padding="10,8" around an icon + title, no explicit
-        // Height, sized to content) - used below to turn that area into a drag handle.
-        // Approximate rather than measured from the live WPF element (PointToScreen on
-        // the actual header Border) because this only needs to be "close enough to feel
-        // right when dragging", not pixel-exact; a too-generous strip just means the user
-        // can start a drag a few pixels into the content area, which is harmless.
-        private const int HeaderDragHeightDip = 44;
+        [DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
 
-        // Reserved width (DIPs) at the right edge of the header strip, excluded from the
-        // drag region, approximating where GLBalanceConfigurator's own close button sits -
-        // without this, dragging would swallow clicks meant for that button.
-        private const int HeaderCloseButtonReserveDip = 60;
+        [DllImport("user32.dll")]
+        private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+
+        /// <summary>Forwards a WPF header press to Windows as a native caption drag on
+        /// this Form's own window. ReleaseCapture drops WPF's mouse capture first (it
+        /// would otherwise swallow the drag); the WM_NCLBUTTONDOWN/HTCAPTION combination
+        /// is the standard trick for driving a native move-drag from content that isn't
+        /// itself the window's non-client area - Windows runs the same drag loop, with
+        /// the same edge snapping, it would for a real title bar.</summary>
+        private void StartCaptionDrag()
+        {
+            const int WM_NCLBUTTONDOWN = 0x00A1;
+            const int HTCAPTION = 2;
+            ReleaseCapture();
+            SendMessage(Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+        }
 
         // TEMPORARY DIAGNOSTIC: capturing the raw Win32 message sequence this Form
         // actually receives (or doesn't) for a click while an Excel cell is in edit
@@ -169,9 +186,6 @@ namespace GLSense.Views
 
         protected override void WndProc(ref Message m)
         {
-            const int WM_NCHITTEST = 0x0084;
-            const int HTCLIENT = 1;
-            const int HTCAPTION = 2;
             const int WM_MOUSEACTIVATE = 0x0021;
             const int WM_NCACTIVATE = 0x0086;
             const int WM_ACTIVATE = 0x0006;
@@ -197,30 +211,6 @@ namespace GLSense.Views
             {
                 case WM_MOUSEACTIVATE: LogDiagnosticMsg($"WM_MOUSEACTIVATE(after, result={m.Result.ToInt32()})", m.HWnd); break;
                 case WM_NCACTIVATE: LogDiagnosticMsg($"WM_NCACTIVATE(after, result={m.Result.ToInt32()})", m.HWnd); break;
-            }
-
-            if (m.Msg == WM_NCHITTEST && m.Result.ToInt32() == HTCLIENT)
-            {
-                try
-                {
-                    int x = unchecked((short)(long)m.LParam);
-                    int y = unchecked((short)((long)m.LParam >> 16));
-                    Point clientPoint = PointToClient(new Point(x, y));
-
-                    double scale = GetEffectiveDpi() / (double)DefaultDpi;
-                    int headerHeight = (int)Math.Round(HeaderDragHeightDip * scale);
-                    int closeReserve = (int)Math.Round(HeaderCloseButtonReserveDip * scale);
-
-                    if (clientPoint.Y >= 0 && clientPoint.Y <= headerHeight &&
-                        clientPoint.X >= 0 && clientPoint.X < ClientSize.Width - closeReserve)
-                    {
-                        m.Result = (IntPtr)HTCAPTION;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "GLBalanceConfiguratorForm.WndProc(WM_NCHITTEST)");
-                }
             }
         }
 
