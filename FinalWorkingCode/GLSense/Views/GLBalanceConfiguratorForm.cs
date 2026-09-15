@@ -1,7 +1,6 @@
 using GLSense.Utilities;
 using System;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Forms.Integration;
@@ -15,28 +14,31 @@ namespace GLSense.Views
     /// </summary>
     /// <remarks>
     /// This replaces an earlier pure-WPF Window implementation (GLBalanceConfiguratorWindow,
-    /// removed). That version repeatedly lost real Win32 keyboard focus back to Excel's
-    /// grid every few seconds while open - confirmed via extensive diagnostic logging that
-    /// GetForegroundWindow()/GetFocus() both correctly pointed at the WPF window, yet
-    /// keystrokes still weren't reliably reaching it. A side-by-side comparison against
-    /// this add-in's older VB.NET/WinForms sibling (C:\projects\Excel Add-ons\glsense,
-    /// FormFSG.vb) - which shows an equivalent non-modal Balance Configurator form
-    /// alongside Excel with ZERO special focus-handling code (no SetForegroundWindow/
-    /// SetFocus/message filters/WndProc override while open) and has never had this
-    /// problem - showed the leak is specific to WPF's own input pipeline in this exact
-    /// in-process, same-thread Excel-hosting context (Excel owns the real Win32 message
-    /// pump; a WPF Window only hooks into it via ComponentDispatcher rather than owning
-    /// it, so a keystroke Excel's own message handling consumes internally can bypass
-    /// WPF's HwndSource entirely even though raw Win32 focus state looks correct).
-    /// Hosting the same WPF content inside a real WinForms Form sidesteps this: WinForms
-    /// controls map directly onto native HWNDs with no such translation layer, which is
-    /// exactly why FormFSG never needed a workaround.
+    /// removed), which repeatedly lost real Win32 keyboard focus back to Excel's grid every
+    /// few seconds while open. Root-caused via a controlled A/B test (confirmed twice, with
+    /// opposite results both times): the actual cause was GLSense.Utilities.ComMessageFilter
+    /// - a process-wide IOleMessageFilter that used to be registered for the life of the
+    /// add-in. Merely having ANY IOleMessageFilter registered - regardless of what value its
+    /// MessagePending callback returns - changes how COM pumps window-activation-related
+    /// messages while an outgoing call to Excel is pending (which is constantly, since
+    /// nearly every Excel property read is one), letting Excel's own window silently
+    /// reclaim OS activation from any separate top-level window this add-in creates. This
+    /// reproduced identically regardless of the window's own implementation (a WPF Window,
+    /// this WinForms Form hosting WPF via ElementHost, and even a bare WinForms Form with
+    /// zero WPF content all failed the same way with the filter registered, and all worked
+    /// once it was removed) - it was never actually about WPF vs. WinForms, or about this
+    /// Form's own code. The filter is now scoped narrowly instead: CommonMethods.cs's
+    /// DisableExcelSettings/EnableExcelSettings register/revoke it only for the duration of
+    /// the bulk operations that actually need its "retry Excel's busy rejections" benefit.
     ///
-    /// Deliberately does NOT replicate GLConfiguratorPane.cs's WM_SIZING/WM_WINDOWPOSCHANGING
-    /// RECT-mutation overrides (the code implicated in this app's original task-pane DPI/
-    /// resize ghosting bug) - a plain top-level Form's MinimumSize/MaximumSize are already
-    /// natively enforced by Windows' own WM_GETMINMAXINFO handling during a live drag, with
-    /// no custom interception needed, unlike the pane's ADXExcelTaskPane hosting.
+    /// This Form is kept as a plain WinForms Form (rather than reverting to a WPF Window)
+    /// since it works correctly and there is no reason to reintroduce WPF's extra hosting
+    /// complexity now that the real root cause is fixed. Deliberately does NOT replicate
+    /// GLConfiguratorPane.cs's WM_SIZING/WM_WINDOWPOSCHANGING RECT-mutation overrides (the
+    /// code implicated in this app's original task-pane DPI/resize ghosting bug) - a plain
+    /// top-level Form's MinimumSize/MaximumSize are already natively enforced by Windows'
+    /// own WM_GETMINMAXINFO handling during a live drag, with no custom interception needed,
+    /// unlike the pane's ADXExcelTaskPane hosting.
     /// </remarks>
     public class GLBalanceConfiguratorForm : Form
     {
@@ -48,33 +50,6 @@ namespace GLSense.Views
         private readonly int _maxHeightDip = 900;
         private const int DefaultDpi = 96;
 
-        // TEMPORARY DIAGNOSTIC INSTRUMENTATION - remove once the typing-goes-to-Excel-cell
-        // bug is root-caused for this WinForms Form. Same GetForegroundWindow/GetFocus
-        // technique used to diagnose the earlier pure-WPF Window attempt.
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetFocus();
-
-        private void LogFocusState(string context)
-        {
-            try
-            {
-                var fg = GetForegroundWindow();
-                var focus = GetFocus();
-                LogUtility.LogDebug(
-                    $"GLBalanceConfiguratorForm.LogFocusState[{context}]: " +
-                    $"thisHwnd={Handle}, GetForegroundWindow={fg} (match={fg == Handle}), " +
-                    $"GetFocus={focus} (match={focus == Handle}), ContainsFocus={ContainsFocus}, " +
-                    $"ActiveControl={ActiveControl?.GetType().Name ?? "null"}");
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, $"GLBalanceConfiguratorForm.LogFocusState[{context}]");
-            }
-        }
-
         public GLBalanceConfiguratorForm()
         {
             LogUtility.LogDebug("GLBalanceConfiguratorForm.ctor invoked");
@@ -85,16 +60,6 @@ namespace GLSense.Views
             MaximizeBox = false;
             AutoScaleMode = AutoScaleMode.Dpi;
             Size = new Size(650, 700);
-
-            // TEMPORARY DIAGNOSTIC: log every keystroke the Form itself sees, and every
-            // activation/deactivation/focus transition, so the next repro shows exactly
-            // where this breaks rather than requiring another guess.
-            KeyPreview = true;
-            KeyDown += (s, e) => LogFocusState($"Form.KeyDown:{e.KeyCode}");
-            Activated += (s, e) => LogFocusState("Form.Activated");
-            Deactivate += (s, e) => LogFocusState("Form.Deactivate");
-            GotFocus += (s, e) => LogFocusState("Form.GotFocus");
-            LostFocus += (s, e) => LogFocusState("Form.LostFocus");
 
             // See GLConfiguratorPane.cs's own "REVERT NOTE" comment for why this scope
             // matters: constructing the WPF object here does NOT create its native HWND
@@ -117,13 +82,14 @@ namespace GLSense.Views
                 Controls.Add(_host);
             }
 
-            // TEMPORARY DIAGNOSTIC: same as the Form-level hooks above, but on the
-            // ElementHost itself - shows whether focus ever actually reaches the WPF
-            // content's native host control, separate from the Form as a whole.
-            _host.GotFocus += (s, e) => LogFocusState("ElementHost.GotFocus");
-            _host.LostFocus += (s, e) => LogFocusState("ElementHost.LostFocus");
-
             _configuratorControl.OnCloseRequested += () => Close();
+
+            // Puts initial keyboard focus on the Ledger field once the Form is actually
+            // shown, so the first keystroke after opening lands in a real data field
+            // rather than depending on WinForms' own default "focus the first control"
+            // behavior (which would land on the ElementHost itself, not a specific WPF
+            // field inside it).
+            Shown += (s, e) => _configuratorControl?.CmbLedgers?.Focus();
 
             ApplyDpiAwareSizing(DefaultDpi);
             HandleCreated += GLBalanceConfiguratorForm_HandleCreated;
@@ -186,7 +152,6 @@ namespace GLSense.Views
         {
             LogUtility.LogDebug($"GLBalanceConfiguratorForm.ShowFloating invoked. excelHwnd={excelHwnd}");
             Show(new Win32Window(excelHwnd));
-            LogFocusState("ShowFloating:after-show");
         }
 
         /// <summary>Mirrors GLConfiguratorPane.RelaunchPane (GLConfiguratorPane.cs:216-234).</summary>

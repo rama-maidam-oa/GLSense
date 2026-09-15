@@ -15,7 +15,7 @@ namespace GLSense.Utilities
     {
         private const int SERVERCALL_ISHANDLED = 0;
         private const int SERVERCALL_RETRYLATER = 2;
-        private const int PENDINGMSG_WAITDEFPROCESS = 2;
+        private const int PENDINGMSG_WAITNOPROCESS = 1;
         private const int RETRY_DELAY_MS = 250;
         private const int RETRY_GIVE_UP = -1;
 
@@ -74,8 +74,24 @@ namespace GLSense.Utilities
             int IOleMessageFilter.RetryRejectedCall(IntPtr hTaskCallee, int dwTickCount, int dwRejectType)
                 => dwRejectType == SERVERCALL_RETRYLATER ? RETRY_DELAY_MS : RETRY_GIVE_UP;
 
+            // WAITNOPROCESS (not WAITDEFPROCESS): confirmed via a controlled A/B test that
+            // simply registering ANY IOleMessageFilter at all - even one whose
+            // MessagePending returns the ostensibly "default" WAITDEFPROCESS value -
+            // changes COM's internal handling of window-activation-related messages while
+            // an outgoing call to Excel is pending (which is constantly, since nearly
+            // every Excel property read is an outgoing COM call). That let Excel's own
+            // window silently reclaim OS activation from the floating Balance
+            // Configurator's window moments before the user's next keystroke, regardless
+            // of the floating window's own implementation (reproduced identically across
+            // a WPF Window, a WinForms Form hosting WPF via ElementHost, and a WinForms
+            // Form with zero WPF content at all - see GLBalanceConfiguratorForm.cs's own
+            // history). WAITNOPROCESS tells COM not to pump/forward messages at all while
+            // the call is pending, which fixed it in that same A/B test. This does not
+            // affect this filter's actual documented purpose (retrying Excel's "busy"
+            // rejections) - that lives entirely in RetryRejectedCall above, a separate
+            // callback untouched by this change.
             int IOleMessageFilter.MessagePending(IntPtr hTaskCallee, int dwTickCount, int dwPendingType)
-                => PENDINGMSG_WAITDEFPROCESS;
+                => PENDINGMSG_WAITNOPROCESS;
         }
     }
 }

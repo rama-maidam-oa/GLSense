@@ -125,6 +125,20 @@ namespace GLSense.Utilities
             using (new LogUtility.LogScope("DisableExcelSettings"))
             {
                 LogUtility.LogDebug("Disabling Excel settings for batch operation");
+
+                // Scoped (not process-wide/always-on) registration: confirmed via a
+                // controlled A/B test that having ANY IOleMessageFilter registered while
+                // the floating Balance Configurator window is open causes it to silently
+                // lose OS keyboard focus back to Excel every few seconds - see
+                // ComMessageFilter.cs's own doc comment. The filter's actual benefit
+                // (retrying Excel's "busy" rejections, see the comment above
+                // TrySetComProperty) is only needed for the duration of a bulk operation
+                // bracketed by Disable/EnableExcelSettings, so it's registered here and
+                // revoked in EnableExcelSettings - covering every call site that already
+                // uses this pair (RowProcessor.ExecuteAsync and the other GLWaitWindow
+                // bulk-operation call sites) without being active the rest of the time.
+                ComMessageFilter.Register();
+
                 var app = AppState.Instance.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
 
                 LogUtility.LogDebug("Setting ScreenUpdating = false");
@@ -157,22 +171,33 @@ namespace GLSense.Utilities
         {
             using (new LogUtility.LogScope("EnableExcelSettings"))
             {
-                LogUtility.LogDebug("Re-enabling Excel settings");
-                var app = AppState.Instance.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
+                try
+                {
+                    LogUtility.LogDebug("Re-enabling Excel settings");
+                    var app = AppState.Instance.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
 
-                LogUtility.LogDebug("Setting ScreenUpdating = true");
-                bool screenUpdatingOk = TrySetComProperty(() => app.ScreenUpdating = true, "ScreenUpdating=true", "EnableExcelSettings");
+                    LogUtility.LogDebug("Setting ScreenUpdating = true");
+                    bool screenUpdatingOk = TrySetComProperty(() => app.ScreenUpdating = true, "ScreenUpdating=true", "EnableExcelSettings");
 
-                LogUtility.LogDebug("Setting DisplayAlerts = true");
-                bool displayAlertsOk = TrySetComProperty(() => app.DisplayAlerts = true, "DisplayAlerts=true", "EnableExcelSettings");
+                    LogUtility.LogDebug("Setting DisplayAlerts = true");
+                    bool displayAlertsOk = TrySetComProperty(() => app.DisplayAlerts = true, "DisplayAlerts=true", "EnableExcelSettings");
 
-                LogUtility.LogDebug("Setting EnableEvents = true");
-                bool enableEventsOk = TrySetComProperty(() => app.EnableEvents = true, "EnableEvents=true", "EnableExcelSettings");
+                    LogUtility.LogDebug("Setting EnableEvents = true");
+                    bool enableEventsOk = TrySetComProperty(() => app.EnableEvents = true, "EnableEvents=true", "EnableExcelSettings");
 
-                if (!(screenUpdatingOk && displayAlertsOk && enableEventsOk))
-                    throw new InvalidOperationException("Failed to fully restore Excel settings after retries.");
+                    if (!(screenUpdatingOk && displayAlertsOk && enableEventsOk))
+                        throw new InvalidOperationException("Failed to fully restore Excel settings after retries.");
 
-                LogUtility.LogDebug("Excel settings enabled successfully");
+                    LogUtility.LogDebug("Excel settings enabled successfully");
+                }
+                finally
+                {
+                    // Always revoke, even if restoring settings above threw - never leave
+                    // the scoped filter from DisableExcelSettings registered past this
+                    // bracket. See the registration comment in DisableExcelSettings for why
+                    // this must not be process-wide/always-on.
+                    ComMessageFilter.Revoke();
+                }
             }
         }
 

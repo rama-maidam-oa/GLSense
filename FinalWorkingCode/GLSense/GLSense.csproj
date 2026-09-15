@@ -252,7 +252,9 @@
     <Compile Include="Views\GLBalanceConfigurator.xaml.cs">
       <DependentUpon>GLBalanceConfigurator.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Views\GLBalanceConfiguratorForm.cs" />
+    <Compile Include="Views\GLBalanceConfiguratorForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Views\GLCubeDetails.xaml.cs">
       <DependentUpon>GLCubeDetails.xaml</DependentUpon>
     </Compile>

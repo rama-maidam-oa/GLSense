@@ -523,7 +523,12 @@ namespace GLSense
                 // Release COM objects
                 ReleaseAllComObjectsProperly();
 
-                // Revoke the busy-retry message filter registered in AddinInitialize.
+                // Safety net: the busy-retry message filter is normally registered/revoked
+                // in a tight scope around each bulk operation (CommonMethods.cs's
+                // DisableExcelSettings/EnableExcelSettings - see those methods' own
+                // comments for why it's scoped rather than process-wide). This is a no-op
+                // if nothing is currently registered; it only matters if some bulk
+                // operation's own Enable call was skipped on an exception path.
                 try
                 {
                     GLSense.Utilities.ComMessageFilter.Revoke();
@@ -704,9 +709,21 @@ namespace GLSense
         {
             try
             {
-                // Retries transient "Excel is busy" COM rejections instead of letting them
-                // throw immediately - see the row hide/unhide hang fix in CommonMethods.cs.
-                GLSense.Utilities.ComMessageFilter.Register();
+                // The busy-retry message filter (GLSense.Utilities.ComMessageFilter) used
+                // to be registered here, process-wide, for the life of the add-in. Confirmed
+                // via controlled A/B testing (twice, with opposite results both times) that
+                // registering ANY IOleMessageFilter at all - regardless of what value its
+                // MessagePending callback returns - causes any separate top-level window
+                // this add-in creates (reproduced with the floating Balance Configurator
+                // across a WPF Window, WinForms+ElementHost+WPF, and pure native WinForms -
+                // see GLBalanceConfiguratorForm.cs's own history) to silently lose OS
+                // keyboard focus back to Excel every few seconds. The filter's actual
+                // benefit (retrying Excel's "busy" rejections during bulk operations) is
+                // now scoped narrowly instead: CommonMethods.cs's DisableExcelSettings/
+                // EnableExcelSettings register/revoke it only for the duration of the bulk
+                // operation each already brackets, covering every existing call site
+                // (RowProcessor.ExecuteAsync and the other GLWaitWindow bulk-operation call
+                // sites) without it ever being active while a floating window is open.
 
                 // 1. Ensure DB file + tables exist
                 SQLiteHelper.InitializeDatabase();
