@@ -1,6 +1,7 @@
 ﻿using GLSense.Interfaces;
 using GLSense.Models;
 using GLSense.Utilities;
+using GLSense.Views;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
@@ -95,6 +96,9 @@ namespace GLSense
         //Balance Configurator Pane
         public GLConfiguratorPane BalancePane { get; set; }
         public bool displayConfigurator { get; set; } = false;
+
+        //Balance Configurator floating window (Option A prototype - task pane above is untouched)
+        public GLBalanceConfiguratorWindow BalanceWindow { get; set; }
 
         // Data caches
         public System.Data.DataTable CalculatedBalances { get; set; } = new System.Data.DataTable();
