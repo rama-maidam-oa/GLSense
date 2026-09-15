@@ -767,20 +767,45 @@ namespace GLSense.ViewModels
             }
             await ResetWindowAsync();
             await LoadDataAsync(ledger);
-            await UpdateUIAsync();
 
-            if (FuncArgs == null && FuncValues == null)
+            // LoadDataAsync awaits Task.WhenAll(...) internally - genuine parallel
+            // background work (nine Task.Run repository calls) whose completion is not
+            // guaranteed to resume THIS method's own continuation back on the dispatcher
+            // thread in this hosting environment, even with
+            // WpfAppManager.EnsureMainThreadSynchronizationContext installed. Confirmed by
+            // testing: ApplyDefaultSelections's OnFieldDependencyChanged cascade kept
+            // throwing "a different thread owns it"/"CollectionView...different thread"
+            // exceptions from whichever field happened to be set after this point, moving
+            // to a new-looking failure each time the previous one was patched -
+            // UpdateUIAsync, ApplyDefaultSelections, ApplyFormulaParamsAsync, and
+            // RefreshAllFields all touch WPF-bound fields/collections directly, with no
+            // dispatcher protection of their own beyond what a couple of them already
+            // gained incidentally. Rather than keep chasing individual leaf methods,
+            // everything from here through the end of this method runs inside one
+            // explicit _dispatcher.Invoke - the same guaranteed-correct pattern used
+            // everywhere else in this class. UpdateUIAsync/ApplyFormulaParamsAsync are
+            // still declared async Task (unchanged elsewhere), but both are already fully
+            // synchronous internally after their own dispatcher fixes (confirmed by the
+            // compiler's own CS1998 "lacks await operators" warning on each) - awaiting
+            // them via GetAwaiter().GetResult() here just calls them synchronously, with
+            // no genuine async handoff pending to deadlock on.
+            _dispatcher.Invoke(() =>
             {
-                LogUtility.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: no formula params supplied, applying default selections.");
-                ApplyDefaultSelections();
-            }
-            else if (FuncArgs != null && FuncValues != null)
-            {
-                LogUtility.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: formula params supplied, applying formula params.");
-                await ApplyFormulaParamsAsync(ZeroesChecked, FuncArgs, FuncValues);
-            }
+                UpdateUIAsync().GetAwaiter().GetResult();
 
-            RefreshAllFields();
+                if (FuncArgs == null && FuncValues == null)
+                {
+                    LogUtility.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: no formula params supplied, applying default selections.");
+                    ApplyDefaultSelections();
+                }
+                else if (FuncArgs != null && FuncValues != null)
+                {
+                    LogUtility.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: formula params supplied, applying formula params.");
+                    ApplyFormulaParamsAsync(ZeroesChecked, FuncArgs, FuncValues).GetAwaiter().GetResult();
+                }
+
+                RefreshAllFields();
+            });
             LogUtility.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: exit");
         }
 
