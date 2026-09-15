@@ -527,7 +527,7 @@ Open the floating window via the new ribbon button. Drag the Excel window (with 
 
 - [ ] **Step 3: Min/Max resize smoke test**
 
-Drag-resize the floating window from each edge and corner. Expected: it stops cleanly at the `MinWidth`/`MinHeight`/`MaxWidth`/`MaxHeight` set in Task 1's XAML, with no duplicate/ghost border or separator lines during the drag (native WPF resize, none of the task pane's `WM_SIZING`/`SetBoundsCore` RECT-mutation code is involved).
+Drag-resize the floating window from each edge and corner. Expected: it stops cleanly at the `MinWidth`/`MinHeight`/`MaxWidth`/`MaxHeight` set in Task 1's XAML, with no duplicate/ghost border or separator lines during the drag (native WPF resize, none of the task pane's `WM_SIZING`/`SetBoundsCore` RECT-mutation code is involved). **Depends on the final-review fix wave's `MaxWidthCap`/`MaxHeightCap` correction landing first** — without it, `DpiAwareWindow.FitToAvailableWorkArea` silently overwrites the XAML's declared Max bounds on open and this step fails through no fault of a live drag.
 
 - [ ] **Step 4: Keyboard-focus round trip via "Select Excel Cell"**
 
@@ -547,7 +547,11 @@ Close the floating window, reopen it via the ribbon button while the active cell
 
 - [ ] **Step 8: Coexistence smoke test**
 
-Open the docked task pane (existing "Balance" button) and the floating window (new "Balance (Window)" button) at the same time. Expected: no crash, no cross-talk — they are two independent instances of `GLBalanceConfigurator`, each with its own `GLConfiguratorViewModel`, so editing one must not affect the other's currently-displayed fields (though both will react to the same `SheetSelectionChange`/formula-cell events independently, which is expected/correct).
+Open the docked task pane (existing "Balance" button) and the floating window (new "Balance (Window)" button) at the same time. Expected: no crash. **Corrected expectation (final whole-branch review found the original text wrong):** the two instances are NOT fully independent — `GLBalanceConfigurator.ResetCellReference()` is `static` and writes the shared `GlobalStateViewModel.Instance.ReferenceText`, so the cell-reference field is common to both by design, and selecting a formula cell fires `RelaunchPane()` and `RelaunchWindow()` concurrently on the same dispatcher (two `ExecuteWithBusyOverlay` pipelines racing). Expect shared reference text and possible overlapping/racing reloads — do not record either as a bug; only flag an actual crash, deadlock, or wrong-data result.
+
+- [ ] **Step 9: Escape-during-busy-overlay and first-keystroke checks (added after final whole-branch review)**
+
+With the floating window open, click a field that triggers a reload (e.g. change Ledger to start "Reloading Configurator"), and press **Escape** while the busy overlay is visible. Expected (after the fix wave): the window does NOT close mid-operation, matching the task pane's behavior — before the fix, `DpiAwareWindow`'s overlay-visibility check silently failed to find the overlay (it lives inside `GLBalanceConfigurator`, a different XAML namescope) and Escape always closed the window regardless of an in-flight operation. Separately: open the window fresh and immediately press **Space** or **Enter** without clicking anything first. Expected (after the fix wave): nothing closes and/or focus is in a usable data field — before the fix, initial keyboard focus landed on the header's close button and Space/Enter closed the window immediately.
 
 - [ ] **Step 9: Record the outcome**
 
