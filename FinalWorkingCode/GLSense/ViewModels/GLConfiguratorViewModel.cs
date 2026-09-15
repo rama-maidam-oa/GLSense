@@ -2960,67 +2960,85 @@ namespace GLSense.ViewModels
                 // the parameter summary text on the window itself, so logging it here
                 // too was pure duplication of what's already visible on screen.
 
-                // Use existing FlowDocument instance to avoid re-assigning the
-                // document property (which can trigger bindings and layout).
-                var doc = ParameterDisplayText ?? CreateFormattedDocument();
-
-                // Ensure basic formatting is applied
-                doc.PagePadding = new Thickness(4, 4, 4, 4);
-                doc.TextAlignment = TextAlignment.Left;
-                doc.FontSize = 11;
-                doc.FontFamily = new FontFamily("Segoe UI");
-
-                var blueBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(AppConstants.GLAccentHex));
-                var blackBrush = Brushes.Black;
-
-                // Create the main paragraph
-                var paragraph = new Paragraph
+                // This method is reached via PropertyChanged cascades (e.g.
+                // Ledger_PropertyChanged, fired synchronously from
+                // ApplyDefaultLedgerSelection during LoadConfiguratorAsync) that can run
+                // on whatever thread happens to be executing when the cascade fires - not
+                // necessarily Excel's main thread, even with
+                // WpfAppManager.EnsureMainThreadSynchronizationContext installed: a call
+                // originating from a background continuation (e.g. LoadDataAsync's
+                // Task.WhenAll, or any other Task.Run) was never on the thread that
+                // context was installed on to begin with, so a SynchronizationContext
+                // alone doesn't cover every path into this method. Confirmed by an
+                // InvalidOperationException ("a different thread owns it") thrown here
+                // even after that fix. Every WPF object this method touches is built and
+                // mutated inside an explicit _dispatcher.Invoke instead, the same
+                // guaranteed-correct pattern already used elsewhere in this class (e.g.
+                // around line 2734) - it works regardless of which thread called in.
+                _dispatcher.Invoke(() =>
                 {
-                    Margin = new Thickness(0),
-                    LineHeight = 18, // Consistent line height
-                    TextAlignment = TextAlignment.Left
-                };
+                    // Use existing FlowDocument instance to avoid re-assigning the
+                    // document property (which can trigger bindings and layout).
+                    var doc = ParameterDisplayText ?? CreateFormattedDocument();
 
-                // Format each parameter with proper spacing
-                for (int i = 0; i < fieldValues.Count; i++)
-                {
-                    var kvp = fieldValues.ElementAt(i);
+                    // Ensure basic formatting is applied
+                    doc.PagePadding = new Thickness(4, 4, 4, 4);
+                    doc.TextAlignment = TextAlignment.Left;
+                    doc.FontSize = 11;
+                    doc.FontFamily = new FontFamily("Segoe UI");
 
-                    // Add comma and space for all except first item
-                    if (i > 0)
+                    var blueBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(AppConstants.GLAccentHex));
+                    var blackBrush = Brushes.Black;
+
+                    // Create the main paragraph
+                    var paragraph = new Paragraph
                     {
-                        paragraph.Inlines.Add(new Run(", ") { Foreground = blackBrush, FontSize = 11 });
+                        Margin = new Thickness(0),
+                        LineHeight = 18, // Consistent line height
+                        TextAlignment = TextAlignment.Left
+                    };
+
+                    // Format each parameter with proper spacing
+                    for (int i = 0; i < fieldValues.Count; i++)
+                    {
+                        var kvp = fieldValues.ElementAt(i);
+
+                        // Add comma and space for all except first item
+                        if (i > 0)
+                        {
+                            paragraph.Inlines.Add(new Run(", ") { Foreground = blackBrush, FontSize = 11 });
+                        }
+
+                        // Add parameter name in black
+                        paragraph.Inlines.Add(new Run(kvp.Key) { Foreground = blackBrush, FontSize = 11, FontWeight = FontWeights.Normal });
+
+                        // Add equals sign and space
+                        paragraph.Inlines.Add(new Run(" = ") { Foreground = blackBrush, FontSize = 11 });
+
+                        // Add quoted value in blue
+                        paragraph.Inlines.Add(new Run($"\"{kvp.Value}\"") { Foreground = blueBrush, FontSize = 11 });
                     }
 
-                    // Add parameter name in black
-                    paragraph.Inlines.Add(new Run(kvp.Key) { Foreground = blackBrush, FontSize = 11, FontWeight = FontWeights.Normal });
+                    // Add final period
+                    paragraph.Inlines.Add(new Run(".") { Foreground = blackBrush, FontSize = 11 });
 
-                    // Add equals sign and space
-                    paragraph.Inlines.Add(new Run(" = ") { Foreground = blackBrush, FontSize = 11 });
+                    // Replace blocks on existing document instead of assigning new instance
+                    try
+                    {
+                        doc.Blocks.Clear();
+                        doc.Blocks.Add(paragraph);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "GLConfiguratorViewModel.UpdateParameterSummary: failed to update FlowDocument blocks");
+                    }
 
-                    // Add quoted value in blue
-                    paragraph.Inlines.Add(new Run($"\"{kvp.Value}\"") { Foreground = blueBrush, FontSize = 11 });
-                }
-
-                // Add final period
-                paragraph.Inlines.Add(new Run(".") { Foreground = blackBrush, FontSize = 11 });
-
-                // Replace blocks on existing document instead of assigning new instance
-                try
-                {
-                    doc.Blocks.Clear();
-                    doc.Blocks.Add(paragraph);
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "GLConfiguratorViewModel.UpdateParameterSummary: failed to update FlowDocument blocks");
-                }
-
-                // Ensure ParameterDisplayText points to the current doc instance.
-                if (!ReferenceEquals(ParameterDisplayText, doc))
-                {
-                    ParameterDisplayText = doc;
-                }
+                    // Ensure ParameterDisplayText points to the current doc instance.
+                    if (!ReferenceEquals(ParameterDisplayText, doc))
+                    {
+                        ParameterDisplayText = doc;
+                    }
+                });
             }
             finally
             {
