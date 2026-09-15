@@ -138,32 +138,49 @@ namespace GLSense.Utilities
                 // uses this pair (RowProcessor.ExecuteAsync and the other GLWaitWindow
                 // bulk-operation call sites) without being active the rest of the time.
                 ComMessageFilter.Register();
+                AppState.Instance.IsBulkExcelOperationRunning = true;
 
-                var app = AppState.Instance.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
-
-                LogUtility.LogDebug("Setting ScreenUpdating = false");
-                bool screenUpdatingOk = TrySetComProperty(() => app.ScreenUpdating = false, "ScreenUpdating=false", "DisableExcelSettings");
-
-                LogUtility.LogDebug("Setting DisplayAlerts = false");
-                bool displayAlertsOk = TrySetComProperty(() => app.DisplayAlerts = false, "DisplayAlerts=false", "DisableExcelSettings");
-
-                LogUtility.LogDebug("Setting EnableEvents = false");
-                bool enableEventsOk = TrySetComProperty(() => app.EnableEvents = false, "EnableEvents=false", "DisableExcelSettings");
-
-                if (screenUpdatingOk && displayAlertsOk && enableEventsOk)
+                // Everything below is wrapped so that ANY failure here - including the
+                // null-Excel-app case and the final rolled-back-partial-failure throw -
+                // clears both the message filter and the flag before the exception
+                // propagates. Without this, a failed DisableExcelSettings() call would
+                // leave IsBulkExcelOperationRunning stuck true forever (nothing else would
+                // ever call EnableExcelSettings() to clear it), permanently suppressing the
+                // Balance Configurator's SheetSelectionChange-driven relaunch/hide logic.
+                try
                 {
-                    LogUtility.LogDebug("Excel settings disabled successfully");
-                    return;
+                    var app = AppState.Instance.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
+
+                    LogUtility.LogDebug("Setting ScreenUpdating = false");
+                    bool screenUpdatingOk = TrySetComProperty(() => app.ScreenUpdating = false, "ScreenUpdating=false", "DisableExcelSettings");
+
+                    LogUtility.LogDebug("Setting DisplayAlerts = false");
+                    bool displayAlertsOk = TrySetComProperty(() => app.DisplayAlerts = false, "DisplayAlerts=false", "DisableExcelSettings");
+
+                    LogUtility.LogDebug("Setting EnableEvents = false");
+                    bool enableEventsOk = TrySetComProperty(() => app.EnableEvents = false, "EnableEvents=false", "DisableExcelSettings");
+
+                    if (screenUpdatingOk && displayAlertsOk && enableEventsOk)
+                    {
+                        LogUtility.LogDebug("Excel settings disabled successfully");
+                        return;
+                    }
+
+                    // Don't leave a partially-disabled state (e.g. ScreenUpdating stuck false)
+                    // hanging with nothing to restore it - roll back whatever did succeed.
+                    LogUtility.LogWarn("DisableExcelSettings: one or more properties failed - rolling back any that succeeded");
+                    if (screenUpdatingOk) TrySetComProperty(() => app.ScreenUpdating = true, "ScreenUpdating=true (rollback)", "DisableExcelSettings");
+                    if (displayAlertsOk) TrySetComProperty(() => app.DisplayAlerts = true, "DisplayAlerts=true (rollback)", "DisableExcelSettings");
+                    if (enableEventsOk) TrySetComProperty(() => app.EnableEvents = true, "EnableEvents=true (rollback)", "DisableExcelSettings");
+
+                    throw new InvalidOperationException("Failed to fully disable Excel settings after retries; rolled back partial changes.");
                 }
-
-                // Don't leave a partially-disabled state (e.g. ScreenUpdating stuck false)
-                // hanging with nothing to restore it - roll back whatever did succeed.
-                LogUtility.LogWarn("DisableExcelSettings: one or more properties failed - rolling back any that succeeded");
-                if (screenUpdatingOk) TrySetComProperty(() => app.ScreenUpdating = true, "ScreenUpdating=true (rollback)", "DisableExcelSettings");
-                if (displayAlertsOk) TrySetComProperty(() => app.DisplayAlerts = true, "DisplayAlerts=true (rollback)", "DisableExcelSettings");
-                if (enableEventsOk) TrySetComProperty(() => app.EnableEvents = true, "EnableEvents=true (rollback)", "DisableExcelSettings");
-
-                throw new InvalidOperationException("Failed to fully disable Excel settings after retries; rolled back partial changes.");
+                catch
+                {
+                    AppState.Instance.IsBulkExcelOperationRunning = false;
+                    ComMessageFilter.Revoke();
+                    throw;
+                }
             }
         }
 
@@ -197,6 +214,7 @@ namespace GLSense.Utilities
                     // bracket. See the registration comment in DisableExcelSettings for why
                     // this must not be process-wide/always-on.
                     ComMessageFilter.Revoke();
+                    AppState.Instance.IsBulkExcelOperationRunning = false;
                 }
             }
         }

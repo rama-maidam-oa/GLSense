@@ -2038,6 +2038,24 @@ namespace GLSense
                 if (range is not Excel.Range rng) return;
                 if (rng.Rows.Count != 1 || rng.Columns.Count != 1) return;
 
+                // Matches the VB.NET sibling's own guards on this same event - a
+                // multi-cell/marching-ants selection during cut or copy, or any app-driven
+                // write bracketed by DisableExcelSettings/EnableExcelSettings (which
+                // already suppresses this event natively via EnableEvents=false for most
+                // cases - this flag is deliberately wider, covering the moment right around
+                // that bracket too; see AppState.IsBulkExcelOperationRunning's own comment),
+                // should never be treated as the user actually clicking a cell and trigger
+                // the Balance Configurator to hide/relaunch.
+                var cutCopyMode = AppState.Instance.ExcelApp?.CutCopyMode;
+                if (cutCopyMode == Excel.XlCutCopyMode.xlCopy || cutCopyMode == Excel.XlCutCopyMode.xlCut)
+                {
+                    return;
+                }
+                if (AppState.Instance.IsBulkExcelOperationRunning)
+                {
+                    return;
+                }
+
                 LogUtility.LogDebug($"SheetSelectionChange fired. Sheet={(sheet as Excel.Worksheet)?.Name}, Cell={rng.Address}");
 
                 bool isBalanceFormulaCell = HasBalanceFormula(rng);

@@ -89,6 +89,18 @@ namespace GLSense
         public bool SnapshotJob { get; set; }
         public bool SingleRefresh { get; set; }
 
+        // Set for the duration of any CommonMethods.DisableExcelSettings/
+        // EnableExcelSettings-bracketed bulk operation (mirrors the VB.NET sibling's
+        // FSGExecute flag). Application.EnableEvents=false, also toggled by that same
+        // bracket, already stops Excel from raising SheetSelectionChange/SheetActivate/
+        // WorkbookActivate at all during the bracket - this flag is deliberately set
+        // slightly wider (before EnableEvents goes false, cleared after it's restored) as
+        // defense-in-depth against a trailing write landing right at that boundary, and is
+        // checked explicitly by handlers that also need to guard against non-bulk
+        // selection-changing operations like cut/copy/paste (see
+        // adxExcelAppEvents1_SheetSelectionChange's separate CutCopyMode check).
+        public bool IsBulkExcelOperationRunning { get; set; }
+
         // UI & configuration
         public string DefaultSegment { get; set; }
         public int SegmentPickedIndex { get; set; } = AppConstants.DefaultSegmentPickedIndex;
