@@ -785,7 +785,7 @@ namespace GLSense
                 // this was ported from, where SheetActivate is the only place FSGForm
                 // reacts to a workbook switch too) - that case is handled by
                 // adxExcelAppEvents1_WorkbookActivate below instead.
-                SafeInvokeWpf(() => ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.Selection as Excel.Range));
+                ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.Selection as Excel.Range);
             }
             catch (Exception ex)
             {
@@ -2047,7 +2047,7 @@ namespace GLSense
                     }
                 }
 
-                SafeInvokeWpf(() => ApplyBalanceWindowVisibility(rng));
+                ApplyBalanceWindowVisibility(rng);
             }
             catch (Exception ex)
             {
@@ -2133,7 +2133,7 @@ namespace GLSense
                 // SheetActivate alone was assumed to cover it) - so the floating window has
                 // to react here, checking the newly active workbook's own active cell for a
                 // balance formula, same as a normal selection change would.
-                SafeInvokeWpf(() => ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.ActiveCell as Excel.Range));
+                ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.ActiveCell as Excel.Range);
             }
             catch (Exception ex)
             {
@@ -2770,29 +2770,26 @@ namespace GLSense
             LogUtility.LogDebug("RibFSGWindow_OnClick clicked.");
             try
             {
-                SafeInvokeWpf(() =>
+                // Without this, every click spawns another independent floating
+                // configurator (the pane path above just toggles the one pane).
+                var existing = AppState.Instance.BalanceWindow;
+                if (existing != null && !existing.IsDisposed && existing.Visible)
                 {
-                    // Without this, every click spawns another independent floating
-                    // configurator (the pane path above just toggles the one pane).
-                    var existing = AppState.Instance.BalanceWindow;
-                    if (existing != null && !existing.IsDisposed && existing.Visible)
-                    {
-                        LogUtility.LogDebug("RibFSGWindow_OnClick: Balance Configurator window already open, activating it.");
-                        existing.Activate();
-                        return;
-                    }
+                    LogUtility.LogDebug("RibFSGWindow_OnClick: Balance Configurator window already open, activating it.");
+                    existing.Activate();
+                    return;
+                }
 
-                    // A hidden-but-still-referenced window (see ApplyBalanceWindowVisibility)
-                    // is re-shown rather than rebuilt - re-creating it here is exactly the
-                    // slow reload/repaint the VB.NET sibling avoids by hiding instead of
-                    // closing FSGForm.
-                    bool wasHidden = existing != null && !existing.IsDisposed;
-                    var win = GetOrCreateBalanceWindow();
-                    if (wasHidden)
-                    {
-                        _ = win.RelaunchWindow();
-                    }
-                });
+                // A hidden-but-still-referenced window (see ApplyBalanceWindowVisibility)
+                // is re-shown rather than rebuilt - re-creating it here is exactly the
+                // slow reload/repaint the VB.NET sibling avoids by hiding instead of
+                // closing FSGForm.
+                bool wasHidden = existing != null && !existing.IsDisposed;
+                var win = GetOrCreateBalanceWindow();
+                if (wasHidden)
+                {
+                    _ = win.RelaunchWindow();
+                }
             }
             catch (Exception ex)
             {
@@ -2804,7 +2801,23 @@ namespace GLSense
         /// was hidden) or creates a fresh one. Mirrors the VB.NET sibling's FSGForm
         /// construction pattern in AdxExcelAppEvents1_SheetSelectionChange/SheetActivate:
         /// "If FSGForm Is Nothing OrElse FSGForm.IsDisposed Then New FormFSG(...) Else If
-        /// Not FSGForm.Visible Then FSGForm.Visible = True".</summary>
+        /// Not FSGForm.Visible Then FSGForm.Visible = True".
+        ///
+        /// Only the "construct a brand-new window" branch is wrapped in SafeInvokeWpf -
+        /// matching the only established precedent for that helper elsewhere in this
+        /// codebase (safely constructing a new WPF object, ensuring
+        /// WpfAppManager.EnsureApplication() has run). Wrapping the "re-show/relaunch an
+        /// existing window" path in it too previously caused
+        /// GLBalanceConfiguratorForm.RelaunchWindow's fire-and-forget async continuation
+        /// to resume off the WPF dispatcher thread and throw InvalidOperationException
+        /// ("a different thread owns it") on BalanceParametersExpander.IsExpanded -
+        /// Dispatcher.Invoke only guarantees the dispatcher thread for the synchronous
+        /// portion of the wrapped call, not for continuations that run later, after the
+        /// async method's first await, by which point Invoke has already returned.
+        /// Callers of an already-open window's methods run on Excel's main STA thread,
+        /// which is already the WPF dispatcher thread - no extra marshaling needed there,
+        /// same as the original (pre-Show Always) SheetSelectionChange code called
+        /// RelaunchWindow directly, unwrapped.</summary>
         private GLBalanceConfiguratorForm GetOrCreateBalanceWindow()
         {
             var existing = AppState.Instance.BalanceWindow;
@@ -2817,16 +2830,20 @@ namespace GLSense
                 return existing;
             }
 
-            var win = new GLBalanceConfiguratorForm();
-            AppState.Instance.BalanceWindow = win;
-            win.FormClosed += (s, e) =>
+            GLBalanceConfiguratorForm win = null;
+            SafeInvokeWpf(() =>
             {
-                if (AppState.Instance.BalanceWindow == win)
+                win = new GLBalanceConfiguratorForm();
+                AppState.Instance.BalanceWindow = win;
+                win.FormClosed += (s, e) =>
                 {
-                    AppState.Instance.BalanceWindow = null;
-                }
-            };
-            win.ShowFloating((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                    if (AppState.Instance.BalanceWindow == win)
+                    {
+                        AppState.Instance.BalanceWindow = null;
+                    }
+                };
+                win.ShowFloating((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
             return win;
         }
 
@@ -2842,7 +2859,7 @@ namespace GLSense
                 // rather than waiting for the next selection change to catch up.
                 if (!pressed)
                 {
-                    SafeInvokeWpf(() => ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.ActiveCell as Excel.Range));
+                    ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.ActiveCell as Excel.Range);
                 }
             }
             catch (Exception ex)
