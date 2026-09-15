@@ -1,6 +1,7 @@
 using GLSense.Utilities;
 using System;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Forms.Integration;
@@ -141,13 +142,62 @@ namespace GLSense.Views
         // without this, dragging would swallow clicks meant for that button.
         private const int HeaderCloseButtonReserveDip = 60;
 
+        // TEMPORARY DIAGNOSTIC: capturing the raw Win32 message sequence this Form
+        // actually receives (or doesn't) for a click while an Excel cell is in edit
+        // mode, since source-level comparison against FormFSG.vb turned up no
+        // explanation. Remove once the edit-mode-click issue is root-caused.
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetFocus();
+
+        private static void LogDiagnosticMsg(string msgName, IntPtr hwnd)
+        {
+            try
+            {
+                LogUtility.LogDebug(
+                    $"[EditModeDiag] {msgName} thisHwnd=0x{hwnd.ToInt64():X} " +
+                    $"foregroundHwnd=0x{GetForegroundWindow().ToInt64():X} " +
+                    $"focusHwnd=0x{GetFocus().ToInt64():X}");
+            }
+            catch
+            {
+                // diagnostic-only, never let logging failure affect WndProc
+            }
+        }
+
         protected override void WndProc(ref Message m)
         {
             const int WM_NCHITTEST = 0x0084;
             const int HTCLIENT = 1;
             const int HTCAPTION = 2;
+            const int WM_MOUSEACTIVATE = 0x0021;
+            const int WM_NCACTIVATE = 0x0086;
+            const int WM_ACTIVATE = 0x0006;
+            const int WM_SETFOCUS = 0x0007;
+            const int WM_KILLFOCUS = 0x0008;
+            const int WM_LBUTTONDOWN = 0x0201;
+            const int WM_NCLBUTTONDOWN = 0x00A1;
+
+            switch (m.Msg)
+            {
+                case WM_MOUSEACTIVATE: LogDiagnosticMsg("WM_MOUSEACTIVATE(before)", m.HWnd); break;
+                case WM_NCACTIVATE: LogDiagnosticMsg("WM_NCACTIVATE(before)", m.HWnd); break;
+                case WM_ACTIVATE: LogDiagnosticMsg("WM_ACTIVATE(before)", m.HWnd); break;
+                case WM_SETFOCUS: LogDiagnosticMsg("WM_SETFOCUS(before)", m.HWnd); break;
+                case WM_KILLFOCUS: LogDiagnosticMsg("WM_KILLFOCUS(before)", m.HWnd); break;
+                case WM_LBUTTONDOWN: LogDiagnosticMsg("WM_LBUTTONDOWN(before)", m.HWnd); break;
+                case WM_NCLBUTTONDOWN: LogDiagnosticMsg("WM_NCLBUTTONDOWN(before)", m.HWnd); break;
+            }
 
             base.WndProc(ref m);
+
+            switch (m.Msg)
+            {
+                case WM_MOUSEACTIVATE: LogDiagnosticMsg($"WM_MOUSEACTIVATE(after, result={m.Result.ToInt32()})", m.HWnd); break;
+                case WM_NCACTIVATE: LogDiagnosticMsg($"WM_NCACTIVATE(after, result={m.Result.ToInt32()})", m.HWnd); break;
+            }
 
             if (m.Msg == WM_NCHITTEST && m.Result.ToInt32() == HTCLIENT)
             {
