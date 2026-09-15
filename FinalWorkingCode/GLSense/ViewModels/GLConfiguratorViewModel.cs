@@ -876,32 +876,48 @@ namespace GLSense.ViewModels
             var results = await Task.WhenAll(tasks);
             LogUtility.LogDebug("GLConfiguratorViewModel.LoadDataAsync: all data repository tasks completed.");
 
-            ConfiguratorSegments = results[0] as ObservableCollection<SegmentModel> ?? new ObservableCollection<SegmentModel>();
-            var ledgersData = results[1] as ObservableCollection<GenericLedgerModel> ?? new ObservableCollection<GenericLedgerModel>();
-            PopulateDynamicCollections(Ledgers, ledgersData, l => l.PropertyChanged += Ledger_PropertyChanged);
-            // Stored into the master list, not directly into the publicly-bound Activities
-            // collection - Activities is a conditionally-filtered view rebuilt by
-            // UpdateActivitiesForConditions() (called from UpdateUIAsync below), which
-            // hides Begin/End Balance while Balance Type is a JED variant (Issue-5).
-            _allActivities = results[2] as ObservableCollection<ActivityModel> ?? new ObservableCollection<ActivityModel>();
-            Periods = results[3] as ObservableCollection<PeriodModel> ?? new ObservableCollection<PeriodModel>();
-            Currencies = results[4] as ObservableCollection<CurrencyModel> ?? new ObservableCollection<CurrencyModel>();
-            Budgets = results[5] as ObservableCollection<BudgetModel> ?? new ObservableCollection<BudgetModel>();
+            // Task.Run's continuation isn't guaranteed to resume on the dispatcher thread
+            // in this VSTO add-in's WPF hosting - the same already-documented class of
+            // issue RibLOVs_OnClick's own comment describes, and the one
+            // ShowBusyOverlayAsync was fixed for. Confirmed here by a NotSupportedException
+            // ("This type of CollectionView does not support changes to its
+            // SourceCollection from a thread different from the Dispatcher thread") thrown
+            // from PopulateDynamicCollections's ObservableCollection.Clear() right after
+            // this await - which also meant the configurator loaded blank whenever it hit,
+            // since the exception aborted the rest of this method. Everything below that
+            // touches these UI-bound collections/properties is wrapped in a single
+            // synchronous _dispatcher.Invoke (the same safe pattern already used elsewhere
+            // in this class, e.g. around line 2734) to guarantee it runs on the right
+            // thread rather than trusting the await's continuation.
+            _dispatcher.Invoke(() =>
+            {
+                ConfiguratorSegments = results[0] as ObservableCollection<SegmentModel> ?? new ObservableCollection<SegmentModel>();
+                var ledgersData = results[1] as ObservableCollection<GenericLedgerModel> ?? new ObservableCollection<GenericLedgerModel>();
+                PopulateDynamicCollections(Ledgers, ledgersData, l => l.PropertyChanged += Ledger_PropertyChanged);
+                // Stored into the master list, not directly into the publicly-bound Activities
+                // collection - Activities is a conditionally-filtered view rebuilt by
+                // UpdateActivitiesForConditions() (called from UpdateUIAsync below), which
+                // hides Begin/End Balance while Balance Type is a JED variant (Issue-5).
+                _allActivities = results[2] as ObservableCollection<ActivityModel> ?? new ObservableCollection<ActivityModel>();
+                Periods = results[3] as ObservableCollection<PeriodModel> ?? new ObservableCollection<PeriodModel>();
+                Currencies = results[4] as ObservableCollection<CurrencyModel> ?? new ObservableCollection<CurrencyModel>();
+                Budgets = results[5] as ObservableCollection<BudgetModel> ?? new ObservableCollection<BudgetModel>();
 
-            var encumbrancesData = results[6] as ObservableCollection<EncumbranceModel> ?? new ObservableCollection<EncumbranceModel>();
-            PopulateDynamicCollections(Encumbrances, encumbrancesData, e => e.PropertyChanged += Encumbrance_PropertyChanged);
-            // Enable ledger combo/ref if ledgers exist
-            try
-            {
-                IsLedgerEnabled = Ledgers != null && Ledgers.Any();
-                LedgerField.RefreshEnableState();
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "GLConfiguratorViewModel.LoadDataAsync: failed to refresh ledger field enable state (non-fatal)");
-            }
-            JournalSources = results[7] as ObservableCollection<JournalSourceModel> ?? new ObservableCollection<JournalSourceModel>();
-            JournalCategories = results[8] as ObservableCollection<JournalCategoryModel> ?? new ObservableCollection<JournalCategoryModel>();
+                var encumbrancesData = results[6] as ObservableCollection<EncumbranceModel> ?? new ObservableCollection<EncumbranceModel>();
+                PopulateDynamicCollections(Encumbrances, encumbrancesData, e => e.PropertyChanged += Encumbrance_PropertyChanged);
+                // Enable ledger combo/ref if ledgers exist
+                try
+                {
+                    IsLedgerEnabled = Ledgers != null && Ledgers.Any();
+                    LedgerField.RefreshEnableState();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "GLConfiguratorViewModel.LoadDataAsync: failed to refresh ledger field enable state (non-fatal)");
+                }
+                JournalSources = results[7] as ObservableCollection<JournalSourceModel> ?? new ObservableCollection<JournalSourceModel>();
+                JournalCategories = results[8] as ObservableCollection<JournalCategoryModel> ?? new ObservableCollection<JournalCategoryModel>();
+            });
             LogUtility.LogDebug($"GLConfiguratorViewModel.LoadDataAsync: exit. Segments={ConfiguratorSegments?.Count ?? 0}, Ledgers={Ledgers?.Count ?? 0}, Activities={Activities?.Count ?? 0}, Periods={Periods?.Count ?? 0}, Currencies={Currencies?.Count ?? 0}, Budgets={Budgets?.Count ?? 0}, Encumbrances={Encumbrances?.Count ?? 0}, JournalSources={JournalSources?.Count ?? 0}, JournalCategories={JournalCategories?.Count ?? 0}");
         }
 
