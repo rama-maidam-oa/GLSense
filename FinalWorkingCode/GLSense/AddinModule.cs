@@ -2729,6 +2729,31 @@ namespace GLSense
             }
         }
 
+        private void RibFSGWindow_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            LogUtility.LogDebug("RibFSGWindow_OnClick clicked.");
+            try
+            {
+                SafeInvokeWpf(() =>
+                {
+                    var win = new GLBalanceConfiguratorWindow();
+                    AppState.Instance.BalanceWindow = win;
+                    win.Closed += (s, e) =>
+                    {
+                        if (AppState.Instance.BalanceWindow == win)
+                        {
+                            AppState.Instance.BalanceWindow = null;
+                        }
+                    };
+                    win.ShowFloating((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex);
+            }
+        }
+
         private void RibLOVs_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             LogUtility.LogDebug("RibLOVs_OnClick clicked.");

@@ -51,6 +51,7 @@ namespace GLSense
             this.RibLOVs = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonBox4 = new AddinExpress.MSO.ADXRibbonBox(this.components);
             this.RibFSG = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibFSGWindow = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibLiveCalc = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.adxRibbonGroup4 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibSegS = new AddinExpress.MSO.ADXRibbonComboBox(this.components);
@@ -382,6 +383,7 @@ namespace GLSense
             // 
             this.adxRibbonBox4.BoxStyle = AddinExpress.MSO.ADXRibbonXBoxStyle.Vertical;
             this.adxRibbonBox4.Controls.Add(this.RibFSG);
+            this.adxRibbonBox4.Controls.Add(this.RibFSGWindow);
             this.adxRibbonBox4.Controls.Add(this.RibLiveCalc);
             this.adxRibbonBox4.Id = "adxRibbonBox_22c42e40ef204c2981fc8005b1855550";
             this.adxRibbonBox4.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
@@ -397,6 +399,18 @@ namespace GLSense
             this.RibFSG.ScreenTip = "Balance";
             this.RibFSG.SuperTip = "Financial statement builder";
             this.RibFSG.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibFSG_OnClick);
+            // 
+            // RibFSGWindow
+            // 
+            this.RibFSGWindow.Caption = "Balance (Window)";
+            this.RibFSGWindow.Id = "adxRibbonButton_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6";
+            this.RibFSGWindow.Image = 18;
+            this.RibFSGWindow.ImageList = this.ImageList_16X16;
+            this.RibFSGWindow.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibFSGWindow.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibFSGWindow.ScreenTip = "Balance (Floating Window)";
+            this.RibFSGWindow.SuperTip = "Opens the Balance Configurator as a floating window instead of the docked task pane (preview)";
+            this.RibFSGWindow.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibFSGWindow_OnClick);
             // 
             // RibLiveCalc
             // 
@@ -1342,6 +1356,7 @@ namespace GLSense
         public AddinExpress.MSO.ADXRibbonButton RibLOVs;
         public AddinExpress.MSO.ADXRibbonBox adxRibbonBox4;
         public AddinExpress.MSO.ADXRibbonButton RibFSG;
+        public AddinExpress.MSO.ADXRibbonButton RibFSGWindow;
         public AddinExpress.MSO.ADXRibbonCheckBox RibLiveCalc;
         public AddinExpress.MSO.ADXRibbonComboBox RibSegS;
         public AddinExpress.MSO.ADXRibbonBox adxRibbonBox5;
