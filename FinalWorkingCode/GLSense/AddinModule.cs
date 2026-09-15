@@ -2006,17 +2006,31 @@ namespace GLSense
 
                 LogUtility.LogDebug($"SheetSelectionChange fired. Sheet={(sheet as Excel.Worksheet)?.Name}, Cell={rng.Address}");
 
+                bool isBalanceFormulaCell = TryGetSingleCellFormula(rng, out string formula) &&
+                    formula.IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0;
+
                 AppState.Instance.BalancePane = GetPaneInstance();
                 if (AppState.Instance.BalancePane != null && AppState.Instance.BalancePane.Visible)
                 {
-                    if (TryGetSingleCellFormula(rng, out string formula) &&
-                        formula.IndexOf(AppConstants.glBal, StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (isBalanceFormulaCell)
                     {
                         _ = AppState.Instance.BalancePane.RelaunchPane();
                     }
                     else
                     {
                         _ = AppState.Instance.BalancePane.ResetPaneReference();
+                    }
+                }
+
+                if (AppState.Instance.BalanceWindow != null && AppState.Instance.BalanceWindow.IsVisible)
+                {
+                    if (isBalanceFormulaCell)
+                    {
+                        _ = AppState.Instance.BalanceWindow.RelaunchWindow();
+                    }
+                    else
+                    {
+                        _ = AppState.Instance.BalanceWindow.ResetWindowReference();
                     }
                 }
             }
