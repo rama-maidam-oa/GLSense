@@ -138,12 +138,6 @@
     <Compile Include="Drilldowns\DrillCellHighlighter.cs" />
     <Compile Include="Drilldowns\ExcelFormulaGenerator.cs" />
     <Compile Include="Extensions\DatePickerExtensions.cs" />
-    <Compile Include="GLConfiguratorPane.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GLConfiguratorPane.Designer.cs">
-      <DependentUpon>GLConfiguratorPane.cs</DependentUpon>
-    </Compile>
     <Compile Include="GLSenseExcelFunctions.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -331,9 +325,6 @@
   <ItemGroup>
     <EmbeddedResource Include="AddinModule.resx">
       <DependentUpon>AddinModule.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GLConfiguratorPane.resx">
-      <DependentUpon>GLConfiguratorPane.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GLSenseExcelFunctions.resx">
       <DependentUpon>GLSenseExcelFunctions.cs</DependentUpon>

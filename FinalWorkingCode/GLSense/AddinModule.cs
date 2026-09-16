@@ -484,9 +484,6 @@ namespace GLSense
                 // Unsubscribe from all Excel events
                 UnsubscribeFromAllExcelEvents();
 
-                // Force hide task panes
-                HideTaskPanes();
-
                 // ADXTaskPane mouse-wheel fix (CLAUDE.md section 24.3.5): tears down the
                 // dedicated background thread + WH_MOUSE_LL hook so neither lingers if the
                 // add-in is disabled/unloaded without Excel itself closing.
@@ -2057,21 +2054,6 @@ namespace GLSense
 
                 LogUtility.LogDebug($"SheetSelectionChange fired. Sheet={(sheet as Excel.Worksheet)?.Name}, Cell={rng.Address}");
 
-                bool isBalanceFormulaCell = HasBalanceFormula(rng);
-
-                AppState.Instance.BalancePane = GetPaneInstance();
-                if (AppState.Instance.BalancePane != null && AppState.Instance.BalancePane.Visible)
-                {
-                    if (isBalanceFormulaCell)
-                    {
-                        _ = AppState.Instance.BalancePane.RelaunchPane(showBusyOverlay: false);
-                    }
-                    else
-                    {
-                        _ = AppState.Instance.BalancePane.ResetPaneReference();
-                    }
-                }
-
                 ApplyBalanceWindowVisibility(rng);
             }
             catch (Exception ex)
@@ -2080,39 +2062,20 @@ namespace GLSense
             }
         }
 
-        public GLConfiguratorPane GetPaneInstance()
-        {
-            try
-            {
-                return (GLConfiguratorPane)adxExcelTaskPanesCollectionItem1.TaskPaneInstance;
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex);
-                return null;
-            }
-        }
-
-        /// <summary>Hides the Balance Configurator (pane and/or floating window) if either
-        /// is currently visible. Matches the VB.NET sibling's RibLedger_OnChange and
-        /// FormCubes cube-selection-commit handlers: on a genuine ledger or cube/chart-of-
-        /// accounts change, the currently-loaded configurator state (segments,
-        /// currencies, balance types, etc.) is tied to the OLD ledger/cube and would be
-        /// stale/invalid - rather than trying to reload it in place, VB.NET just hides it
-        /// (never reloads), same as this app already does when the user clicks off a
-        /// balance formula cell. The user reopens it fresh via the ribbon button once
-        /// ready. Call only when the change is confirmed/genuine (same gating the two
-        /// callers already apply before calling this).</summary>
+        /// <summary>Hides the Balance Configurator window if currently visible. Matches
+        /// the VB.NET sibling's RibLedger_OnChange and FormCubes cube-selection-commit
+        /// handlers: on a genuine ledger or cube/chart-of-accounts change, the currently-
+        /// loaded configurator state (segments, currencies, balance types, etc.) is tied
+        /// to the OLD ledger/cube and would be stale/invalid - rather than trying to
+        /// reload it in place, VB.NET just hides it (never reloads), same as this app
+        /// already does when the user clicks off a balance formula cell. The user reopens
+        /// it fresh via the ribbon button once ready. Call only when the change is
+        /// confirmed/genuine (same gating the two callers already apply before calling
+        /// this).</summary>
         public static void HideBalanceConfiguratorIfOpen()
         {
             try
             {
-                var pane = AddinModule.CurrentInstance?.GetPaneInstance();
-                if (pane != null && pane.Visible)
-                {
-                    pane.Visible = false;
-                }
-
                 var win = AppState.Instance.BalanceWindow;
                 if (win != null && !win.IsDisposed && win.Visible)
                 {
@@ -2795,46 +2758,6 @@ namespace GLSense
             AppState.Instance.SingleRefresh = RibLiveCalc.Pressed;
         }
 
-        private void RibFSG_OnClick(object sender, IRibbonControl control, bool pressed)
-        {
-            try
-            {
-                LogUtility.LogDebug("RibFSG_OnClick clicked.");
-                AppState.Instance.displayConfigurator = true;
-
-                AppState.Instance.BalancePane = GetPaneInstance();
-                GLConfiguratorPane blpane = AppState.Instance.BalancePane;
-
-                if (blpane != null)
-                {
-                    blpane.Visible = !blpane.Visible;
-                    if (blpane.Visible)
-                    {
-                        _ = blpane.RelaunchPane();
-                    }
-                }
-                else
-                {
-                    adxExcelTaskPanesCollectionItem1.Position = AddinExpress.XL.ADXExcelTaskPanePosition.Right;
-                    blpane = (GLConfiguratorPane)adxExcelTaskPanesCollectionItem1.CreateTaskPaneInstance();
-                    if (blpane != null)
-                    {
-                        blpane.Show();
-                        blpane.Visible = true;
-                    }
-                    AppState.Instance.BalancePane = blpane;
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex);
-            }
-            finally
-            {
-                AppState.Instance.displayConfigurator = false;
-            }
-        }
-
         private void RibFSGWindow_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             LogUtility.LogDebug("RibFSGWindow_OnClick clicked.");
@@ -3258,7 +3181,6 @@ namespace GLSense
             MessageBoxIcon icon = MessageBoxIcon.None;
             try
             {
-                HideTaskPanes();
                 (message, icon) = Task.Run(() => GetLogoutResponseAsync(loginUrlAtLogout, token)).GetAwaiter().GetResult();
             }
             catch (OperationCanceledException)
@@ -3299,11 +3221,10 @@ namespace GLSense
         private void LoggOff()
         {
             // AppState.Reset() below blanks the BalanceWindow reference via reflection
-            // without touching the actual Form - unlike HideTaskPanes() for the pane
-            // (called by the GLSenseLogout caller above), nothing else closes it. Left
-            // alone, the window would stay open and visible with no way to reference it
-            // again. Mirrors the VB.NET sibling's LogoutSession(), which closes FSGForm
-            // before dropping its reference - silently, no confirmation message.
+            // without touching the actual Form. Left alone, the window would stay open
+            // and visible with no way to reference it again. Mirrors the VB.NET
+            // sibling's LogoutSession(), which closes FSGForm before dropping its
+            // reference - silently, no confirmation message.
             SafeInvokeWpf(() =>
             {
                 var win = AppState.Instance.BalanceWindow;
@@ -3320,26 +3241,6 @@ namespace GLSense
             RibShowAlways.Pressed = false;
             RibbonHelper.ApplyState("LoggedOut");
         }
-
-        private void HideTaskPanes()
-        {
-            try
-            {
-                if (adxExcelTaskPanesCollectionItem1?.TaskPaneInstances == null) return;
-                if (adxExcelTaskPanesCollectionItem1.TaskPaneInstances.Count > 0)
-                {
-                    foreach (GLConfiguratorPane xlTaskpane in adxExcelTaskPanesCollectionItem1.TaskPaneInstances)
-                    {
-                        xlTaskpane.Visible = false;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex);
-            }
-        }
-        
 
         /// <summary>
         /// The below method is executed from XLEdge Add-in

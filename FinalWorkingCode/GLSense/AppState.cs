@@ -105,11 +105,7 @@ namespace GLSense
         public string DefaultSegment { get; set; }
         public int SegmentPickedIndex { get; set; } = AppConstants.DefaultSegmentPickedIndex;
 
-        //Balance Configurator Pane
-        public GLConfiguratorPane BalancePane { get; set; }
-        public bool displayConfigurator { get; set; } = false;
-
-        //Balance Configurator floating window (Option A prototype - task pane above is untouched)
+        //Balance Configurator floating window - replaces the old task pane entirely.
         //  WinForms Form (not a pure WPF Window) - see GLBalanceConfiguratorForm's own
         //  doc comment for why: a plain WPF Window repeatedly lost real Win32 keyboard
         //  focus back to Excel's grid in this in-process, same-thread hosting context.

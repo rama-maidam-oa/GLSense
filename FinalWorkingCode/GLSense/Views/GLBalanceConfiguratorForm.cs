@@ -304,9 +304,8 @@ namespace GLSense.Views
             Show(new Win32Window(excelHwnd));
         }
 
-        /// <summary>Mirrors GLConfiguratorPane.RelaunchPane (GLConfiguratorPane.cs:216-234).
-        /// showBusyOverlay=false is passed by AddinModule.ApplyBalanceWindowVisibility for
-        /// the "Show Always, just clicked a different cell" case - see
+        /// <summary>showBusyOverlay=false is passed by AddinModule.ApplyBalanceWindowVisibility
+        /// for the "Show Always, just clicked a different cell" case - see
         /// GLBalanceConfigurator.ReLoadConfigurator's own doc comment.</summary>
         public async Task RelaunchWindow(bool showBusyOverlay = true)
         {

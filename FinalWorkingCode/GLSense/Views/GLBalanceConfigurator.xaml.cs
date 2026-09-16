@@ -44,18 +44,16 @@ namespace GLSense.Views
             public List<string> FuncValues { get; set; }
         }
         private readonly GLConfiguratorViewModel vm;
-        private GLConfiguratorPane _parentPane;
         public event Action OnCloseRequested;
 
-        /// <summary>Raised when the header bar is pressed with the left mouse button.
-        /// Only GLBalanceConfiguratorForm subscribes to this (to forward the press to
-        /// Windows as a native caption drag) - GLConfiguratorPane never does, so this
-        /// header stays inert when hosted in the task pane, unchanged from before.</summary>
+        /// <summary>Raised when the header bar is pressed with the left mouse button, so
+        /// GLBalanceConfiguratorForm can forward the press to Windows as a native caption
+        /// drag.</summary>
         public event Action OnHeaderDragRequested;
 
-        public GLBalanceConfigurator(GLConfiguratorPane parentPane = null)
+        public GLBalanceConfigurator()
         {
-            LogUtility.LogDebug($"GLBalanceConfigurator.ctor invoked - parentPane={(parentPane != null)}");
+            LogUtility.LogDebug("GLBalanceConfigurator.ctor invoked");
             InitializeComponent();
 
             MinWidth = MinimumConfiguratorWidth;
@@ -92,18 +90,12 @@ namespace GLSense.Views
                 HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
 
-            _parentPane = parentPane;
             DataContext = vm;
 
             // Subscribe to events
             this.Loaded += OnLoaded;
             this.SizeChanged += OnSizeChanged;
             this.IsVisibleChanged += OnIsVisibleChanged;
-
-            if (_parentPane != null)
-            {
-                _parentPane.Resize += OnParentPaneResize;
-            }
 
             // TEMPORARY DIAGNOSTIC: companion to the [EditModeDiag] WM_* logging in
             // GLBalanceConfiguratorForm.WndProc, which proved a click during Excel
@@ -319,29 +311,12 @@ namespace GLSense.Views
         {
             EnsureMinimumWidth();
         }
-        private void OnParentPaneResize(object sender, EventArgs e)
-        {
-            LogUtility.LogDebug("GLBalanceConfigurator.OnParentPaneResize invoked");
-            // Update control when task pane resizes
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                EnsureMinimumWidth();
-                this.UpdateLayout();
-                MainScrollViewer?.UpdateLayout();
-            }), DispatcherPriority.Loaded);
-        }
-
         private void EnsureMinimumWidth()
         {
             this.MinWidth = MinimumConfiguratorWidth;
             if (MainScrollViewer != null)
             {
                 MainScrollViewer.MinWidth = MinimumConfiguratorWidth;
-            }
-
-            if (_parentPane != null && _parentPane.Width < MinimumConfiguratorWidth)
-            {
-                _parentPane.Width = (int)MinimumConfiguratorWidth;
             }
         }
         private static string GetActiveCellInfo()

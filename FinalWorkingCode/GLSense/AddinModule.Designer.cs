@@ -50,7 +50,6 @@ namespace GLSense
             this.RibRollerGroup = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibLOVs = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonBox4 = new AddinExpress.MSO.ADXRibbonBox(this.components);
-            this.RibFSG = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibFSGWindow = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibShowAlways = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.RibLiveCalc = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
@@ -129,9 +128,7 @@ namespace GLSense
             this.RibAbout = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibHelp = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxExcelAppEvents1 = new AddinExpress.MSO.ADXExcelAppEvents(this.components);
-            this.adxExcelTaskPanesManager1 = new AddinExpress.XL.ADXExcelTaskPanesManager(this.components);
-            this.adxExcelTaskPanesCollectionItem1 = new AddinExpress.XL.ADXExcelTaskPanesCollectionItem(this.components);
-            // 
+            //
             // ImageList_16X16
             // 
             this.ImageList_16X16.ImageStream = ((System.Windows.Forms.ImageListStreamer)(resources.GetObject("ImageList_16X16.ImageStream")));
@@ -383,35 +380,22 @@ namespace GLSense
             // adxRibbonBox4
             // 
             this.adxRibbonBox4.BoxStyle = AddinExpress.MSO.ADXRibbonXBoxStyle.Vertical;
-            this.adxRibbonBox4.Controls.Add(this.RibFSG);
             this.adxRibbonBox4.Controls.Add(this.RibFSGWindow);
             this.adxRibbonBox4.Controls.Add(this.RibShowAlways);
             this.adxRibbonBox4.Controls.Add(this.RibLiveCalc);
             this.adxRibbonBox4.Id = "adxRibbonBox_22c42e40ef204c2981fc8005b1855550";
             this.adxRibbonBox4.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
-            // 
-            // RibFSG
-            // 
-            this.RibFSG.Caption = "Balance";
-            this.RibFSG.Id = "adxRibbonButton_ec3a38d16f8b4a6998e3790d3481ba41";
-            this.RibFSG.Image = 18;
-            this.RibFSG.ImageList = this.ImageList_16X16;
-            this.RibFSG.ImageTransparentColor = System.Drawing.Color.Transparent;
-            this.RibFSG.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
-            this.RibFSG.ScreenTip = "Balance";
-            this.RibFSG.SuperTip = "Financial statement builder";
-            this.RibFSG.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibFSG_OnClick);
-            // 
+            //
             // RibFSGWindow
-            // 
-            this.RibFSGWindow.Caption = "Balance (Window)";
+            //
+            this.RibFSGWindow.Caption = "Balance";
             this.RibFSGWindow.Id = "adxRibbonButton_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6";
             this.RibFSGWindow.Image = 18;
             this.RibFSGWindow.ImageList = this.ImageList_16X16;
             this.RibFSGWindow.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibFSGWindow.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
-            this.RibFSGWindow.ScreenTip = "Balance (Floating Window)";
-            this.RibFSGWindow.SuperTip = "Opens the Balance Configurator as a floating window instead of the docked task pane (preview)";
+            this.RibFSGWindow.ScreenTip = "Balance";
+            this.RibFSGWindow.SuperTip = "Financial statement builder";
             this.RibFSGWindow.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibFSGWindow_OnClick);
             //
             // RibShowAlways
@@ -1318,18 +1302,7 @@ namespace GLSense
             this.adxExcelAppEvents1.WorkbookActivate += new AddinExpress.MSO.ADXHostActiveObject_EventHandler(this.adxExcelAppEvents1_WorkbookActivate);
             this.adxExcelAppEvents1.WorkbookBeforeSave += new AddinExpress.MSO.ADXHostBeforeSave_EventHandler(this.adxExcelAppEvents1_WorkbookBeforeSave);
             this.adxExcelAppEvents1.SheetFollowHyperlink += new AddinExpress.MSO.ADXExcelHyperlink_EventHandler(this.adxExcelAppEvents1_SheetFollowHyperlink);
-            // 
-            // adxExcelTaskPanesManager1
-            // 
-            this.adxExcelTaskPanesManager1.Items.Add(this.adxExcelTaskPanesCollectionItem1);
-            this.adxExcelTaskPanesManager1.SetOwner(this);
-            // 
-            // adxExcelTaskPanesCollectionItem1
-            // 
-            this.adxExcelTaskPanesCollectionItem1.IsHiddenStateAllowed = false;
-            this.adxExcelTaskPanesCollectionItem1.IsMinimizedStateAllowed = false;
-            this.adxExcelTaskPanesCollectionItem1.TaskPaneClassName = "GLSense.GLConfiguratorPane";
-            // 
+            //
             // AddinModule
             // 
             this.AddinName = "GLSense";
@@ -1367,7 +1340,6 @@ namespace GLSense
         public AddinExpress.MSO.ADXRibbonButton RibRollerGroup;
         public AddinExpress.MSO.ADXRibbonButton RibLOVs;
         public AddinExpress.MSO.ADXRibbonBox adxRibbonBox4;
-        public AddinExpress.MSO.ADXRibbonButton RibFSG;
         public AddinExpress.MSO.ADXRibbonButton RibFSGWindow;
         public AddinExpress.MSO.ADXRibbonCheckBox RibShowAlways;
         public AddinExpress.MSO.ADXRibbonCheckBox RibLiveCalc;
@@ -1430,8 +1402,6 @@ namespace GLSense
         public AddinExpress.MSO.ADXRibbonCheckBox RibVersionCheck;
         public AddinExpress.MSO.ADXRibbonButton RibAbout;
         public AddinExpress.MSO.ADXRibbonButton RibHelp;
-        private AddinExpress.XL.ADXExcelTaskPanesManager adxExcelTaskPanesManager1;
-        public AddinExpress.XL.ADXExcelTaskPanesCollectionItem adxExcelTaskPanesCollectionItem1;
         private AddinExpress.MSO.ADXRibbonButton RibUserConfig;
         private ADXRibbonButton RibRefreshRange;
         private ADXRibbonButton RibHideRows;
