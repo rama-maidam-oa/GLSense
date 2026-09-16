@@ -14,7 +14,13 @@ namespace GLSense
     {
         private GLBalanceConfigurator _wpfControl;
         private ElementHost _host;
-        private readonly int _minWidthDip = 600;
+        private readonly int _minWidthDip = 520;
+        private readonly int _maxWidthDip = 625;
+        // Width the pane opens at (GLConfiguratorPane_ADXBeforeTaskPaneShow) - distinct
+        // from _minWidthDip so the pane can launch wider than its floor. Must stay >=
+        // GLBalanceConfigurator.MinimumConfiguratorWidth (520) - that WPF-side floor
+        // actively pushes the pane back up to it if this pane is ever narrower.
+        private readonly int _defaultWidthDip = 550;
         private readonly int _minHeightDip = 300;
         private const int DefaultDpi = 96;
         private const int WM_WINDOWPOSCHANGING = 0x0046;
@@ -76,7 +82,6 @@ namespace GLSense
             this.AutoScaleMode = AutoScaleMode.Dpi;
 
             ApplyDpiAwareSizing(GetEffectiveDpi());
-            this.DpiChanged += GLConfiguratorPane_DpiChanged;
 
             // ---- REVERT NOTE (fix applied for "Balance Configurator appears zoomed in
             // for some users" - see chat/CLAUDE.md history) -------------------------------
@@ -148,6 +153,58 @@ namespace GLSense
             // Handle resize events
             this.Resize += GLConfiguratorPane_Resize;
 
+            // Freezes the pane's width between MinimumSize.Width and a DPI-scaled
+            // _maxWidthDip during a live splitter drag. This is Add-in Express's own
+            // dedicated resize-constraint event - fired on every mouse-move while the
+            // user drags the splitter (ADXContainerPane.OnMouseMove -> DoMouseMove ->
+            // VerifyConstrains -> ADXForm.VerifyConstraints -> OnADXSplitterMove),
+            // distinct from the WM_SIZING/WM_WINDOWPOSCHANGING overrides below (which
+            // independently enforce only the minimum, and are left unchanged).
+            // e.NewRegionSize is read-only - there is no way to substitute a clamped
+            // size, only accept or reject the exact proposed one - but since this fires
+            // continuously during the drag, rejecting anything outside the [Min, Max]
+            // range stops the pane from tracking the mouse any further once it hits
+            // either bound.
+            //
+            // Deliberately does NOT touch this.MaximumSize/ApplyDpiAwareSizing - an
+            // earlier version set MaximumSize and re-clamped this.Size from there, which
+            // ran during DPI-change/HandleCreated handling too, not just live drags.
+            // That caused a resize feedback loop (continuous flicker, Excel going
+            // unresponsive - confirmed via Windows Event Log as an Application Hang,
+            // AppHangB1) when switching display resolution/scale (1360x768 @125%) while
+            // the pane was open - most likely fighting either Add-in Express's own
+            // docking-layout recalculation or Windows' WM_DPICHANGED resize protocol,
+            // both of which are far more sensitive to a size change happening during
+            // DPI-change handling than to one only ever happening from a user's own live
+            // mouse drag. Computing maxWidthPx fresh here, scoped only to this
+            // user-driven event, avoids running any of that during DPI/resolution
+            // changes.
+            this.ADXSplitterMove += GLConfiguratorPane_ADXSplitterMove;
+
+        }
+
+        private void GLConfiguratorPane_ADXSplitterMove(object sender, ADXSplitterMoveEventArgs e)
+        {
+            // Both bounds MUST be computed fresh from the same live DPI reading here -
+            // comparing a freshly-computed max against the cached this.MinimumSize.Width
+            // (only ever updated via ApplyDpiAwareSizing, itself only reachable through
+            // HandleCreated/the constructor - see GLConfiguratorPane_Resize's own comment
+            // on why DpiChanged is not part of that list) let the two fall out of sync
+            // after a live DPI change: MinimumSize.Width stayed pinned to whatever DPI
+            // was active when the pane was first shown (e.g. 750px at 125%) while this
+            // method's max recomputed against the NEW dpi (e.g. 700px at 100%) - with
+            // Min(750) > Max(700), every single drag position failed both comparisons at
+            // once, so the splitter never accepted any resize at all (confirmed
+            // reproduction: cursor showed resize, dragging did nothing, after switching
+            // 125% -> 100% with the pane already open).
+            var dpi = GetEffectiveDpi();
+            int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+            int maxWidthPx = (int)Math.Round(_maxWidthDip * dpi / (float)DefaultDpi);
+            LogUtility.LogDebug($"GLConfiguratorPane_ADXSplitterMove: dpi={dpi}, NewRegionSize.Width={e.NewRegionSize.Width}, minWidthPx={minWidthPx}, maxWidthPx={maxWidthPx}, cachedMinimumSize.Width={this.MinimumSize.Width}");
+            if (e.NewRegionSize.Width < minWidthPx || e.NewRegionSize.Width > maxWidthPx)
+            {
+                e.Cancel = true;
+            }
         }
 
         private void GLConfiguratorPane_HandleCreated(object sender, EventArgs e)
@@ -175,11 +232,15 @@ namespace GLSense
             // that floor.
             ApplyDpiAwareSizing(GetEffectiveDpi());
         }
-        private void GLConfiguratorPane_DpiChanged(object sender, DpiChangedEventArgs e)
-        {
-            ApplyDpiAwareSizing(e.DeviceDpiNew);
-        }
 
+        // Only ever called from the constructor and HandleCreated (both effectively
+        // initial-setup) - Form.DpiChanged/WM_DPICHANGED was tried as a live-update
+        // trigger too, but confirmed via debug logging (dpi=96/120/168 transitions
+        // visible in GLConfiguratorPane_Resize's own log line, with zero corresponding
+        // "DpiChanged FIRED" lines) to never fire at all for this docked/Add-in-Express-
+        // subclassed pane - Windows only sends WM_DPICHANGED to genuine top-level
+        // windows. GLConfiguratorPane_Resize is what actually keeps the pane sized
+        // correctly across a live DPI/resolution change instead.
         private void ApplyDpiAwareSizing(float dpiX)
         {
             var scale = dpiX / 96f;
@@ -196,17 +257,28 @@ namespace GLSense
         }
         private void GLConfiguratorPane_Resize(object sender, EventArgs e)
         {
+            // Resize (backed by WM_SIZE) fires for ANY actual size change to this
+            // control, regardless of cause - unlike WM_DPICHANGED/Form.DpiChanged, which
+            // Windows only sends to genuine top-level windows and, confirmed via debug
+            // logging, never reaches this docked/Add-in-Express-subclassed pane at all
+            // (a DpiChanged handler was wired up and logged here temporarily; despite the
+            // dpi value below visibly transitioning 96/120/168 across a live display
+            // scale change, its "FIRED" log line never once appeared - removed once
+            // confirmed). Re-clamping into [min, max] here, computed fresh from the live
+            // DPI every time, is what actually keeps the pane correctly sized across a
+            // live DPI/resolution change.
             var dpi = GetEffectiveDpi();
-            var dipWidth = this.Width * DefaultDpi / (float)dpi;
+            int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+            int maxWidthPx = (int)Math.Round(_maxWidthDip * dpi / (float)DefaultDpi);
+            LogUtility.LogDebug($"GLConfiguratorPane_Resize: dpi={dpi}, this.Width={this.Width}, minWidthPx={minWidthPx}, maxWidthPx={maxWidthPx}");
 
-            // Ensure minimum size in DIPs
-            if (dipWidth < _minWidthDip)
+            int clampedWidth = Math.Min(Math.Max(this.Width, minWidthPx), maxWidthPx);
+            if (clampedWidth != this.Width)
             {
-                int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
-                this.Width = minWidthPx;
+                this.Width = clampedWidth;
                 if (_host != null)
                 {
-                    _host.Width = minWidthPx;
+                    _host.Width = clampedWidth;
                 }
             }
 
@@ -260,10 +332,12 @@ namespace GLSense
                     pane.Visible = AppState.Instance.displayConfigurator;
                     LogUtility.LogDebug($"GLConfiguratorPane_ADXBeforeTaskPaneShow fired. Visible={pane.Visible}");
 
-                    // Set size when showing
+                    // Set size when showing - launches at _defaultWidthDip (550), not the
+                    // MinimumSize floor (520), so the two can differ.
                     if (pane.Visible)
                     {
-                        pane.Width = pane.MinimumSize.Width;  // Ensure proper width when shown
+                        int defaultWidthPx = (int)Math.Round(_defaultWidthDip * pane.GetEffectiveDpi() / (float)DefaultDpi);
+                        pane.Width = Math.Max(defaultWidthPx, pane.MinimumSize.Width);
                     }
                 }
             }
