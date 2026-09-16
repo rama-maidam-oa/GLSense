@@ -437,41 +437,23 @@ namespace GLSense
             }
             _wpfControl?.InvalidateVisual();
         }
-        public async Task RelaunchPane()
+        public async Task RelaunchPane(bool showBusyOverlay = true)
         {
             try
             {
-                LogUtility.LogDebug("GLConfiguratorPane.RelaunchPane invoked.");
+                LogUtility.LogDebug($"GLConfiguratorPane.RelaunchPane invoked (showBusyOverlay={showBusyOverlay}).");
                 if (_wpfControl != null && _wpfControl.Dispatcher != null)
                 {
                     // Dispatcher.InvokeAsync(async () => ...) doesn't wait for the inner Task -
                     // the DispatcherOperation completes as soon as the delegate hits its first
                     // await. Use a non-async delegate + Task.Unwrap() so the real completion is
                     // awaited (see GLWaitWindow.ShowConfirmToastAsync for the same pattern).
-                    await _wpfControl.Dispatcher.InvokeAsync(() => _wpfControl.ReLoadConfigurator()).Task.Unwrap();
+                    await _wpfControl.Dispatcher.InvokeAsync(() => _wpfControl.ReLoadConfigurator(showBusyOverlay)).Task.Unwrap();
                 }
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "GLConfiguratorPane.RelaunchPane");
-            }
-        }
-        public async Task ResetPaneReference()
-        {
-            try
-            {
-                LogUtility.LogDebug("GLConfiguratorPane.ResetPaneReference invoked.");
-                if (_wpfControl != null && _wpfControl.Dispatcher != null)
-                {
-                    await _wpfControl.Dispatcher.InvokeAsync(() =>
-                    {
-                        GLBalanceConfigurator.ResetCellReference();
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "GLConfiguratorPane.ResetPaneReference");
             }
         }
         private void GLConfiguratorPane_ADXBeforeTaskPaneShow(object sender, ADXBeforeTaskPaneShowEventArgs e)

@@ -341,29 +341,79 @@ namespace GLSense.Views
                 await AppOverlayControl.HideBusyAsync();
             }
         }
-        public async Task ReLoadConfigurator()
+        // showBusyOverlay=true is the caller's INTENT (genuine re-opening paths - initial
+        // load, re-showing a hidden pane/window from the ribbon), not a guarantee the
+        // overlay will actually show: ReloadNeedsNetworkWork() below decides whether this
+        // particular reload needs real network work, and the overlay only shows when both
+        // are true. Without that check, every reload of an already-loaded ledger (the
+        // common "landed on another cell that's the same ledger, formula or not" case)
+        // would still flash the overlay on/off for no reason - its show/hide animation has
+        // a nonzero minimum visible duration regardless of how fast the underlying work
+        // actually is, so a redundant show is a real, visible lag, not just a wasted call.
+        public async Task ReLoadConfigurator(bool showBusyOverlay = true)
         {
-            LogUtility.LogDebug("GLBalanceConfigurator.ReLoadConfigurator invoked");
-            await ExecuteWithBusyOverlay("Reloading Configurator", async helper =>
+            LogUtility.LogDebug($"GLBalanceConfigurator.ReLoadConfigurator invoked (showBusyOverlay={showBusyOverlay})");
+
+            BalanceParametersExpander.IsExpanded = false;
+
+            if (!HasValidCubeAndLedger())
             {
-                BalanceParametersExpander.IsExpanded = false;
+                LogUtility.LogDebug("GLBalanceConfigurator.ReLoadConfigurator: no valid cube/ledger selected, aborting reload");
+                return;
+            }
 
-                if (!HasValidCubeAndLedger())
-                {
-                    LogUtility.LogDebug("GLBalanceConfigurator.ReLoadConfigurator: no valid cube/ledger selected, aborting reload");
-                    return;
-                }
+            var cellData = await ExtractCellDataAsync();
+            var config = ProcessBalanceFormula(cellData);
 
-                var cellData = await ExtractCellDataAsync();
-                var config = ProcessBalanceFormula(cellData);
+            if (showBusyOverlay && ReloadNeedsNetworkWork(config))
+            {
+                await ExecuteWithBusyOverlay("Reloading Configurator", _ => LoadConfiguratorDataAsync(config));
+            }
+            else
+            {
                 await LoadConfiguratorDataAsync(config);
-            });
+            }
         }
-        public static void ResetCellReference()
+
+        // Cheap, read-only "peek" mirroring LoadConfiguratorDataAsync's own ledger
+        // resolution (formula ledger(s) -> EnsureFormulaLedgersLoadedAsync's per-ledger
+        // SEGMENTS check; final target ledger -> ViewModel's own already-loaded-this-
+        // session check) WITHOUT doing any of the actual fetching - lets ReLoadConfigurator
+        // decide whether to show the busy overlay before starting real work, instead of
+        // showing it unconditionally and hoping the work underneath happens to be fast.
+        private bool ReloadNeedsNetworkWork(CellData cellData)
         {
-            LogUtility.LogDebug("GLBalanceConfigurator.ResetCellReference invoked");
-            string Address = GetActiveCellInfo();
-            GlobalStateViewModel.Instance.ReferenceText = Address;
+            var cube = AppState.Instance.SelectedCube;
+            if (cube == null)
+            {
+                return false; // HasValidCubeAndLedger() already guarded against this upstream
+            }
+
+            var formulaLedgerNames = GetDistinctFormulaLedgerNames(cellData);
+
+            foreach (var ledgerName in formulaLedgerNames)
+            {
+                var ledgerRecord = cube.GetLedgerByName(ledgerName);
+                if (ledgerRecord != null && LedgerNeedsSegmentFetch(cube.CubeId, ledgerRecord.LedgerId))
+                {
+                    return true;
+                }
+            }
+
+            // Mirrors LoadConfiguratorDataAsync's own ledgerName resolution exactly - see
+            // that method for why the two branches differ (formula ledger vs. the
+            // currently ribbon-selected one).
+            string targetLedgerName = formulaLedgerNames.Count > 0
+                ? formulaLedgerNames.FirstOrDefault(name => !string.IsNullOrWhiteSpace(name))
+                : AppState.Instance.SelectedLedger?.LedgerName;
+
+            var targetLedger = ResolveTargetLedger(targetLedgerName);
+            if (targetLedger == null)
+            {
+                return false; // LoadConfiguratorDataAsync will abort the same way, no work to hide behind an overlay
+            }
+
+            return vm.NeedsFullReload(cube.CubeId, targetLedger.LedgerId);
         }
         private CellData ProcessBalanceFormula(CellData cellData)
         {
@@ -497,13 +547,44 @@ namespace GLSense.Views
                 return true;
             }
         }
-        private async Task LoadConfiguratorDataAsync(CellData cellData)
+        private static List<string> GetDistinctFormulaLedgerNames(CellData cellData)
         {
-            LogUtility.LogDebug($"GLBalanceConfigurator.LoadConfiguratorDataAsync invoked - address={cellData?.Address}, ledgerName={cellData?.LedgerName}");
-            var formulaLedgerNames = (cellData.LedgerNames ?? new List<string>())
+            return (cellData.LedgerNames ?? new List<string>())
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        // Shared by LoadConfiguratorDataAsync (real resolution) and ReloadNeedsNetworkWork
+        // (read-only peek) so the two can never drift apart.
+        private static LedgerRecord ResolveTargetLedger(string ledgerName)
+        {
+            var ledger = AppState.Instance.SelectedCube?.GetLedgerByName(ledgerName);
+            if (ledger == null && AppState.Instance.SelectedLedger != null)
+            {
+                ledger = new LedgerRecord
+                {
+                    LedgerId = AppState.Instance.SelectedLedger.LedgerId,
+                    LedgerName = AppState.Instance.SelectedLedger.LedgerName,
+                    Coaid = AppState.Instance.SelectedLedger.CoaId,
+                    PeriodSetName = AppState.Instance.SelectedLedger.PeriodSetName,
+                    CurrencyCode = AppState.Instance.SelectedLedger.CurrencyCode,
+                    PeriodType = string.Empty,
+                    LedgerData = string.Empty
+                };
+            }
+            return ledger;
+        }
+
+        private static bool LedgerNeedsSegmentFetch(long cubeId, long ledgerId)
+        {
+            return DataRepository.GetTableItemsCount(cubeId, ledgerId, "SEGMENTS") == 0;
+        }
+
+        private async Task LoadConfiguratorDataAsync(CellData cellData)
+        {
+            LogUtility.LogDebug($"GLBalanceConfigurator.LoadConfiguratorDataAsync invoked - address={cellData?.Address}, ledgerName={cellData?.LedgerName}");
+            var formulaLedgerNames = GetDistinctFormulaLedgerNames(cellData);
 
             string ledgerName = formulaLedgerNames.FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)) ?? cellData.LedgerName;
             var funcArgs = cellData.FuncArgs;
@@ -518,21 +599,7 @@ namespace GLSense.Views
                 ledgerName = AppState.Instance.SelectedLedger.LedgerName;
             }
 
-            var ledger = AppState.Instance.SelectedCube.GetLedgerByName(ledgerName);
-            if (ledger == null && AppState.Instance.SelectedLedger != null)
-            {
-                ledger = new LedgerRecord
-                {
-                    LedgerId = AppState.Instance.SelectedLedger.LedgerId,
-                    LedgerName = AppState.Instance.SelectedLedger.LedgerName,
-                    Coaid = AppState.Instance.SelectedLedger.CoaId,
-                    PeriodSetName = AppState.Instance.SelectedLedger.PeriodSetName,
-                    CurrencyCode = AppState.Instance.SelectedLedger.CurrencyCode,
-                    PeriodType = string.Empty,
-                    LedgerData = string.Empty
-                };
-            }
-
+            var ledger = ResolveTargetLedger(ledgerName);
             if (ledger == null)
             {
                 LogUtility.LogDebug($"GLBalanceConfigurator.LoadConfiguratorDataAsync: no ledger found for ledgerName={ledgerName}, aborting load");
@@ -574,8 +641,7 @@ namespace GLSense.Views
                 if (ledgerRecord == null)
                     continue;
 
-                var segmentCount = DataRepository.GetTableItemsCount(cube.CubeId, ledgerRecord.LedgerId, "SEGMENTS");
-                if (segmentCount == 0)
+                if (LedgerNeedsSegmentFetch(cube.CubeId, ledgerRecord.LedgerId))
                 {
                     LogUtility.LogDebug($"GLBalanceConfigurator.EnsureFormulaLedgersLoadedAsync: segments not loaded for ledger={ledgerName}, fetching responsibilities");
                     await CommonFunctions.FillResponsibilitiesAsync(ledgerRecord.LedgerId, cube.CubeId, CancellationToken.None);
