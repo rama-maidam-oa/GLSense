@@ -26,7 +26,11 @@ namespace GLSense.Views
     /// </summary>
     public partial class GLBalanceConfigurator : System.Windows.Controls.UserControl, IWarningHost
     {
-        private const double MinimumConfiguratorWidth = 520;
+        // 520 wasn't enough - the header's icon+title+close button (all Auto-sized Grid
+        // columns) genuinely need more room than that; WPF's Grid doesn't compress Auto
+        // columns to force-fit, confirmed via direct measurement (see
+        // GLConfiguratorPane._minWidthDip's own comment for the full write-up).
+        private const double MinimumConfiguratorWidth = 595;
 
         private sealed class CellData
         {
@@ -285,6 +289,16 @@ namespace GLSense.Views
             }), DispatcherPriority.Loaded);
         }
 
+        // Deliberately does NOT write back to _parentPane.Width (a prior version did,
+        // via "if (_parentPane.Width < MinimumConfiguratorWidth) _parentPane.Width =
+        // ..."). GLConfiguratorPane now owns width computation entirely
+        // (percentage-of-Excel-window, DPI-aware, min/max clamped) - that write was a
+        // second, independent, DPI-UNAWARE resize path (MinimumConfiguratorWidth, a WPF
+        // DIP value, was compared/assigned directly against _parentPane.Width, a raw
+        // pixel value) that could fire re-entrantly (OnSizeChanged calls this
+        // synchronously, with no dispatcher defer, and can be triggered from inside
+        // GLConfiguratorPane_Resize's own _wpfControl.UpdateLayout() call) and race
+        // with the pane's own resize logic.
         private void EnsureMinimumWidth()
         {
             this.MinWidth = MinimumConfiguratorWidth;
@@ -292,12 +306,8 @@ namespace GLSense.Views
             {
                 MainScrollViewer.MinWidth = MinimumConfiguratorWidth;
             }
-
-            if (_parentPane != null && _parentPane.Width < MinimumConfiguratorWidth)
-            {
-                _parentPane.Width = (int)MinimumConfiguratorWidth;
-            }
         }
+
         private static string GetActiveCellInfo()
         {
             var rng = AppState.Instance.ExcelApp.ActiveCell;
