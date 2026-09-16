@@ -602,6 +602,18 @@ namespace GLSense.ViewModels
                 || string.Equals(bt, AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase);
         }
         private readonly Dispatcher _dispatcher;
+
+        // Tracks which (cubeId, ledgerId) LoadDataAsync's source-refresh (see its own
+        // comment on FillResponsibilitiesAsync) last actually ran for, so repeat
+        // relaunches on the SAME ledger - e.g. clicking a different cell while Show
+        // Always is checked, which stays on the same ledger nearly every time - can skip
+        // that network round-trip and go straight to the fast local SQLite reads. VB.NET's
+        // Relaunch_FSG has no equivalent refresh step at all, so it never has this cost;
+        // this preserves the C# port's periods-freshness fix (still runs whenever the
+        // ledger/cube genuinely changes, or on the very first load) while matching
+        // VB.NET's smooth, no-busy-overlay-needed feel for the common same-ledger case.
+        private (long CubeId, long LedgerId)? _lastRefreshedLedger;
+
         // Field-change coalescing helpers
         private readonly object _fieldChangeLock = new object();
         private bool _fieldChangeScheduled = false;
@@ -869,9 +881,10 @@ namespace GLSense.ViewModels
             long coaid = ledger.Coaid;
 
             // Force a fresh pull of ledger setup data (Periods, Activity, Currencies, etc.)
-            // from the source system every time the configurator loads for a ledger, instead
-            // of relying on whatever was cached the first time this ledger was ever opened.
-            // Some ledgers use custom fiscal calendars that get extended with new future
+            // from the source system the first time the configurator loads THIS ledger
+            // (per _lastRefreshedLedger below), instead of relying on whatever was cached
+            // the first time this ledger was ever opened in an earlier session. Some
+            // ledgers use custom fiscal calendars that get extended with new future
             // periods over time (e.g. a "GOV Calendar" period set growing past its original
             // last period); without this refresh, PERIODS (and the other tables below) stayed
             // frozen at whatever was cached on first load, so the Start/End Date pickers in
@@ -879,17 +892,27 @@ namespace GLSense.ViewModels
             // system had newer periods available.
             // LedgerDataRepository.InsertLedgerDataAsync (called at the end of this pipeline)
             // already does a proper DELETE-then-INSERT per cubeId/ledgerId/table (see its
-            // ClearExistingData step), so it's safe to invoke on every load, not just the first.
-            // Failures here (e.g. offline, API error) are logged and swallowed so the
-            // configurator still falls back to whatever is already cached instead of blocking.
-            try
+            // ClearExistingData step), so it's safe to invoke again whenever the ledger/cube
+            // actually changes, not just once ever.
+            // Skipped on a repeat load for the SAME ledger (e.g. Show Always relaunching on
+            // every cell click, which stays on the same ledger nearly every time) - this
+            // network round-trip was the actual cause of a visible busy overlay on every
+            // single click; VB.NET's Relaunch_FSG has no equivalent refresh step at all, so
+            // this keeps the periods-freshness fix while matching its smooth, instant feel
+            // for the common case. Failures are logged and swallowed so the configurator
+            // still falls back to whatever is already cached instead of blocking.
+            if (_lastRefreshedLedger != (cubeId, ledgerId))
             {
-                using var refreshCts = new CancellationHelper();
-                await CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, refreshCts.GetToken());
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, $"GLConfiguratorViewModel.LoadDataAsync: failed to refresh ledger setup data from source for CubeId={cubeId}, LedgerId={ledgerId}; falling back to cached data.");
+                try
+                {
+                    using var refreshCts = new CancellationHelper();
+                    await CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, refreshCts.GetToken());
+                    _lastRefreshedLedger = (cubeId, ledgerId);
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"GLConfiguratorViewModel.LoadDataAsync: failed to refresh ledger setup data from source for CubeId={cubeId}, LedgerId={ledgerId}; falling back to cached data.");
+                }
             }
 
             var tasks = new Task<object>[]
