@@ -3249,6 +3249,7 @@ namespace GLSense.ViewModels
                 {
                     rng.Formula = finalFormula;
                     LogUtility.LogDebug($"GLConfiguratorViewModel.WriteFormulaToCell: wrote formula '{finalFormula}'");
+                    rng.Activate();
                 }
                 catch (Exception ex)
                 {
