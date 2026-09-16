@@ -26,7 +26,7 @@ namespace GLSense.Views
     /// </summary>
     public partial class GLBalanceConfigurator : System.Windows.Controls.UserControl, IWarningHost
     {
-        private const double MinimumConfiguratorWidth = 600;
+        private const double MinimumConfiguratorWidth = 520;
 
         private sealed class CellData
         {
