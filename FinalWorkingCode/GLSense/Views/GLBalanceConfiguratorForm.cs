@@ -304,12 +304,15 @@ namespace GLSense.Views
             Show(new Win32Window(excelHwnd));
         }
 
-        /// <summary>Mirrors GLConfiguratorPane.RelaunchPane (GLConfiguratorPane.cs:216-234).</summary>
-        public async Task RelaunchWindow()
+        /// <summary>Mirrors GLConfiguratorPane.RelaunchPane (GLConfiguratorPane.cs:216-234).
+        /// showBusyOverlay=false is passed by AddinModule.ApplyBalanceWindowVisibility for
+        /// the "Show Always, just clicked a different cell" case - see
+        /// GLBalanceConfigurator.ReLoadConfigurator's own doc comment.</summary>
+        public async Task RelaunchWindow(bool showBusyOverlay = true)
         {
             try
             {
-                LogUtility.LogDebug("GLBalanceConfiguratorForm.RelaunchWindow invoked.");
+                LogUtility.LogDebug($"GLBalanceConfiguratorForm.RelaunchWindow invoked. showBusyOverlay={showBusyOverlay}");
                 // TEMPORARY DIAGNOSTIC: baseline checkpoint - the caller's thread (an
                 // Excel COM event or ribbon click) before crossing into the WPF control.
                 // See GLBalanceConfigurator.LogThreadDiag for the rest of the chain.
@@ -318,7 +321,7 @@ namespace GLSense.Views
                     $"formInvokeRequired={InvokeRequired}");
                 if (_configuratorControl != null)
                 {
-                    await _configuratorControl.ReLoadConfigurator();
+                    await _configuratorControl.ReLoadConfigurator(showBusyOverlay);
                 }
             }
             catch (Exception ex)

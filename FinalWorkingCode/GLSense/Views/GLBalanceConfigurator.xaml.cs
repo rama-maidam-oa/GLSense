@@ -428,10 +428,21 @@ namespace GLSense.Views
                 await AppOverlayControl.HideBusyAsync();
             }
         }
-        public async Task ReLoadConfigurator()
+        /// <summary>showBusyOverlay=false matches the VB.NET sibling's Relaunch_FSG,
+        /// which never shows any loading indicator at all - used for the common "Show
+        /// Always, just clicked a different cell" path (AddinModule.
+        /// ApplyBalanceWindowVisibility), where LoadDataAsync's own same-ledger refresh
+        /// skip already makes the reload fast/local-only, so the busy overlay just
+        /// flashed on/off (its show animation has a nonzero minimum visible duration
+        /// regardless of how fast the underlying work actually is - confirmed by testing
+        /// after the refresh-skip fix alone didn't stop the flash). The genuine
+        /// re-opening paths (initial load, re-showing a hidden window/pane from the
+        /// ribbon) keep the overlay by default.</summary>
+        public async Task ReLoadConfigurator(bool showBusyOverlay = true)
         {
-            LogUtility.LogDebug("GLBalanceConfigurator.ReLoadConfigurator invoked");
-            await ExecuteWithBusyOverlay("Reloading Configurator", async helper =>
+            LogUtility.LogDebug($"GLBalanceConfigurator.ReLoadConfigurator invoked - showBusyOverlay={showBusyOverlay}");
+
+            async Task RunReloadAsync(CancellationHelper helper)
             {
                 LogThreadDiag("ReLoadConfigurator: before BalanceParametersExpander.IsExpanded = false");
                 BalanceParametersExpander.IsExpanded = false;
@@ -445,7 +456,16 @@ namespace GLSense.Views
                 var cellData = await ExtractCellDataAsync();
                 var config = ProcessBalanceFormula(cellData);
                 await LoadConfiguratorDataAsync(config);
-            });
+            }
+
+            if (showBusyOverlay)
+            {
+                await ExecuteWithBusyOverlay("Reloading Configurator", RunReloadAsync);
+            }
+            else
+            {
+                await RunReloadAsync(new CancellationHelper());
+            }
         }
         public static void ResetCellReference()
         {

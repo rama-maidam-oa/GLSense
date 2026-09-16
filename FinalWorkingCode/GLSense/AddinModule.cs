@@ -2064,7 +2064,7 @@ namespace GLSense
                 {
                     if (isBalanceFormulaCell)
                     {
-                        _ = AppState.Instance.BalancePane.RelaunchPane();
+                        _ = AppState.Instance.BalancePane.RelaunchPane(showBusyOverlay: false);
                     }
                     else
                     {
@@ -2981,7 +2981,7 @@ namespace GLSense
                     {
                         existing.Visible = true;
                     }
-                    _ = existing.RelaunchWindow();
+                    _ = existing.RelaunchWindow(showBusyOverlay: false);
                     return;
                 }
 
@@ -3000,7 +3000,7 @@ namespace GLSense
 
                 if (HasBalanceFormula(currentSelection))
                 {
-                    _ = existing.RelaunchWindow();
+                    _ = existing.RelaunchWindow(showBusyOverlay: false);
                 }
                 else
                 {

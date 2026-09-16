@@ -213,11 +213,14 @@ namespace GLSense
             // Update WPF control if needed
             _wpfControl?.UpdateLayout();
         }
-        public async Task RelaunchPane()
+        /// <summary>showBusyOverlay=false is passed by AddinModule for the "just clicked
+        /// a different cell" case - see GLBalanceConfigurator.ReLoadConfigurator's own
+        /// doc comment.</summary>
+        public async Task RelaunchPane(bool showBusyOverlay = true)
         {
             try
             {
-                LogUtility.LogDebug("GLConfiguratorPane.RelaunchPane invoked.");
+                LogUtility.LogDebug($"GLConfiguratorPane.RelaunchPane invoked. showBusyOverlay={showBusyOverlay}");
                 if (_wpfControl != null && _wpfControl.Dispatcher != null)
                 {
                     // Synchronous Dispatcher.Invoke<Task> (not the old InvokeAsync+Task.Unwrap
@@ -225,7 +228,7 @@ namespace GLSense
                     // Task<Task<Task>>-shaped result). Invoke<Task> already returns the single
                     // Task ReLoadConfigurator() itself produces - it starts synchronously, on
                     // the dispatcher thread, and awaiting it here waits for the real completion.
-                    await _wpfControl.Dispatcher.Invoke(() => _wpfControl.ReLoadConfigurator());
+                    await _wpfControl.Dispatcher.Invoke(() => _wpfControl.ReLoadConfigurator(showBusyOverlay));
                 }
             }
             catch (Exception ex)
