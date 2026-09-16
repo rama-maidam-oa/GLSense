@@ -908,7 +908,7 @@ namespace GLSense
             // 
             // RibDDDeleteConfiguration
             // 
-            this.RibDDDeleteConfiguration.Caption = "Delete Customization";
+            this.RibDDDeleteConfiguration.Caption = "Delete Local Customization";
             this.RibDDDeleteConfiguration.Id = "adxRibbonButton_9a3e2f1c6b4d4e2f8a7c5d6e9b0f1a2c";
             this.RibDDDeleteConfiguration.Image = 33;
             this.RibDDDeleteConfiguration.ImageList = this.ImageList_32X32;
