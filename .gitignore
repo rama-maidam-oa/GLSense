@@ -36,3 +36,7 @@
 
 # SetupFiles is local build output (manifest.json/zip) from packaging the add-in, not source.
 /AIPowered/GLSense/GLSense.Addin.Core/SetupFiles/
+
+# Built installer output (.msi) is a build artifact, not source - the .vdproj it's
+# built from stays tracked.
+**/GLSenseSetup/**/*.msi
