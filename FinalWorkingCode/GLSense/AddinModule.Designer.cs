@@ -1318,7 +1318,7 @@ namespace GLSense
             this.adxExcelTaskPanesCollectionItem1.IsHiddenStateAllowed = false;
             this.adxExcelTaskPanesCollectionItem1.IsMinimizedStateAllowed = false;
             this.adxExcelTaskPanesCollectionItem1.TaskPaneClassName = "GLSense.GLConfiguratorPane";
-            // 
+            //
             // AddinModule
             // 
             this.AddinName = "GLSense";

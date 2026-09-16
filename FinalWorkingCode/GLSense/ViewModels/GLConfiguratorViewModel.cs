@@ -662,6 +662,21 @@ namespace GLSense.ViewModels
         // see UpdateActivitiesForConditions().
         private ObservableCollection<ActivityModel> _allActivities = new ObservableCollection<ActivityModel>();
 
+        // Cube/LedgerId last successfully passed through LoadDataAsync (which includes a
+        // real network round-trip via CommonFunctions.FillResponsibilitiesAsync). Lets
+        // LoadConfiguratorAsync skip that round-trip - and the visible "fields go blank,
+        // then repopulate" gap while it's in flight - whenever it's asked to reload the
+        // same ledger it already has in memory this session, whether that's a defaults
+        // reset (landed on a plain cell with no balance formula) or a formula reload
+        // referencing that same ledger again. See the comment at the LoadConfiguratorAsync
+        // call site for why "loaded earlier this session" is a safe skip condition (unlike
+        // a plain SQLite-existence check). Both fields must match (not just LedgerId)
+        // since ledger IDs are queried per-cube elsewhere in this codebase and are not
+        // guaranteed unique across cubes. Left null/stale is safe: a mismatch just means
+        // the normal full reload path runs.
+        private long? _lastLoadedCubeId;
+        private long? _lastLoadedLedgerId;
+
         // Actions for window overlay controls
         public Action<string>? ShowWarningAction { get; set; }
         public Action<string>? ShowInfoAction { get; set; }
@@ -805,6 +820,19 @@ namespace GLSense.ViewModels
                 LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessPendingFieldChanges");
             }
         }
+        // Single source of truth for "has this exact cube/ledger already been loaded
+        // (via LoadDataAsync) by this ViewModel instance this session" - used both by
+        // LoadConfiguratorAsync itself and by GLBalanceConfigurator.ReLoadConfigurator
+        // to decide, BEFORE calling in, whether the reload actually needs a busy overlay
+        // (showing one for a reload that turns out to be fully in-memory/instant just
+        // flashes on/off, since the overlay's own show/hide animation has a nonzero
+        // minimum visible duration regardless of how fast the underlying work is).
+        public bool NeedsFullReload(long? cubeId, long ledgerId)
+        {
+            return !(_lastLoadedCubeId.HasValue && _lastLoadedCubeId.Value == cubeId
+                && _lastLoadedLedgerId.HasValue && _lastLoadedLedgerId.Value == ledgerId);
+        }
+
         public async Task LoadConfiguratorAsync(bool ZeroesChecked, LedgerRecord ledger, List<string>? FuncArgs = null, List<string>? FuncValues = null)
         {
             LogUtility.LogDebug($"GLConfiguratorViewModel.LoadConfiguratorAsync: entry. ZeroesChecked={ZeroesChecked}, LedgerId={ledger?.LedgerId}, FuncArgs.Count={FuncArgs?.Count ?? 0}, FuncValues.Count={FuncValues?.Count ?? 0}");
@@ -813,11 +841,45 @@ namespace GLSense.ViewModels
                 LogUtility.LogWarn("GLConfiguratorViewModel.LoadConfiguratorAsync: ledger is null, aborting configurator load.");
                 return;
             }
+
+            bool isDefaultsReset = FuncArgs == null && FuncValues == null;
+            long? currentCubeId = AppState.Instance.SelectedCube?.CubeId;
+            bool ledgerAlreadyLoaded = !NeedsFullReload(currentCubeId, ledger.LedgerId);
+
             await ResetWindowAsync();
-            await LoadDataAsync(ledger);
+
+            if (ledgerAlreadyLoaded)
+            {
+                // Same cube/ledger this ViewModel already has loaded this session -
+                // Ledgers/Periods/Activities/etc. are already populated, so skip
+                // LoadDataAsync's network round-trip (FillResponsibilitiesAsync)
+                // entirely, regardless of whether this is a defaults reset (plain cell,
+                // no formula) or a formula reload referencing this same ledger again
+                // (e.g. clicking between several formula cells that all use it). This is
+                // separate from EnsureFormulaLedgersLoadedAsync's own SQLite-existence
+                // check (GLBalanceConfigurator.xaml.cs) - that one still runs first and
+                // still fetches a ledger this ViewModel has never seen before (e.g. a
+                // formula referencing a different ledger than the one selected in the
+                // ribbon); this only avoids re-fetching the SAME ledger a second time a
+                // moment later. Deliberately does NOT skip based on SQLite existence
+                // alone (row count > 0) - that was tried before and is what caused the
+                // GOV Calendar bug (periods present but stale after the source system's
+                // fiscal calendar grew) - "loaded earlier THIS session" is safe because
+                // periods don't grow again within one open Excel session, but a fresh
+                // pane/session, or switching to a different ledger and back, still
+                // forces a real refresh.
+                LogUtility.LogDebug($"GLConfiguratorViewModel.LoadConfiguratorAsync: cube {currentCubeId}/ledger {ledger.LedgerId} already loaded this session - skipping LoadDataAsync.");
+            }
+            else
+            {
+                await LoadDataAsync(ledger);
+                _lastLoadedCubeId = currentCubeId;
+                _lastLoadedLedgerId = ledger.LedgerId;
+            }
+
             await UpdateUIAsync();
 
-            if (FuncArgs == null && FuncValues == null)
+            if (isDefaultsReset)
             {
                 LogUtility.LogDebug("GLConfiguratorViewModel.LoadConfiguratorAsync: no formula params supplied, applying default selections.");
                 // Unlike ApplyFormulaParamsAsync (every one of its field mutations already

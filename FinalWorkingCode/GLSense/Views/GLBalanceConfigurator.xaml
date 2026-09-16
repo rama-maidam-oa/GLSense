@@ -127,6 +127,7 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
+    <Grid>
     <ScrollViewer x:Name="MainScrollViewer"
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
@@ -944,18 +945,25 @@
                     </Grid>
                 </Expander>
             </Grid>
-
-            <!-- Toast / Busy overlay -->
-            <views:AppOverlay x:Name="AppOverlayControl"
-                              Grid.ColumnSpan="3"
-                              Margin="0"
-                              Grid.Row="0"
-                              Grid.RowSpan="7"
-                              HorizontalAlignment="Stretch"
-                              VerticalAlignment="Stretch"
-                              Visibility="Collapsed"
-                              DataContext="{x:Null}"
-                              Panel.ZIndex="10"/>
         </Grid>
     </ScrollViewer>
+
+        <!-- Toast / Busy overlay - deliberately a sibling of MainScrollViewer, not
+             inside its scrollable content. It was previously inside the scrollable
+             Grid with VerticalAlignment="Stretch", so its ActualHeight (and therefore
+             the Toast's VerticalAlignment="Top" anchor) matched the full scrollable
+             CONTENT height, not the visible viewport - after scrolling down to reach a
+             control near the bottom (e.g. Insert), a validation toast rendered at the
+             top of that full content, off-screen above the current scroll position,
+             so it looked like nothing happened unless the user scrolled back up. Here,
+             sized against the outer Grid (== the ScrollViewer's own viewport), the
+             overlay/toast always renders within whatever is currently visible. -->
+        <views:AppOverlay x:Name="AppOverlayControl"
+                          Margin="0"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Visibility="Collapsed"
+                          DataContext="{x:Null}"
+                          Panel.ZIndex="10"/>
+    </Grid>
 </UserControl>
