@@ -2039,6 +2039,28 @@ namespace GLSense
             }
         }
 
+        // Excel's own window resizing/moving/maximizing shifts the pane's
+        // percentage-of-window width bounds even when the pane's own size hasn't
+        // changed yet - GLConfiguratorPane_Resize only fires for the pane's own size
+        // changes, so it can't see this on its own. Only re-clamps if the pane is
+        // actually open (matches this event firing far more often than a resize
+        // genuinely affecting a visible pane - e.g. window drag/move without resize).
+        private void adxExcelAppEvents1_WindowResize(object sender, object hostObj, object window)
+        {
+            try
+            {
+                var pane = GetPaneInstance();
+                if (pane != null && pane.Visible)
+                {
+                    pane.RecomputeWidthBounds();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "adxExcelAppEvents1_WindowResize");
+            }
+        }
+
         private void SyncRibbonSelectionWithAppState()
         {
             if (!AppState.Instance.IsLoginCompleted)
