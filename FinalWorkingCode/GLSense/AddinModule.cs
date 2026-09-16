@@ -2016,7 +2016,14 @@ namespace GLSense
                     }
                     else
                     {
-                        _ = AppState.Instance.BalancePane.ResetPaneReference();
+                        // No balance formula on the newly selected cell - still reload
+                        // (so Ledger/Activity/BalanceType/Period/etc. reset to defaults
+                        // instead of showing stale values from the last formula cell),
+                        // but skip the busy overlay: this path never hits
+                        // EnsureFormulaLedgersLoadedAsync's network fetch (no formula
+                        // ledger names to load), so it's cheap enough to run on every
+                        // plain cell click without a "Reloading Configurator" flash.
+                        _ = AppState.Instance.BalancePane.RelaunchPane(showBusyOverlay: false);
                     }
                 }
             }
