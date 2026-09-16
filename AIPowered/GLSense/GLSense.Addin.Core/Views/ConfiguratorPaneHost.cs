@@ -138,10 +138,11 @@ namespace GLSense.Addin.Core.Views
             }
         }
 
-        /// <summary>Old monolith's GLConfiguratorPane.RelaunchPane().</summary>
-        public static void Relaunch()
+        /// <summary>Old monolith's GLConfiguratorPane.RelaunchPane(). Ported from
+        /// FinalWorkingCode's identical showBusyOverlay fix.</summary>
+        public static void Relaunch(bool showBusyOverlay = true)
         {
-            ServiceLocator.Logger?.LogDebug("ConfiguratorPaneHost.Relaunch invoked");
+            ServiceLocator.Logger?.LogDebug($"ConfiguratorPaneHost.Relaunch invoked (showBusyOverlay={showBusyOverlay})");
             if (_content == null)
             {
                 ServiceLocator.Logger?.LogDebug("ConfiguratorPaneHost.Relaunch: no existing content, nothing to relaunch");
@@ -155,7 +156,7 @@ namespace GLSense.Addin.Core.Views
                     // Fire-and-forget: ReLoadConfigurator is async (network + UI work);
                     // this call is dispatched fire-and-forget from OnRibbonAction/host
                     // event handlers the same way every other Group C-G ribbon action is.
-                    _ = _content.ReLoadConfigurator();
+                    _ = _content.ReLoadConfigurator(showBusyOverlay);
                 });
             }
             catch (Exception ex)

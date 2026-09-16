@@ -613,6 +613,27 @@ namespace GLSense
             }
         }
 
+        // Excel's own window resizing/moving/maximizing shifts the pane's
+        // percentage-of-window width bounds even when the pane's own size hasn't
+        // changed yet - GLConfiguratorPane_Resize only fires for the pane's own size
+        // changes, so it can't see this on its own. Only re-clamps if the pane is
+        // actually open. Ported from FinalWorkingCode's identical fix.
+        private void adxExcelAppEvents1_WindowResize(object sender, object hostObj, object window)
+        {
+            try
+            {
+                var pane = GetPaneInstance();
+                if (pane != null && pane.Visible)
+                {
+                    pane.RecomputeWidthBounds();
+                }
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "adxExcelAppEvents1_WindowResize");
+            }
+        }
+
         private void RibLiveCalc_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             GlobalsEx.Context?.Logger?.LogDebug($"RibLiveCalc_OnClick fired (pressed={pressed})");
@@ -1720,6 +1741,19 @@ namespace GLSense
                         formula.IndexOf(AppConstants_GlBal, StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         _ = blpane.RelaunchPane();
+                    }
+                    else
+                    {
+                        // No balance formula on the newly selected cell - still reload
+                        // (so Ledger/Activity/BalanceType/Period/etc. reset to defaults
+                        // instead of showing stale values from the last formula cell),
+                        // but skip the busy overlay: GLBalanceConfigurator.
+                        // ReloadNeedsNetworkWork also independently avoids the network
+                        // fetch for this path (no formula ledger names to resolve), so
+                        // it's cheap enough to run on every plain cell click without a
+                        // "Reloading Configurator" flash. Ported from FinalWorkingCode's
+                        // identical fix.
+                        _ = blpane.RelaunchPane(showBusyOverlay: false);
                     }
 
                     // Regression fix: GLConfiguratorPane.EmbedContent AttachThreadInput's this

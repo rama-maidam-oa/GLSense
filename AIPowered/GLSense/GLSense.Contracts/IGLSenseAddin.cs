@@ -79,8 +79,14 @@ namespace GLSense.Contracts
         /// host from RibFSG_OnClick (pane just shown) and from SheetSelectionChange (pane
         /// already visible, active cell changed) - both host-side visibility checks, since
         /// ADXExcelTaskPane.Visible is host-only WinForms state.
+        ///
+        /// showBusyOverlay=false is used for the "landed on a cell with no balance
+        /// formula" case (SheetSelectionChange) - GLBalanceConfigurator.ReLoadConfigurator
+        /// only shows the overlay when a real reload is actually needed (see its own
+        /// comment), so this is just the caller's intent, not a guarantee. Ported from
+        /// FinalWorkingCode's identical fix.
         /// </summary>
-        void RelaunchConfiguratorPane();
+        void RelaunchConfiguratorPane(bool showBusyOverlay = true);
 
         /// <summary>
         /// Group H - old monolith's GLConfiguratorPane.ResetPaneReference() (just updates

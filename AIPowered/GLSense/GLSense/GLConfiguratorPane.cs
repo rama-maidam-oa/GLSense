@@ -36,7 +36,38 @@ namespace GLSense
 {
     public partial class GLConfiguratorPane : AddinExpress.XL.ADXExcelTaskPane
     {
-        private readonly int _minWidthDip = 600;
+        // Absolute floor/ceiling (DIP) - the hard safety rails GetWidthBoundsPx() clamps
+        // the percentage-derived bounds into, and the fallback used outright when Excel's
+        // own window width isn't available yet (e.g. early startup). _minWidthDip must
+        // stay >= GLBalanceConfigurator.MinimumConfiguratorWidth, which the header content
+        // actually needs to fit without overflowing (icon + "Balance Configurator" title +
+        // close button, all Auto-sized Grid columns - WPF's Grid does not compress Auto
+        // columns to force-fit). 595 is inherited from FinalWorkingCode's measured fix for
+        // the identical header XAML shape (confirmed there via direct PointToScreen
+        // measurement: the close button's own computed screen position sat a consistent
+        // 36px past the container's right edge at a narrower floor, with 75 DIP of
+        // headroom added as a safety margin) - this project's header uses the same icon,
+        // title text and CustomWindowCloseButtonStyle, so the same floor is expected to
+        // hold, but this has not been independently re-measured on this project's own
+        // build/DPI matrix and should be verified the same way before shipping.
+        private readonly int _minWidthDip = 595;
+        private readonly int _maxWidthDip = 900;
+        // The pane's width target as a fraction of Excel's own current window width - see
+        // GetWidthBoundsPx(). Keeps the pane a consistent proportion of the available
+        // space across any monitor/resolution/DPI, instead of a fixed DIP size that could
+        // eat up a large fraction of the window at high display scaling on a modest
+        // resolution screen. Ported from FinalWorkingCode's identical fix.
+        private const float MinWidthPercent = 0.25f;
+        private const float MaxWidthPercent = 0.35f;
+        // Guarantees at least this much room between the computed min and max (DIP,
+        // DPI-scaled in GetWidthBoundsPx()) even when the percentage-derived max would
+        // otherwise fall below the absolute floor - without this, minPx and maxPx could
+        // collapse to the exact same value on a non-maximized/narrower Excel window,
+        // locking the splitter dead with zero room to drag.
+        private readonly int _minRangeSlackDip = 100;
+        // Width the pane opens at (GLConfiguratorPane_ADXBeforeTaskPaneShow) - distinct
+        // from _minWidthDip so the pane can launch wider than its floor.
+        private readonly int _defaultWidthDip = 610;
         private readonly int _minHeightDip = 300;
         private const int DefaultDpi = 96;
         private const int WM_WINDOWPOSCHANGING = 0x0046;
@@ -54,6 +85,7 @@ namespace GLSense
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
         [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
         [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
         private const int GWL_STYLE = -16;
         private const long WS_CHILD = 0x40000000L;
@@ -116,6 +148,109 @@ namespace GLSense
             return this.DeviceDpi > 0 ? this.DeviceDpi : DefaultDpi;
         }
 
+        // Control.Width can go stale relative to the pane's real on-screen size - during
+        // a live DPI/resolution change, Add-in Express's own internal reflow can move the
+        // real native window without going through whatever path keeps WinForms' cached
+        // Control.Width in sync. Always read the real rect here instead of trusting
+        // this.Width for clamp math. Ported from FinalWorkingCode's identical fix.
+        private int GetActualWidthPx()
+        {
+            if (this.IsHandleCreated && GetWindowRect(this.Handle, out RECT rect))
+            {
+                return rect.Right - rect.Left;
+            }
+
+            return this.Width;
+        }
+
+        // Excel.Application.Width is documented as POINTS (72/inch), but doesn't reliably
+        // reflect the window's actual current-DPI physical size (confirmed on
+        // FinalWorkingCode via live testing - a points/dpi conversion came out ~1.6x too
+        // large at 175% scale). GlobalsEx.Context.ExcelHandle + GetWindowRect instead
+        // reads the window's real physical pixel rect directly via Win32 - the same unit
+        // space this.Width/GetActualWidthPx already use. Ported from FinalWorkingCode's
+        // identical fix (re-pointed from AppState.Instance.ExcelApp.Hwnd to
+        // GlobalsEx.Context.ExcelHandle, the host-side equivalent already used elsewhere
+        // in this project - see AddinModule.cs's SheetSelectionChange focus-reclaim fix).
+        private int GetExcelWindowWidthPx()
+        {
+            try
+            {
+                IntPtr hwnd = GlobalsEx.Context?.ExcelHandle ?? IntPtr.Zero;
+                if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out RECT rect))
+                {
+                    return 0;
+                }
+
+                return rect.Right - rect.Left;
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "GLConfiguratorPane.GetExcelWindowWidthPx");
+                return 0;
+            }
+        }
+
+        // Percentage-of-Excel-window bounds, clamped into the absolute [_minWidthDip,
+        // _maxWidthDip] safety rails (DPI-scaled). Falls back to those absolute bounds
+        // outright when Excel's own window width isn't available yet (e.g. early
+        // startup, GetExcelWindowWidthPx() returning 0). Ported from FinalWorkingCode's
+        // identical fix.
+        private (int minPx, int maxPx) GetWidthBoundsPx()
+        {
+            int dpi = GetEffectiveDpi();
+            int absoluteMinPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+            int absoluteMaxPx = (int)Math.Round(_maxWidthDip * dpi / (float)DefaultDpi);
+
+            int excelWindowWidthPx = GetExcelWindowWidthPx();
+            if (excelWindowWidthPx <= 0)
+            {
+                return (absoluteMinPx, absoluteMaxPx);
+            }
+
+            int minPx = (int)Math.Round(excelWindowWidthPx * MinWidthPercent);
+            int maxPx = (int)Math.Round(excelWindowWidthPx * MaxWidthPercent);
+            int minRangeSlackPx = (int)Math.Round(_minRangeSlackDip * dpi / (float)DefaultDpi);
+
+            minPx = Math.Max(minPx, absoluteMinPx);
+            // Math.Max(maxPx, minPx) alone would let maxPx collapse to exactly minPx
+            // whenever the percentage-derived max falls below the floor - guarantee at
+            // least minRangeSlackPx of room instead, then clamp to the ceiling (and, in
+            // case the ceiling itself is tighter than min+slack, back down to at least
+            // minPx so max never ends up below min).
+            maxPx = Math.Max(maxPx, minPx + minRangeSlackPx);
+            maxPx = Math.Min(maxPx, absoluteMaxPx);
+            maxPx = Math.Max(maxPx, minPx);
+
+            return (minPx, maxPx);
+        }
+
+        // Called from AddinModule.adxExcelAppEvents1_WindowResize whenever Excel's OWN
+        // window is resized/moved/maximized - the pane can't detect that on its own
+        // (GLConfiguratorPane_Resize only fires for the pane's own size changes), but a
+        // change in Excel's window width shifts the percentage-derived bounds even when
+        // the pane's own width hasn't changed yet, so it needs an explicit re-clamp.
+        // Unlike FinalWorkingCode's version, there is no _wpfControl/_host (ElementHost)
+        // to invalidate directly here - the embedded content is a reparented native HWND
+        // (_contentHwnd) in a different AppDomain, kept in sync via ResizeContent()'s own
+        // MoveWindow call, which already runs on every resize (see GLConfiguratorPane_Resize).
+        // FinalWorkingCode's own InvalidateMeasure/InvalidateArrange/InvalidateVisual calls
+        // were confirmed (via direct measurement) to have zero effect on the underlying bug
+        // they were added for, so no cross-AppDomain equivalent is needed here either.
+        public void RecomputeWidthBounds()
+        {
+            var (minPx, maxPx) = GetWidthBoundsPx();
+            int actualWidthPx = GetActualWidthPx();
+            int clampedWidth = Math.Min(Math.Max(actualWidthPx, minPx), maxPx);
+            if (clampedWidth != this.Width)
+            {
+                GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane.RecomputeWidthBounds: this.Width={this.Width} (actual={actualWidthPx}) -> {clampedWidth} (minPx={minPx}, maxPx={maxPx})");
+                this.Width = clampedWidth;
+            }
+
+            ResizeContent();
+        }
+
         public GLConfiguratorPane()
         {
             InitializeComponent();
@@ -125,6 +260,29 @@ namespace GLSense
             this.DpiChanged += GLConfiguratorPane_DpiChanged;
             this.HandleCreated += GLConfiguratorPane_HandleCreated;
             this.HandleDestroyed += GLConfiguratorPane_HandleDestroyed;
+
+            // Freezes the pane's width between MinimumSize.Width and a DPI-scaled
+            // _maxWidthDip during a live splitter drag. This is Add-in Express's own
+            // dedicated resize-constraint event - fired on every mouse-move while the
+            // user drags the splitter, distinct from the WM_SIZING/WM_WINDOWPOSCHANGING
+            // overrides below (which independently enforce only the minimum, and are
+            // left unchanged). e.NewRegionSize is read-only - there is no way to
+            // substitute a clamped size, only accept or reject the exact proposed one -
+            // but since this fires continuously during the drag, rejecting anything
+            // outside the [Min, Max] range stops the pane from tracking the mouse any
+            // further once it hits either bound. Ported from FinalWorkingCode's
+            // identical fix (738fbed).
+            this.ADXSplitterMove += GLConfiguratorPane_ADXSplitterMove;
+        }
+
+        private void GLConfiguratorPane_ADXSplitterMove(object sender, ADXSplitterMoveEventArgs e)
+        {
+            var (minWidthPx, maxWidthPx) = GetWidthBoundsPx();
+            GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane_ADXSplitterMove: NewRegionSize.Width={e.NewRegionSize.Width}, minWidthPx={minWidthPx}, maxWidthPx={maxWidthPx}");
+            if (e.NewRegionSize.Width < minWidthPx || e.NewRegionSize.Width > maxWidthPx)
+            {
+                e.Cancel = true;
+            }
         }
 
         private void GLConfiguratorPane_HandleCreated(object sender, EventArgs e)
@@ -207,13 +365,19 @@ namespace GLSense
 
         private void GLConfiguratorPane_Resize(object sender, EventArgs e)
         {
-            var dpi = GetEffectiveDpi();
-            var dipWidth = this.Width * DefaultDpi / (float)dpi;
+            // Re-clamping into [min, max] here, computed fresh every time, is what keeps
+            // the pane correctly sized across a live DPI/resolution change (Excel's own
+            // window resizing/moving is handled separately by RecomputeWidthBounds,
+            // called from AddinModule's WindowResize handler). Ported from
+            // FinalWorkingCode's identical fix.
+            var (minWidthPx, maxWidthPx) = GetWidthBoundsPx();
+            int actualWidthPx = GetActualWidthPx();
+            GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane_Resize: this.Width={this.Width} (actual={actualWidthPx}), minWidthPx={minWidthPx}, maxWidthPx={maxWidthPx}");
 
-            if (dipWidth < _minWidthDip)
+            int clampedWidth = Math.Min(Math.Max(actualWidthPx, minWidthPx), maxWidthPx);
+            if (clampedWidth != this.Width)
             {
-                int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
-                this.Width = minWidthPx;
+                this.Width = clampedWidth;
             }
 
             ResizeContent();
@@ -236,12 +400,12 @@ namespace GLSense
         /// fire-and-forget on the Addin.Core side), so this just wraps it in
         /// Task.CompletedTask.
         /// </summary>
-        public Task RelaunchPane()
+        public Task RelaunchPane(bool showBusyOverlay = true)
         {
             try
             {
-                GlobalsEx.Context?.Logger?.LogDebug("GLConfiguratorPane.RelaunchPane: requesting relaunch from Addin.Core.");
-                GlobalsEx.Addin?.RelaunchConfiguratorPane();
+                GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane.RelaunchPane: requesting relaunch from Addin.Core (showBusyOverlay={showBusyOverlay}).");
+                GlobalsEx.Addin?.RelaunchConfiguratorPane(showBusyOverlay);
             }
             catch (Exception ex)
             {
@@ -294,9 +458,12 @@ namespace GLSense
                 {
                     pane.Visible = DisplayConfigurator;
 
+                    // Launches at _defaultWidthDip, not the MinimumSize.Width floor, so
+                    // the two can differ. Ported from FinalWorkingCode's identical fix.
                     if (pane.Visible)
                     {
-                        pane.Width = pane.MinimumSize.Width;
+                        int defaultWidthPx = (int)Math.Round(_defaultWidthDip * pane.GetEffectiveDpi() / (float)DefaultDpi);
+                        pane.Width = Math.Max(defaultWidthPx, pane.MinimumSize.Width);
                     }
                 }
             }

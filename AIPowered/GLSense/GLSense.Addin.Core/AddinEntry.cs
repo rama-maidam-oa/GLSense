@@ -2023,9 +2023,9 @@ namespace GLSense.Addin.Core
         /// IGLSenseAddin.RelaunchConfiguratorPane() - old monolith's
         /// GLConfiguratorPane.RelaunchPane(). Thin delegation only.
         /// </summary>
-        public void RelaunchConfiguratorPane()
+        public void RelaunchConfiguratorPane(bool showBusyOverlay = true)
         {
-            Views.ConfiguratorPaneHost.Relaunch();
+            Views.ConfiguratorPaneHost.Relaunch(showBusyOverlay);
         }
 
         /// <summary>

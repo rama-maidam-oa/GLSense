@@ -6,9 +6,10 @@
              xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
              xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
              Background="#F8F9FA"
-             MinWidth="600"
+             MinWidth="595"
              HorizontalAlignment="Stretch"
-             VerticalAlignment="Stretch">
+             VerticalAlignment="Stretch"
+             ClipToBounds="True">
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -163,6 +164,7 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
+    <Grid>
     <ScrollViewer x:Name="MainScrollViewer"
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
@@ -190,7 +192,7 @@
                             <iconPacks:PackIconFontAwesome Kind="MoneyCheckDollarSolid" Width="20" Height="20" Foreground="White" VerticalAlignment="Center"/>
                             <TextBlock Text="Balance Configurator" Margin="10,0,0,0" FontSize="14" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnCancelBottom_Click"/>
+                        <Button x:Name="btnHeaderClose" Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnCancelBottom_Click"/>
                     </Grid>
                 </Border>
 
@@ -1219,18 +1221,26 @@
                     </Grid>
                 </Expander>
             </Grid>
-
-            <!-- Toast / Busy overlay -->
-            <views:AppOverlay x:Name="AppOverlayControl"
-                              Grid.ColumnSpan="3"
-                              Margin="0"
-                              Grid.Row="0"
-                              Grid.RowSpan="7"
-                              HorizontalAlignment="Stretch"
-                              VerticalAlignment="Stretch"
-                              Visibility="Collapsed"
-                              DataContext="{x:Null}"
-                              Panel.ZIndex="10"/>
         </Grid>
     </ScrollViewer>
+
+        <!-- Toast / Busy overlay - deliberately a sibling of MainScrollViewer, not
+             inside its scrollable content. It was previously inside the scrollable
+             Grid with VerticalAlignment="Stretch", so its ActualHeight (and therefore
+             the Toast's VerticalAlignment="Top" anchor) matched the full scrollable
+             CONTENT height, not the visible viewport - after scrolling down to reach a
+             control near the bottom, a validation toast rendered at the top of that
+             full content, off-screen above the current scroll position, so it looked
+             like nothing happened unless the user scrolled back up. Here, sized against
+             the outer Grid (== the ScrollViewer's own viewport), the overlay/toast
+             always renders within whatever is currently visible. Ported from
+             FinalWorkingCode's identical fix. -->
+        <views:AppOverlay x:Name="AppOverlayControl"
+                          Margin="0"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Visibility="Collapsed"
+                          DataContext="{x:Null}"
+                          Panel.ZIndex="10"/>
+    </Grid>
 </UserControl>
