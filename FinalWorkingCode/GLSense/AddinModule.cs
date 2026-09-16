@@ -786,13 +786,12 @@ namespace GLSense
                 LogUtility.LogDebug($"SheetActivate fired. Sheet={(hostObj as Excel.Worksheet)?.Name ?? "<unknown>"}");
                 _ribbonHelper.ApplyState("ApplySheetActiveState");
 
-                // Covers switching sheets within the SAME workbook. Switching BETWEEN
-                // open workbooks does not fire this event in this add-in's event wiring
-                // (confirmed via logging: zero SheetActivate hits across several
-                // WorkbookActivate-driven workbook switches, unlike the VB.NET sibling
-                // this was ported from, where SheetActivate is the only place FSGForm
-                // reacts to a workbook switch too) - that case is handled by
-                // adxExcelAppEvents1_WorkbookActivate below instead.
+                // Covers switching sheets within the SAME workbook - confirmed via real
+                // side-by-side testing against the VB.NET sibling that a pure cross-
+                // workbook switch (Alt+Tab, no cell click) must NOT touch the Balance
+                // Configurator at all (see adxExcelAppEvents1_WorkbookActivate's own
+                // comment for the fuller history/reasoning) - only this within-workbook
+                // sheet-tab case and an actual cell click (SheetSelectionChange) should.
                 ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.Selection as Excel.Range);
             }
             catch (Exception ex)
@@ -2186,12 +2185,25 @@ namespace GLSense
                 _ribbonHelper.ApplyState("LoggedIn");
                 SyncRibbonSelectionWithAppState();
 
-                // Confirmed via logging that switching BETWEEN open workbooks fires this
-                // event but never SheetActivate (unlike the VB.NET sibling, where
-                // SheetActivate alone was assumed to cover it) - so the floating window has
-                // to react here, checking the newly active workbook's own active cell for a
-                // balance formula, same as a normal selection change would.
-                ApplyBalanceWindowVisibility(AppState.Instance.ExcelApp?.ActiveCell as Excel.Range);
+                // Deliberately does NOT touch ApplyBalanceWindowVisibility - a previous
+                // version of this handler did, on the (logging-based) assumption that this
+                // event was the only reliable way to react to a cross-workbook switch since
+                // SheetActivate doesn't fire for one. That was wrong: confirmed via real
+                // side-by-side testing against the VB.NET sibling that a PURE workbook
+                // switch (Alt+Tab, no cell click) must leave the Balance Configurator
+                // completely untouched, regardless of Show Always - VB.NET's own
+                // WrkBooksOpenActivateNewEvent (this event's VB.NET equivalent) never
+                // touches FSGForm at all. Switching to another workbook naturally hides an
+                // owned window behind it (it's a separate top-level Excel window), and
+                // switching back naturally reveals it again - all via normal Win32 owned-
+                // window z-order behavior, with no code needed. Calling
+                // ApplyBalanceWindowVisibility here was actively hiding the window on the
+                // switch-away (since the other workbook's last-active cell usually isn't a
+                // balance formula cell) and then leaving it hidden on the switch-back too
+                // (its own Visible-false guard skipped re-showing it). The window still
+                // reacts correctly to SheetSelectionChange (an actual cell click) and
+                // SheetActivate (a sheet-tab switch within the same workbook) - just not to
+                // this event.
             }
             catch (Exception ex)
             {
