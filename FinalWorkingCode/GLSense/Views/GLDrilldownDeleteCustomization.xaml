@@ -39,7 +39,7 @@
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <iconPacks:PackIconFontAwesome Kind="TrashCanSolid" Style="{StaticResource LargeIcon}"/>
-                    <TextBlock Text="Delete Drilldown Customizations" Style="{StaticResource TitleHeaderTextBlock}"/>
+                    <TextBlock Text="Delete Local Drilldown Customizations" Style="{StaticResource TitleHeaderTextBlock}"/>
                 </StackPanel>
 
                 <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
@@ -288,7 +288,7 @@
                         <Button.ToolTip>
                             <ToolTip Style="{StaticResource SimpleBrowserToolTip}">
                                 <StackPanel>
-                                    <TextBlock Text="Delete the saved customization for the checked drilldown type(s)" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Delete the saved local customization for the checked drilldown type(s)" TextWrapping="Wrap"/>
                                     <Border Background="#FBB41A" CornerRadius="3" Padding="8,6" Margin="0,8,0,0">
                                         <StackPanel Orientation="Horizontal">
                                             <iconPacks:PackIconFontAwesome Kind="LightbulbRegular" Width="12" Height="12"
