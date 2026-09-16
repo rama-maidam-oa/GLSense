@@ -67,6 +67,16 @@ namespace GLSense.Addin.Core.Utilities
                             // Group C/H/I dialogs, etc.) - log the full structured dump, not
                             // just the message, since e.Handled=true means it would
                             // otherwise vanish silently.
+                            //
+                            // Explicit LogWarn marker (kept permanently - see the GLLogin
+                            // "blank combo box" investigation): a XamlParseException/
+                            // StaticResource-resolution failure thrown while a control's
+                            // Style/ControlTemplate is being applied would land here, get
+                            // swallowed by e.Handled=true, and leave that control's area
+                            // blank with nothing else visibly wrong - this line makes that
+                            // scenario unmistakable in the log instead of just another
+                            // LogException entry among many.
+                            ServiceLocator.Logger?.LogWarn($"WpfAppManager: UNHANDLED WPF DISPATCHER EXCEPTION being suppressed - {e.Exception.GetType().Name}: {e.Exception.Message}");
                             ServiceLocator.Logger?.LogException(e.Exception, "WpfAppManager: Unhandled WPF Dispatcher exception (suppressed, UI kept alive)");
                             e.Handled = true;
                         };
@@ -123,5 +133,45 @@ namespace GLSense.Addin.Core.Utilities
         }
 
         public static bool IsInitialized => _isInitialized;
+
+        /// <summary>
+        /// Explicitly shuts down the WPF Application created by EnsureApplication().
+        /// ShutdownMode is OnExplicitShutdown (deliberately - see EnsureApplication's own
+        /// comment: the Application/Dispatcher needs to stay alive across every window
+        /// open/close during a normal session), which means nothing ever terminates its
+        /// Dispatcher message loop unless something calls this. Without it, on a real
+        /// Excel shutdown the thread hosting this Application/Dispatcher is still alive
+        /// and actively pumping when AddinDomainLoader.Unload() tries to unload this
+        /// AppDomain - a live thread executing inside a domain being unloaded is exactly
+        /// what makes AppDomain.Unload() hang/block, which in turn blocks
+        /// AddinModule_AddinBeginShutdown from returning, which blocks Excel's own
+        /// shutdown sequence - the most likely explanation for Excel.exe lingering as an
+        /// orphaned process after its window closes. Called from AddinEntry.Shutdown()
+        /// right before the AppDomain unload is attempted.
+        /// </summary>
+        public static void Shutdown()
+        {
+            try
+            {
+                if (Application.Current == null || Application.Current.Dispatcher.HasShutdownStarted)
+                {
+                    ServiceLocator.Logger?.LogDebug("WpfAppManager.Shutdown: no live Application to shut down.");
+                    return;
+                }
+
+                ServiceLocator.Logger?.LogDebug("WpfAppManager.Shutdown: shutting down the WPF Application/Dispatcher.");
+
+                // Application.Shutdown() must run on the Dispatcher thread that owns it -
+                // InvokeOnWpfThread already handles the "already on that thread vs. needs
+                // Invoke" branching correctly.
+                InvokeOnWpfThread(() => Application.Current?.Shutdown());
+
+                _isInitialized = false;
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "WpfAppManager.Shutdown");
+            }
+        }
     }
 }

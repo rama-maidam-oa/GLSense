@@ -17,6 +17,7 @@
 //     (Excel owner set automatically via ServiceLocator.ExcelHandle). CreateAndShow-
 //     ProgressWindow rewritten to the WpfAppManager.InvokeOnWpfThread(Action)-with-
 //     captured-local pattern (InvokeOnWpfThread has no Func<T> overload here).
+using GLSense.Addin.Core.Common;
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using GLSense.Addin.Core.Models;
@@ -92,7 +93,7 @@ namespace GLSense.Addin.Core.Drilldowns
 
             try
             {
-                await InitializeProgressWindowAsync("Subledgers Drilldown", "Processing request...");
+                await InitializeProgressWindowAsync(DrilldownMetadata.GetDisplay(DrilldownType.SL), "Processing request...");
 
                 if (!await TryRunDrilldownAsync(SlWorksheet, SlRange, headerIndex))
                     return;

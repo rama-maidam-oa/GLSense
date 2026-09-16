@@ -87,6 +87,12 @@ namespace GLSense.ViewModels
             LogUtility.LogDebug($"GLPeriodDetails.LoadDataAsync: FormulaName={_formulaName}, FuncArgs.Count={FuncArgs?.Count ?? 0}, FuncValues.Count={FuncValues?.Count ?? 0}");
             try
             {
+                // This initial ledger fetch used to run with no busy overlay at all - only
+                // the later LoadPeriodsForLedger call showed one, so the window sat blank
+                // with no loading indicator for however long GetConfiguratorLedgers took.
+                if (ShowBusyAction != null)
+                    await ShowBusyAction("Loading ledgers...", null);
+
                 var ledgers = await Task.Run(() =>
                 {
                     var repository = new DataRepository();
@@ -105,6 +111,9 @@ namespace GLSense.ViewModels
                         Ledgers.Add(ledger);
                     }
                 });
+
+                if (HideBusyAsyncAction != null)
+                    await HideBusyAsyncAction();
 
                 if (FuncArgs != null && FuncArgs.Count > 0)
                     await ApplyFormulaParams(FuncArgs, FuncValues);

@@ -124,6 +124,7 @@ namespace GLSense
             this.RibDebug = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.RibVersionCheck = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.RibReload = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibReleaseHistory = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonGroup11 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibAbout = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibHelp = new AddinExpress.MSO.ADXRibbonButton(this.components);
@@ -175,6 +176,7 @@ namespace GLSense
             this.ImageList_16X16.Images.SetKeyName(37, "PeriodEnd_24.png");
             this.ImageList_16X16.Images.SetKeyName(38, "PeriodStart_24.png");
             this.ImageList_16X16.Images.SetKeyName(39, "SegmentDescriptiveField_24.png");
+            this.ImageList_16X16.Images.SetKeyName(40, "reload.png");
             // 
             // ImageList_32X32
             // 
@@ -214,6 +216,7 @@ namespace GLSense
             this.ImageList_32X32.Images.SetKeyName(31, "PeriodStart_32.png");
             this.ImageList_32X32.Images.SetKeyName(32, "SegmentDescriptiveField_32.png");
             this.ImageList_32X32.Images.SetKeyName(33, "deleteDrilldowns.png");
+            this.ImageList_32X32.Images.SetKeyName(34, "versioncontrol.png");
             // 
             // orbittab
             // 
@@ -892,9 +895,9 @@ namespace GLSense
             this.RibDDConfiguration.SuperTip = "Customize the drilldowns. Format the columns , add custom drilldown columns or ad" +
     "d custom formula (formulas supported by excel)";
             this.RibDDConfiguration.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibDDConfiguration_OnClick);
-            //
+            // 
             // RibDDDeleteConfiguration
-            //
+            // 
             this.RibDDDeleteConfiguration.Caption = "Delete Customization";
             this.RibDDDeleteConfiguration.Id = "adxRibbonButton_9a3e2f1c6b4d4e2f8a7c5d6e9b0f1a2c";
             this.RibDDDeleteConfiguration.Image = 33;
@@ -904,7 +907,7 @@ namespace GLSense
             this.RibDDDeleteConfiguration.ScreenTip = "Drilldowns";
             this.RibDDDeleteConfiguration.SuperTip = "Delete the drilldown customization saved locally for the current cube.";
             this.RibDDDeleteConfiguration.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibDDDeleteConfiguration_OnClick);
-            //
+            // 
             // adxRibbonGroup8
             // 
             this.adxRibbonGroup8.AutoScale = true;
@@ -1194,10 +1197,10 @@ namespace GLSense
             this.adxRibbonGroup10.Caption = "Setup";
             this.adxRibbonGroup10.Controls.Add(this.Riburl);
             this.adxRibbonGroup10.Controls.Add(this.RibUserConfig);
+            this.adxRibbonGroup10.Controls.Add(this.RibReload);
             this.adxRibbonGroup10.Controls.Add(this.adxRibbonSeparator5);
             this.adxRibbonGroup10.Controls.Add(this.RibDebug);
             this.adxRibbonGroup10.Controls.Add(this.RibVersionCheck);
-            this.adxRibbonGroup10.Controls.Add(this.RibReload);
             this.adxRibbonGroup10.Id = "adxRibbonGroup_3a9df2aa92c8498584671976a8f6d7f1";
             this.adxRibbonGroup10.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.adxRibbonGroup10.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
@@ -1253,6 +1256,8 @@ namespace GLSense
             // 
             this.RibReload.Caption = "Reload Add-in";
             this.RibReload.Id = "adxRibbonButton_7c4a1e0b9d3f4a2ea6c8f5b1d2e7a9c4";
+            this.RibReload.Image = 40;
+            this.RibReload.ImageList = this.ImageList_16X16;
             this.RibReload.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibReload.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibReload.ScreenTip = "Reload Add-in";
@@ -1260,12 +1265,27 @@ namespace GLSense
     ".";
             this.RibReload.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReload_OnClick);
             // 
+            // RibReleaseHistory
+            // 
+            this.RibReleaseHistory.Caption = "Release History";
+            this.RibReleaseHistory.Id = "adxRibbonButton_9f2e6c1a4b7d4e3f8a1c6d9e2b5f7a3c";
+            this.RibReleaseHistory.Image = 34;
+            this.RibReleaseHistory.ImageList = this.ImageList_32X32;
+            this.RibReleaseHistory.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibReleaseHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibReleaseHistory.ScreenTip = "Release History";
+            this.RibReleaseHistory.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
+            this.RibReleaseHistory.SuperTip = "Browse every GLSense.Addin.Core release ever adopted on this machine, and load an" +
+    "y of them without restarting Excel.";
+            this.RibReleaseHistory.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReleaseHistory_OnClick);
+            // 
             // adxRibbonGroup11
             // 
             this.adxRibbonGroup11.AutoScale = true;
             this.adxRibbonGroup11.Caption = "About";
             this.adxRibbonGroup11.Controls.Add(this.RibAbout);
             this.adxRibbonGroup11.Controls.Add(this.RibHelp);
+            this.adxRibbonGroup11.Controls.Add(this.RibReleaseHistory);
             this.adxRibbonGroup11.Id = "adxRibbonGroup_1d62bdd090d84dab88664d84bfb01508";
             this.adxRibbonGroup11.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.adxRibbonGroup11.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
@@ -1417,6 +1437,7 @@ namespace GLSense
         public AddinExpress.MSO.ADXRibbonCheckBox RibDebug;
         public AddinExpress.MSO.ADXRibbonCheckBox RibVersionCheck;
         public AddinExpress.MSO.ADXRibbonButton RibReload;
+        public AddinExpress.MSO.ADXRibbonButton RibReleaseHistory;
         public AddinExpress.MSO.ADXRibbonButton RibAbout;
         public AddinExpress.MSO.ADXRibbonButton RibHelp;
         private AddinExpress.XL.ADXExcelTaskPanesManager adxExcelTaskPanesManager1;

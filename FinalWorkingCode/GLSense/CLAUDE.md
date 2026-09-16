@@ -244,3 +244,536 @@ looked like) - it applies here verbatim.
   `GLSense.Addin.Core\Views\GLSegmentDiscovery.xaml.cs`, which has a different (already
   reliable, async-yielding) busy-overlay mechanism but is missing both the re-entry guard
   and the Calculation-manual/single-`Calculate()`-pass fix - see AIPowered's `CLAUDE.md`.
+
+## Blank window on open (release-blocking, reported via video + screenshots showing all 3 stages of one sample window, `GLLOVs`)
+
+Two distinct root causes, both fixed together per the user's request:
+
+- **Universal, every window - WPF cold-start blank first frame.** The very first time WPF
+  ever shows a `Window`/`DataGrid`/custom control of a given type in this process, it pays
+  a one-time cost to parse XAML, apply styles/`ControlTemplate`s, and JIT-compile the
+  generated code behind them - and the native HWND becomes visible (`Show()`/
+  `ShowDialog()` returns control to Windows) before that first frame is actually
+  composited, so the user sees a completely blank/white rectangle (confirmed in the first
+  of the three shared screenshots - no title text, no static "Ledger:" label, nothing at
+  all, not even elements that don't depend on any data binding) until WPF catches up. This
+  is a well-known, generic WPF effect, not specific to `GLLOVs` or any one window - every
+  `DpiAwareWindow`-derived window shares the same `DataGrid`/`ExcelRefEditControl`/
+  `AppOverlay` controls that pay this cost.
+  Fixed with a new `Utilities\WpfWarmup.cs`: `WpfWarmup.WarmUpInBackground()`, called once
+  from `AddinModule.cs`'s `AddinModule_OnRibbonLoaded` right after
+  `MahAppsBootstrapper.PreloadResources()` (the only prior "warm-up" in this codebase, and
+  it only forces XAML *resource dictionaries* to parse - never instantiates an actual
+  `Window`/`DataGrid`, so it never touched the JIT/template-application/first-composite
+  costs that actually cause this). Dispatches at `DispatcherPriority.ApplicationIdle` (so
+  it never blocks ribbon load or Excel's responsiveness) to construct a throwaway `Window`
+  containing a `DataGrid` (with sample rows so its row/cell templates actually get
+  exercised), an `ExcelRefEditControl`, and an `AppOverlay` - the controls shared by nearly
+  every real window - positioned far off-screen with `Opacity=0`, `ShowActivated=false`,
+  `ShowInTaskbar=false` so the user never perceives it, then `Show()`s and immediately
+  `Close()`s it once `ContentRendered` fires. This pays the entire one-time JIT/style cost
+  silently in the background before the user ever opens a real window, instead of it being
+  visible on whichever window they happen to open first. `ExcelRefEditControl`'s own
+  `Loaded` handler looks for an `IWarningHost` ancestor and finds none in the throwaway
+  window, so `ExcelRefManager.SetupControl` is never called - no side effects from the
+  warm-up itself. New file needed an explicit `<Compile Include>` entry in `GLSense.csproj`
+  (old-style project format, no implicit globbing).
+
+- **Per-window - initial data load runs with no loading indicator.** Separately from the
+  above, `GLLOVs` (the second/third screenshots - static chrome rendered, but the LOVs
+  `DataGrid` sitting empty for a further, unbounded stretch) and 10 other windows do a
+  non-trivial data load in `Window_Loaded` where the busy overlay either never shows at
+  all, or only covers a *later* phase of the load, leaving a real gap with zero loading
+  feedback:
+  - `GLLovViewModel.LoadLovRowsAsync`: busy overlay was gated on `!ledgerDataExist` (only
+    shown on a cache-miss remote fetch) - in the common case (data already cached), the 8+
+    local SQLite queries this method runs (SEGMENTS/ACTIVITY/BUDGETS/CURRENCIES/etc.) had
+    no indicator at all. Also never hid the overlay in an exception path (no `finally`).
+  - `GLGetPeriodModel`/`GLPeriodByDateModel`/`GLGetPeriodByYearModel`/`GLPeriodDetails`
+    (shared by `GLGetPeriodDetails`/`GLGetPeriodStartEnd`) - all four `LoadDataAsync`
+    methods fetch the initial ledger list (`GetConfiguratorLedgers`) with no overlay; the
+    overlay only starts once `LoadPeriodsForLedger` runs afterward.
+  - `SegmentSelectorViewModel.LoadSegmentsAsync` (`GLSegmentValues`/`GLSegmentRef`) - the
+    initial `GetSegments` call had no overlay at all, unlike the hierarchy-loading path
+    elsewhere in the same class which already does this correctly.
+  - `SimpleSegmentViewModel.LoadSegmentsAsync` (`GLRollerGroups`) - this ViewModel had no
+    `ShowBusyAction`/`HideBusyAsyncAction` properties at all; added them and wired them up
+    in `GLRollerGroups.xaml.cs`'s constructor to match every other window's pattern.
+  - `GLDailyRatesViewModel.LoadDataAsync` (`GLDailyRates`) - same as above, no busy-overlay
+    mechanism existed on this ViewModel at all; added and wired up.
+  - `GLCubeDetails.xaml.cs`: `LoadUserPreferencesForCube` (a real network API call) ran
+    before `LoadCubeData`'s own `ShowBusyOverlayAsync` - overlay shown before it now (left
+    up rather than shown-then-hidden-then-reshown, so `LoadCubeData`'s own call just
+    updates the message with no flicker); added a safety-net `HideBusyAsync()` call in the
+    outer `finally` at both call sites (`Window_Loaded` and `CmbCubes_SelectionCommitted`)
+    in case `LoadUserPreferencesForCube` throws (cancellation) before `LoadCubeData` ever
+    gets a chance to run its own hide.
+  Fixed each by showing the busy overlay unconditionally for the actual full duration of
+  the load (not gated on a cache-existence check), hiding in a `finally` so it can't get
+  stuck showing on an exception path either. `GLUserConfig`/`GLJobsMonitor`/
+  `GLSegmentFunctions`/`GLBalanceConfigurator`/`GLLogin`/`GLDrilldownCustomization`/`GLAbout`
+  already did this correctly and needed no changes.
+  **Status: build-verified (full solution).**
+
+## `Views\GLDailyRates.xaml`
+
+- **Cell Reference field's Select/Clear buttons unclickable**: reported as "unable to
+  select or clear the reference" in `GLDailyRates`, while the same `ExcelRefEditControl`
+  worked fine in `GLGetPeriod`. `ExcelRefEditControl.xaml`'s own layout puts its
+  "Select Excel Cell" (`btnEdit`) and "Clear Reference" (`btnClear`) buttons at the
+  control's right edge (`Grid.Column="1"`/`"2"`, `Auto`-width, after a `*`-width `TextBox`
+  in column 0). In `GLDailyRates.xaml`'s Cell Reference row, the control spans
+  `Grid.Column="1" Grid.ColumnSpan="2"` of the outer row Grid - but a leftover
+  `<Border Grid.Column="2" ... Background="Transparent"/>` spacer was declared
+  immediately after it in the same Grid. WPF hit-tests a `Background="Transparent"`
+  element same as any opaque one (unlike a `null`/unset Background, which lets clicks
+  pass through), and later-declared siblings paint on top - so this spacer sat directly
+  over the right edge of the control, exactly where `btnEdit`/`btnClear` are, silently
+  swallowing every click meant for them while leaving the left portion (the read-only
+  text box) unaffected - matching the reported symptom precisely. `GLGetPeriod.xaml`'s
+  equivalent Reference row has no such trailing Border, which is why it worked there. The
+  same spacer pattern elsewhere in `GLDailyRates.xaml` (e.g. the Conversion Type row) is
+  harmless, since those rows don't have a real interactive control spanning under it.
+  Fixed by deleting the redundant spacer Border from the Cell Reference row, matching
+  `GLGetPeriod.xaml`'s pattern exactly.
+  **Status: same bug found on the `11.1.0-window-flash-redo`/`main`/`11.1.0` branches too
+  (this one, `wpfui-removal-phase1`, has its own copy of `GLDailyRates.xaml` under a
+  different base class - `views:BaseWindow` in AIPowered here vs. `utils:DpiAwareWindow`
+  elsewhere - but the same Cell Reference row/spacer shape); fixed independently on each,
+  in both FinalWorkingCode and AIPowered.
+
+## `Drilldowns\DD_BL.cs` / `DD_JL.cs` / `DD_SL.cs`
+
+- **GLWaitWindow processing title missing or wrong for some drilldowns**: reported as
+  the processing/wait window not showing the drilldown's full name, or showing the wrong
+  one, for some drilldown types. `GLWaitWindow.xaml`'s `txtTitle` defaults to
+  "Refreshing Data" until `SetProcessTitle(...)` is called.
+  - `DrilldownBl.ProcessBLDrilldown` (handles ddType `BL`, `BL_JL`, `BL_SL`, and `UF` -
+    see `AddinModule.RunBalanceDrilldownAsync`) never called `SetProcessTitle` at all, so
+    the window was stuck on the XAML default "Refreshing Data" for every one of those
+    four drilldown types, regardless of which was actually running.
+  - `DrilldownJl.ProcessJLDrilldown` (handles ddType `JL`, `BLDD_SL`, and `BLDD_UF` - see
+    `AddinModule.RibJournalDD_OnClick`/`RibBalancesDDToSubLedger_OnClick`/
+    `RibBalancesDDToUnified_OnClick`) stored `_ddType` in a field but hardcoded the title
+    to the literal string `"Journals Drilldown"` regardless of its value - so the two
+    Balances-Drilldown-to-X types launched through this class showed "Journals Drilldown"
+    instead of their real names.
+  - `DrilldownSl` hardcoded `"Subledgers Drilldown"` (lowercase "l"), which only differs
+    from `DrilldownType.SL`'s canonical `[Description("SubLedgers Drilldown")]` by
+    casing, but was still inconsistent with the single source of truth for these display
+    strings.
+  `Common\DrilldownMetadata.GetDisplay(DrilldownType)` (backed by
+  `Common\DrilldownType.cs`'s `[Description(...)]` attributes) already existed as that
+  source of truth and was already used correctly elsewhere (e.g.
+  `DDDatatoWorksheet.cs`'s toast messages), just not wired into these three progress-window
+  title call sites.
+  Fixed by having `DrilldownBl`/`DrilldownJl` parse their own `_DDType`/`_ddType` field
+  via `Enum.TryParse<DrilldownType>` and pass `DrilldownMetadata.GetDisplay(ddEnum)` as
+  the title (falling back to the raw string if parsing fails), and switching `DrilldownSl`
+  to call `DrilldownMetadata.GetDisplay(DrilldownType.SL)` instead of its hardcoded
+  literal. Build-verified.
+  **Status: fixed in both FinalWorkingCode and AIPowered.** AIPowered's
+  `GLSense.Addin.Core\Drilldowns\DD_BL.cs`/`DD_JL.cs`/`DD_SL.cs` had the exact same three
+  gaps and got the identical fix - see AIPowered's `CLAUDE.md` section 42.
+  in both FinalWorkingCode and AIPowered.
+
+## `Helpers\LogHelper.cs`
+
+- **20MB log-file rollover used NLog's "Legacy/unstable" archive handler, and archived
+  filenames carried no date**: `FileName` is a dynamic layout (`${date:format=dd-MMM-yyyy}`,
+  see the header comment above about the log file being per-day), and the archive config
+  additionally set `ArchiveFileName = "...\GLSense_Logs_{#}.log"`. NLog's own wiki warns
+  this combination ("Dynamic FileName Archive Logic" + an explicit `ArchiveFileName`) causes
+  "unexpected archive behavior" - confirmed by tracing NLog 6.1.4's own source
+  (`FileTarget.cs`'s `CreateFileArchiveHandler`): merely setting `ArchiveFileName` at all,
+  regardless of its content, forces the `LegacyArchiveFileNameHandler` path, which the
+  source itself comments as `"Legacy / unstable because file-move can fail because of
+  file-locks from other applications"` - a real risk here since this target also sets
+  `KeepFileOpen = true` (an exclusive lock on the active file). Separately, `{#}` is
+  deprecated syntax in NLog v6 (superseded by `ArchiveSuffixFormat`); its legacy
+  compatibility shim only strips `{#}` when preceded by `.`/`_`/`-`, so archived files
+  were named like `GLSense_Logs_00.log`, `GLSense_Logs_01.log` - the date was lost, and a
+  size-rollover on one day's file shared the same flat sequence-number pool as any other
+  day's rollovers, since nothing in the archive name distinguished dates.
+  Fixed by removing `ArchiveFileName` entirely and setting `ArchiveSuffixFormat = "({0})"`
+  instead. This routes size-based rollover through NLog 6's `RollingArchiveFileHandler`
+  ("Updated dynamic sequence handling without file-move-logic" per its own source comment)
+  - it opens a new, already-numbered file instead of renaming the full one, so there's no
+  lock contention with `KeepFileOpen`. Per `FileTarget.cs`'s `BuildFullFilePath`, the suffix
+  is only appended once `sequenceNumber > 0`, so the day's first/active chunk stays plain
+  (`GLSense_Logs_{date}.log`), and each subsequent 20MB rollover produces
+  `GLSense_Logs_{date}(1).log`, `(2).log`, etc. Numbering is naturally scoped per day too,
+  since the wildcard NLog uses internally to find the next sequence number is derived from
+  the already-dated active filename.
+  Verified two ways: (1) a standalone NLog 6.1.4 console harness reproducing this exact
+  `FileTarget` config against a 10KB threshold produced `GLSense_Logs_<date>.log` through
+  `<date>(6).log` cleanly, no overwrites; (2) a real Excel run with
+  `AppConstants.LogMaxFileSizeBytes` temporarily set to 10KB produced
+  `GLSense_Logs_31-Aug-2026.log` through `(4).log` in the real logs folder, each ~10-11KB,
+  content chronologically intact across the split (cross-checked via embedded HTTP response
+  `Date:` headers in the logged API traffic). `LogMaxFileSizeBytes` was reverted to 20MB
+  (`20 * 1024 * 1024`) after the test.
+  Note: `FileTarget.Header` (the "Environment Snapshot" block) is written by NLog whenever
+  it creates a new physical file - this was already true before this fix (any rollover, old
+  handler or new, triggers it), so a 20MB size-rollover in production will still re-emit the
+  header into the new file, not just once per day as the header's own placement comment
+  assumes. Rare in practice at 20MB and not a regression from this fix, just worth knowing.
+  **Status: fixed in both FinalWorkingCode and AIPowered.** AIPowered's
+  `GLSense.Shared\Logger.cs` had the exact same `ArchiveFileName = "...\GLSense_Logs_{#}.log"`
+  shape and got the identical fix - see AIPowered's `CLAUDE.md` section 43.
+
+## `Views\AppOverlay.xaml.cs` and multiple `Views\*.xaml.cs` (GLJobsMonitor et al.)
+
+- **GLJobsMonitor "Download Logs" window blurs but no success/error toast shown,
+  intermittently on repeated clicks**: reported as the window going blurred without a
+  message after clicking Download Logs, worse the more the user clicked - correctly
+  suspected as a race condition. Root cause traced to two compounding gaps:
+  1. None of `GLJobsMonitor.xaml.cs`'s footer buttons (Refresh/Download Logs/Download
+     Outputs/Delete/Delete All) had a re-entrancy guard, so a second click before the
+     first click's async operation finished started a second, concurrent call into
+     `GLSubmittedJobsViewModel`, both driving the single shared `AppOverlayControl`.
+  2. `AppOverlay.HideBusyAsync()` tracked its storyboard-completion callback in one
+     instance field, `_hideBusyHandler`. When two `HideBusyAsync()` calls raced (from
+     two overlapping operations, or from the busy overlay's own Cancel button firing
+     `HideBusyAsync()` while the operation's own completion code called it again a
+     moment later - `cancelAction` here doesn't actually cancel the underlying async
+     work, it only hides the overlay early), the second call unsubscribed and
+     discarded the first call's completion handler before it ever fired, and
+     restarted the fade-out storyboard from scratch. The first call's
+     `TaskCompletionSource` was then never completed, so its `await HideBusyAsync()` -
+     called right before the success/error toast in every caller (e.g.
+     `GLSubmittedJobsViewModel.DownloadLogsAsync`) - hung forever, and that toast never
+     showed, while the overlay was left in whatever visual state the second call's
+     animation produced.
+  Fixed in two places:
+  - `AppOverlay.HideBusyAsync()`: added a `_pendingHideBusyTcs` list. If a hide
+    animation is already in flight (`_hideBusyHandler != null`) when a new
+    `HideBusyAsync()` call arrives, it no longer steals/restarts the storyboard - it
+    just adds its `TaskCompletionSource` to the pending list and lets the in-flight
+    animation's completion handler (`CompletePendingHideBusy()`) resolve every pending
+    caller at once. This is shared infrastructure used by every window that hosts an
+    `AppOverlay`, so this half of the fix protects all of them, not just
+    GLJobsMonitor.
+  - Per-window re-entrancy guards, added to every window found (via a full audit of
+    `Views\*.xaml.cs`) to have an `async void` button-click handler that touches the
+    shared overlay with no existing guard: `GLJobsMonitor.xaml.cs` (all five footer
+    buttons, plus the initial `Window_Loaded` load - one shared `_actionInProgress`
+    flag + `SetActionButtonsEnabled(bool)`, since only one of these operations should
+    ever run at a time regardless of which button started it),
+    `GLDrilldownCustomization.xaml.cs` (`BtnSaveLocally_Click`), `GLLOVs.xaml.cs`
+    (`CmdSubmit_Click`), `GLRollerGroups.xaml.cs` (`BtnOK_Click`),
+    `GLSegmentValues.xaml.cs` (`BtnOK_Click`) - each via `if (_actionInProgress)
+    return;` + disabling its own button for the duration, mirroring the pattern
+    `GLSegmentDiscovery.xaml.cs`'s `BtnSubmit_Click` already used for the unrelated
+    Explode-All double-click freeze bug (see that section above) - `if
+    (!btnSubmit.IsEnabled) return;`.
+    `GLCubeDetails.xaml.cs` (`BtnValidateCube_Click`/`BtnOK_Click`) and
+    `GLUserConfig.xaml.cs` (`CmdSave_Click`/`CmdReset_Click`) got a narrower,
+    same-button-only guard (`if (!btn.IsEnabled) return;`, toggled per-button) rather
+    than a guard shared across both buttons in the pair, since those two already use a
+    shared `_activeCancellation` field so that clicking one deliberately cancels an
+    in-flight operation from the other (e.g. OK cancelling an in-flight Validate) -
+    existing, intended behavior this fix does not change. `GLUserConfig.xaml.cs`'s
+    Save/Reset buttons have no `x:Name` in XAML, so the guard toggles `IsEnabled` via
+    `sender` instead of a named field.
+  Audited every `Views\*.xaml.cs` file for this shape; windows with only synchronous
+  click handlers (no `async void` touching the overlay) were left unchanged since they
+  can't race this way.
+  Build-verified (full solution). Needs the identical port to AIPowered's
+  `GLSense.Addin.Core\Views\AppOverlay.xaml.cs`/`GLJobsMonitor.xaml.cs` (confirmed to
+  have the exact same `_hideBusyHandler` shape) and its other affected windows.
+  **Status: fixed in FinalWorkingCode; AIPowered port pending.**
+
+- **Correction - the fix above didn't fully resolve it: toast still appeared while the
+  busy overlay was still visible, and closed without waiting its full duration**
+  (reported via `videoframe_26987.png`, showing the "Downloading logs..." spinner and
+  the "Logs downloaded to..." toast on screen at once). Root cause is a second, deeper
+  bug the `_hideBusyHandler`/re-entrancy fix above never touched: `GLJobsMonitor.xaml.cs`
+  wired `ShowInfoAsyncAction`/`ShowWarningAsyncAction`/`ShowStatusAsyncAction`/
+  `ShowBusyAction`/`HideBusyAsyncAction` as `async () => await
+  Dispatcher.InvokeAsync(async () => await AppOverlayControl.XyzAsync(...))`. This is a
+  classic WPF `Dispatcher.InvokeAsync` gotcha: since the inner delegate is itself
+  `async`, C# infers `Dispatcher.InvokeAsync<TResult>(Func<TResult> callback)` with
+  `TResult = Task` - the `DispatcherOperation<Task>` is considered *complete* as soon as
+  the delegate returns control at its own first `await` (handing back a still-pending
+  `Task` as its "result"), not when that inner `Task` actually finishes. The outer
+  `await Dispatcher.InvokeAsync(...)` awaits the operation, receives that pending `Task`,
+  and never awaits it further - so `HideBusyAsyncAction()`/`ShowInfoAsyncAction()` were
+  returning to `GLSubmittedJobsViewModel.DownloadLogsAsync` (and every other caller)
+  almost immediately: before `AppOverlay.HideBusyAsync()` had actually collapsed the busy
+  overlay, and before `ShowInfoAsync()`'s toast had run for its real duration - explaining
+  both halves of the reported symptom (overlay+toast overlapping, and the toast's
+  lifetime no longer being honored by anything awaiting it).
+  This exact shape (and its fix) already existed once in this codebase -
+  `GLWaitWindow.ShowConfirmToastAsync` uses `Dispatcher.InvokeAsync(() =>
+  AppOverlayControl.ShowConfirmAsync(message)).Task.Unwrap()` specifically to avoid it -
+  but `GLJobsMonitor.xaml.cs`'s constructor wiring (added independently) never used that
+  pattern.
+  Fixed by switching all five `GLJobsMonitor.xaml.cs` delegates to the same non-async
+  delegate + `.Task.Unwrap()` shape: e.g. `HideBusyAsyncAction = () =>
+  Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()`. Passing
+  a plain (non-`async`) lambda makes `Dispatcher.InvokeAsync<Task>` hand back the real
+  inner `Task` from `.Task` (a `Task<Task>`), and `.Unwrap()` turns that into a single
+  `Task` that only completes when the real async work does. Needed a new `using
+  System.Threading.Tasks;` in `GLJobsMonitor.xaml.cs` for `Unwrap()` to resolve.
+  This same `Dispatcher.InvokeAsync(async () => await ...)` shape also existed in several
+  other windows' constructors and helper methods, and was fixed there too in a follow-up
+  pass (same `.Task.Unwrap()` treatment throughout):
+  - `GLBalanceConfigurator.xaml.cs`, `GLDailyRates.xaml.cs`, `GLGetPeriod.xaml.cs`,
+    `GLGetPeriodByDate.xaml.cs`, `GLGetPeriodByYear.xaml.cs`, `GLGetPeriodDetails.xaml.cs`,
+    `GLGetPeriodStartEnd.xaml.cs`, `GLRollerGroups.xaml.cs`, `GLSegmentFunctions.xaml.cs`,
+    `GLSegmentRef.xaml.cs`, `GLSegmentValues.xaml.cs`, `GLLOVs.xaml.cs` - ctor wiring of
+    `ShowBusyAction`/`ShowWarningAsyncAction`/`HideBusyAsyncAction` (and, for the five
+    `GLGetPeriod*` windows, a second standalone `HideBusyAsync()` call later in the
+    file). `GLLOVs.xaml.cs`'s `HideBusyAsyncAction` had a slightly different but equally
+    broken variant - `async () => await Dispatcher.InvokeAsync(() => ...)` (inner
+    delegate not async, but the outer `await` on the `DispatcherOperation<Task>` still
+    only unwraps to the inner `Task` once and never awaits *that* - same missing
+    `.Task.Unwrap()` fix applies).
+  - `GLConfiguratorPane.RelaunchPane()` and `GLCubeDetails.UpdateGridAsync()` - same
+    shape, not overlay-related (a WPF control reload and a DataGrid population + a
+    trailing async `DgGridUpdate` call respectively); the latter could let its caller's
+    `finally { HideBusyAsync() }` hide the busy overlay before the grid actually finished
+    populating. Both split into a named async local function passed (undecorated) to
+    `Dispatcher.InvokeAsync(...).Task.Unwrap()`, since their bodies do real synchronous
+    work before/around the inner `await`, not just a single call to forward.
+  - `GLLogin.xaml.cs` (two identical `finally` blocks) - `await Dispatcher.InvokeAsync(async
+    () => { await AppOverlayControl.HideBusyAsync(); webView.Visibility = Visibility.Visible;
+    });` had the same issue: `webView.Visibility` could be set (or the whole await return)
+    before `HideBusyAsync()` genuinely finished. Same named-local-function fix.
+  - `GLUserConfig.xaml.cs` - six near-identical `Hide-busy-and-show-<Error/Success/Warn/
+    Info>Async` helpers all had this exact shape (`Dispatcher.InvokeAsync(async () => {
+    await AppOverlayControl.HideBusyAsync(); await AppOverlayControl.ShowXAsync(...); })`)
+    - the same class of bug as the originally-reported GLJobsMonitor symptom, just not
+    reported for this window yet.
+  Each file needing it got `using System.Threading.Tasks;` added for `.Unwrap()` to
+  resolve (`GLJobsMonitor.xaml.cs`, `GLDailyRates.xaml.cs`) - most already had it.
+  Build-verified (`GLSense.sln`, Debug config, full solution).
+  **Status: fixed in FinalWorkingCode only so far** - not yet ported to AIPowered.
+
+## `AddinModule.cs`
+
+- **No confirmation before deleting a saved drilldown customization**: `RibDDDeleteConfiguration_OnClick`
+  deleted the saved customization for the selected cube (`DrilldownMetadataXmlStore.Delete`)
+  immediately on click, with no chance to back out of an accidental click.
+  Fixed by prompting with the existing `GLMessageWindow` (via
+  `CommonFunctions.GLSenseMessage(..., MessageBoxIcon.Question, MessageBoxButtons.YesNo)`,
+  the same pattern already used elsewhere, e.g. the chart-of-account-change prompt in
+  `RunBalanceDrilldownAsync`) before deleting, with wording calling out that the deletion
+  cannot be undone. Anything other than `Yes` (`No`, or closing the window) returns
+  without touching the store.
+  **Status: needs the identical port to AIPowered's `AddinModule.cs`.**
+
+## `ViewModels\GLConfiguratorViewModel.cs`
+
+- **Budget accidentally hidden from Actual Flag when Balance Type is CTD**: `IsBalanceTypeSupportingBudget()`
+  only allowed PTD/YTD/QTD/PJTD, omitting CTD - so `UpdateActualFlagsForConditions()`
+  (which calls it to decide `hideBudget`) hid `Budget` from the Actual Flag dropdown
+  whenever Balance Type was CTD, even though Budget is a valid Actual Flag for CTD.
+  This contradicted the code's own intent elsewhere in the same file:
+  `UpdateBalanceTypesForConditions()`'s Issue-3 comment already documents "ActualFlag=Budget
+  restricts Balance Type to PTD/YTD/QTD/CTD/PJTD" and always keeps CTD in the rebuilt
+  `BalanceTypes` list regardless of Actual Flag, i.e. CTD+Budget was always meant to be a
+  valid combination in that direction - `IsBalanceTypeSupportingBudget()` just never
+  matched it in the reverse direction (Balance Type → Actual Flag options).
+  Fixed by adding `AppConstants.BalanceTypeCTD` to `IsBalanceTypeSupportingBudget()`'s
+  allowed list.
+  **Status: needs the identical port to AIPowered's identical
+  `GLSense.Addin.Core\ViewModels\GLConfiguratorViewModel.cs`.**
+
+## `Utilities\CommonMethods.cs` / new `Utilities\ComMessageFilter.cs`
+
+- **Excel hangs on Hide Rows with Zeros / Unhide Rows if the user clicks into Excel while
+  the process popup is showing** (reported via `GLSense_Logs_10-Sep-2026.log`, GLSense
+  11.1.0 - confirmed present, byte-identical row-hide/unhide code and `CommonMethods.cs`
+  between `11.1.0` and `11.1.1`). `RowProcessor.ExecuteAsync` (`AddinModule.cs`) disables
+  `ScreenUpdating`/`DisplayAlerts`/`EnableEvents`, shows `GLWaitWindow` **non-modally**
+  (`DpiAwareWindow.ShowWithOwner()` just calls `this.Show()`, not `ShowDialog()` - Excel
+  behind the popup stays fully interactive), then loops setting `RowHeight` on Excel COM
+  ranges with `await Task.Yield()`/`Dispatcher.InvokeAsync` between batches. Because the
+  popup is non-modal and the loop repeatedly yields to the message pump, a user click into
+  Excel during that window races with GLSense's own in-flight COM calls - Excel's
+  automation layer rejects the incoming call as busy (`COMException 0x800AC472`,
+  `VBA_E_IGNORE`). The codebase had no `IOleMessageFilter`/`CoRegisterMessageFilter`
+  registered anywhere, which is the standard mechanism that would otherwise retry a
+  busy-rejected automation call transparently instead of throwing. That exception then
+  cascaded into cleanup: `CommonMethods.EnableExcelSettings()` set `ScreenUpdating`/
+  `DisplayAlerts`/`EnableEvents` back to `true` **sequentially with no per-property
+  handling** - if the first line (`ScreenUpdating = true`) hit the same busy rejection,
+  the method threw immediately and never reached the other two properties, and
+  `TryEnableExcelSettings` (the `finally`-block wrapper) just logged and swallowed it with
+  no retry. Result: `ScreenUpdating` stuck at `false` with no recovery path - Excel stops
+  redrawing and looks completely hung. The log's `16:17:33` and `17:31:22` entries show
+  this exact sequence: `GetBalanceTotalRange`/`RowHeight` COM error → `Failed to enable
+  Excel settings` → `Failed to restore Excel settings after RowProcessor.ExecuteAsync`.
+  Fixed two ways:
+  1. New `Utilities\ComMessageFilter.cs`: registers the classic OLE busy-retry
+     `IOleMessageFilter` (`CoRegisterMessageFilter`) for the whole process, in
+     `AddinModule_AddinInitialize`, revoked in `AddinModule_AddinBeginShutdown`. This lets
+     a transient "Excel is busy" rejection retry automatically instead of throwing,
+     addressing the underlying race for every COM call made from this add-in, not just
+     the row hide/unhide path.
+  2. `CommonMethods.cs`: `DisableExcelSettings()`/`EnableExcelSettings()` now set each of
+     the three properties independently through a new `TrySetComProperty()` helper that
+     retries up to 3 times (150ms apart) on a `COMException` before giving up, and no
+     longer abandon the remaining properties when one throws. `DisableExcelSettings()`
+     additionally rolls back whatever it did manage to disable if it can't fully succeed,
+     so a partial failure never leaves e.g. `ScreenUpdating` stuck `false` with nothing
+     queued to restore it (previously, `RowProcessor.ExecuteAsync` called
+     `TryDisableExcelSettings` *before* its own `try`/`finally`, so a partial-disable
+     failure there returned early with no `EnableExcelSettings` call ever reached).
+  Since every `GLWaitWindow` non-modal-popup call site (`BalanceRefresh.cs`, `DD_BL.cs`,
+  `DD_JL.cs`, `DD_SL.cs`, `DD_ExcelPrecedents.cs`, `DrillCellHighlighter.cs`,
+  `PeriodsDiscoverer.cs`, `SegmentDiscoverer.cs` - found via a full `Show()`/
+  `ShowDialog()` audit, see below) already routes through this same
+  `CommonMethods.Disable/EnableExcelSettings`, this fix covers the identical race in all
+  of them, not only Hide/Unhide Rows.
+  Build-verified (`GLSense.csproj`, Debug config).
+  **Status: fixed in `11.1.0` only so far - port to `11.1.1`/`11.1.2` and to AIPowered's
+  identical `GLSense.Addin.Core\Utilities\CommonMethods.cs` once requested.**
+
+  **`Show()` vs `ShowDialog()` audit (requested alongside this fix)**: repo-wide search of
+  every `Window.Show()`/`ShowDialog()`/`ShowWithOwner()`/`ShowDialogWithOwner()` call in
+  `GLSense\**\*.cs`.
+  - **Non-modal on purpose, same exposure as the bug above (all `GLWaitWindow`
+    progress/busy popups, all go through `CommonMethods.Disable/EnableExcelSettings`,
+    now covered by the fix above)**: `AddinModule.cs` (`RowProcessor` - the reported bug),
+    `Drilldowns\BalanceRefresh.cs`, `Drilldowns\DD_BL.cs`, `Drilldowns\DD_JL.cs`,
+    `Drilldowns\DD_SL.cs`, `Drilldowns\DD_ExcelPrecedents.cs` (calls `SetExcelOwner()` +
+    `Show()` directly instead of the `ShowWithOwner()` helper, same non-modal shape),
+    `Drilldowns\DrillCellHighlighter.cs`, `Utilities\PeriodsDiscoverer.cs`,
+    `Utilities\SegmentDiscoverer.cs`.
+  - **Non-modal on purpose, unrelated to this bug (no Excel COM loop running while
+    shown)**: `AddinModule.cs`'s `blpane.Show()` (a docked `ADXTaskPane` UserControl, not
+    a `Window`), `Utilities\WebView2NavigationResilience.cs`'s `popup.Show()`,
+    `Utilities\WindowLoadingPlaceholder.cs` (the shared cross-window loading placeholder),
+    `Utilities\WpfWarmup.cs`'s off-screen invisible warm-up window (see the "Blank window
+    on open" section above - deliberately never shown to the user).
+  - **Everything else already modal** via `ShowDialogWithOwner()`/`ShowDialog()` - the
+    large majority of real data/config windows, plus `Helpers\SnapshotDialogHelper.cs`,
+    `Views\GLAccountsRef.xaml.cs`, and `GLMessageWindow` (`Utilities\CommonFunctions.cs`).
+  No changes made from this audit alone - the `GLWaitWindow` popups are non-modal by
+  design (so their Cancel button/live progress text stay usable while a long operation
+  runs), and the message-filter + retry fix above addresses the actual race without
+  changing that UX. Flagging in case there's an appetite to also make `GLWaitWindow`
+  application-modal as a second layer of defense - that would prevent this specific race
+  outright (no click can reach Excel while it's up) but is a bigger behavior change than
+  what was asked for here.
+
+## `Views\GLDrilldownDeleteCustomization.xaml`/`.xaml.cs`, `Common\DrilldownMetadataXmlStore.cs`, `AddinModule.cs` (OISR-22390 follow-up)
+
+- **Testing-only `LogInfo` call left dumping the full raw drilldown-metadata JSON**:
+  `DrilldownMetadataXmlStore.Save` had `LogUtility.LogInfo(rawJson)` at its top, added
+  while testing the reading of drilldown customization removal - `LogInfo` writes
+  regardless of the ribbon's Debug-mode toggle (see `LogUtility.cs`), so this was
+  logging the entire raw API response on every save in production too. Switched to
+  `LogUtility.LogDebug(rawJson)`, matching this same method's own `LogDebug` a few lines
+  below it.
+
+- **Delete window listed drilldown types with 0 columns saved**: `GLDrilldownDeleteCustomization`'s
+  picker showed every DD type `DrilldownMetadataXmlStore.GetSavedTypeSummaries` returned
+  for the cube, including ones with `RecordCount == 0` (e.g. `SubLedgers`/`Unified` on a
+  cube where those types were saved but ended up empty) - nothing meaningful to delete
+  for those rows. Fixed by filtering `savedTypes` to `RecordCount >= 1` right where
+  `AddinModule.RibDDDeleteConfiguration_OnClick` fetches them, before both the "nothing
+  saved for this cube" safeguard check and the window construction - so a cube whose
+  only saved types are all empty now correctly hits the "no drilldown customizations
+  exist" message instead of opening a picker with 0 meaningful rows.
+
+- **Row-selection color matched Segment Configurator's "summary account" highlight**
+  instead of a real "selected" color: the DataGrid's `RowStyle` had a
+  `DataTrigger Binding="{Binding IsSelected}"` (checkbox-driven selection, since native
+  `DataGridRow.IsSelected`/`HighlightBrushKey` are deliberately overridden to transparent
+  in this window) set to `#FFF8E1` - visually indistinguishable from `#FFFFF0`, the color
+  `GLSegmentValues.xaml`/`GLSegmentRef.xaml`/`GLLOVs.xaml` use for their unrelated
+  `IsSummaryAccount` highlight, not an actual selection color. Every other DGV in this
+  codebase that has a real "selected" indicator (`GLCubeDetails`, `GLJobsMonitor`'s native
+  `IsSelected` trigger, `GLSegmentValues`/`GLSegmentRef`'s primary grids, `GLLOVs`) uses
+  `#9bcee4` background + `#2E86AB` border + white foreground. Changed this window's
+  checkbox-driven `IsSelected` `DataTrigger` to the same three setters, so a checked row
+  now reads visually the same as "selected" everywhere else in the app.
+
+- **Cube Name tooltip showed the label but a blank value**: added a tooltip to the Cube
+  Name info bar (reported missing, then reported blank once added) whose value
+  `TextBlock` originally used `{Binding Text, ElementName=txtCubeName}` - `ElementName`
+  bindings can't resolve across a `ToolTip`'s own separate `NameScope` (like
+  `ContextMenu`/`Popup`, a `ToolTip`'s content is a logically disconnected tree until it
+  opens), so the binding silently returned nothing even though the label rendered fine.
+  Fixed by naming the tooltip's own value `TextBlock` (`txtCubeNameTooltip` - still
+  reachable as a code-behind field regardless of `NameScope`, since `x:Name`
+  field-generation via `InitializeComponent`/`IComponentConnector.Connect` isn't affected
+  by it) and setting its `Text` directly in the constructor alongside `txtCubeName.Text`,
+  instead of relying on a binding at all.
+
+- **DataGrid intermittently clipped or scrolled its last row, even for as few as 2-4
+  rows**: initial diagnosis (disabling row virtualization, then a `Loaded`-triggered
+  `RefreshWindowLayout()` re-fit pass) reduced but didn't fully fix this - a live test
+  comparing a 2-row cube against a 4-row cube showed both opening at the *exact same*
+  window height, proving the real row count never affected the computed window size at
+  all. Root cause: WPF measures a Grid `Star` (`Height="*"`) row as effectively
+  zero-height whenever the Grid itself is measured under an infinite constraint (there's
+  no "total" to distribute a Star share of) - which is exactly what `DpiAwareWindow.
+  FitToAvailableWorkArea` does (`root.Measure(Infinity, Infinity)`) to auto-size this
+  window to its content from `OnSourceInitialized`. So the DataGrid's own row (`Grid.Row=
+  "2"`, `Height="*"`) never contributed to the window's measured desired height,
+  regardless of row count - the window just settled at whatever `MinHeight`/other-chrome
+  size it always would, and the DataGrid was squeezed into whatever leftover space that
+  left, clipping/scrolling as soon as there were more than a couple of rows. A
+  `RowDefinition`'s (or a child's own) explicit `MinHeight` IS honored even under this
+  "Star measured as zero" behavior, so `dgTypes.MinHeight` is now set explicitly in the
+  constructor to the DataGrid's real required height - column header (38) + one row (36)
+  per saved type - plus a 24px slack buffer (a real 4-row test showed the exact sum alone
+  still clipped the bottom row by roughly half its height, from a rounding/DPI difference
+  between the infinite measure pass and the window's real, finite Arrange pass). The
+  window now grows to fit however many rows exist (still capped by the existing
+  `MinHeight`/`MaxHeight` - 380/560 - and `DpiAwareWindow`'s own work-area clamp), with no
+  scrollbar unless the data genuinely exceeds `MaxHeight`. `EnableRowVirtualization=
+  "False"` was also added to the DataGrid from the initial diagnosis pass (harmless,
+  negligible cost since this list is never more than the 4 known drilldown types) and the
+  `Loaded`-triggered `await Dispatcher.InvokeAsync(() => RefreshWindowLayout(),
+  DispatcherPriority.Render);` call (matching `GLSegmentValues.xaml.cs`/`GLSegmentRef.
+  xaml.cs`'s own post-async-load pattern) is kept as a safety net for DPI changes, but
+  neither of those was the actual fix - `dgTypes.MinHeight` is.
+  Build-verified (`GLSense.sln`, Debug config and Release config, full solution).
+
+**Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2` (cherry-picked
+cleanly onto all three - same feature/files present on all of them). Ported to AIPowered
+on `11.1.2` **only** (per request) - see AIPowered's `CLAUDE.md` item 52 for that port;
+the underlying per-type delete picker feature (item 49 there) doesn't exist on AIPowered's
+`11.1.0`/`11.1.1`/`main` yet, so there was nothing to port these follow-up fixes onto
+there.**
+
+## `Views\GLSegmentValues.xaml`/`.xaml.cs` and `Views\GLRollerGroups.xaml`/`.xaml.cs`
+
+- **Overwrite/Insert and By Rows/By Columns stayed enabled after unchecking "Write to
+  Multiple Rows/Columns"** (reported via `MultiRows.png`, showing all four radio buttons
+  still enabled/clickable with the checkbox unchecked). `IsMultipleRowsEnabled` and
+  `IsMultipleRowsChecked` are two different things on both windows' ViewModels
+  (`SegmentSelectorViewModel`/`SimpleSegmentViewModel`): `Enabled` is true only when the
+  right-grid's selected items all belong to a single distinct segment (i.e. whether the
+  checkbox is *available* at all), while `Checked` is the actual on/off state the user
+  toggles - unchecking it means every selected value gets written into one single cell,
+  at which point Overwrite/Insert (which cell(s) to write into) and By Rows/By Columns
+  (which orientation to spread across) have nothing left to act on. Both XAML files had
+  all four radio buttons' `IsEnabled` bound to `IsMultipleRowsEnabled` instead of
+  `IsMultipleRowsChecked` - so unchecking the box while the selection still belonged to a
+  single segment (leaving `Enabled=true`) left all four looking and behaving as if still
+  live, exactly matching the screenshot.
+  This was more than cosmetic: both code-behinds' `PerformInsertIfNeeded` only checks
+  `rbInsert.IsChecked` (not any enabled/disabled state) before inserting a row/column and
+  shifting existing content - so a user who picked Insert while checked, then unchecked
+  the box, still got a spurious Insert-and-shift on the single-cell write path.
+  Fixed by rebinding all four radios' `IsEnabled` to `IsMultipleRowsChecked` in both XAML
+  files, and updating both code-behinds' `Vm_PropertyChanged` (previously resetting
+  `rbOverwrite`/`rbByRows` back to checked-by-default only when `IsMultipleRowsEnabled`
+  went false) to key off `IsMultipleRowsChecked` going false instead - this still covers
+  the pre-existing multi-segment-disables-the-checkbox case (which also drives
+  `IsMultipleRowsChecked` to false, per `UpdateNonRefWindowState`/the equivalent in
+  `SimpleSegmentViewModel`), plus the newly-reachable manual-uncheck case.
+  `GLSegmentRef.xaml` (the third window sharing `SegmentSelectorViewModel`, in "Ref"
+  mode) has no equivalent UI at all - confirmed via grep, out of scope.
+  Build-verified (`GLSense.sln`, Debug config, full solution).
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, `11.1.2` (cherry-picked
+  cleanly onto `11.1.0`, same feature/bug present there too; needs the identical port to
+  AIPowered's `GLSense.Addin.Core\Views\GLSegmentValues.xaml(.cs)`/
+  `GLRollerGroups.xaml(.cs)` on `11.1.2`).**

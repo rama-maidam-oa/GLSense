@@ -371,9 +371,9 @@ namespace GLSense.ViewModels
 
                         var sorted = jobsData.records
                             .Where(r => ShouldIncludeJob(r, _drillJobsList))
+                            .OrderByDescending(r => r.processId)
                             .Select(r => CreateJobModel(r))
                             .Where(j => j != null)
-                            .OrderByDescending(j => j.ProcessId)
                             .ToList();
 
                         LogUtility.LogDebug($"GLSubmittedJobsViewModel.ParseAndDisplayJobs: {jobsData.records.Length} record(s) received, {sorted.Count} matched drilldown/snapshot criteria.");

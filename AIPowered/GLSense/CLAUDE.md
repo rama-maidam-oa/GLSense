@@ -4233,6 +4233,373 @@ as a verification-only override, same caveat as section 36 above).
 
 ---
 
+## 38. Actual Flag LOV excludes Budget for unsupported Balance Types; Jobs Monitor sorted by Process ID descending (ported from FinalWorkingCode - fixed in **both** codebases)
+
+Budget is only a valid Actual Flag for PTD/YTD/QTD/PJTD Balance Types - CTD/JED/JEDP/JEDU
+don't support it. FinalWorkingCode's `GLConfiguratorViewModel.cs` got a direct fix for
+this (`UpdateActualFlagsForBalanceType`); this codebase already has its own numbered
+"Issue-N" cross-field-conditional-LOV framework (`UpdateActualFlagsForConditions`/
+`UpdateBalanceTypesForConditions`/etc., from the "Add cross-field conditional LOVs to
+Balance Configurator" work), so this was ported as **Issue-6** into that framework
+instead of copying FinalWorkingCode's method shape directly: added
+`IsBalanceTypeUnsupportedForBudget()` (mirrors `IsActivityBeginOrEndBalance`/
+`IsCurrencyTypeTranslatedOrConverted`'s style), OR'd it into `UpdateActualFlagsForConditions`'s
+existing `hideBudget` computation (Issue-4 already hid Budget for
+Translated/Converted/Entered Currency Type - this is additive, not a replacement), and
+wired a call to `UpdateActualFlagsForConditions()` into both places `BalanceType` changes
+flow through (`OnFieldDependencyChanged`'s `BalanceType` case and `ProcessBalanceType`'s
+ref/formula path) - the same two call sites Issue-5's `UpdateActivitiesForConditions()`
+call already uses for the same field.
+
+Separately, `GLSubmittedJobsViewModel.ParseAndDisplayJobs` sorted
+`.OrderByDescending(j => j.ProcessId)` on the already-stringified `ProcessId`, which
+orders lexicographically rather than numerically (e.g. `"9"` sorts above `"10"`, wrong
+for a "biggest Job ID first" descending list once IDs cross a digit-count boundary).
+Fixed by moving the sort earlier in the pipeline, before `CreateJobModel` converts the
+underlying `record.processId` (`long`) to a string - `.OrderByDescending(r => r.processId)`
+on the raw `JobRecord` sequence, ahead of `.Select(r => CreateJobModel(r))`.
+
+**Status: build-verified** (`GLSense.Addin.Core` builds clean with `/p:SignAssembly=false`
+as a verification-only override, same caveat as section 36 above; FinalWorkingCode's
+`GLSense.dll` also compiled clean).
+
+---
+
+## 39. Two small fixes ported from FinalWorkingCode's window-flash/logout-flicker investigation (fixed in **both** codebases); most of that investigation's other fixes don't apply here
+
+FinalWorkingCode went through an extensive investigation (its own `CLAUDE.md` Follow-ups
+11-23) into a window cold-start flash and a logout-flow flicker. Most of what came out of
+that doesn't translate here as a straight port - checked each one against this codebase's
+actual state before deciding what to bring over:
+
+- **`RevealAfterContentRendered`/the whole "park off-screen until ContentRendered" mechanism
+  doesn't exist in `BaseWindow.cs` at all** - this codebase already has a different,
+  separately-built busy-overlay mechanism for the cold-start flash (see section 1's
+  "READ THIS FIRST"), so there's no equivalent opt-in property to broaden here.
+- **`Logout()` (`AddinEntry.cs`) has no wait window and never did** - it's already
+  fire-and-forget/`async`/`await`ed from `OnRibbonAction`, so it never had
+  FinalWorkingCode's UI-thread-blocking `Task.Run(...).GetAwaiter().GetResult()` bug in the
+  first place. Building a wait-window-based result UI for it would be a new feature, not a
+  fix - out of scope for this pass (confirmed with the user).
+- **`EdgeAddinHelper.GetEdgeAddinInstance()` already has its own comment explaining why it
+  can't cache the way FinalWorkingCode's did** (different AppDomain, no reference to the
+  host's `AddinModule`) - and judges re-scanning acceptable since it's only ever called from
+  Login/Logout, not a hot path. Left as-is.
+- **`BaseWindow.PositionAroundCenter` already prefers `ActualWidth`/`ActualHeight` over
+  `Width`/`Height`** (`double effectiveWidth = ActualWidth > 0 ? ActualWidth : Width;`) -
+  the exact fallback FinalWorkingCode's equivalent method was missing. Nothing to port here.
+- **`CommonFunctions.GLSenseMessage` never had a duplicate `SetForegroundWindow` call** -
+  it just does `win.ShowDialog()` on a `GLMessageWindow` with `ModalToExcel`/`CenterInExcel`
+  set, relying solely on `BaseWindow.RestoreOwnerFocusOnClosed` for reactivation. No
+  redundant second call existed to remove.
+
+Two real gaps did carry over, both applied here exactly as fixed in FinalWorkingCode:
+
+1. **`BaseWindow.FitToAvailableWorkArea` floors `desiredHeight` against `_initialMinHeight`
+   but had no equivalent floor for width.** Added `_initialMinWidth` (captured in
+   `CaptureInitialWindowConstraints()`, mirroring `_initialMinHeight`) and floor
+   `desiredWidth` against it right alongside the existing height floor. Note: since
+   `PositionAroundCenter` here already prefers `ActualWidth` (see above), this specific gap
+   was never observed to cause a visible mis-centering bug in this codebase the way it did
+   in FinalWorkingCode - this is a preventive parity fix, not a confirmed-bug fix.
+2. **`AppState.Reset()` explicitly set `DebugLogs = false`** as part of clearing session
+   state on logout - same underlying problem as FinalWorkingCode's reflection-based
+   `Reset()` (just via an explicit assignment here instead of reflection iterating every
+   property): a user-controlled diagnostic preference getting silently wiped by
+   login/session-state cleanup. Removed that one line; every other property in `Reset()` is
+   genuinely session/operation state and reset correctly.
+
+**Status: build-verified** (`GLSense.Addin.Core` builds clean with `/p:SignAssembly=false`
+as a verification-only override, same caveat as section 36 above).
+
+---
+
+## 40. Release history catalog, timestamp-keyed Versions\ folders, and the standing IGLSenseAddin defensive-call discipline
+
+New subsystem: a permanent, append-only catalog (`ReleaseHistory.json`, a sibling of
+`Manifest\` and `Versions\` under `%LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs_New\`)
+of every `GLSense.Addin.Core` release ever adopted on a machine, so a tester can roll
+back to any past build without an MSI reinstall. Full design:
+`docs/superpowers/specs/2026-08-30-hotreload-release-history-design.md`. Full
+implementation plan (10 tasks, several real bugs found and fixed along the way -
+worth reading before touching any of this code again):
+`docs/superpowers/plans/2026-08-30-hotreload-release-history.md`.
+
+### 40.1 What changed
+
+- `Versions\` folders are now keyed by the release's full timestamp, not version number
+  alone: `V{version}_{releaseDateSafe}` (built once, in
+  `UpdateBootstrapper.ExtractManifestZipAndAdopt`, via
+  `ReleaseHistoryStore.BuildFolderName` - never recomputed anywhere else). This fixes a
+  real, confirmed data-loss bug: version numbers can repeat across distinct releases in
+  this project (frozen for stretches, see section 14.2), so the old `V{version}`-only
+  scheme would silently overwrite an earlier release's DLLs with a same-numbered later
+  one, defeating any rollback feature before it could exist.
+- `UpdateBootstrapper.ResolveVersionToLoad` now returns a `ResolvedRelease`
+  (Version/ReleaseDate/FolderName), not a bare version string - `IGLSenseContext`
+  gained a matching `ActiveFolderName` property, which is what `AddinDomainLoader.Load()`
+  actually uses to locate the folder (never `$"V{context.Version}"` anymore).
+- `RibReload` now opens `GLReloadSourcePicker` (host-side, `GLSense\Views\`) offering
+  Online (checks `{LoginUrl}/glsense/projectdlls` - **this server endpoint does not
+  exist yet**, client-side only) and Offline (pick a local folder) modes. Both require
+  the candidate release to be strictly newer (by `releaseDate`) than what's currently
+  loaded.
+- A new `RibReleaseHistory` button opens `GLReleaseHistoryBrowser` (also host-side),
+  listing the catalog and letting the user load ANY past release - deliberately with
+  **no version gate at all**, unlike `RibReload`. Going backward on purpose is this
+  window's entire reason to exist; do not add a gate here if you touch this file later.
+- A first-ever run on a machine is detected by **`ReleaseHistory.json`'s absence**, not
+  by whether the `Manifest\` folder exists (an earlier design was rejected for exactly
+  this reason - an ordinary Online/Offline update also populates `Manifest\`
+  transiently, so that folder's presence can't distinguish "fresh install" from
+  "ordinary update"). A fresh install seeds from an MSI-bundled manifest+zip, wipes any
+  stray `Versions\` content, then deletes the whole `Manifest\` folder.
+
+### 40.2 A real bug this surfaced and fixed: the fresh-install path broke the very next ordinary launch
+
+Fresh-install seeding deletes the whole `Manifest\` folder afterward. The very next
+ordinary Excel launch triggers `PathProvider.InitializeVersion()` (via `paths.Refresh()`),
+which finds `manifest.json` missing and lazily recreates it with **hardcoded default
+values** (`Version="11.1.0"`, `ReleaseDate=DateTime.Now`) - unrelated to whatever was
+actually just installed. The "no zip, reuse what's installed" fallback branch in
+`UpdateBootstrapper.ResolveVersionToLoad` originally recomputed `FolderName` from these
+now-wrong `paths.LatestVersion`/`paths.LatestReleaseDate` values, producing a folder
+name that didn't match the real extracted folder - the add-in failed to load entirely
+on the second ordinary launch, despite a perfectly good, cataloged release sitting on
+disk. **Fixed**: that fallback now resolves the active release from the catalog itself
+(`ReleaseHistoryStore.ReadAll`, picking the most recent entry whose folder still has
+DLLs) - never from `paths.LatestVersion`/`LatestReleaseDate`, which `PathProvider` can
+silently regenerate with unrelated values at any time. If you ever see the add-in fail
+to load on a launch immediately following a successful one, re-read this section before
+re-deriving the diagnosis from scratch.
+
+### 40.3 Standing discipline: every future `IGLSenseAddin` addition must be called defensively
+
+This is the single most important, easy-to-miss consequence of the Release History
+browser existing at all, and it is **permanent, not a one-time fix**:
+
+Because the browser can load ANY historical build, and the host (`GLSense.dll`) is
+never itself reloaded, **every member ever added to `IGLSenseAddin` from this point
+forward must be called by the host wrapped in `try`/`catch`**, tolerating
+`MissingMethodException`/`RemotingException` - an older loaded instance may genuinely
+not implement a member added after it was built, and that surfaces as a runtime
+exception, not a compile error. `IGLSenseAddin.GetLoginInfo()` (added alongside this
+feature) is the first, and its own doc comment states this explicitly; its call sites
+in `GLReloadSourcePicker.xaml.cs` already do this correctly (treat any failure exactly
+like "not logged in"). **If you add a new `IGLSenseAddin` member later, copy this
+pattern - do not assume the caller's own try/catch from a different feature will
+somehow cover you.**
+
+This risk is directional and does **not** apply to `IGLSenseContext` (also grew a
+member here: `ActiveFolderName`). Calls flow host->Addin.Core for `IGLSenseAddin` (the
+host, always on the current interface, calling into a possibly-older implementation -
+genuine crash risk); `IGLSenseContext` flows the other way (Addin.Core reading a
+context object the host constructed against its own, always-current interface). An
+older Addin.Core build's own compiled copy of `IGLSenseContext` simply doesn't declare
+newer members at all, so its code was never written to reference them - additions there
+are inert for old builds, not a crash risk. Only `IGLSenseAddin` additions need the
+defensive-call treatment.
+
+### 40.4 Host-side WPF windows must set the Excel owner and guard their own construction
+
+`GLReloadSourcePicker` and `GLReleaseHistoryBrowser` live in `GLSense` (the host
+project), not `GLSense.Addin.Core`, specifically so they keep working regardless of
+whether Addin.Core is currently loaded, mid-unload, or has never successfully loaded at
+all - the whole reason these windows exist is to recover/replace Addin.Core. That means
+they can't inherit from `BaseWindow` (`GLSense.Addin.Core\Views\BaseWindow.cs`), which
+would normally set the Excel HWND as `Owner` automatically
+(`OnSourceInitialized`) and gives every other dialog in this product its
+modal-to-Excel/centered-on-Excel behavior for free. Both ribbon click handlers
+(`RibReload_OnClick`/`RibReleaseHistory_OnClick` in `AddinModule.cs`) now do this by
+hand: `new System.Windows.Interop.WindowInteropHelper(window).Owner =
+GlobalsEx.Context.ExcelHandle;` right after constructing the window, before
+`ShowDialog()`. **If you add a third host-side WPF window later, copy this pattern too**
+- without it, the dialog isn't actually modal to Excel (can drop behind it, user can
+click back into Excel and re-trigger the ribbon button that opened it), which is
+exactly the class of bug a final whole-branch review caught here that no single task's
+own review could have seen in isolation. Both handlers also now set their
+`_reloadInProgress` re-entrancy guard **before** constructing the window (not after it
+closes), and wrap window construction + `ShowDialog()` in their own try/catch (log +
+`MessageBox`, matching this codebase's established ribbon-handler-exception-safety
+pattern from section 36) - a `ReleaseHistoryStore.Reconcile` call inside
+`GLReleaseHistoryBrowser`'s constructor can throw (a mutex timeout, or a corrupt
+catalog file), and that exception used to be able to escape all the way out to
+Excel/ADX unguarded.
+
+**Status**: implemented (both codebases: AIPowered only - `FinalWorkingCode` has no
+equivalent hot-reload/AppDomain architecture for this feature to apply to). Not yet
+rebuilt/tested by the user in a real Excel session.
+
+---
+
+## 41. GLSense.dll + both adxloader stubs: four-round back-and-forth on signing, settled on a cert-expiry-aware skip check for every sign_file.cmd caller (AIPowered-only, build script)
+
+User's real-world experience: once the DigiCert signing certificate expired, Add-in Express
+refused to load the add-in at Excel startup because the loader DLLs' signatures were made
+with the now-expired cert - even though `sign_file.cmd`'s existing "skip if already validly
+signed" check (`signtool verify /pa /q`) still reported them as validly signed. Root cause:
+`verify /pa` can keep passing after a signing certificate's own expiry date purely because of
+the RFC3161 timestamp countersignature (`/tr .../ /td SHA256`) baked in at signing time -
+Windows honors that timestamp to say "this was validly signed at a point when the cert was
+good." Add-in Express's own loader-trust check apparently does **not** honor that timestamp
+the same way - it appears to check the embedded certificate's validity more directly, so a
+stale signature that still `verify /pa`s fine can nonetheless be refused by Add-in Express.
+
+This only matters for the 3 files Add-in Express itself loads/trusts at Excel startup -
+`GLSense.dll`, `adxloader.GLSense.dll`, `adxloader64.GLSense.dll` (all signed in
+`GLSense\post_build.cmd`). Every other `sign_file.cmd` caller (`GLSense.Contracts`/
+`GLSense.Shared`/`GLSense.Loader.Core`/`GLSense.Addin.Core`'s own DLL, plus the two
+`e_sqlite3.dll` copies) is a library consumed via ProjectReference/zip, not something Add-in
+Express itself evaluates trust on directly - the normal skip-if-already-signed optimization
+(avoid burning a signing operation on a rebuild that didn't change the bytes) is still correct
+and unchanged for those.
+
+**First fix tried (superseded below)**: added an optional 3rd argument to `sign_file.cmd`,
+`"FORCE"` - when passed, skips the `verify /pa` early-exit entirely and always re-signs with
+whatever certificate is currently configured in the script, every Release build. `signtool
+sign` (no `/as` flag used) replaces an existing signature rather than appending a second one,
+so this wouldn't have left old+new signatures stacked. `GLSense\post_build.cmd`'s 3
+`sign_file.cmd` calls were changed to pass `"FORCE"` as a 3rd argument.
+
+**Second round - reversed to "don't sign at all"**: the user then asked to remove these 3
+files from signing/re-signing entirely rather than force-resign them. `GLSense\post_build.cmd`
+briefly had zero `sign_file.cmd` calls for `GLSense.dll`/`adxloader.GLSense.dll`/
+`adxloader64.GLSense.dll` - the host project's post_build.cmd did nothing but echo start/
+complete banners. This traded the expired-cert-blocks-loading risk for a different real risk,
+surfaced when discussing it further: the user is shipping these files inside a digitally
+signed MSI, and asked whether that MSI-level signature was enough to avoid SmartScreen/AV
+warnings on the DLLs themselves. It is not - signing the MSI package only covers the installer
+file's own one-time SmartScreen check at install time; it does not sign (or propagate any
+signature to) the individual files the MSI extracts to disk. Those files stay exactly as
+signed/unsigned as they were when built, forever, and every subsequent Excel load of an
+unsigned `GLSense.dll`/`adxloader*.dll` is a separate trust evaluation - vulnerable to Office
+Trust Center's "Require Trusted Publisher for add-ins" policy, AV/EDR heuristics that flag
+*unsigned code loaded into a signed, trusted process* (a classic DLL side-loading detection
+pattern - Excel is a Microsoft-signed process), and WDAC/AppLocker code-integrity policies -
+none of which the MSI's own signature satisfies.
+
+**Third round - re-added plain (non-FORCE) signing**: given that trade-off, the user asked to
+re-add signing to these 3 files, "if not signed already" - i.e. the normal
+skip-if-already-signed behavior (`sign_file.cmd` called with only 2 arguments, same as every
+other project in this solution), not the FORCE mode from round one. At this point the original
+expired-cert failure mode was back and unguarded again (plain `verify /pa` still passes via the
+timestamp after the cert expires).
+
+**Fourth round - the actual settled fix: make the skip check itself cert-expiry-aware,
+solution-wide**: rather than choosing between "always force-resign" (round one, wasteful/
+blunt) and "just skip if signed" (round three, vulnerable to the exact incident that started
+this), `sign_file.cmd`'s core skip check was rewritten so BOTH of these must hold to skip
+re-signing:
+  1. `signtool verify /pa` succeeds (still checked first - confirms it's genuinely signed).
+  2. The embedded certificate's own `NotAfter` date - read via PowerShell's
+     `Get-AuthenticodeSignature -LiteralPath ... | Select SignerCertificate.NotAfter`, NOT
+     `verify /pa`'s pass/fail, since that's exactly the check that stays green past cert
+     expiry via the timestamp - is still in the future (compared against `Get-Date`).
+If either check fails (unsigned, OR signed-but-cert-expired), the file gets (re-)signed
+automatically with whatever cert is currently configured - no manual FORCE step needed, ever,
+for this specific failure mode. This is implemented once in `sign_file.cmd` itself, so it
+automatically applies to **every** caller solution-wide (`GLSense.Contracts`/`GLSense.Shared`/
+`GLSense.Loader.Core`/`GLSense.Addin.Core`'s own DLL/`e_sqlite3.dll` x2, plus `GLSense`'s own
+3 files) - not just the 3 files that triggered the original incident. This is a strict
+improvement for all of them: it can only cause a *needed* re-sign that the old check would
+have wrongly skipped, never an unnecessary one.
+
+`GLSense\post_build.cmd`'s 3 calls stay as plain 2-argument calls (no `FORCE` needed anymore -
+the improved default check already covers this). `sign_file.cmd`'s `"FORCE"` 3rd argument is
+still supported as an explicit unconditional-resign escape hatch, but is no longer the
+mechanism for handling cert expiry and no current caller passes it.
+
+**Status**: implemented (cert-expiry-aware skip check, solution-wide), AIPowered only (build
+script, no application code touched). Not independently re-verified against a real Excel load
+or a real cert-expiry scenario in this pass - the PowerShell `Get-AuthenticodeSignature`/
+`SignerCertificate.NotAfter` approach is standard, well-documented behavior, but hasn't been
+run against an actual expired-then-renewed cert here.
+
+---
+
+## 42. GLWaitWindow processing title missing or wrong for some drilldowns (ported from FinalWorkingCode - fixed in **both** codebases)
+
+Reported as: the drilldown processing/wait window not showing the drilldown's full name,
+or showing the wrong one, for some drilldown types. `Views\GLWaitWindow.xaml`'s `txtTitle`
+defaults to "Refreshing Data" until `SetProcessTitle(...)` is called, and three
+`Drilldowns\DD_*.cs` classes each had a different gap:
+
+- **`DrilldownBl.ProcessBLDrilldown`** (`DD_BL.cs`, handles ddType `BL`, `BL_JL`, `BL_SL`,
+  and `UF`) never called `SetProcessTitle` at all, so the window stayed on the XAML
+  default "Refreshing Data" for every one of those four drilldown types, regardless of
+  which was actually running.
+- **`DrilldownJl.ProcessJLDrilldown`** (`DD_JL.cs`, handles ddType `JL`, `BLDD_SL`, and
+  `BLDD_UF` - see the `_ddType` restoration note at the top of this file, and
+  `AddinModule.cs`'s `RibJournalDD_OnClick`/`RibBalancesDDToSubLedger_OnClick`/
+  `RibBalancesDDToUnified_OnClick`) stored `_ddType` in a field but hardcoded the title to
+  the literal string `"Journals Drilldown"` regardless of its value - so the two
+  Balances-Drilldown-to-X types launched through this class incorrectly showed "Journals
+  Drilldown" instead of their real names.
+- **`DrilldownSl`** (`DD_SL.cs`) hardcoded `"Subledgers Drilldown"` (lowercase "l"), which
+  only differs from `DrilldownType.SL`'s canonical `[Description("SubLedgers Drilldown")]`
+  by casing, but was still inconsistent with the single source of truth for these display
+  strings.
+
+`Common\DrilldownMetadata.GetDisplay(DrilldownType)` (backed by `Common\DrilldownType.cs`'s
+`[Description(...)]` attributes) already existed as that source of truth in this project
+too - it was ported here specifically as a dependency of `DDDatatoWorksheet.cs`'s toast
+messages (see the comments at the top of `DrilldownType.cs`/`DrilldownMetadata.cs`) - it
+just wasn't wired into these three progress-window title call sites.
+
+Fixed by having `DrilldownBl`/`DrilldownJl` parse their own `_DDType`/`_ddType` field via
+`Enum.TryParse<DrilldownType>` and pass `DrilldownMetadata.GetDisplay(ddEnum)` as the
+title (falling back to the raw string if parsing fails), and switching `DrilldownSl` to
+call `DrilldownMetadata.GetDisplay(DrilldownType.SL)` instead of its hardcoded literal -
+identical fix shape to FinalWorkingCode's `DD_BL.cs`/`DD_JL.cs`/`DD_SL.cs`, confirmed to
+have the exact same three gaps before porting.
+
+**Status**: fixed in both FinalWorkingCode and AIPowered on `wpfui-removal-phase1`.
+Build-verified in FinalWorkingCode (full solution). AIPowered's `GLSense.Addin.Core`
+project itself could not be independently rebuilt in this pass - solution and standalone
+project builds both failed on a pre-existing, unrelated issue (`GLSense.Contracts.pfx`
+strong-name key import, `MSB3325`/`MSB3321`) confirmed present before these edits were
+even applied (reproduced by stashing the AIPowered changes and re-running the same
+build). The edits mirror FinalWorkingCode's build-verified fix line-for-line against
+this project's already-identical `DrilldownMetadata`/`DrilldownType` API.
+
+---
+
+## 43. `GLSense.Shared\Logger.cs`: 20MB log-file rollover used NLog's "Legacy/unstable" archive handler, and archived filenames carried no date (ported from FinalWorkingCode's `Helpers\LogHelper.cs` - fixed in **both** codebases)
+
+`FileName` is a dynamic layout (`${date:format=dd-MMM-yyyy}`), and the archive config
+additionally set `ArchiveFileName = "...\GLSense_Logs_{#}.log"`. NLog's own wiki warns
+this combination ("Dynamic FileName Archive Logic" + an explicit `ArchiveFileName`) causes
+"unexpected archive behavior" - confirmed by tracing NLog's own source
+(`FileTarget.cs`'s `CreateFileArchiveHandler`): merely setting `ArchiveFileName` at all,
+regardless of its content, forces the `LegacyArchiveFileNameHandler` path, which the
+source itself comments as `"Legacy / unstable because file-move can fail because of
+file-locks from other applications"` - a real risk here since this target also sets
+`KeepFileOpen = true` (an exclusive lock on the active file). Separately, `{#}` is
+deprecated syntax in NLog v6 (superseded by `ArchiveSuffixFormat`); its legacy
+compatibility shim only strips `{#}` when preceded by `.`/`_`/`-`, so archived files were
+named like `GLSense_Logs_00.log`, `GLSense_Logs_01.log` - the date was lost, and a
+size-rollover on one day's file shared the same flat sequence-number pool as any other
+day's rollovers, since nothing in the archive name distinguished dates.
+
+Fixed by removing `ArchiveFileName` entirely and setting `ArchiveSuffixFormat = "({0})"`
+instead. This routes size-based rollover through NLog 6's `RollingArchiveFileHandler`
+("Updated dynamic sequence handling without file-move-logic" per its own source comment)
+- it opens a new, already-numbered file instead of renaming the full one, so there's no
+lock contention with `KeepFileOpen`. Per `FileTarget.cs`'s `BuildFullFilePath`, the suffix
+is only appended once `sequenceNumber > 0`, so the day's first/active chunk stays plain
+(`GLSense_Logs_{date}.log`), and each subsequent 20MB rollover produces
+`GLSense_Logs_{date}(1).log`, `(2).log`, etc. Numbering is naturally scoped per day too,
+since the wildcard NLog uses internally to find the next sequence number is derived from
+the already-dated active filename. Identical fix shape and root cause to
+FinalWorkingCode's `Helpers\LogHelper.cs` - see that project's `CLAUDE.md` for the
+standalone-harness and live-Excel-run verification this fix originally got there.
+
+**Status**: ported from FinalWorkingCode's already-verified fix. This project's
+`GLSense.Shared` (net481, NLog 6.1.3 via `packages.config`) has the same `ArchiveSuffixFormat`
+API as FinalWorkingCode's NLog 6.1.4 - re-verify with a build before release.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

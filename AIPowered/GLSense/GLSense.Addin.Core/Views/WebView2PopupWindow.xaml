@@ -7,13 +7,11 @@
                   xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
                   xmlns:wpf="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
                   mc:Ignorable="d"
-                  WindowCaption="Sign-in"
-                  IconSymbol="CircleInfoSolid"
                   SizeToContent="Manual"
                   Width="500" Height="650" MinWidth="380" MinHeight="480"
                   ResizeMode="CanResize"
-                  WindowStyle="SingleBorderWindow"
-                  ExtendsContentIntoTitleBar="True">
+                  WindowStyle="None"
+                  Background="#F8F9FA">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -25,41 +23,28 @@
 
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
-        <Grid Grid.Row="0"
-              Style="{StaticResource TitleBarGridStyle}"
-              MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <iconPacks:PackIconFontAwesome Grid.Column="0"
-                           Style="{StaticResource TitleBarIconStyle}"
-                           Kind="{Binding IconSymbol, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"/>
-
-            <TextBlock Grid.Column="1"
-                       Style="{StaticResource TitleBarTextStyle}"
-                       Text="{Binding WindowCaption, RelativeSource={RelativeSource AncestorType=views:BaseWindow}}"
-                       VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis"/>
-
-            <Button Grid.Column="2"
-                    x:Name="CloseButton"
-                    Style="{StaticResource TitleBarCloseButtonStyle}"
-                    Content="&#xE8BB;"
-                    Click="BtnClose_Click"/>
-        </Grid>
+        <!-- ================= Header ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HeaderBar}" Margin="10,10,10,0" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <iconPacks:PackIconFontAwesome Kind="CircleInfoSolid" Style="{StaticResource LargeIcon}"/>
+                    <TextBlock Text="Sign-in" Style="{StaticResource TitleHeaderTextBlock}"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnClose_Click"/>
+            </Grid>
+        </Border>
 
         <!-- ================= WebView2 Section ================= -->
-        <Border Grid.Row="1"
-                Style="{StaticResource ContentBorderStyle}"
-                Margin="10,8,10,10">
+        <Border Grid.Row="1" Style="{StaticResource ContentBorderStyle}" Margin="10,8,10,10">
             <wpf:WebView2 x:Name="webView" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
         </Border>
     </Grid>

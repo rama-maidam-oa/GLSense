@@ -103,13 +103,25 @@ namespace GLSense
         public Dictionary<string, string> JournalDictionary { get; set; } = new Dictionary<string, string>();
         public string AttachIDs { get; set; }
 
+        // XLEdge COM add-in lookup (~1.4s via COMAddIns enumeration) - found once at ribbon
+        // load (AddinModule_OnRibbonLoaded) and cached here so every other call site
+        // (login, logout, XLEdge-permission check) reads the cached result instead of
+        // re-searching. EdgeAddinSearchCompleted is tracked separately from
+        // EdgeAddinInstance so a "not found" result is also cached (a null
+        // EdgeAddinInstance alone can't distinguish "never searched" from "searched, XLEdge
+        // isn't installed"). Excluded from Reset(): the XLEdge add-in's own COM
+        // registration doesn't change across a GLSense login/logout, so there's no reason
+        // to pay the search cost again on next login.
+        public object EdgeAddinInstance { get; set; }
+        public bool EdgeAddinSearchCompleted { get; set; }
+
         public void Reset()
         {
             LogUtility.LogDebug("AppState.Reset invoked. Resetting all writable properties to their defaults.");
             Type type = GetType();
             foreach (var prop in type.GetProperties())
             {
-                if (prop.CanWrite)
+                if (prop.CanWrite && prop.Name != nameof(EdgeAddinInstance) && prop.Name != nameof(EdgeAddinSearchCompleted))
                 {
                     object defaultValue = GetDefault(prop.PropertyType);
                     prop.SetValue(this, defaultValue);

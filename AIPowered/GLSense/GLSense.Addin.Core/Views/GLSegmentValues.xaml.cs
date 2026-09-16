@@ -9,10 +9,12 @@
 // GLSegmentRef in the old project - GLSegmentRef itself is out of scope for this pass (see
 // SegmentSelectorViewModel.cs's header comment and Views\GLAccountsRef.xaml.cs's existing
 // EditRequested deferral) - this dialog always constructs the shared ViewModel with
-// windowName="val", exactly like the original. The old RefreshWindowLayout() call (a
-// DpiAwareWindow method that never existed on this project's BaseWindow) is dropped -
-// BaseWindow already re-applies DPI/work-area layout on its own Loaded handler, so no
-// equivalent call is needed here. No other logic changes vs. the original.
+// windowName="val", exactly like the original. The old RefreshWindowLayout() call is
+// dropped here - BaseWindow.RefreshWindowLayout() DOES exist on this project's BaseWindow
+// (added as part of this branch's BaseWindow rewrite, matching the reference
+// DpiAwareWindow's own method of the same name), but BaseWindow already re-applies
+// DPI/work-area layout on its own Loaded/SourceInitialized handlers, so no explicit call
+// to it is needed here. No other logic changes vs. the original.
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using GLSense.Addin.Core.Interfaces;
@@ -20,6 +22,7 @@ using GLSense.Addin.Core.Models;
 using GLSense.Addin.Core.ViewModels;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -37,16 +40,6 @@ namespace GLSense.Addin.Core.Views
     {
         private readonly SegmentSelectorViewModel vm;
 
-        // Guards DataLoadedAction below so the window only resettles its SizeToContent size
-        // ONCE, the first time real data lands after the initial async load (its original
-        // purpose - see CLAUDE.md section 1.4b/1.4c). DataLoadedAction is invoked from
-        // SegmentSelectorViewModel.UpdatePagingAndGrid(), which is ALSO the choke point
-        // SelectedItemsRight's setter funnels through - so without this guard, every add/
-        // remove of a value in the right-hand grid during normal interactive use re-triggers
-        // a full window resettle. See GLSegmentManager.xaml.cs's identical fix/comment for
-        // the full writeup (same shared ViewModel, same bug).
-        private bool _hasResettledAfterInitialLoad;
-
         public GLSegmentValues()
         {
             InitializeComponent();
@@ -56,18 +49,32 @@ namespace GLSense.Addin.Core.Views
             // NOTE: this window does NOT use DataGridColumnFillHelper for Description/
             // Segment (unlike some other windows in this project). That helper exists
             // specifically to work around DataGridColumn Width="*" reporting a huge
-            // desired width when measured with an infinite available width, which only
-            // happens on SizeToContent="WidthAndHeight" windows. This window is
-            // SizeToContent="Manual" with a fixed, explicit Width - it is NEVER measured
-            // with infinite available width, so that bug cannot occur here, and native
-            // DataGridColumn Width="*" (declared directly in XAML on the Description/
-            // Segment columns) works correctly and robustly across scroll/resize/data
-            // reload without any manual recalculation. An earlier attempt to use the
-            // fill-helper here anyway caused the Is-Summary column to render at ~40% on
-            // open and vanish/shift off-screen after scrolling, because the helper's
-            // one-shot Loaded/SizeChanged-driven width calculation went stale relative
-            // to the DataGrid's real (virtualized, scrollbar-affected) layout - switching
-            // to native "*" removes that whole class of timing bug.
+            // desired width when measured with an infinite available width.
+            //
+            // Correction: this window IS measured at infinite width like every other
+            // BaseWindow, at least once - BaseWindow.FitToAvailableWorkArea unconditionally
+            // calls root.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity))
+            // during its initial fit/scale pass, regardless of SizeToContent mode, so the
+            // old "NEVER measured with infinite available width" claim here was false. The
+            // reason native "*" still works fine here isn't that the infinite measure never
+            // happens - it's that this window is SizeToContent="Manual" with a fixed,
+            // explicit Width: FitToAvailableWorkArea's infinite measure is a one-off,
+            // transient calculation used only to derive an initial fit-scale factor, and its
+            // resulting DesiredSize does not drive this window's real Arrange-time width the
+            // way it does for a SizeToContent="WidthAndHeight" window (whose actual rendered
+            // width IS, by definition, re-derived from exactly that infinite-constrained
+            // content measurement on every single layout pass - see
+            // DataGridColumnFillHelper's own header comment). Native DataGridColumn Width="*"
+            // resolves against the DataGrid's real, already-arranged width, which for this
+            // Manual window stays governed by the fixed Width (as clamped/rescaled by
+            // FitToAvailableWorkArea), not by that transient infinite-measure DesiredSize -
+            // so it continues to work correctly and robustly across scroll/resize/data reload
+            // without any manual recalculation. An earlier attempt to use the fill-helper
+            // here anyway caused the Is-Summary column to render at ~40% on open and
+            // vanish/shift off-screen after scrolling, because the helper's one-shot
+            // Loaded/SizeChanged-driven width calculation went stale relative to the
+            // DataGrid's real (virtualized, scrollbar-affected) layout - switching to native
+            // "*" removes that whole class of timing bug.
 
             vm = new SegmentSelectorViewModel(Dispatcher, "val", string.Empty)
             {
@@ -78,19 +85,6 @@ namespace GLSense.Addin.Core.Views
                         await Dispatcher.InvokeAsync(async () =>
                             await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
                 HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync()),
-                // See CLAUDE.md section 1.4b - dgLeft/dgRight populate fire-and-forget,
-                // detached from Window_Loaded's own await chain. Only resettle the FIRST
-                // time this fires (initial load) - see _hasResettledAfterInitialLoad's
-                // comment above for why later invocations (every right-grid add/remove)
-                // must not re-trigger this.
-                DataLoadedAction = () =>
-                {
-                    if (_hasResettledAfterInitialLoad) return;
-                    _hasResettledAfterInitialLoad = true;
-
-                    ForceSizeToContentResettle();
-                    PumpDispatcherFrame();
-                }
             };
             DataContext = vm;
 
@@ -106,6 +100,24 @@ namespace GLSense.Addin.Core.Views
 
             // Subscribe to scroll messages
             vm.ScrollToTopRequested += OnScrollToTopRequested;
+            vm.PropertyChanged += Vm_PropertyChanged;
+        }
+
+        // Keeps the Overwrite/Insert radio buttons (bound to IsMultipleRowsEnabled for their
+        // IsEnabled state) from getting stuck on a stale "Insert" selection once they're
+        // disabled - e.g. the user picks Insert while a single segment is selected, then
+        // selects items from a second segment, which disables the whole row-mode section.
+        // Forcing rbOverwrite back on here (rather than just letting both radios grey out)
+        // guarantees the write path this window actually takes matches what's visibly shown -
+        // an unchecked, disabled "Insert" would otherwise still read as IsChecked=true. Ported
+        // from FinalWorkingCode's identical GLSegmentValues.xaml.cs.
+        private void Vm_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(SegmentSelectorViewModel.IsMultipleRowsEnabled) && !vm.IsMultipleRowsEnabled)
+            {
+                rbOverwrite.IsChecked = true;
+                rbByRows.IsChecked = true;
+            }
         }
 
         private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -134,6 +146,7 @@ namespace GLSense.Addin.Core.Views
         protected override void OnClosed(EventArgs e)
         {
             vm.ScrollToTopRequested -= OnScrollToTopRequested;
+            vm.PropertyChanged -= Vm_PropertyChanged;
             base.OnClosed(e);
         }
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -305,6 +318,7 @@ namespace GLSense.Addin.Core.Views
 
             var allSegments = vm.Segments.Select(s => s.SegmentName).ToList();
             var grouped = GroupSelectedItems();
+            ServiceLocator.Logger?.LogDebug($"GLSegmentValues.BtnOK_Click: writing to Excel - startAddress={startAddress}, multipleRows={vm.IsMultipleRowsChecked}, groupedSegments={grouped.Count}, insertMode={rbInsert.IsChecked == true}");
 
             try
             {
@@ -314,10 +328,29 @@ namespace GLSense.Addin.Core.Views
 
                 if (vm.IsMultipleRowsChecked)
                 {
-                    WriteMultipleRows(rng, grouped);
+                    var flatCount = grouped.Values.Sum(v => v.Count);
+                    // Orientation only applies to this multi-cell path - the single-cell path
+                    // below always writes one concatenated string into one cell, so there is
+                    // nothing for "columns" to mean there (rbByColumns is disabled/reset to
+                    // rows whenever chkMultipleRows itself is disabled - see Vm_PropertyChanged).
+                    bool columnWise = rbByColumns.IsChecked == true;
+                    PerformInsertIfNeeded(rng, flatCount, columnWise);
+                    // Re-resolve the reference after a possible Insert: Excel's Range object
+                    // for `rng` was bound to the cell(s) at startAddress BEFORE the insert, and
+                    // Insert(xlShiftDown/xlShiftToRight) carries that same object along with the
+                    // original content it shifts - so writing into the (stale) `rng` reference
+                    // here would land on the shifted-down/shifted-right old content instead of
+                    // the newly-opened blank cells. A fresh address lookup always resolves to
+                    // whatever now occupies that address, which is exactly the blank space
+                    // Insert just created. This is a no-op re-fetch (same cells) when Overwrite
+                    // is selected.
+                    rng = ServiceLocator.ExcelApp.Range[startAddress];
+                    WriteMultipleRows(rng, grouped, columnWise);
                 }
                 else
                 {
+                    PerformInsertIfNeeded(rng, 1, columnWise: false);
+                    rng = ServiceLocator.ExcelApp.Range[startAddress];
                     WriteSingleRow(rng, allSegments, grouped);
                 }
 
@@ -384,10 +417,39 @@ namespace GLSense.Addin.Core.Views
                 );
         }
 
-        private static void WriteMultipleRows(Excel.Range rng, Dictionary<string, List<string>> grouped)
+        // When Insert is selected, opens space for the values about to be written by
+        // selecting a range the size of rowCount at the reference cell and shifting
+        // existing content down. When Overwrite is selected (the default, matching this
+        // window's original behavior), this is a no-op and the write methods below write
+        // directly into the existing cells, same as before this feature existed. Ported
+        // from FinalWorkingCode's identical GLSegmentValues.xaml.cs.
+        private void PerformInsertIfNeeded(Excel.Range rng, int count, bool columnWise)
+        {
+            if (rbInsert.IsChecked != true || count <= 0)
+                return;
+
+            ServiceLocator.Logger?.LogDebug($"GLSegmentValues.PerformInsertIfNeeded: inserting {count} {(columnWise ? "column(s)" : "row(s)")} at {rng.Address}");
+            if (columnWise)
+            {
+                rng.Resize[1, count].Select();
+                var selectedRange = ServiceLocator.ExcelApp.Selection as Excel.Range;
+                selectedRange.Insert(Excel.XlInsertShiftDirection.xlShiftToRight);
+            }
+            else
+            {
+                rng.Resize[count, 1].Select();
+                var selectedRange = ServiceLocator.ExcelApp.Selection as Excel.Range;
+                selectedRange.Insert(Excel.XlInsertShiftDirection.xlShiftDown);
+            }
+        }
+
+        private static void WriteMultipleRows(Excel.Range rng, Dictionary<string, List<string>> grouped, bool columnWise)
         {
             var flat = grouped.Values.SelectMany(x => x).ToList();
-            WriteValuesVerticallyToExcel(rng, flat);
+            if (columnWise)
+                WriteValuesHorizontallyToExcel(rng, flat);
+            else
+                WriteValuesVerticallyToExcel(rng, flat);
         }
 
         private static void WriteSingleRow(Excel.Range rng, List<string> allSegments, Dictionary<string, List<string>> grouped)
@@ -412,6 +474,16 @@ namespace GLSense.Addin.Core.Views
             {
                 rng.Offset[i].NumberFormat = "@";
                 rng.Offset[i].Value = values[i];
+            }
+        }
+        // Write as Multiple Columns: same shape as WriteValuesVerticallyToExcel, offsetting
+        // across columns (row offset 0, increasing column offset) instead of down rows.
+        private static void WriteValuesHorizontallyToExcel(Excel.Range rng, System.Collections.Generic.List<string> values)
+        {
+            for (int i = 0; i < values.Count; i++)
+            {
+                rng.Offset[0, i].NumberFormat = "@";
+                rng.Offset[0, i].Value = values[i];
             }
         }
         private static void WriteStringToExcel(Excel.Range rng, string value)

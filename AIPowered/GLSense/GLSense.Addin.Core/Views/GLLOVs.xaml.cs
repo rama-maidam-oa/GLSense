@@ -40,12 +40,6 @@ namespace GLSense.Addin.Core.Views
             InitializeComponent();
             ServiceLocator.Logger?.LogDebug("GLLOVs constructor invoked");
 
-            // "Available LOVs" (index 0, previously the highest-weighted 2* column) fills any
-            // left-over width instead of leaving a blank gap now that every column is
-            // Width="Auto" (see DataGridColumnFillHelper for why the star-width columns were
-            // removed).
-            DataGridColumnFillHelper.EnableFillColumn(dgLovs, dgLovs.Columns[0]);
-
             // Add any initialization after the InitializeComponent() call.
             vm = new GLLovViewModel(this.Dispatcher)
             {
@@ -55,16 +49,6 @@ namespace GLSense.Addin.Core.Views
                         await Dispatcher.InvokeAsync(async () =>
                             await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
                 HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()),
-                // LOVRows gets populated fire-and-forget (LOV_SelectedLedger's setter ->
-                // LoadLovRows() -> Task.Run(LoadLovRowsAsync)), detached from
-                // Window_Loaded's own await chain, so BaseWindow.OnLoaded's SizeToContent
-                // resettle always ran against an empty dgLovs. Resettle again once real
-                // rows are actually in place. See CLAUDE.md section 1.4b.
-                DataLoadedAction = () =>
-                {
-                    ForceSizeToContentResettle();
-                    PumpDispatcherFrame();
-                }
             };
             this.DataContext = vm;
         }

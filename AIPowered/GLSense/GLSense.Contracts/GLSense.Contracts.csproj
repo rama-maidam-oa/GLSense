@@ -53,6 +53,7 @@
     <Compile Include="ILogger.cs" />
     <Compile Include="IPathProvider.cs" />
     <Compile Include="IRibbonController.cs" />
+    <Compile Include="LoginInfo.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="..\GLSenseSharedVersion.cs">
       <Link>Properties\GLSenseSharedVersion.cs</Link>
@@ -64,4 +65,7 @@
     <None Include="GLSense.Contracts.pfx" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>call "$(ProjectDir)post_build.cmd" "$(TargetDir)"</PostBuildEvent>
+  </PropertyGroup>
 </Project>

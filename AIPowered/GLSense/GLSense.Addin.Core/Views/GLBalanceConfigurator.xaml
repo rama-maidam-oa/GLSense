@@ -12,7 +12,14 @@
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/GlobalStyles.xaml"/>
+                <!-- Generic.xaml (not GlobalStyles.xaml alone) - merges GlobalStyles.xaml
+                     internally, and also carries SuggestAppendComboBox's own Style/Template.
+                     WPF's automatic "fall back to the defining assembly's Themes/Generic.xaml"
+                     mechanism for that control proved unreliable in this Excel-hosted
+                     environment (see GLLogin.xaml's comment for the full investigation) -
+                     merging it explicitly here puts the style in this UserControl's own
+                     resources instead of depending on that fallback. -->
+                <ResourceDictionary Source="/GLSense.Addin.Core;component/Themes/Generic.xaml"/>
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
             <conv:WidthPercentageConverter x:Key="WidthPercentageConverter"/>
@@ -50,7 +57,7 @@
                 <Setter Property="FontWeight" Value="Normal"/>
                 <!-- Blue (PrimaryBrush), not TextPrimaryBrush - standardized every
                      field-prompt label in the app on blue (see HeaderTextBlock/
-                     LabelTextStyle in GlobalStyles.xaml), this window's own labels
+                     SectionHeaderStyle in GlobalStyles.xaml), this window's own labels
                      were the last ones still on the dark/near-black brush. -->
                 <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
             </Style>
@@ -164,7 +171,7 @@
                             <iconPacks:PackIconFontAwesome Kind="MoneyCheckDollarSolid" Width="20" Height="20" Foreground="White" VerticalAlignment="Center"/>
                             <TextBlock Text="Balance Configurator" Margin="10,0,0,0" FontSize="14" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <Button Grid.Column="2" Style="{StaticResource TitleBarCloseButtonStyle}" Content="&#xE8BB;" Click="BtnCancelBottom_Click"/>
+                        <Button Grid.Column="2" Style="{StaticResource CustomWindowCloseButtonStyle}" Click="BtnCancelBottom_Click"/>
                     </Grid>
                 </Border>
 
@@ -336,7 +343,6 @@
                                 <Label Grid.Column="0" Content="Start Date:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <DatePicker x:Name="dtpStartDate"
             Grid.Column="1"
-            Style="{StaticResource ModernDatePicker}"
             Margin="0,0,8,0"
             Height="28"
             VerticalAlignment="Center"
@@ -402,7 +408,6 @@
                                 <Label Grid.Column="0" Content="End Date:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <DatePicker x:Name="dtpEndDate"
             Grid.Column="1"
-            Style="{StaticResource ModernDatePicker}"
             Margin="0,0,8,0"
             Height="28"
             VerticalAlignment="Center"
@@ -959,7 +964,7 @@
                             </CheckBox>
                         </StackPanel>
 
-                        <TextBlock Grid.Column="2" Text="Factor:" VerticalAlignment="Center" Style="{StaticResource LabelTextStyle}" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Column="2" Text="Factor:" VerticalAlignment="Center" Style="{StaticResource SectionHeaderStyle}" HorizontalAlignment="Right"/>
                         <TextBox x:Name="TxtFactor"
                                  Grid.Column="3"
                                  Style="{StaticResource CompactTextBox}"
@@ -986,7 +991,7 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="Reference:" Style="{StaticResource LabelTextStyle}"/>
+                            <TextBlock Text="Reference:" Style="{StaticResource SectionHeaderStyle}"/>
                         </StackPanel>
 
                         <views:ExcelRefEditControl x:Name="CellReference"

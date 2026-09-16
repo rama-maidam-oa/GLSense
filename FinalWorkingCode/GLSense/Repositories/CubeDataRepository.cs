@@ -50,7 +50,7 @@ namespace GLSense.Repositories
                             throw; // Will be caught by outer catch
                         }
                     });
-                });
+                }).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

@@ -6,7 +6,7 @@
 					  xmlns:utils="clr-namespace:GLSense.Utilities" xmlns:models="clr-namespace:GLSense.Models"
                       xmlns:conv="clr-namespace:GLSense.Converters"
 					  WindowStyle="None" WindowStartupLocation="CenterOwner" SizeToContent="Manual" 
-					  MinHeight="430" MaxHeight="520" MinWidth="500" MaxWidth="580" ResizeMode="CanResize" Background="#F8F9FA">
+					  MinHeight="430" MaxHeight="520" MinWidth="550" MaxWidth="630" ResizeMode="CanResize" Background="#F8F9FA">
     <utils:DpiAwareWindow.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

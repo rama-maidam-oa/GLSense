@@ -30,6 +30,8 @@ namespace GLSense.ViewModels
         private readonly Dispatcher _dispatcher;
 
         public Action<string> ShowWarningAction { get; set; }
+        public Func<string, Func<Task>, Task> ShowBusyAction { get; set; }
+        public Func<Task> HideBusyAsyncAction { get; set; }
 
         private string _conversionType;
         public string ConversionType
@@ -86,39 +88,58 @@ namespace GLSense.ViewModels
         public async Task LoadDataAsync( List<string> FuncArgs = null)
         {
             LogUtility.LogDebug($"GLDailyRatesViewModel.LoadDataAsync: FuncArgs.Count={FuncArgs?.Count ?? 0}");
-            await Task.Run(async () =>
+
+            // This load had no busy-overlay mechanism at all (ShowBusyAction/
+            // HideBusyAsyncAction didn't exist on this ViewModel) - the window sat blank
+            // with no loading indicator for however long GetCurrencies took.
+            bool busyShown = false;
+            if (ShowBusyAction != null)
             {
-                var repository = new DataRepository();
-                var currenciesData = repository.GetCurrencies(AppState.Instance.SelectedCube.CubeId, AppState.Instance.SelectedLedger.LedgerId);
-                LogUtility.LogDebug($"GLDailyRatesViewModel.LoadDataAsync: loaded {currenciesData?.Count ?? 0} currency(ies) for CubeId={AppState.Instance.SelectedCube.CubeId}, LedgerId={AppState.Instance.SelectedLedger.LedgerId}");
+                busyShown = true;
+                await _dispatcher.InvokeAsync(async () => await ShowBusyAction.Invoke("Loading currencies...", null));
+            }
 
-                await _dispatcher.InvokeAsync(() =>
+            try
+            {
+                await Task.Run(async () =>
                 {
-                    if (CurrenciesModel == null)
-                        CurrenciesModel = new ObservableCollection<CurrencyModel>();
-                    else
-                    {
-                        CurrenciesModel.Clear();
-                    }
+                    var repository = new DataRepository();
+                    var currenciesData = repository.GetCurrencies(AppState.Instance.SelectedCube.CubeId, AppState.Instance.SelectedLedger.LedgerId);
+                    LogUtility.LogDebug($"GLDailyRatesViewModel.LoadDataAsync: loaded {currenciesData?.Count ?? 0} currency(ies) for CubeId={AppState.Instance.SelectedCube.CubeId}, LedgerId={AppState.Instance.SelectedLedger.LedgerId}");
 
-                    CurrenciesModel = currenciesData;
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        if (CurrenciesModel == null)
+                            CurrenciesModel = new ObservableCollection<CurrencyModel>();
+                        else
+                        {
+                            CurrenciesModel.Clear();
+                        }
 
-                    foreach (var currency in CurrenciesModel)
-                    {
-                        Currencies.Add(currency.CurrencyCode);
-                    }
+                        CurrenciesModel = currenciesData;
 
-                    if (FuncArgs != null && FuncArgs.Count > 0)
-                    {
-                        ApplyFormulaParams(FuncArgs);
-                    }
-                    else
-                    {
-                        FromCurrencyField.ComboValue = AppState.Instance.SelectedLedger.CurrencyCode;
-                    }
+                        foreach (var currency in CurrenciesModel)
+                        {
+                            Currencies.Add(currency.CurrencyCode);
+                        }
+
+                        if (FuncArgs != null && FuncArgs.Count > 0)
+                        {
+                            ApplyFormulaParams(FuncArgs);
+                        }
+                        else
+                        {
+                            FromCurrencyField.ComboValue = AppState.Instance.SelectedLedger.CurrencyCode;
+                        }
+                    });
+
                 });
-
-            });
+            }
+            finally
+            {
+                if (busyShown && HideBusyAsyncAction != null)
+                    await HideBusyAsyncAction.Invoke();
+            }
         }
         private void ProcessCurrencyField(ComboFieldBindings field, string funcArg)
         {

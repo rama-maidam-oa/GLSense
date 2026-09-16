@@ -77,10 +77,12 @@ namespace GLSense.Views
                 ExcelApp = AppState.Instance.ExcelApp.Application, // Pass the Excel application instance to the ViewModel
                 ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
                 ShowInfoAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowInfo(msg)),
-                ShowBusyAction = async (txt, cancel) =>
-                        await Dispatcher.InvokeAsync(async () =>
-                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
-                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync())
+                // Dispatcher.InvokeAsync(async () => await X()) doesn't wait for X() to finish -
+                // the DispatcherOperation completes as soon as the delegate hits its first
+                // await. Use a non-async delegate + Task.Unwrap() so the real completion is
+                // awaited (see GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+                ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
 
             _parentPane = parentPane;
@@ -213,13 +215,18 @@ namespace GLSense.Views
                         dp.BlackoutDates.Add(new CalendarDateRange(maxDate.AddDays(1), DateTime.MaxValue));
                     }
 
+                    // Only fall back to the range boundary (earliest/latest selectable
+                    // month) when nothing is selected yet. Previously this ran
+                    // unconditionally, so reopening the calendar after already picking a
+                    // date (e.g. 2008-01-01) forced it back to minDate/maxDate's month
+                    // instead of showing the month containing the already-selected date.
                     if (dp.Name != null && dp.Name == "dtpStartDate")
                     {
-                        dp.DisplayDate = minDate;
+                        dp.DisplayDate = dp.SelectedDate ?? minDate;
                     }
                     else if (dp.Name != null && dp.Name == "dtpEndDate")
                     {
-                        dp.DisplayDate = maxDate;
+                        dp.DisplayDate = dp.SelectedDate ?? maxDate;
                     }
 
                     //// If selected date is null or outside range, and today is outside range,

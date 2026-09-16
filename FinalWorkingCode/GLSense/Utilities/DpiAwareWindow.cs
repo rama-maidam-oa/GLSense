@@ -12,6 +12,24 @@ namespace GLSense.Utilities
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("user32.dll")]
+        private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_FRAMECHANGED = 0x0020;
+
+        private const uint RDW_INVALIDATE = 0x0001;
+        private const uint RDW_ERASE = 0x0004;
+        private const uint RDW_FRAME = 0x0400;
+        private const uint RDW_ALLCHILDREN = 0x0080;
+        private const uint RDW_UPDATENOW = 0x0100;
+
         private HwndSource _hwndSource;
         private IntPtr _excelOwnerHwnd = IntPtr.Zero;
         private double _currentScaleFactor = 1.0;
@@ -176,6 +194,28 @@ namespace GLSense.Utilities
             }
         }
 
+        // Dismisses the shared WindowLoadingPlaceholder once this window's own first real
+        // frame is ready (ContentRendered), or immediately if it closes before that ever
+        // happens (e.g. an exception during load) - the placeholder's own 3-second safety
+        // timer covers any path that hits neither. Hooked once per Show/ShowDialog call
+        // rather than in the constructor, since the placeholder should only be up for the
+        // span between "user asked to see this window" and "this window is actually ready."
+        private void HookPlaceholderDismissal(int generation)
+        {
+            if (generation < 0)
+                return;
+
+            void Dismiss(object sender, EventArgs e)
+            {
+                this.ContentRendered -= Dismiss;
+                this.Closed -= Dismiss;
+                WindowLoadingPlaceholder.Hide(generation);
+            }
+
+            this.ContentRendered += Dismiss;
+            this.Closed += Dismiss;
+        }
+
         private void OnWindowPreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
             DismissActiveToast();
@@ -241,11 +281,77 @@ namespace GLSense.Utilities
                 LogUtility.LogDebug($"[{_windowName}] source initialized");
                 _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
                 _hwndSource?.AddHook(WndProc);
+
+                // Run the DPI/fit/center pass now, synchronously, while the window still
+                // has no on-screen presence at all (SourceInitialized fires once the HWND
+                // exists but strictly before Show()/ShowDialog() calls ShowWindow) - not
+                // later via OnLoaded's deferred Dispatcher callback, which used to run
+                // after the window was already visible at its placeholder
+                // WindowStartupLocation="CenterOwner" position/size (computed before
+                // layout resolved the window's real content size), producing a visible
+                // resize/reposition "pop" right on top of the window's first frame. Doing
+                // the exact same math here instead means Show() paints the correct final
+                // size/position on the very first frame - there is nothing left to
+                // visibly correct afterward. This does NOT touch Opacity/Visibility/
+                // Position of an already-visible window - it only sets these properties
+                // before the window has ever been shown, which is the same thing any WPF
+                // app does when it sizes/positions a window up front.
+                //
+                // OnLoaded no longer re-runs this after the window is shown (removed - see
+                // its own comment for why a second pass there wasn't actually safe).
+                if (!DisableAutoSizing)
+                {
+                    CaptureInitialWindowConstraints();
+                    ApplyLayoutRefresh();
+                }
+
+                // Show the shared loading placeholder sized/positioned to match this
+                // window's own resolved geometry - not a generic small box - so the
+                // transition feels like "the window was already there, its content just
+                // finished loading" instead of a small unrelated indicator jumping to a
+                // differently-sized/positioned real window. Done here (after
+                // ApplyLayoutRefresh) rather than in ShowDialogWithOwner/ShowWithOwner,
+                // since Left/Top/Width/Height are only final once that pass has run.
+                // Falls back to a small generic box near Excel (inside
+                // WindowLoadingPlaceholder itself) if this window's size isn't resolved
+                // yet, e.g. DisableAutoSizing dialogs.
+                int placeholderGen = WindowLoadingPlaceholder.ShowMatching(
+                    Left, Top, ResolveExpectedWidth(), ResolveExpectedHeight(), _excelOwnerHwnd);
+                HookPlaceholderDismissal(placeholderGen);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, $"DpiAwareWindow.OnSourceInitialized ({_windowName})");
             }
+        }
+
+        // Clamps the resolved Width/Height against this window's own Min/Max constraints,
+        // since FitToAvailableWorkArea's Width/Height assignment (based on measuring
+        // Content before any async data has loaded) can land under MinWidth/MinHeight at
+        // this early point even though WPF will enforce those floors on the real,
+        // eventually-visible window regardless. Returns NaN if Width/Height aren't usable
+        // (e.g. DisableAutoSizing windows that never ran FitToAvailableWorkArea) so the
+        // placeholder can fall back to its own generic sizing instead of a bogus target.
+        private double ResolveExpectedWidth()
+        {
+            if (double.IsNaN(Width) || double.IsInfinity(Width))
+                return double.NaN;
+
+            double w = Width;
+            if (!double.IsNaN(MinWidth)) w = Math.Max(w, MinWidth);
+            if (!double.IsPositiveInfinity(MaxWidth)) w = Math.Min(w, MaxWidth);
+            return w;
+        }
+
+        private double ResolveExpectedHeight()
+        {
+            if (double.IsNaN(Height) || double.IsInfinity(Height))
+                return double.NaN;
+
+            double h = Height;
+            if (!double.IsNaN(MinHeight)) h = Math.Max(h, MinHeight);
+            if (!double.IsPositiveInfinity(MaxHeight)) h = Math.Min(h, MaxHeight);
+            return h;
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
@@ -254,11 +360,18 @@ namespace GLSense.Utilities
             {
                 LogUtility.LogDebug($"[{_windowName}] loaded - applying DPI adjustments");
 
-                if (!DisableAutoSizing)
-                {
-                    CaptureInitialWindowConstraints();
-                    QueueLayoutRefresh(System.Windows.Threading.DispatcherPriority.Loaded);
-                }
+                // Used to queue a second ApplyLayoutRefresh() here via
+                // Dispatcher.BeginInvoke(..., DispatcherPriority.Loaded) as a "harmless
+                // idempotent safety re-check" - but that callback runs *after* Show() has
+                // already made the window visible, and isn't actually idempotent if real
+                // content (a WebView2 control, a DataGrid) settles its size between
+                // SourceInitialized and Loaded: FitToAvailableWorkArea can compute a
+                // different target and visibly resize/reposition the already-shown
+                // window - reported as the window "dancing"/repositioning to center right
+                // before its busy overlay appears. OnSourceInitialized's synchronous pass
+                // already does this correctly before the window is ever shown, so this
+                // second pass is removed rather than gated - it was never confirmed
+                // necessary in the first place.
 
                 LogUtility.LogDebug($"[{_windowName}] load complete");
             }
@@ -506,13 +619,20 @@ namespace GLSense.Utilities
                 double previousHeight = Height;
                 bool sizeChanged = false;
 
-                if (targetWidth > 0 && Math.Abs(targetWidth - previousWidth) > 0.5)
+                // NaN-safe: Math.Abs(x - NaN) is NaN, and NaN > 0.5 is always false, so a
+                // window that never had an explicit Width/Height set in XAML (only
+                // MinWidth/MaxWidth, e.g. GLLOVs/GLCubeDetails) had this comparison
+                // silently never trigger on its very first layout pass - Width/Height
+                // stayed NaN forever, and this window rendered at bare MinWidth/MinHeight
+                // via WPF's own fallback sizing instead of this method's actual
+                // content-fit target. Treat "was never set" as "changed."
+                if (targetWidth > 0 && (double.IsNaN(previousWidth) || Math.Abs(targetWidth - previousWidth) > 0.5))
                 {
                     Width = targetWidth;
                     sizeChanged = true;
                 }
 
-                if (targetHeight > 0 && Math.Abs(targetHeight - previousHeight) > 0.5)
+                if (targetHeight > 0 && (double.IsNaN(previousHeight) || Math.Abs(targetHeight - previousHeight) > 0.5))
                 {
                     Height = targetHeight;
                     sizeChanged = true;
@@ -524,11 +644,45 @@ namespace GLSense.Utilities
                 if (sizeChanged)
                 {
                     RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
+                    ForceFrameRedraw();
                 }
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "DpiAwareWindow.FitToAvailableWorkArea");
+            }
+        }
+
+        // WindowStyle="None" windows still get a DWM-drawn drop shadow around their real
+        // client area, and resizing programmatically (Width/Height set from code, not a
+        // user drag) can leave stale rendering behind at the old edge - confirmed via a
+        // screenshot on GLLOVs (whose grid growing from empty to 20+ rows after async
+        // load triggers a real resize here) showing a large solid-black rectangle, too
+        // big to be just a shadow line - a torn/stale backbuffer region, not erased when
+        // the window narrowed. SWP_FRAMECHANGED alone only recomputes the non-client
+        // frame/shadow, not the client area, so it wasn't enough on its own.
+        // RedrawWindow with INVALIDATE|ERASE|FRAME|ALLCHILDREN|UPDATENOW forces an
+        // immediate full erase-and-repaint of the whole window regardless of the exact
+        // cause. NOMOVE/NOSIZE/NOZORDER/NOACTIVATE on the SetWindowPos call mean neither
+        // call itself moves/resizes/activates anything - Width/Height/Left/Top are
+        // already set separately. Harmless to call before the window is shown
+        // (SourceInitialized time) - there's nothing to redraw yet.
+        private void ForceFrameRedraw()
+        {
+            try
+            {
+                var hwnd = _hwndSource?.Handle ?? IntPtr.Zero;
+                if (hwnd == IntPtr.Zero)
+                    return;
+
+                SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                RedrawWindow(hwnd, IntPtr.Zero, IntPtr.Zero,
+                    RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "DpiAwareWindow.ForceFrameRedraw");
             }
         }
 
@@ -584,17 +738,26 @@ namespace GLSense.Utilities
         /// </summary>
         private void PositionAroundCenter(double centerX, double centerY)
         {
-            if (double.IsNaN(Width) || double.IsNaN(Height) || Width <= 0 || Height <= 0)
+            // Width/Height (the DP) stays NaN for a SizeToContent="WidthAndHeight" window
+            // (e.g. GLMessageWindow) until WPF resolves it from content during a real
+            // layout pass - explicitly assigning Width from FitToAvailableWorkArea doesn't
+            // stick for these, since SizeToContent governs that dimension instead.
+            // ActualWidth/ActualHeight hold the true resolved size regardless of which
+            // sizing mode is in play, so prefer those and only fall back to Width/Height.
+            double effectiveWidth = ActualWidth > 0 ? ActualWidth : Width;
+            double effectiveHeight = ActualHeight > 0 ? ActualHeight : Height;
+
+            if (double.IsNaN(effectiveWidth) || double.IsNaN(effectiveHeight) || effectiveWidth <= 0 || effectiveHeight <= 0)
                 return;
 
-            double newLeft = centerX - (Width / 2.0);
-            double newTop = centerY - (Height / 2.0);
+            double newLeft = centerX - (effectiveWidth / 2.0);
+            double newTop = centerY - (effectiveHeight / 2.0);
 
             var workArea = SystemParameters.WorkArea;
-            if (Width < workArea.Width)
-                newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - Width));
-            if (Height < workArea.Height)
-                newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - Height));
+            if (effectiveWidth < workArea.Width)
+                newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - effectiveWidth));
+            if (effectiveHeight < workArea.Height)
+                newTop = Math.Max(workArea.Top, Math.Min(newTop, workArea.Bottom - effectiveHeight));
 
             Left = newLeft;
             Top = newTop;
@@ -618,6 +781,15 @@ namespace GLSense.Utilities
         {
             try
             {
+                // Forces a synchronous layout pass so ActualWidth/ActualHeight are
+                // resolved from content before this window has ever been shown - valid
+                // to call here since _hwndSource already exists (SourceInitialized has
+                // already run), giving the visual tree a real PresentationSource to lay
+                // out against. Without this, a SizeToContent="WidthAndHeight" window's
+                // ActualWidth could still be 0 at this point, and PositionAroundCenter
+                // would have nothing to center with.
+                UpdateLayout();
+
                 double centerX;
                 double centerY;
 
@@ -713,6 +885,8 @@ namespace GLSense.Utilities
             public readonly int Height => Bottom - Top;
         }
 
+        private System.Windows.Threading.DispatcherTimer _resizeSettleTimer;
+
         protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
         {
             base.OnRenderSizeChanged(sizeInfo);
@@ -721,14 +895,30 @@ namespace GLSense.Utilities
             if (DisableAutoSizing || !AutoClampToWorkArea)
                 return;
 
-            try
+            // Content (e.g. a DataGrid) can grow across several back-to-back
+            // RenderSizeChanged events as rows populate - reacting to every single one
+            // made an already-visible window visibly resize/reposition more than once in
+            // quick succession ("dancing"). Debounce into one settled call instead of
+            // reacting immediately - restarts on every event, so EnsureFitsWorkArea only
+            // actually runs once rendering has been quiet for 120ms.
+            _resizeSettleTimer?.Stop();
+            _resizeSettleTimer = new System.Windows.Threading.DispatcherTimer
             {
-                EnsureFitsWorkArea();
-            }
-            catch (Exception ex)
+                Interval = TimeSpan.FromMilliseconds(120)
+            };
+            _resizeSettleTimer.Tick += (s, e) =>
             {
-                LogUtility.LogException(ex, "DpiAwareWindow.OnRenderSizeChanged (clamp)");
-            }
+                _resizeSettleTimer.Stop();
+                try
+                {
+                    EnsureFitsWorkArea();
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "DpiAwareWindow.OnRenderSizeChanged (debounced clamp)");
+                }
+            };
+            _resizeSettleTimer.Start();
         }
 
         protected void EnsureFitsWorkArea(double? marginOverride = null)
@@ -815,7 +1005,10 @@ namespace GLSense.Utilities
                 // user drag-resize (ResizeMode="CanResize") stays within Min/MaxWidth/Height
                 // and never reaches here, so ordinary manual resizing is left untouched.
                 if (sizeChanged)
+                {
                     RecenterAfterSizeChange(previousLeft, previousTop, previousWidth, previousHeight);
+                    ForceFrameRedraw();
+                }
             }
             catch (Exception ex)
             {

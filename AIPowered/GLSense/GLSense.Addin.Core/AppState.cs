@@ -218,7 +218,11 @@ namespace GLSense.Addin.Core
             SnapshotSuccess = false;
             StartBatchCalc = false;
             VersionCheck = false;
-            DebugLogs = false;
+            // DebugLogs intentionally NOT reset here - it's a user-controlled diagnostic
+            // preference, not login/session state. Resetting it on every logout silently
+            // turned Debug Mode back off mid-session (confirmed in FinalWorkingCode's
+            // identical AppState.cs - see that project's CLAUDE.md), which meant nothing
+            // logged after this point during a logout flow ever made it into the log.
             DefaultSegment = null;
             SegmentPickedIndex = AppConstants.DefaultSegmentPickedIndex;
             SnapshotJob = false;

@@ -32,16 +32,30 @@ namespace GLSense.Views
             {
                 ExcelApp = AppState.Instance.ExcelApp.Application,  // Pass the Excel application instance to the ViewModel
                 ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
-                ShowBusyAction = async (txt, cancel) =>
-                        await Dispatcher.InvokeAsync(async () =>
-                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
-                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync())
+                // Dispatcher.InvokeAsync(...) doesn't wait for the inner Task unless it's
+                // unwrapped - the DispatcherOperation<Task> completes once the delegate returns
+                // (handing back a still-pending Task that a plain `await` on the operation never
+                // awaits further). Use Task.Unwrap() so the real completion is awaited (see
+                // GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+                ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
             this.DataContext = vm;
         }
-        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Loads the active-cell reference and the LOV grid data. Called by
+        /// RibLOVs_OnClick and awaited *before* ShowDialogWithOwner() - not wired to
+        /// the Loaded event like most other windows - so the window's very first
+        /// frame already has the real content in it instead of appearing blank and
+        /// filling in a moment later. Nothing here depends on the window actually
+        /// being on-screen (excelRefEdit and cmbLedgers are already constructed via
+        /// InitializeComponent(), and ActiveCell comes from Excel's COM object, not
+        /// from this window), so running it earlier changes nothing except when the
+        /// window becomes visible.
+        /// </summary>
+        public async Task PrepareAsync()
         {
-            LogUtility.LogDebug("GLLOVs.Window_Loaded invoked");
+            LogUtility.LogDebug("GLLOVs.PrepareAsync invoked");
             try
             {
                 Excel.Range rng = AppState.Instance.ExcelApp.ActiveCell;
@@ -50,7 +64,7 @@ namespace GLSense.Views
                 string addr = $"'{sheetName}'!{cellAddress}";
 
                 excelRefEdit.Text = addr;
-                LogUtility.LogDebug($"GLLOVs.Window_Loaded: active cell reference={addr}");
+                LogUtility.LogDebug($"GLLOVs.PrepareAsync: active cell reference={addr}");
 
                 if (AppState.Instance.SelectedCube != null && AppState.Instance.SelectedLedger != null)
                 {
@@ -60,16 +74,16 @@ namespace GLSense.Views
                     {
                         cmbLedgers.Text = vm.LOV_SelectedLedger.LedgerName;
                     });
-                    LogUtility.LogDebug("GLLOVs.Window_Loaded: LOV data loaded successfully");
+                    LogUtility.LogDebug("GLLOVs.PrepareAsync: LOV data loaded successfully");
                 }
                 else
                 {
-                    LogUtility.LogDebug("GLLOVs.Window_Loaded: validation failed - no cube/ledger selected, skipping load");
+                    LogUtility.LogDebug("GLLOVs.PrepareAsync: validation failed - no cube/ledger selected, skipping load");
                 }
             }
             catch (Exception ex)
             {
-                LogUtility.LogException(ex, "GLLOVs.Window_Loaded");
+                LogUtility.LogException(ex, "GLLOVs.PrepareAsync");
             }
         }
         public void CellSelectionWarning(string message)
@@ -104,9 +118,32 @@ namespace GLSense.Views
                 );
             }, DispatcherPriority.Background);
         }
+        // Prevents a second click from starting a concurrent submit while the first is
+        // still running its own ShowBusyOverlayAsync/HideBusyAsync cycle on the shared
+        // AppOverlayControl - same overlapping-async-operation shape found and fixed in
+        // GLJobsMonitor.xaml.cs.
+        private bool _actionInProgress;
+
         private async void CmdSubmit_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             LogUtility.LogDebug("GLLOVs.CmdSubmit_Click invoked");
+            _actionInProgress = true;
+            CmdSubmit.IsEnabled = false;
+            try
+            {
+                await CmdSubmit_ClickCore();
+            }
+            finally
+            {
+                _actionInProgress = false;
+                CmdSubmit.IsEnabled = true;
+            }
+        }
+
+        private async Task CmdSubmit_ClickCore()
+        {
             CancellationHelper ctsHelper = new();
             var SelLov = vm.SelectedLov;
 

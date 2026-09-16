@@ -1,4 +1,5 @@
-﻿using GLSense.Helpers;
+﻿using GLSense.Common;
+using GLSense.Helpers;
 using GLSense.Models;
 using GLSense.Utilities;
 using GLSense.Views;
@@ -73,7 +74,7 @@ namespace GLSense.Drilldowns
 
             try
             {
-                await InitializeProgressWindowAsync("Subledgers Drilldown", "Processing request...");
+                await InitializeProgressWindowAsync(DrilldownMetadata.GetDisplay(DrilldownType.SL), "Processing request...");
 
                 if (!await TryRunDrilldownAsync(SlWorksheet, SlRange, headerIndex))
                     return;

@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GLSense.Loader.Core", "GLSe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GLSense.Addin.Core", "GLSense.Addin.Core\GLSense.Addin.Core.csproj", "{76F5002B-6A27-4B68-ADEE-EB673A363228}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GLSense.Build", "GLSense.Build\GLSense.Build.csproj", "{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{76F5002B-6A27-4B68-ADEE-EB673A363228}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{76F5002B-6A27-4B68-ADEE-EB673A363228}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{76F5002B-6A27-4B68-ADEE-EB673A363228}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

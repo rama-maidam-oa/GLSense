@@ -119,17 +119,18 @@ namespace GLSense
             }
         }
 
-        public object EdgeAddinInstance { get; set; }
-
         public static object GetEdgeAddinInstance()
         {
-            var currentInstance = CurrentInstance;
-            if (currentInstance?.EdgeAddinInstance != null)
-                return currentInstance.EdgeAddinInstance;
+            if (AppState.Instance.EdgeAddinSearchCompleted)
+            {
+                LogUtility.LogDebug($"AddinModule.GetEdgeAddinInstance: already searched, using cached AppState result (found={AppState.Instance.EdgeAddinInstance != null}) instead of re-searching COMAddIns.");
+                return AppState.Instance.EdgeAddinInstance;
+            }
 
+            var currentInstance = CurrentInstance;
             var hostApplication = currentInstance?.HostApplication ?? AppState.Instance.ExcelApp;
             if (hostApplication == null)
-                return null;
+                return null; // Host not ready yet - don't mark the search completed, try again later.
 
             try
             {
@@ -149,9 +150,9 @@ namespace GLSense
                             continue;
 
                         var addinObject = addInType.InvokeMember("Object", BindingFlags.GetProperty, null, addIn, Array.Empty<object>());
-                        if (currentInstance != null)
-                            currentInstance.EdgeAddinInstance = addinObject;
-
+                        AppState.Instance.EdgeAddinInstance = addinObject;
+                        AppState.Instance.EdgeAddinSearchCompleted = true;
+                        LogUtility.LogDebug("AddinModule.GetEdgeAddinInstance: located XLEdge COM add-in, cached in AppState.");
                         return addinObject;
                     }
                 }
@@ -161,6 +162,7 @@ namespace GLSense
                 LogUtility.LogException(ex, "Failed to locate XLEdge COM add-in.");
             }
 
+            AppState.Instance.EdgeAddinSearchCompleted = true; // Not found - don't re-search on every call.
             return null;
         }
 
@@ -520,6 +522,16 @@ namespace GLSense
 
                 // Release COM objects
                 ReleaseAllComObjectsProperly();
+
+                // Revoke the busy-retry message filter registered in AddinInitialize.
+                try
+                {
+                    GLSense.Utilities.ComMessageFilter.Revoke();
+                }
+                catch (Exception ex)
+                {
+                    ShutdownLogger.LogError("Error revoking ComMessageFilter", ex);
+                }
             }
             catch (Exception ex)
             {
@@ -635,59 +647,21 @@ namespace GLSense
         }
 
 
-        // Logged once, unconditionally (regardless of the Debug checkbox), right after
-        // the logger and ExcelApp both become available. Goal: enough environment
-        // context is on disk from the very first log line of every session that
-        // customer-site issues can be root-caused from the log alone, without needing a
-        // round-trip to ask "what Excel/OS/version were you on".
-        private static void LogEnvironmentSnapshot()
-        {
-            try
-            {
-                string excelVersion = "unknown";
-                try
-                {
-                    excelVersion = AppState.Instance.ExcelApp?.Version ?? "unknown";
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}");
-                }
-
-                double dpi = 96d;
-                try
-                {
-                    using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
-                    {
-                        dpi = g.DpiX;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogWarn($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}");
-                }
-
-                LogUtility.LogInfo("===== Environment Snapshot =====");
-                LogUtility.LogInfo($"GLSense version: {AppConstants.DefaultVersion} (released {AppConstants.DefaultCommitDate})");
-                LogUtility.LogInfo($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
-                LogUtility.LogInfo($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
-                LogUtility.LogInfo($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
-                LogUtility.LogInfo($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
-                LogUtility.LogInfo($"Culture: {CultureInfo.CurrentCulture.Name} (UI: {CultureInfo.CurrentUICulture.Name})");
-                LogUtility.LogInfo($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
-                LogUtility.LogInfo("=================================");
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "LogEnvironmentSnapshot", forceLog: true);
-            }
-        }
-
         private static void AddinModule_OnRibbonLoaded(object sender, IRibbonUI Ribbon)
         {
             AppState.Instance.ExcelApp = (Excel.Application)AddinModule.CurrentInstance.HostApplication;
+            // Environment snapshot (GLSense/Excel/OS/DPI/culture/machine info) now lives in
+            // LogHelper.BuildLogHeader, written once per log FILE (per day) via NLog's own
+            // Header mechanism, instead of once per Excel session here - see that method's
+            // header comment for why. AppState.Instance.ExcelApp is already assigned above,
+            // before this call, so it's available for the header's Excel-version line.
             LogHelper.InitializeLogger();
-            LogEnvironmentSnapshot();
+            // NLog's FileTarget only creates the physical file (and writes Header) on its
+            // first actual log write - InitializeLogger only builds the configuration, it
+            // never writes anything itself. This line guarantees that first write happens
+            // on every Excel open, so the file (and, once per day, the header) always gets
+            // created even if nothing else logs during the session.
+            LogUtility.LogInfo("GLSense session started.");
 
             _ribbonHelper = new RibbonStateHelper(AddinModule.CurrentInstance, Ribbon);
             RibbonHelper = _ribbonHelper; // Expose it globally
@@ -708,12 +682,31 @@ namespace GLSense
             AddinModule.CurrentInstance.SyncRibbonSelectionWithAppState();
             MahAppsBootstrapper.Init(AppConstants.GLAccentHex, AppConstants.GLTheme);
             MahAppsBootstrapper.PreloadResources();
+            WpfWarmup.WarmUpInBackground();
+            WebView2Warmup.WarmUpInBackground();
+            WindowLoadingPlaceholder.WarmUpInBackground();
+
+            // Pre-warm the XLEdge COM add-in lookup once here (cached in AppState) so
+            // Login/Logout/XLEdge-permission checks never pay the ~1.4s COMAddIns
+            // enumeration cost themselves - see AppState.EdgeAddinInstance/
+            // EdgeAddinSearchCompleted and AddinModule.GetEdgeAddinInstance.
+            try
+            {
+                GetEdgeAddinInstance();
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "AddinModule_OnRibbonLoaded: XLEdge pre-warm lookup failed (non-fatal)");
+            }
         }
 
         private static void AddinModule_AddinInitialize(object sender, EventArgs e)
         {
             try
             {
+                // Retries transient "Excel is busy" COM rejections instead of letting them
+                // throw immediately - see the row hide/unhide hang fix in CommonMethods.cs.
+                GLSense.Utilities.ComMessageFilter.Register();
 
                 // 1. Ensure DB file + tables exist
                 SQLiteHelper.InitializeDatabase();
@@ -2304,28 +2297,26 @@ namespace GLSense
             }
 
             long cubeId = AppState.Instance.SelectedCube.CubeId;
+            var wb = AppState.Instance.ExcelApp?.ActiveWorkbook;
 
-            try
+            // Safeguard (a): nothing saved for this cube at all - tell the user and don't
+            // even open the picker. Only types with at least one column saved are shown -
+            // a type with 0 columns saved has nothing meaningful to delete.
+            var savedTypes = GLSense.Common.DrilldownMetadataXmlStore.GetSavedTypeSummaries(wb, cubeId)
+                .Where(t => t.RecordCount >= 1)
+                .ToList();
+            if (savedTypes.Count == 0)
             {
-                var wb = AppState.Instance.ExcelApp?.ActiveWorkbook;
-                bool deleted = GLSense.Common.DrilldownMetadataXmlStore.Delete(wb, cubeId);
+                LogUtility.LogDebug($"RibDDDeleteConfiguration_OnClick: no saved drilldown customizations found for cubeId={cubeId}.");
+                CommonFunctions.GLSenseMessage("No drilldown customizations exist for the selected cube.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
+                return;
+            }
 
-                if (deleted)
-                {
-                    LogUtility.LogDebug($"RibDDDeleteConfiguration_OnClick: deleted saved drilldown customization for cubeId={cubeId}.");
-                    CommonFunctions.GLSenseMessage("Saved drilldown customization deleted successfully.", MessageBoxIcon.Information, MessageBoxButtons.OK);
-                }
-                else
-                {
-                    LogUtility.LogDebug($"RibDDDeleteConfiguration_OnClick: no saved drilldown customization found for cubeId={cubeId}.");
-                    CommonFunctions.GLSenseMessage("No saved drilldown customization exists for the current cube.", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
-                }
-            }
-            catch (Exception ex)
+            SafeInvokeWpf(() =>
             {
-                LogUtility.LogException(ex, "RibDDDeleteConfiguration_OnClick");
-                CommonFunctions.GLSenseMessage("Failed to delete the saved drilldown customization.", MessageBoxIcon.Error, MessageBoxButtons.OK);
-            }
+                var win = new GLDrilldownDeleteCustomization(cubeId, AppState.Instance.SelectedCube.CubeName, savedTypes);
+                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+            });
         }
 
         private static async Task RunBalanceDrilldownAsync(string ddType)
@@ -2741,10 +2732,32 @@ namespace GLSense
         private void RibLOVs_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             LogUtility.LogDebug("RibLOVs_OnClick clicked.");
-            SafeInvokeWpf(() =>
+            SafeInvokeWpf(async () =>
             {
-                var win = new GLLOVs();
-                win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                try
+                {
+                    var win = new GLLOVs();
+                    // Awaited before ShowDialogWithOwner (not on the Loaded event like
+                    // most other windows) so the window's first frame already has the
+                    // LOV grid data in it - see GLLOVs.PrepareAsync for why.
+                    await win.PrepareAsync();
+
+                    // PrepareAsync's internal awaits (LoadDataAsync -> repository/SQLite
+                    // calls) can resume on a different thread than the one that
+                    // constructed win, since this VSTO add-in's WPF thread doesn't
+                    // guarantee automatic await-continuation marshaling back to itself
+                    // (the same reason every other UI touch-point in this codebase
+                    // re-marshals explicitly via Dispatcher.InvokeAsync after an await -
+                    // see GLLOVs.PrepareAsync/ShowBusyAction/HideBusyAsyncAction).
+                    // ShowDialogWithOwner touches win's HWND (a DispatcherObject), so it
+                    // must run back on win's own Dispatcher thread explicitly.
+                    win.Dispatcher.Invoke(() =>
+                        win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd));
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, "RibLOVs_OnClick");
+                }
             });
         }
 

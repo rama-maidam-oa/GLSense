@@ -101,7 +101,7 @@ namespace GLSense.Drilldowns
                     _ = DD_win.Dispatcher.InvokeAsync(() =>
                           DD_win.SetProcessMessage("Extracting meta data..."));
 
-                var metadataDict = ExtractMetadata(drillsData, DataTypeDict, FormatDict, SubTotalsDict, DisplayColumnName, ActualColumnName);
+                var metadataDict = ExtractMetadata(drillsData, DataTypeDict, FormatDict, SubTotalsDict, ActualColumnName, DisplayColumnName);
 
                 Dd_token.ThrowIfCancellationRequested();
 
@@ -1580,11 +1580,12 @@ namespace GLSense.Drilldowns
         private static object ProtectExcelFormulaLikeText(object rawValue)
         {
             var text = SafeToString(rawValue);
-            var equalsCount = CountEqualsSafely(text, rawValue);
 
-            if (equalsCount > 1)
+            if (StartsWithEqualsSign(text))
             {
-                // Ensure we write as text for Excel
+                // A leading "=" is what makes Excel interpret a pasted value as a live
+                // formula (the actual injection vector) - prefix with an apostrophe so
+                // it's written as text instead.
                 return "'" + text;
             }
 
@@ -1596,23 +1597,9 @@ namespace GLSense.Drilldowns
             return value?.ToString() ?? string.Empty;
         }
 
-        private static int CountEqualsSafely(string text, object rawValue)
+        private static bool StartsWithEqualsSign(string text)
         {
-            if (string.IsNullOrWhiteSpace(text) || !text.Contains("="))
-            {
-                return 0;
-            }
-
-            try
-            {
-                return text.Count(c => c == '=');
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogError(
-                    $"There are multiple '=' symbols in string value: {rawValue}. Exception: {ex.Message}");
-                return 0;
-            }
+            return !string.IsNullOrEmpty(text) && text.TrimStart().StartsWith("=", StringComparison.Ordinal);
         }
         private string JavaDateConv(string javaLongStr)
         {
@@ -1755,13 +1742,13 @@ namespace GLSense.Drilldowns
                     return null;
                 }
 
-                if (!DrilldownMetadataXmlStore.TryRead(wb, cube.CubeId, out string rawJson))
+                var ddEnum = DrilldownHelpers.ParseOrDefault(DD_Type, fallback: DrilldownType.BL);
+                string recordsKey = GetLocalMetadataRecordsKey(ddEnum);
+
+                if (!DrilldownMetadataXmlStore.TryRead(wb, cube.CubeId, recordsKey, out string rawJson))
                 {
                     return null;
                 }
-
-                var ddEnum = DrilldownHelpers.ParseOrDefault(DD_Type, fallback: DrilldownType.BL);
-                string recordsKey = GetLocalMetadataRecordsKey(ddEnum);
 
                 return DrilldownMetadataXmlStore.ExtractDrilldownTypeMetadata(rawJson, recordsKey);
             }

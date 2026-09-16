@@ -101,16 +101,27 @@ namespace GLSense.ViewModels
                 {
                     Ledgers.Add(l);
                 }
-                if (AppState.Instance.SelectedLedger != null)
-                {
-                    LOV_SelectedLedger = AppState.Instance.SelectedLedger;
-                }
-                else
-                {
-                    LOV_SelectedLedger = Ledgers.FirstOrDefault(x => x.LedgerId == defaultLedgerId);
-                }
 
+                // Sets the backing field directly (not the LOV_SelectedLedger property)
+                // specifically to skip its setter's LoadLovRows() call - that call is
+                // fire-and-forget (Task.Run, never awaited by its caller), which meant
+                // this method previously returned as soon as the ledger dropdown was
+                // populated while the actual grid content (LoadLovRowsAsync - the
+                // per-category SQLite counts, the busy overlay) kept loading in the
+                // background *after* PrepareAsync/RibLOVs_OnClick had already gone on to
+                // call ShowDialogWithOwner. Explicitly awaiting LoadLovRowsAsync() below
+                // instead makes this method genuinely block until the grid has real data,
+                // which is what PrepareAsync needs. A later user-driven ledger change
+                // (window already open) still goes through the normal property setter
+                // further down in this file, so that fire-and-forget-with-busy-overlay UX
+                // is unaffected.
+                _lOV_SelectedLedger = AppState.Instance.SelectedLedger != null
+                    ? AppState.Instance.SelectedLedger
+                    : Ledgers.FirstOrDefault(x => x.LedgerId == defaultLedgerId);
+                OnPropertyChanged(nameof(LOV_SelectedLedger));
             });
+
+            await LoadLovRowsAsync();
         }
 
         private void LoadLovRows()
@@ -143,15 +154,28 @@ namespace GLSense.ViewModels
             CancellationHelper ctsHelper = new();
             CancellationToken token = ctsHelper.GetToken();
 
+            // Previously the busy overlay only showed for the !ledgerDataExist branch
+            // (a fresh remote fetch). In the common case (data already cached locally)
+            // nothing showed at all while the queries below ran, leaving the LOVs grid
+            // sitting blank with no loading indicator for however long that took -
+            // reported as "window renders blank while loading". Show it unconditionally
+            // for the whole method instead, with a message reflecting which phase is
+            // actually running, and hide it in a finally so it can't get stuck showing
+            // if an exception is thrown partway through (the old code never hid it on
+            // the exception path either, since HideBusyAsyncAction was only ever called
+            // on the success path below).
+            bool busyShown = false;
             try
             {
-                if (!ledgerDataExist && ShowBusyAction != null)
+                if (ShowBusyAction != null)
                 {
+                    busyShown = true;
                     // Use InvokeAsync so the dispatcher call is awaitable (Invoke returns void)
                     // Dispatched to the UI thread since ShowBusyAction mutates bound busy-overlay state.
                     await _dispatcher.InvokeAsync(async () =>
                     {
-                        await ShowBusyAction.Invoke("Fetching ledger data... (click Cancel to stop)",
+                        await ShowBusyAction.Invoke(
+                            ledgerDataExist ? "Loading list of values..." : "Fetching ledger data... (click Cancel to stop)",
                             async () =>
                             {
                                 if (!ctsHelper.IsCancellationRequested)
@@ -161,6 +185,10 @@ namespace GLSense.ViewModels
                                 await Task.CompletedTask;
                             });
                     });
+                }
+
+                if (!ledgerDataExist)
+                {
                     await CommonFunctions.FillResponsibilitiesAsync(LOV_SelectedLedger.LedgerId, AppState.Instance.SelectedCube.CubeId, token);
                 }
 
@@ -248,12 +276,6 @@ namespace GLSense.ViewModels
                         LOVRows.Add(r);
                     }
                 });
-
-                if (!ledgerDataExist && HideBusyAsyncAction != null)
-                {
-                    var task = HideBusyAsyncAction.Invoke();
-                    await task;
-                }
             }
             catch (OperationCanceledException)
             {
@@ -268,6 +290,13 @@ namespace GLSense.ViewModels
                     {
                         ShowWarningAction.Invoke("An error occurred while fetching ledger data: " + ex.Message);
                     });
+                }
+            }
+            finally
+            {
+                if (busyShown && HideBusyAsyncAction != null)
+                {
+                    await HideBusyAsyncAction.Invoke();
                 }
             }
         }

@@ -385,9 +385,9 @@ namespace GLSense.Addin.Core.ViewModels
 
                         var sorted = jobsData.records
                             .Where(r => ShouldIncludeJob(r, _drillJobsList))
+                            .OrderByDescending(r => r.processId)
                             .Select(r => CreateJobModel(r))
-                            .Where(j => j != null)
-                            .OrderByDescending(j => j.ProcessId);
+                            .Where(j => j != null);
 
                         Jobs = new ObservableCollection<GLJobModel>(sorted);
 

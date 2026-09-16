@@ -18,6 +18,7 @@ namespace GLSense
         // Version properties - get from PathProvider
         public string Version { get; set; }
         public string ReleaseDate { get; set; }
+        public string ActiveFolderName { get; set; }
         public IReadOnlyList<VersionInfo> AllVersions => Paths?.AllVersions ?? new List<VersionInfo>();
 
         // Ribbon controller - stored in a field

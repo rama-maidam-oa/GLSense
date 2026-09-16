@@ -283,13 +283,32 @@ namespace GLSense.ViewModels
         public async Task LoadSegmentsAsync(long cubeId, long ledgerId)
         {
             LogUtility.LogDebug($"SegmentSelectorViewModel.LoadSegmentsAsync: CubeId={cubeId}, LedgerId={ledgerId}");
-            await Task.Run(() =>
+
+            // This initial segment fetch used to run with no busy overlay at all, unlike
+            // the hierarchy-loading path elsewhere in this class - the window sat blank
+            // with no loading indicator for however long GetSegments took.
+            bool busyShown = false;
+            if (ShowBusyAction != null)
             {
-                var repository = new DataRepository();
-                var segs = repository.GetSegments(cubeId, ledgerId);
-                LogUtility.LogDebug($"SegmentSelectorViewModel.LoadSegmentsAsync: loaded {segs?.Count ?? 0} segment(s).");
-                _dispatcher.Invoke(() => ProcessSegments(segs));
-            });
+                busyShown = true;
+                await _dispatcher.InvokeAsync(async () => await ShowBusyAction.Invoke("Loading segments...", null));
+            }
+
+            try
+            {
+                await Task.Run(() =>
+                {
+                    var repository = new DataRepository();
+                    var segs = repository.GetSegments(cubeId, ledgerId);
+                    LogUtility.LogDebug($"SegmentSelectorViewModel.LoadSegmentsAsync: loaded {segs?.Count ?? 0} segment(s).");
+                    _dispatcher.Invoke(() => ProcessSegments(segs));
+                });
+            }
+            finally
+            {
+                if (busyShown && HideBusyAsyncAction != null)
+                    await HideBusyAsyncAction.Invoke();
+            }
         }
 
         private void ProcessSegments(IEnumerable<SegmentModel> segs)

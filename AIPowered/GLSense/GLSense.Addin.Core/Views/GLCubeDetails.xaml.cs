@@ -355,21 +355,13 @@ namespace GLSense.Addin.Core.Views
 
                 await DgGridUpdate(data);
 
-                // BaseWindow.OnLoaded's SizeToContent resettle (see CLAUDE.md section 1)
-                // runs synchronously as soon as this window's Loaded event fires - which
-                // is BEFORE this method's caller chain (Window_Loaded -> ...
-                // -> LoadCubeData -> UpdateGridAsync, several awaits deep) has actually
-                // populated dgCubes with any rows. That resettle therefore always measures
-                // an empty grid, producing the reported "gap until a cube is selected"
-                // symptom regardless of whether a cube was pre-selected on open - manually
-                // picking a cube afterwards just happens to run this same UpdateGridAsync
-                // while the window is already visible, which WPF's normal live-content
-                // layout handles correctly without needing the toggle trick. Now that the
-                // grid actually has real row data and its own layout has settled, resettle
-                // again so the window grows to the correct height immediately instead of
-                // waiting for the user to touch the cube combo.
-                ForceSizeToContentResettle();
-                PumpDispatcherFrame();
+                // NOTE: this used to call BaseWindow's ForceSizeToContentResettle()/
+                // PumpDispatcherFrame() here to re-fit the window once dgCubes actually had
+                // real row data (see CLAUDE.md section 1.4b for the original history). Both
+                // methods were removed when BaseWindow's sizing engine was replaced with
+                // DpiAwareWindow's model (task 2 of the WPF-UI removal plan) - that engine
+                // re-fits on RenderSizeChanged/DPI-change on its own, so no manual resettle
+                // call is needed here any more.
 
             }, DispatcherPriority.Normal);
         }

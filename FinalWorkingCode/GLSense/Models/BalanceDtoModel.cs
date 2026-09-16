@@ -259,7 +259,7 @@ namespace GLSense.Models
             var ledgerRecord = AppState.Instance.SelectedCube.Ledgers;
 
             long ledgerId = 0;
-            var matchedLedgerForCurrency = default(LedgerRecord);
+            List<LedgerRecord> matchedLedgersForCurrency = null;
 
             if (ledgerRecord == null || ledgerRecord.Count == 0)
             {
@@ -269,27 +269,27 @@ namespace GLSense.Models
             {
                 string ldgerNameNormalized = NormalizeStrings(ledgerName);
                 var ledgerNames = ldgerNameNormalized.ToString().Split(';').Select(name => name.Trim());
-                var matchingLedgers = ledgerRecord.Where(l => ledgerNames.Contains(l.LedgerName));
+                var matchingLedgers = ledgerRecord.Where(l => ledgerNames.Contains(l.LedgerName)).ToList();
                 balance.ledgerIdList = matchingLedgers.Any()
                                         ? matchingLedgers.Select(l => (object)l.LedgerId).ToArray()
                                         : null;
 
                 balance.coaid = matchingLedgers.FirstOrDefault()?.Coaid.ToString(); // Safe null check with ?.
                 ledgerId = matchingLedgers.FirstOrDefault()?.LedgerId ?? 0; // Default to 0 if no match
-                // Any one of the formula's own matched ledger(s) works here - ledgers named
-                // together in the same formula call share the same currency-code comparison
-                // outcome for this check.
-                matchedLedgerForCurrency = matchingLedgers.FirstOrDefault();
+                matchedLedgersForCurrency = matchingLedgers;
             }
 
             // isFunctionalCurrency must be derived from the ledger(s) named in this formula's
-            // own parameters (matchedLedgerForCurrency, resolved above from args[1]) - NOT
+            // own parameters (matchedLedgersForCurrency, resolved above from args[1]) - NOT
             // from whatever ledger happens to be selected in the ribbon dropdown
             // (AppState.Instance.SelectedLedger). The ribbon selection has no relationship to
-            // which ledger(s) this particular formula call is actually evaluating.
-            if (matchedLedgerForCurrency != null)
+            // which ledger(s) this particular formula call is actually evaluating. When the
+            // formula names multiple ledgers, each can have a different functional currency,
+            // so every matched ledger must be checked individually - true if ANY of them has
+            // a functional currency equal to this balance's currency code, false only if none do.
+            if (matchedLedgersForCurrency != null && matchedLedgersForCurrency.Count > 0)
             {
-                balance.isFunctionalCurrency = matchedLedgerForCurrency.CurrencyCode == balance.currencyCode;
+                balance.isFunctionalCurrency = matchedLedgersForCurrency.Any(l => l.CurrencyCode == balance.currencyCode);
             }
             else
             {

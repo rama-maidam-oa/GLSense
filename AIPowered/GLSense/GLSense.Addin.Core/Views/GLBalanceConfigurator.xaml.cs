@@ -203,23 +203,13 @@ namespace GLSense.Addin.Core.Views
         /// EditRequested event (this control doesn't reference the picker window itself)
         /// and this handler (which does, since both live in this project's Views
         /// namespace already).
-        ///
-        /// TRIAL: currently opens GLSegmentManager (the master-detail redesign - segment
-        /// list on the left, Value/Reference/Hierarchy/Search/dual-grid detail panel on
-        /// the right that rebinds to whichever segment is selected) instead of the
-        /// original GLSegmentRef, so it gets exercised through real usage. GLSegmentRef is
-        /// untouched and still fully compiled into the project - if GLSegmentManager turns
-        /// up problems, roll back by changing the one line below from
-        /// "new GLSegmentManager(AcctsRef.Text)" to "new GLSegmentRef(AcctsRef.Text)".
-        /// Both share the exact same constructor signature and GLSegments_SelectedValue
-        /// contract, so nothing else here needs to change either way.
         /// </summary>
         private void AcctsRef_EditRequested(object sender, EventArgs e)
         {
             ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.AcctsRef_EditRequested invoked");
             try
             {
-                var dlg = new GLSegmentManager(AcctsRef.Text)
+                var dlg = new GLSegmentRef(AcctsRef.Text)
                 {
                     EnableExcelCentering = false,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner
@@ -323,13 +313,19 @@ namespace GLSense.Addin.Core.Views
                         dp.BlackoutDates.Add(new CalendarDateRange(maxDate.AddDays(1), DateTime.MaxValue));
                     }
 
+                    // Only fall back to the range boundary (earliest/latest selectable
+                    // month) when nothing is selected yet. Previously this ran
+                    // unconditionally, so reopening the calendar after already picking a
+                    // date (e.g. 2008-01-01) forced it back to minDate/maxDate's month
+                    // instead of showing the month containing the already-selected date.
+                    // Ported from FinalWorkingCode's identical fix.
                     if (dp.Name != null && dp.Name == "dtpStartDate")
                     {
-                        dp.DisplayDate = minDate;
+                        dp.DisplayDate = dp.SelectedDate ?? minDate;
                     }
                     else if (dp.Name != null && dp.Name == "dtpEndDate")
                     {
-                        dp.DisplayDate = maxDate;
+                        dp.DisplayDate = dp.SelectedDate ?? maxDate;
                     }
                 }
             }

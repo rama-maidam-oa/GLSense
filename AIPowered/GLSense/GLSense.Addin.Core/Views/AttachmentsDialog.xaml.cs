@@ -7,9 +7,10 @@
 // - see that file for the rest of the journal-attachment download flow.
 //
 // Re-pointed vs. the original:
-//   - Base class DpiAwareWindow -> BaseWindow (this project's WPF-UI FluentWindow base -
-//     see GLDailyRates.xaml.cs for the same idiom). BaseWindow sets the Excel owner
-//     automatically via ServiceLocator.ExcelHandle, so there is no more explicit
+//   - Base class DpiAwareWindow -> BaseWindow (a plain System.Windows.Window in this
+//     project - WPF-UI's FluentWindow base class was removed - see GLDailyRates.xaml.cs
+//     for the same idiom). BaseWindow sets the Excel owner automatically via
+//     ServiceLocator.ExcelHandle, so there is no more explicit
 //     ShowWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd) call at the show site.
 //   - EnhancedDragDropHelper.EnableWindowDrag(this) -> dedicated title-bar drag handler
 //     (TitleBar_MouseLeftButtonDown), matching GLDailyRates.xaml/GLWaitWindow.xaml.

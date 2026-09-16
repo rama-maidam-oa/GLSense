@@ -4,6 +4,7 @@ using GLSense.Utilities;
 using GLSense.ViewModels;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 using System.Windows;
 using System.Windows.Input;
@@ -33,24 +34,64 @@ namespace GLSense.Views
                 ExcelApp = AppState.Instance.ExcelApp.Application,
                 ShowWarningAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowWarning(msg)),
                 ShowInfoAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowInfo(msg)),
-                ShowInfoAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowInfoAsync(msg)),
-                ShowWarningAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowWarningAsync(msg)),
-                ShowStatusAsyncAction = async (msg) => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.ShowStatusAsync(msg)),
+                // NOTE: Dispatcher.InvokeAsync(async () => await X()) does NOT wait for X() to
+                // finish - the DispatcherOperation completes as soon as the async delegate
+                // reaches its first await and returns a (still-pending) Task, which that Task
+                // is never awaited further. That let DownloadLogsAsync's "await HideBusyAsync()"
+                // (and the toast call right after it) return before the busy overlay had
+                // actually hidden / before the toast's full duration elapsed, racing the two.
+                // Fixed the same way GLWaitWindow.ShowConfirmToastAsync already does it: pass a
+                // non-async delegate so InvokeAsync<Task> hands back the real inner Task, then
+                // unwrap and await that.
+                ShowInfoAsyncAction = (msg) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowInfoAsync(msg)).Task.Unwrap(),
+                ShowWarningAsyncAction = (msg) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowWarningAsync(msg)).Task.Unwrap(),
+                ShowStatusAsyncAction = (msg) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowStatusAsync(msg)).Task.Unwrap(),
                 ShowConfirmAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowConfirmAsync(msg)),
-                ShowBusyAction = async (txt, cancel) =>
-                        await Dispatcher.InvokeAsync(async () =>
-                            await AppOverlayControl.ShowBusyasynTask(txt, cancel)),
-                HideBusyAsyncAction = async () => await Dispatcher.InvokeAsync(async () => await AppOverlayControl.HideBusyAsync())
+                ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
 
             DataContext = vm;
         }
+        // Guards against the GLJobsMonitor buttons (Refresh/Download Logs/Download
+        // Outputs/Delete/Delete All) being clicked again while a previous click is still
+        // running its async operation. Without this, two overlapping calls end up racing
+        // on the single shared AppOverlayControl's busy-overlay Show/Hide state (see
+        // AppOverlay.HideBusyAsync's _hideBusyHandler field) - the second HideBusyAsync
+        // call unsubscribes and discards the first call's storyboard-completion handler
+        // before it fires, so the first call's `await HideBusyAsync()` never returns and
+        // the success toast right after it never shows, even though the overlay was left
+        // visibly blurred. Mirrors the re-entry guard already used for this exact failure
+        // shape in GLSegmentDiscovery.xaml.cs's BtnSubmit_Click.
+        private bool _actionInProgress;
+
+        private void SetActionButtonsEnabled(bool enabled)
+        {
+            btnRefresh.IsEnabled = enabled;
+            btnDownloadLogs.IsEnabled = enabled;
+            btnDownloadOutputs.IsEnabled = enabled;
+            btnDelete.IsEnabled = enabled;
+            btnDeleteAll.IsEnabled = enabled;
+        }
+
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
             LogUtility.LogDebug("GLJobsMonitor.Window_Loaded invoked");
 
-            await vm.LoadJobsAsync();
-            LogUtility.LogDebug("GLJobsMonitor.Window_Loaded: LoadJobsAsync completed");
+            if (_actionInProgress)
+                return;
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
+            try
+            {
+                await vm.LoadJobsAsync();
+                LogUtility.LogDebug("GLJobsMonitor.Window_Loaded: LoadJobsAsync completed");
+            }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)
@@ -61,37 +102,97 @@ namespace GLSense.Views
 
         private async void BtnRefresh_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             LogUtility.LogDebug("GLJobsMonitor.BtnRefresh_Click invoked");
-            await vm.RefreshJobsAsync();
-            LogUtility.LogDebug("GLJobsMonitor.BtnRefresh_Click: RefreshJobsAsync completed");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
+            try
+            {
+                await vm.RefreshJobsAsync();
+                LogUtility.LogDebug("GLJobsMonitor.BtnRefresh_Click: RefreshJobsAsync completed");
+            }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private async void BtnDownloadLogs_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             LogUtility.LogDebug("GLJobsMonitor.BtnDownloadLogs_Click invoked");
-            await vm.DownloadLogsAsync();
-            LogUtility.LogDebug("GLJobsMonitor.BtnDownloadLogs_Click: DownloadLogsAsync completed");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
+            try
+            {
+                await vm.DownloadLogsAsync();
+                LogUtility.LogDebug("GLJobsMonitor.BtnDownloadLogs_Click: DownloadLogsAsync completed");
+            }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private async void BtnDownloadOutputs_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             LogUtility.LogDebug("GLJobsMonitor.BtnDownloadOutputs_Click invoked");
-            await vm.DownloadOutputsAsync();
-            LogUtility.LogDebug("GLJobsMonitor.BtnDownloadOutputs_Click: DownloadOutputsAsync completed");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
+            try
+            {
+                await vm.DownloadOutputsAsync();
+                LogUtility.LogDebug("GLJobsMonitor.BtnDownloadOutputs_Click: DownloadOutputsAsync completed");
+            }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private async void BtnDelete_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             LogUtility.LogDebug("GLJobsMonitor.BtnDelete_Click invoked");
-            await vm.DeleteSelectedAsync();
-            LogUtility.LogDebug("GLJobsMonitor.BtnDelete_Click: DeleteSelectedAsync completed");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
+            try
+            {
+                await vm.DeleteSelectedAsync();
+                LogUtility.LogDebug("GLJobsMonitor.BtnDelete_Click: DeleteSelectedAsync completed");
+            }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private async void BtnDeleteAll_Click(object sender, RoutedEventArgs e)
         {
+            if (_actionInProgress)
+                return;
             LogUtility.LogDebug("GLJobsMonitor.BtnDeleteAll_Click invoked");
-            await vm.DeleteAllAsync();
-            LogUtility.LogDebug("GLJobsMonitor.BtnDeleteAll_Click: DeleteAllAsync completed");
+            _actionInProgress = true;
+            SetActionButtonsEnabled(false);
+            try
+            {
+                await vm.DeleteAllAsync();
+                LogUtility.LogDebug("GLJobsMonitor.BtnDeleteAll_Click: DeleteAllAsync completed");
+            }
+            finally
+            {
+                _actionInProgress = false;
+                SetActionButtonsEnabled(true);
+            }
         }
 
         private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)

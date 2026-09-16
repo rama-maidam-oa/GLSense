@@ -555,6 +555,18 @@ namespace GLSense.ViewModels
         {
             try
             {
+                // Budget rows have no journal source/category of their own - Journal
+                // Source and Category only ever apply to actual (non-budget) balances,
+                // so disable them outright whenever Actual Flag is Budget, regardless of
+                // Activity/BalanceType/CurrencyType. GetFieldValue (not a raw ComboValue
+                // read) so this also respects Actual Flag being set via cell reference.
+                var actualFlag = GetFieldValue(ActualFlagField);
+                if (!string.IsNullOrEmpty(actualFlag) &&
+                    (actualFlag.Equals(Budget, StringComparison.OrdinalIgnoreCase) || actualFlag.Equals("B", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return false;
+                }
+
                 var activity = GetFieldValue(ActivityField);
                 var balanceType = GetFieldValue(BalanceTypeField);
                 var currencyType = GetFieldValue(CurrencyTypeField);
@@ -596,6 +608,11 @@ namespace GLSense.ViewModels
         private readonly HashSet<string> _pendingFieldNames = new HashSet<string>(StringComparer.Ordinal);
         // Guard to prevent re-entrant UpdateParameterSummary calls
         private bool _isUpdatingParameterSummary = false;
+
+        // Raw, unfiltered ledger-sourced Activity data (see LoadDataAsync). The public
+        // Activities collection is a conditionally-filtered view over this master list -
+        // see UpdateActivitiesForConditions().
+        private ObservableCollection<ActivityModel> _allActivities = new ObservableCollection<ActivityModel>();
 
         // Actions for window overlay controls
         public Action<string>? ShowWarningAction { get; set; }
@@ -775,7 +792,10 @@ namespace GLSense.ViewModels
                 ResetUIState();
                 InitializeStaticCollections();
 
-                OnPropertyChanged(nameof(Activities));
+                // Populates the filtered Activities view from the freshly-loaded
+                // _allActivities master list and notifies (replaces the previous plain
+                // OnPropertyChanged - Activities is no longer assigned directly).
+                UpdateActivitiesForConditions();
                 OnPropertyChanged(nameof(Periods));
                 OnPropertyChanged(nameof(Currencies));
                 OnPropertyChanged(nameof(Budgets));
@@ -859,7 +879,11 @@ namespace GLSense.ViewModels
             ConfiguratorSegments = results[0] as ObservableCollection<SegmentModel> ?? new ObservableCollection<SegmentModel>();
             var ledgersData = results[1] as ObservableCollection<GenericLedgerModel> ?? new ObservableCollection<GenericLedgerModel>();
             PopulateDynamicCollections(Ledgers, ledgersData, l => l.PropertyChanged += Ledger_PropertyChanged);
-            Activities = results[2] as ObservableCollection<ActivityModel> ?? new ObservableCollection<ActivityModel>();
+            // Stored into the master list, not directly into the publicly-bound Activities
+            // collection - Activities is a conditionally-filtered view rebuilt by
+            // UpdateActivitiesForConditions() (called from UpdateUIAsync below), which
+            // hides Begin/End Balance while Balance Type is a JED variant (Issue-5).
+            _allActivities = results[2] as ObservableCollection<ActivityModel> ?? new ObservableCollection<ActivityModel>();
             Periods = results[3] as ObservableCollection<PeriodModel> ?? new ObservableCollection<PeriodModel>();
             Currencies = results[4] as ObservableCollection<CurrencyModel> ?? new ObservableCollection<CurrencyModel>();
             Budgets = results[5] as ObservableCollection<BudgetModel> ?? new ObservableCollection<BudgetModel>();
@@ -1948,8 +1972,19 @@ namespace GLSense.ViewModels
                     }
                     break;
                 case FieldBinding.FieldType.Activity:
+                    ValidateJournalFields();
+                    // Issue-1: Activity=Begin/End Balance hides JED/JEDP/JEDU in Balance Type.
+                    try { UpdateBalanceTypesForConditions(); }
+                    catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateBalanceTypesForConditions (Activity) failed (non-fatal)"); }
+                    break;
                 case FieldBinding.FieldType.CurrencyType:
                     ValidateJournalFields();
+                    // Issue-2: CurrencyType=Translated/Converted hides JED/JEDP/JEDU in Balance Type.
+                    try { UpdateBalanceTypesForConditions(); }
+                    catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateBalanceTypesForConditions (CurrencyType) failed (non-fatal)"); }
+                    // Issue-4: CurrencyType=Translated/Converted/Entered hides Budget in Actual Flag.
+                    try { UpdateActualFlagsForConditions(); }
+                    catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateActualFlagsForConditions (CurrencyType) failed (non-fatal)"); }
                     break;
                 case FieldBinding.FieldType.ActualFlag:
                     var val = changedField.ComboValue?.ToString();
@@ -1962,6 +1997,13 @@ namespace GLSense.ViewModels
                             IsBudgetEnabled = true;
                             IsEncumbranceEnabled = false;
                             ClearEncumbranceSelections();
+                            // Budget rows have no journal source/category of their own -
+                            // IsJournalValidationSatisfied() now disables both fields
+                            // whenever Actual Flag is Budget, so clear any selection made
+                            // before switching to Budget instead of leaving it stuck
+                            // (greyed out but still holding a stale value).
+                            ResetField(JournalSourceField);
+                            ResetField(JournalCategoryField);
                             break;
                         case Encumbrance:
                         case "E":
@@ -1982,6 +2024,40 @@ namespace GLSense.ViewModels
                             ClearEncumbranceSelections();
                             break;
                     }
+
+                    // Journal Source/Category's enable state now depends on Actual Flag
+                    // too (via IsJournalValidationSatisfied) - refresh unconditionally so
+                    // switching AWAY from Budget re-enables them again, not just switching
+                    // to it.
+                    JournalSourceField?.RefreshEnableState();
+                    JournalCategoryField?.RefreshEnableState();
+
+                    // Currency Type's available list now also depends on Actual Flag
+                    // (Budget restricts it to Total-only, inside
+                    // UpdateCurrencyTypesForBalanceType) - recompute immediately on every
+                    // Actual Flag change, not just the next Balance Type/Journal change,
+                    // so switching to/away from Budget updates the list right away. The
+                    // isJED base value still needs to come from the current Balance Type,
+                    // same computation OnFieldDependencyChanged's own BalanceType case
+                    // uses below.
+                    try
+                    {
+                        var balanceTypeForCurrency = GetBalanceTypeText();
+                        var isJedForCurrency = !string.IsNullOrWhiteSpace(balanceTypeForCurrency) && (
+                            balanceTypeForCurrency.Equals(AppConstants.BalanceTypeJED, StringComparison.OrdinalIgnoreCase) ||
+                            balanceTypeForCurrency.Equals(AppConstants.BalanceTypeJEDP, StringComparison.OrdinalIgnoreCase) ||
+                            balanceTypeForCurrency.Equals(AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase)
+                        );
+                        UpdateCurrencyTypesForBalanceType(isJedForCurrency);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateCurrencyTypesForBalanceType (ActualFlag) failed (non-fatal)");
+                    }
+
+                    // Issue-3: ActualFlag=Budget restricts Balance Type to PTD/YTD/QTD/CTD/PJTD.
+                    try { UpdateBalanceTypesForConditions(); }
+                    catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateBalanceTypesForConditions (ActualFlag) failed (non-fatal)"); }
                     break;
 
                 case FieldBinding.FieldType.BalanceType:
@@ -2046,6 +2122,14 @@ namespace GLSense.ViewModels
                     {
                         LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateCurrencyTypesForBalanceType failed (non-fatal)");
                     }
+
+                    // Issue-5: BalanceType=JED/JEDP/JEDU hides Begin/End Balance in Activity.
+                    try { UpdateActivitiesForConditions(); }
+                    catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateActivitiesForConditions (BalanceType) failed (non-fatal)"); }
+
+                    // Actual Flag excludes Budget when Balance Type doesn't support it (PTD/YTD/QTD/PJTD/CTD only).
+                    try { UpdateActualFlagsForConditions(); }
+                    catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.OnFieldDependencyChanged: UpdateActualFlagsForConditions (BalanceType) failed (non-fatal)"); }
 
                     break;
                 case FieldBinding.FieldType.JournalSources:
@@ -2211,6 +2295,9 @@ namespace GLSense.ViewModels
                 }, false);
 
             ValidateJournalFields();
+            // Issue-1: Activity=Begin/End Balance hides JED/JEDP/JEDU in Balance Type.
+            try { UpdateBalanceTypesForConditions(); }
+            catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessActivity: UpdateBalanceTypesForConditions failed (non-fatal)"); }
         }
 
         private void ProcessBalanceType(FieldBinding field, string refText, string? rngValue)
@@ -2242,6 +2329,14 @@ namespace GLSense.ViewModels
             {
                 LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessBalanceType: UpdateCurrencyTypesForBalanceType failed (non-fatal)");
             }
+
+            // Issue-5: BalanceType=JED/JEDP/JEDU hides Begin/End Balance in Activity.
+            try { UpdateActivitiesForConditions(); }
+            catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessBalanceType: UpdateActivitiesForConditions failed (non-fatal)"); }
+
+            // Actual Flag excludes Budget when Balance Type doesn't support it (PTD/YTD/QTD/PJTD only).
+            try { UpdateActualFlagsForConditions(); }
+            catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessBalanceType: UpdateActualFlagsForConditions failed (non-fatal)"); }
         }
         private void ProcessCurrencyType(FieldBinding field, string refText, string? rngValue)
         {
@@ -2250,6 +2345,13 @@ namespace GLSense.ViewModels
                 (c, v) => c.Name.Equals(v, StringComparison.OrdinalIgnoreCase) || c.ShortName.Equals(v, StringComparison.OrdinalIgnoreCase), false);
 
             ValidateJournalFields();
+
+            // Issue-2: CurrencyType=Translated/Converted hides JED/JEDP/JEDU in Balance Type.
+            try { UpdateBalanceTypesForConditions(); }
+            catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessCurrencyType: UpdateBalanceTypesForConditions failed (non-fatal)"); }
+            // Issue-4: CurrencyType=Translated/Converted/Entered hides Budget in Actual Flag.
+            try { UpdateActualFlagsForConditions(); }
+            catch (Exception ex) { LogUtility.LogException(ex, "GLConfiguratorViewModel.ProcessCurrencyType: UpdateActualFlagsForConditions failed (non-fatal)"); }
         }
 
         private void ProcessPeriod(FieldBinding field, string refText, string? rngValue)
@@ -2284,32 +2386,9 @@ namespace GLSense.ViewModels
             if (string.IsNullOrWhiteSpace(periodVal) || string.IsNullOrWhiteSpace(endPeriodValue))
                 return false;
 
-            string? newPeriodValue = null;
-
-            // Resolve reference if needed
-            if (!string.IsNullOrEmpty(periodVal) && ExcelRangeHelper.IsRealRange(periodVal))
-            {
-                try
-                {
-                    if (_excelApp != null)
-                    {
-                        newPeriodValue = (string?)_excelApp.Range[periodVal]?.Value;
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, $"GLConfiguratorViewModel.IsValidEndPeriodSequence: failed to read Excel range value for periodVal={periodVal}");
-                    return false;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(newPeriodValue))
-                return false;
-
+            // periodVal arrives already resolved to the Period's text value (GetFieldValue
+            // resolves any cell reference through Excel before returning it), so it should
+            // be matched directly against Periods rather than re-resolved as a range here.
             var startPeriod = Periods?.FirstOrDefault(p => p.PeriodName.Equals(periodVal, StringComparison.OrdinalIgnoreCase));
             var endPeriod = Periods?.FirstOrDefault(p => p.PeriodName.Equals(endPeriodValue, StringComparison.OrdinalIgnoreCase));
 
@@ -2508,12 +2587,19 @@ namespace GLSense.ViewModels
             }
         }
 
-        // Update CurrencyTypes collection based on whether BalanceType is a JED variant.
-        // For JED/JEDP/JEDU only allow AppConstants.CurrencyTypeTotal and AppConstants.CurrencyTypeEntered. Clear the field binding
-        // if the currently selected currency type is not allowed.
+        // Update CurrencyTypes collection based on whether BalanceType is a JED variant,
+        // further restricted to Total-only when Actual Flag is Budget. Budget takes
+        // precedence over the JED-based list (a Budget row only ever reports a single
+        // Total figure - Entered/Translated/Converted don't apply to it - so this
+        // overrides isJED entirely rather than combining with it). Clears the field
+        // binding if the currently selected currency type is no longer allowed.
         private void UpdateCurrencyTypesForBalanceType(bool isJED)
         {
-            LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateCurrencyTypesForBalanceType: isJED={isJED}");
+            var actualFlag = GetFieldValue(ActualFlagField);
+            bool isBudget = !string.IsNullOrEmpty(actualFlag) &&
+                (actualFlag.Equals(Budget, StringComparison.OrdinalIgnoreCase) || actualFlag.Equals("B", StringComparison.OrdinalIgnoreCase));
+
+            LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateCurrencyTypesForBalanceType: isJED={isJED}, isBudget={isBudget}");
             try
             {
                 // Ensure operation runs on UI thread
@@ -2524,7 +2610,18 @@ namespace GLSense.ViewModels
 
                     CurrencyTypes.Clear();
 
-                    if (isJED)
+                    if (isBudget)
+                    {
+                        CurrencyTypes.Add(new CurrencyTypeModel { Name = AppConstants.CurrencyTypeTotal, ShortName = AppConstants.CurrencyTypeTotal });
+
+                        // If current currency type isn't Total, clear it
+                        var current = GetFieldValue(CurrencyTypeField);
+                        if (!string.IsNullOrWhiteSpace(current) && !current.Equals(AppConstants.CurrencyTypeTotal, StringComparison.OrdinalIgnoreCase))
+                        {
+                            ResetField(CurrencyTypeField);
+                        }
+                    }
+                    else if (isJED)
                     {
                         CurrencyTypes.Add(new CurrencyTypeModel { Name = AppConstants.CurrencyTypeTotal, ShortName = AppConstants.CurrencyTypeTotal });
                         CurrencyTypes.Add(new CurrencyTypeModel { Name = AppConstants.CurrencyTypeEntered, ShortName = "E" });
@@ -2554,9 +2651,217 @@ namespace GLSense.ViewModels
             }
             catch (Exception ex)
             {
-                LogUtility.LogException(ex, $"GLConfiguratorViewModel.UpdateCurrencyTypesForBalanceType: failed (non-fatal). isJED={isJED}");
+                LogUtility.LogException(ex, $"GLConfiguratorViewModel.UpdateCurrencyTypesForBalanceType: failed (non-fatal). isJED={isJED}, isBudget={isBudget}");
             }
         }
+
+        // ===== Cross-field conditional LOV helpers (Activity/BalanceType/CurrencyType/ActualFlag) =====
+        // Ledger's real ACTIVITY table stores "BB:BEGIN_BALANCE"/"EB:END_BALANCE" (confirmed
+        // against the local SQLite cache and GLSenseExcelFunctions.Designer.cs's own parameter
+        // description "DEBIT, CREDIT, NET, BEGIN_BALANCE and END_BALANCE") - so ShortName is
+        // "BB"/"EB" and DisplayName is "BEGIN_BALANCE"/"END_BALANCE". Checking both mirrors this
+        // file's existing multi-variant string checks (e.g. validCurrencyTypes at line ~585).
+        private bool IsActivityBeginOrEndBalance()
+        {
+            var t = GetFieldValue(ActivityField).Trim();
+            if (string.IsNullOrWhiteSpace(t)) return false;
+            return t.Equals("BB", StringComparison.OrdinalIgnoreCase) ||
+                   t.Equals("EB", StringComparison.OrdinalIgnoreCase) ||
+                   t.Equals("BEGIN_BALANCE", StringComparison.OrdinalIgnoreCase) ||
+                   t.Equals("END_BALANCE", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsCurrencyTypeTranslatedOrConverted()
+        {
+            var t = GetFieldValue(CurrencyTypeField).Trim();
+            if (string.IsNullOrWhiteSpace(t)) return false;
+            return t.Equals("Translated", StringComparison.OrdinalIgnoreCase) ||
+                   t.Equals("T", StringComparison.OrdinalIgnoreCase) ||
+                   t.Equals("Converted", StringComparison.OrdinalIgnoreCase) ||
+                   t.Equals("C", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsCurrencyTypeTranslatedConvertedOrEntered()
+        {
+            if (IsCurrencyTypeTranslatedOrConverted()) return true;
+            var t = GetFieldValue(CurrencyTypeField).Trim();
+            if (string.IsNullOrWhiteSpace(t)) return false;
+            return t.Equals(AppConstants.CurrencyTypeEntered, StringComparison.OrdinalIgnoreCase) ||
+                   t.Equals("E", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsActualFlagBudget()
+        {
+            var t = GetFieldValue(ActualFlagField).Trim();
+            if (string.IsNullOrWhiteSpace(t)) return false;
+            return t.Equals(Budget, StringComparison.OrdinalIgnoreCase) ||
+                   t.Equals("B", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsBalanceTypeJedGroup()
+        {
+            var bt = GetBalanceTypeText();
+            return !string.IsNullOrWhiteSpace(bt) && (
+                bt.Equals(AppConstants.BalanceTypeJED, StringComparison.OrdinalIgnoreCase) ||
+                bt.Equals(AppConstants.BalanceTypeJEDP, StringComparison.OrdinalIgnoreCase) ||
+                bt.Equals(AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Budget is valid for PTD/YTD/QTD/PJTD/CTD Balance Types.
+        private bool IsBalanceTypeSupportingBudget()
+        {
+            var bt = GetBalanceTypeText();
+            if (string.IsNullOrWhiteSpace(bt)) return true; // nothing selected yet - don't restrict
+            return bt.Equals(AppConstants.BalanceTypePTD, StringComparison.OrdinalIgnoreCase)
+                || bt.Equals(AppConstants.BalanceTypeYTD, StringComparison.OrdinalIgnoreCase)
+                || bt.Equals("QTD", StringComparison.OrdinalIgnoreCase)
+                || bt.Equals("PJTD", StringComparison.OrdinalIgnoreCase)
+                || bt.Equals(AppConstants.BalanceTypeCTD, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Issue-1/2/3: Balance Type excludes JED/JEDP/JEDU whenever Activity is Begin/End
+        // Balance, Currency Type is Translated/Converted, or Actual Flag is Budget. Clears
+        // BalanceTypeField if its current value is no longer in the rebuilt list.
+        private void UpdateBalanceTypesForConditions()
+        {
+            bool hideJed = IsActivityBeginOrEndBalance() || IsCurrencyTypeTranslatedOrConverted() || IsActualFlagBudget();
+            LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateBalanceTypesForConditions: hideJed={hideJed}");
+            try
+            {
+                // Synchronous (not InvokeAsync/fire-and-forget): callers such as
+                // ApplyDefaultSelections() read BalanceTypes immediately afterward and
+                // need the rebuilt list to already be in place, not merely queued.
+                _dispatcher.Invoke(() =>
+                {
+                    if (BalanceTypes == null)
+                        BalanceTypes = new ObservableCollection<BalanceTypeModel>();
+
+                    BalanceTypes.Clear();
+                    BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypePTD });
+                    BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeYTD });
+                    BalanceTypes.Add(new BalanceTypeModel { Name = "QTD" });
+                    BalanceTypes.Add(new BalanceTypeModel { Name = "PJTD" });
+                    BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeCTD });
+                    if (!hideJed)
+                    {
+                        BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeJED });
+                        BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeJEDP });
+                        BalanceTypes.Add(new BalanceTypeModel { Name = AppConstants.BalanceTypeJEDU });
+                    }
+
+                    var current = GetFieldValue(BalanceTypeField);
+                    if (!string.IsNullOrWhiteSpace(current) &&
+                        !BalanceTypes.Any(b => b.Name.Equals(current, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        ResetField(BalanceTypeField);
+                    }
+
+                    OnPropertyChanged(nameof(BalanceTypes));
+                    BalanceTypeField?.RefreshEnableState();
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"GLConfiguratorViewModel.UpdateBalanceTypesForConditions: failed (non-fatal). hideJed={hideJed}");
+            }
+        }
+
+        // Issue-4: Actual Flag excludes Budget whenever Currency Type is
+        // Translated/Converted/Entered. Clears ActualFlagField if its current value is no
+        // longer in the rebuilt list (ResetField naturally re-runs the existing
+        // OnFieldDependencyChanged ActualFlag cascade - IsBudgetEnabled/BudgetField/etc.).
+        private void UpdateActualFlagsForConditions()
+        {
+            bool hideBudget = IsCurrencyTypeTranslatedConvertedOrEntered() || !IsBalanceTypeSupportingBudget();
+            LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateActualFlagsForConditions: hideBudget={hideBudget}");
+            try
+            {
+                // Synchronous (not InvokeAsync/fire-and-forget) - see UpdateBalanceTypesForConditions.
+                _dispatcher.Invoke(() =>
+                {
+                    if (ActualFlags == null)
+                        ActualFlags = new ObservableCollection<ActualFlagsModel>();
+
+                    ActualFlags.Clear();
+                    ActualFlags.Add(new ActualFlagsModel { Name = AppConstants.ActivityFlagActual, ShortName = "A" });
+                    if (!hideBudget)
+                        ActualFlags.Add(new ActualFlagsModel { Name = Budget, ShortName = "B" });
+                    ActualFlags.Add(new ActualFlagsModel { Name = Encumbrance, ShortName = "E" });
+                    ActualFlags.Add(new ActualFlagsModel { Name = AE, ShortName = AppConstants.ActualEncumbranceShort });
+
+                    var current = GetFieldValue(ActualFlagField);
+                    if (!string.IsNullOrWhiteSpace(current) &&
+                        !ActualFlags.Any(a => a.Name.Equals(current, StringComparison.OrdinalIgnoreCase) || a.ShortName.Equals(current, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        ResetField(ActualFlagField);
+                    }
+
+                    OnPropertyChanged(nameof(ActualFlags));
+                    ActualFlagField?.RefreshEnableState();
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"GLConfiguratorViewModel.UpdateActualFlagsForConditions: failed (non-fatal). hideBudget={hideBudget}");
+            }
+        }
+
+        // Issue-5: Activity excludes Begin/End Balance whenever Balance Type is a JED
+        // variant. Rebuilds the publicly-bound Activities collection as a filtered view
+        // over the master _allActivities list. Clears ActivityField if its current value is
+        // no longer in the rebuilt list.
+        private void UpdateActivitiesForConditions()
+        {
+            bool hideBeginEnd = IsBalanceTypeJedGroup();
+            LogUtility.LogDebug($"GLConfiguratorViewModel.UpdateActivitiesForConditions: hideBeginEnd={hideBeginEnd}");
+            try
+            {
+                // Synchronous (not InvokeAsync/fire-and-forget): this was the actual bug -
+                // ApplyDefaultSelections() (called right after UpdateUIAsync, which calls
+                // this method) reads Activities immediately looking for the "NET" default,
+                // and a fire-and-forget InvokeAsync here left Activities still empty at
+                // that point (the queued repopulation hadn't run yet), so the default
+                // Activity selection silently failed. See also the two sibling methods.
+                _dispatcher.Invoke(() =>
+                {
+                    if (Activities == null)
+                        Activities = new ObservableCollection<ActivityModel>();
+
+                    Activities.Clear();
+                    foreach (var a in _allActivities ?? new ObservableCollection<ActivityModel>())
+                    {
+                        if (hideBeginEnd && IsBeginOrEndBalanceActivity(a))
+                            continue;
+                        Activities.Add(a);
+                    }
+
+                    var current = GetFieldValue(ActivityField);
+                    if (!string.IsNullOrWhiteSpace(current) &&
+                        !Activities.Any(a => (a.ShortName?.Equals(current, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                              (a.DisplayName?.Equals(current, StringComparison.OrdinalIgnoreCase) ?? false)))
+                    {
+                        ResetField(ActivityField);
+                    }
+
+                    OnPropertyChanged(nameof(Activities));
+                    ActivityField?.RefreshEnableState();
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, $"GLConfiguratorViewModel.UpdateActivitiesForConditions: failed (non-fatal). hideBeginEnd={hideBeginEnd}");
+            }
+        }
+
+        private static bool IsBeginOrEndBalanceActivity(ActivityModel a)
+        {
+            if (a == null) return false;
+            return (a.ShortName?.Equals("BB", StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (a.ShortName?.Equals("EB", StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (a.DisplayName?.Equals("BEGIN_BALANCE", StringComparison.OrdinalIgnoreCase) ?? false) ||
+                   (a.DisplayName?.Equals("END_BALANCE", StringComparison.OrdinalIgnoreCase) ?? false);
+        }
+
         private static void ApplyRefHelper<T>(
                 FieldBinding field,
                 IEnumerable<T> collection,
@@ -2946,6 +3251,12 @@ namespace GLSense.ViewModels
             }
 
             ValidateRequired(PeriodField, "Period");
+
+            var bt = GetFieldValue(BalanceTypeField);
+            if (!string.IsNullOrWhiteSpace(bt) && bt.Equals(AppConstants.BalanceTypeCTD, StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequired(EndPeriodField, "End Period is required for CTD Balance Type.");
+            }
         }
 
         private void ValidateDateRange()

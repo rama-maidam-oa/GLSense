@@ -83,7 +83,20 @@ namespace GLSense.Addin.Core
                 // constructor - exceptions in either domain need their own hook.
                 AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
 
-                LogEnvironmentSnapshot();
+                // Environment snapshot (GLSense/Excel/OS/DPI/culture/machine info) now lives
+                // in Logger.BuildLogHeader/AppendEnvironmentSnapshot, written once per log
+                // FILE (per day) via NLog's own Header mechanism, instead of once per Excel
+                // session here - see that method's header comment for why.
+                //
+                // NLog's FileTarget only creates the physical file (and writes Header) on
+                // its first actual log write - the Logger instance behind ServiceLocator.Logger
+                // was already constructed (inside GLSenseContext's constructor, before this
+                // Initialize call) but never itself writes anything. This line guarantees that
+                // first write happens on every Excel open, so the file (and, once per day, the
+                // header) always gets created even if nothing else logs during the session
+                // (e.g. DebugMode off and the SQLite check below takes the "IsInitialized"
+                // branch, whose LogDebug is a no-op without it).
+                ServiceLocator.Logger?.LogInfo("GLSense session started.");
 
                 //Initializing SQLite database
                 // 1. Ensure DB file + tables exist
@@ -134,9 +147,13 @@ namespace GLSense.Addin.Core
 
                 // Ensure WPF Application exists - ONLY CALL THIS ONCE
                 WpfAppManager.EnsureApplication();
-                //Implementing WPF-UI Bootstrapper
-                WpfUiBootstrapper.Initialize();
-                WpfUiBootstrapper.SetLightTheme();
+
+                // Pay WindowLoadingPlaceholder's one-time HWND-creation/first-paint cost now,
+                // during Excel's own ribbon-load idle time (deferred to ApplicationIdle
+                // priority inside WarmUpInBackground itself), rather than letting the very
+                // first real window shown in this Excel session pay it synchronously on its
+                // own OnSourceInitialized/ShowMatching call.
+                WindowLoadingPlaceholder.WarmUpInBackground();
 
                 // Check if ribbon controller is already available
                 if (ServiceLocator.RibbonController != null)
@@ -189,54 +206,10 @@ namespace GLSense.Addin.Core
             }
         }
 
-        // Logged once at startup, unconditionally (regardless of the Debug checkbox),
-        // right after ServiceLocator (and so ExcelApp/Logger) become available. Goal:
-        // enough environment context is on disk from the very first log line of every
-        // session that customer-site issues can be root-caused from the log alone,
-        // without needing a round-trip to ask what environment they're on. Ported from
-        // FinalWorkingCode's AddinModule.LogEnvironmentSnapshot.
-        private void LogEnvironmentSnapshot()
-        {
-            try
-            {
-                string excelVersion = "unknown";
-                try
-                {
-                    excelVersion = ServiceLocator.ExcelApp?.Version ?? "unknown";
-                }
-                catch (Exception ex)
-                {
-                    ServiceLocator.Logger?.LogDebug($"LogEnvironmentSnapshot: could not read Excel version: {ex.Message}");
-                }
-
-                double dpi = 96d;
-                try
-                {
-                    using (var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
-                    {
-                        dpi = g.DpiX;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    ServiceLocator.Logger?.LogDebug($"LogEnvironmentSnapshot: could not read screen DPI: {ex.Message}");
-                }
-
-                ServiceLocator.Logger?.LogInfo("===== Environment Snapshot =====");
-                ServiceLocator.Logger?.LogInfo($"GLSense version: {ServiceLocator.Context?.Version} (released {ServiceLocator.Context?.ReleaseDate})");
-                ServiceLocator.Logger?.LogInfo($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
-                ServiceLocator.Logger?.LogInfo($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
-                ServiceLocator.Logger?.LogInfo($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
-                ServiceLocator.Logger?.LogInfo($"Screen DPI: {dpi:F0} ({dpi / 96d * 100:F0}% scale)");
-                ServiceLocator.Logger?.LogInfo($"Culture: {System.Globalization.CultureInfo.CurrentCulture.Name} (UI: {System.Globalization.CultureInfo.CurrentUICulture.Name})");
-                ServiceLocator.Logger?.LogInfo($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
-                ServiceLocator.Logger?.LogInfo("=================================");
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex, "LogEnvironmentSnapshot");
-            }
-        }
+        // Environment snapshot (GLSense/Excel/OS/DPI/culture/machine info) now lives in
+        // Logger.BuildLogHeader/AppendEnvironmentSnapshot (GLSense.Shared), written once
+        // per log FILE (per day) via NLog's own Header mechanism, instead of once per
+        // Excel session here - see that method's header comment for why.
 
         private bool LoggedIn()
         {
@@ -1961,6 +1934,20 @@ namespace GLSense.Addin.Core
 
                 try
                 {
+                    // Terminates the WPF Application/Dispatcher started by
+                    // WpfAppManager.EnsureApplication() (ShutdownMode.OnExplicitShutdown
+                    // means nothing else ever stops it) - see WpfAppManager.Shutdown's own
+                    // comment for why leaving this running is the most likely reason
+                    // Excel.exe lingers as an orphaned process after a real close.
+                    Utilities.WpfAppManager.Shutdown();
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogException(ex, "Shutdown: WpfAppManager.Shutdown failed");
+                }
+
+                try
+                {
                     if (FormulaCacheManager.Instance.IsInitialized && FormulaCacheManager.Instance.HasChanges)
                     {
                         FormulaCacheManager.Instance.PersistToDatabase();
@@ -2000,6 +1987,18 @@ namespace GLSense.Addin.Core
             {
                 ServiceLocator.Logger?.LogException(ex, "Shutdown: unexpected error");
             }
+        }
+
+        /// <summary>IGLSenseAddin.GetLoginInfo() - see that interface member's own doc
+        /// comment.</summary>
+        public LoginInfo GetLoginInfo()
+        {
+            return new LoginInfo
+            {
+                LoginUrl = AppState.Instance.LoginUrl,
+                LoginToken = AppState.Instance.LoginToken,
+                IsLoggedIn = AppState.Instance.IsLoggedIn
+            };
         }
 
         /// <summary>

@@ -2,6 +2,7 @@
 using GLSense.Helpers;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -84,31 +85,71 @@ namespace GLSense.Utilities
             }
         }
 
+        // Excel occasionally rejects an incoming COM call with COMException 0x800AC472
+        // (VBA_E_IGNORE, "the message filter indicated the application is busy") when the
+        // user interacts with Excel's UI (e.g. clicks into the sheet) while these settings
+        // are being toggled - see the RowProcessor hide/unhide-rows hang: a mid-operation
+        // click raced app.ScreenUpdating = true, threw, and left ScreenUpdating stuck false
+        // (Excel stops redrawing => looks hung) because the original code aborted the whole
+        // Disable/EnableExcelSettings sequence on the first property that threw, skipping
+        // the rest. Retrying each property independently absorbs that transient busy state
+        // instead of abandoning the remaining properties.
+        private const int ComPropertyRetryAttempts = 3;
+        private static readonly TimeSpan ComPropertyRetryDelay = TimeSpan.FromMilliseconds(150);
+
+        private static bool TrySetComProperty(Action setProperty, string propertyLabel, string operationLabel)
+        {
+            for (int attempt = 1; attempt <= ComPropertyRetryAttempts; attempt++)
+            {
+                try
+                {
+                    setProperty();
+                    return true;
+                }
+                catch (COMException ex) when (attempt < ComPropertyRetryAttempts)
+                {
+                    LogUtility.LogWarn($"{operationLabel}: COM busy setting {propertyLabel} (attempt {attempt}/{ComPropertyRetryAttempts}): {ex.Message}. Retrying in {ComPropertyRetryDelay.TotalMilliseconds}ms...");
+                    Thread.Sleep(ComPropertyRetryDelay);
+                }
+                catch (Exception ex)
+                {
+                    LogUtility.LogException(ex, $"{operationLabel}: failed to set {propertyLabel} (attempt {attempt}/{ComPropertyRetryAttempts})");
+                    return false;
+                }
+            }
+            return false;
+        }
+
         public static void DisableExcelSettings()
         {
             using (new LogUtility.LogScope("DisableExcelSettings"))
             {
-                try
+                LogUtility.LogDebug("Disabling Excel settings for batch operation");
+                var app = AppState.Instance.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
+
+                LogUtility.LogDebug("Setting ScreenUpdating = false");
+                bool screenUpdatingOk = TrySetComProperty(() => app.ScreenUpdating = false, "ScreenUpdating=false", "DisableExcelSettings");
+
+                LogUtility.LogDebug("Setting DisplayAlerts = false");
+                bool displayAlertsOk = TrySetComProperty(() => app.DisplayAlerts = false, "DisplayAlerts=false", "DisableExcelSettings");
+
+                LogUtility.LogDebug("Setting EnableEvents = false");
+                bool enableEventsOk = TrySetComProperty(() => app.EnableEvents = false, "EnableEvents=false", "DisableExcelSettings");
+
+                if (screenUpdatingOk && displayAlertsOk && enableEventsOk)
                 {
-                    LogUtility.LogDebug("Disabling Excel settings for batch operation");
-                    var app = AppState.Instance.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
-                    
-                    LogUtility.LogDebug("Setting ScreenUpdating = false");
-                    app.ScreenUpdating = false;
-                    
-                    LogUtility.LogDebug("Setting DisplayAlerts = false");
-                    app.DisplayAlerts = false;
-                    
-                    LogUtility.LogDebug("Setting EnableEvents = false");
-                    app.EnableEvents = false;
-                                        
                     LogUtility.LogDebug("Excel settings disabled successfully");
+                    return;
                 }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to disable Excel settings");
-                    throw;
-                }
+
+                // Don't leave a partially-disabled state (e.g. ScreenUpdating stuck false)
+                // hanging with nothing to restore it - roll back whatever did succeed.
+                LogUtility.LogWarn("DisableExcelSettings: one or more properties failed - rolling back any that succeeded");
+                if (screenUpdatingOk) TrySetComProperty(() => app.ScreenUpdating = true, "ScreenUpdating=true (rollback)", "DisableExcelSettings");
+                if (displayAlertsOk) TrySetComProperty(() => app.DisplayAlerts = true, "DisplayAlerts=true (rollback)", "DisableExcelSettings");
+                if (enableEventsOk) TrySetComProperty(() => app.EnableEvents = true, "EnableEvents=true (rollback)", "DisableExcelSettings");
+
+                throw new InvalidOperationException("Failed to fully disable Excel settings after retries; rolled back partial changes.");
             }
         }
 
@@ -116,28 +157,22 @@ namespace GLSense.Utilities
         {
             using (new LogUtility.LogScope("EnableExcelSettings"))
             {
-                try
-                {
-                    LogUtility.LogDebug("Re-enabling Excel settings");
-                    var app = AppState.Instance.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
-                    
-                    LogUtility.LogDebug("Setting ScreenUpdating = true");
-                    app.ScreenUpdating = true;
-                    
-                    LogUtility.LogDebug("Setting DisplayAlerts = true");
-                    app.DisplayAlerts = true;
-                    
-                    LogUtility.LogDebug("Setting EnableEvents = true");
-                    app.EnableEvents = true;
-                    
-                    
-                    LogUtility.LogDebug("Excel settings enabled successfully");
-                }
-                catch (Exception ex)
-                {
-                    LogUtility.LogException(ex, "Failed to enable Excel settings");
-                    throw;
-                }
+                LogUtility.LogDebug("Re-enabling Excel settings");
+                var app = AppState.Instance.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
+
+                LogUtility.LogDebug("Setting ScreenUpdating = true");
+                bool screenUpdatingOk = TrySetComProperty(() => app.ScreenUpdating = true, "ScreenUpdating=true", "EnableExcelSettings");
+
+                LogUtility.LogDebug("Setting DisplayAlerts = true");
+                bool displayAlertsOk = TrySetComProperty(() => app.DisplayAlerts = true, "DisplayAlerts=true", "EnableExcelSettings");
+
+                LogUtility.LogDebug("Setting EnableEvents = true");
+                bool enableEventsOk = TrySetComProperty(() => app.EnableEvents = true, "EnableEvents=true", "EnableExcelSettings");
+
+                if (!(screenUpdatingOk && displayAlertsOk && enableEventsOk))
+                    throw new InvalidOperationException("Failed to fully restore Excel settings after retries.");
+
+                LogUtility.LogDebug("Excel settings enabled successfully");
             }
         }
 

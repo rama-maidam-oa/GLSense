@@ -52,11 +52,6 @@ namespace GLSense.Addin.Core.Views
             InitializeComponent();
             ServiceLocator.Logger?.LogDebug("GLJobsMonitor constructor invoked");
 
-            // "Name" (index 1, previously the highest-weighted 3* column) fills any left-over
-            // width instead of leaving a blank gap now that every column is Width="Auto" (see
-            // DataGridColumnFillHelper for why the star-width columns were removed).
-            DataGridColumnFillHelper.EnableFillColumn(dgJobs, dgJobs.Columns[1]);
-
             vm = new GLSubmittedJobsViewModel
             {
                 ExcelApp = ServiceLocator.ExcelApp,
@@ -99,13 +94,6 @@ namespace GLSense.Addin.Core.Views
             {
                 await vm.LoadJobsAsync();
                 ServiceLocator.Logger?.LogDebug("GLJobsMonitor.Window_Loaded: jobs loaded successfully");
-
-                // BaseWindow.OnLoaded's SizeToContent resettle already ran (synchronously)
-                // before this async chain populated dgJobs - so it measured an empty grid.
-                // Resettle again now that real rows are in place. See CLAUDE.md section
-                // 1.4b (GLCubeDetails) for the full history of this pattern.
-                ForceSizeToContentResettle();
-                PumpDispatcherFrame();
             }
             catch (Exception ex)
             {

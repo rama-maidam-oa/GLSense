@@ -55,6 +55,7 @@
       <Link>Properties\GLSenseSharedVersion.cs</Link>
     </Compile>
     <Compile Include="RemoteLoader.cs" />
+    <Compile Include="ResolvedRelease.cs" />
     <Compile Include="UpdateBootstrapper.cs" />
   </ItemGroup>
   <ItemGroup>

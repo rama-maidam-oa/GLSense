@@ -8,8 +8,9 @@
 //   - AppState.Instance.ExcelApp / IsLoginCompleted -> ServiceLocator.ExcelApp / this
 //     project's own AppState.Instance.IsLoginCompleted.
 //   - LogUtility.* (static) -> ServiceLocator.Logger.* (instance via context).
-//   - GLWaitWindow now derives from BaseWindow (WPF-UI FluentWindow) rather than the
-//     old DpiAwareWindow, and sets its Excel owner automatically via
+//   - GLWaitWindow now derives from BaseWindow (a plain System.Windows.Window, not
+//     WPF-UI's FluentWindow - that base class was removed from this project) rather than
+//     the old DpiAwareWindow, and sets its Excel owner automatically via
 //     ServiceLocator.ExcelHandle/ModalToExcel - no explicit ShowWithOwner() call needed.
 //   - System.Windows.Forms.MessageBoxIcon/MessageBoxButtons -> System.Windows
 //     MessageBoxImage/MessageBoxButton (this project has no WinForms reference; the

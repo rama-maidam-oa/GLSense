@@ -1,4 +1,5 @@
-﻿using GLSense.Helpers;
+﻿using GLSense.Common;
+using GLSense.Helpers;
 using GLSense.Models;
 using GLSense.Repositories;
 using GLSense.Service;
@@ -145,6 +146,11 @@ namespace GLSense.Drilldowns
                     LogUtility.LogWarn("Unable to set progress window");
                     return;
                 }
+
+                string title = Enum.TryParse<DrilldownType>(_DDType, out var ddEnum)
+                    ? DrilldownMetadata.GetDisplay(ddEnum)
+                    : _DDType;
+                _ = Win.Dispatcher.InvokeAsync(() => Win.SetProcessTitle(title));
 
                 await ValidateAndFixFormulasAsync(Win);
 
@@ -403,6 +409,7 @@ namespace GLSense.Drilldowns
 
             _ = Win.Dispatcher.InvokeAsync(() => Win.SetProcessMessage("Sending request to server..."));
             LogUtility.LogDebug($"DrilldownBl.FetchDrilldownDataAsync: sending request to {apiUrl}");
+
             var response = await ApiHelper.ServerAPI(apiUrl, "JSON", httpPostBody, "POST", Token);
 
             Token.ThrowIfCancellationRequested();

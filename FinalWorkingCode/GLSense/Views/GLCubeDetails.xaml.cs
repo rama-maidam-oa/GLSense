@@ -146,6 +146,15 @@ namespace GLSense.Views
 
                     try
                     {
+                        // LoadUserPreferencesForCube is a real API call with no busy
+                        // overlay of its own - previously nothing showed at all until
+                        // LoadCubeData's own ShowBusyOverlayAsync ran, leaving the window
+                        // blank with no loading indicator for however long the API call
+                        // took. Shown here and left up (LoadCubeData's own call just
+                        // updates the message while already visible) so there's no
+                        // hide-then-reshow flicker between the two phases - LoadCubeData's
+                        // own finally still hides it once at the true end.
+                        await ShowBusyOverlayAsync(cts, "Loading user preferences...");
                         await LoadUserPreferencesForCube(cube.CubeId, cts.GetToken());
                         UpdateValidationControls(cube);
 
@@ -162,6 +171,13 @@ namespace GLSense.Views
                     }
                     finally
                     {
+                        // Safety net: if LoadUserPreferencesForCube threw (e.g.
+                        // cancellation) before LoadCubeData ever ran, its own
+                        // hide-in-finally never executed, leaving the overlay shown from
+                        // ShowBusyOverlayAsync above stuck up. Harmless no-op if
+                        // LoadCubeData already hid it.
+                        await AppOverlayControl.HideBusyAsync();
+
                         if (_activeCancellation == cts)
                         {
                             _activeCancellation = null;
@@ -221,6 +237,10 @@ namespace GLSense.Views
             try
             {
                 _currentCube = selected;
+                // See the matching comment in Window_Loaded - shown here and left up so
+                // LoadCubeData's own overlay call just updates the message with no
+                // hide-then-reshow flicker between the two phases.
+                await ShowBusyOverlayAsync(cts, "Loading user preferences...");
                 await LoadUserPreferencesForCube(selected.CubeId, cts.GetToken());
                 UpdateValidationControls(selected);
 
@@ -237,6 +257,11 @@ namespace GLSense.Views
             }
             finally
             {
+                // Safety net: see the matching comment in Window_Loaded - hides the
+                // overlay if LoadUserPreferencesForCube threw before LoadCubeData's own
+                // hide-in-finally ever ran. Harmless no-op if it already hid it.
+                await AppOverlayControl.HideBusyAsync();
+
                 if (_activeCancellation == cts)
                 {
                     _activeCancellation = null;
@@ -304,7 +329,13 @@ namespace GLSense.Views
 
         private async Task UpdateGridAsync(List<LedgerModel> data, bool hasWarnings = false)
         {
-            await Dispatcher.InvokeAsync(async () =>
+            // Dispatcher.InvokeAsync(async () => ...) doesn't wait for the inner Task - the
+            // DispatcherOperation completes as soon as the delegate hits its first await, which
+            // let the caller's finally { HideBusyAsync() } hide the busy overlay before
+            // DgGridUpdate actually finished. Route through a named async local function + a
+            // non-async delegate so Task.Unwrap() can await the real completion (see
+            // GLWaitWindow.ShowConfirmToastAsync for the same pattern).
+            async Task UpdateGridCore()
             {
                 dgCubes.ItemsSource = data;
 
@@ -321,8 +352,9 @@ namespace GLSense.Views
                 dgCubes.Items.Refresh();
 
                 await DgGridUpdate(data);
+            }
 
-            }, DispatcherPriority.Normal);
+            await Dispatcher.InvokeAsync(UpdateGridCore, DispatcherPriority.Normal).Task.Unwrap();
         }
         private bool changeSelection()
         {
@@ -636,6 +668,13 @@ namespace GLSense.Views
 
         private async void BtnValidateCube_Click(object sender, RoutedEventArgs e)
         {
+            // Same-button re-entry guard - see GLJobsMonitor.xaml.cs. Left as a guard on
+            // this button only (not a shared flag with BtnOK_Click) so BtnOK_Click can
+            // still deliberately cancel an in-flight validation via _activeCancellation,
+            // which is existing, intended cross-button behavior.
+            if (!btnValidateCube.IsEnabled)
+                return;
+
             LogUtility.LogDebug($"GLCubeDetails.BtnValidateCube_Click invoked - cube={_currentCube?.CubeName}, viewBased={_currentCube?.ViewBased}");
             if (_currentCube == null || _currentCube.ViewBased)
             {
@@ -649,6 +688,7 @@ namespace GLSense.Views
             using var cts = new CancellationHelper();
             _activeCancellation = cts;
 
+            btnValidateCube.IsEnabled = false;
             try
             {
 
@@ -678,6 +718,7 @@ namespace GLSense.Views
                 {
                     _activeCancellation = null;
                 }
+                btnValidateCube.IsEnabled = true;
             }
         }
 
@@ -694,6 +735,13 @@ namespace GLSense.Views
         }
         private async void BtnOK_Click(object sender, RoutedEventArgs e)
         {
+            // Same-button re-entry guard - see GLJobsMonitor.xaml.cs and
+            // BtnValidateCube_Click above. Left as a guard on this button only so it can
+            // still deliberately cancel an in-flight validation via _activeCancellation,
+            // which is existing, intended cross-button behavior.
+            if (!btnOK.IsEnabled)
+                return;
+
             LogUtility.LogDebug($"GLCubeDetails.BtnOK_Click invoked - cube={_currentCube?.CubeName}");
             if (_currentCube == null)
             {
@@ -710,6 +758,7 @@ namespace GLSense.Views
             var token = cts.GetToken();
             OperationResult result = new();
 
+            btnOK.IsEnabled = false;
             try
             {
                 _selectedLedger = GetSelectedLedger();
@@ -804,6 +853,7 @@ namespace GLSense.Views
             finally
             {
                 await AppOverlayControl.HideBusyAsync();
+                btnOK.IsEnabled = true;
 
                 if (!string.IsNullOrWhiteSpace(AppState.Instance.SelectedCube?.UserName))
                 {
