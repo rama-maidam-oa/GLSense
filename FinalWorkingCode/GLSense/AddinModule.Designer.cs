@@ -1292,7 +1292,8 @@ namespace GLSense
             this.adxExcelAppEvents1.WorkbookActivate += new AddinExpress.MSO.ADXHostActiveObject_EventHandler(this.adxExcelAppEvents1_WorkbookActivate);
             this.adxExcelAppEvents1.WorkbookBeforeSave += new AddinExpress.MSO.ADXHostBeforeSave_EventHandler(this.adxExcelAppEvents1_WorkbookBeforeSave);
             this.adxExcelAppEvents1.SheetFollowHyperlink += new AddinExpress.MSO.ADXExcelHyperlink_EventHandler(this.adxExcelAppEvents1_SheetFollowHyperlink);
-            // 
+            this.adxExcelAppEvents1.WindowResize += new AddinExpress.MSO.ADXHostWindow_EventHandler(this.adxExcelAppEvents1_WindowResize);
+            //
             // adxExcelTaskPanesManager1
             // 
             this.adxExcelTaskPanesManager1.Items.Add(this.adxExcelTaskPanesCollectionItem1);
