@@ -31,16 +31,16 @@
                  buttons via the two BasedOn overrides, which keep InsertButtonStyle/
                  CloseButtonStyle's Content/ToolTip and only shrink the sizing. -->
             <Style x:Key="CompactActionButton" TargetType="Button" BasedOn="{StaticResource DynamicContentButton}">
-                <Setter Property="MinHeight" Value="26"/>
-                <Setter Property="Padding" Value="12,4"/>
+                <Setter Property="MinHeight" Value="24"/>
+                <Setter Property="Padding" Value="10,3"/>
             </Style>
             <Style x:Key="CompactInsertButtonStyle" TargetType="Button" BasedOn="{StaticResource InsertButtonStyle}">
-                <Setter Property="MinHeight" Value="26"/>
-                <Setter Property="Padding" Value="12,4"/>
+                <Setter Property="MinHeight" Value="24"/>
+                <Setter Property="Padding" Value="10,3"/>
             </Style>
             <Style x:Key="CompactCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CloseButtonStyle}">
-                <Setter Property="MinHeight" Value="26"/>
-                <Setter Property="Padding" Value="12,4"/>
+                <Setter Property="MinHeight" Value="24"/>
+                <Setter Property="Padding" Value="10,3"/>
             </Style>
 
             <!-- Professional Label Style for config rows -->
@@ -79,7 +79,7 @@
                                               HorizontalAlignment="Stretch"
                                               HorizontalContentAlignment="Left"
                                               Cursor="Hand"
-                                              Padding="12,10">
+                                              Padding="12,6">
                                     <Grid HorizontalAlignment="Stretch">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
@@ -167,14 +167,14 @@
                           Background="White"
                           BorderThickness="0"
                           HorizontalAlignment="Stretch"
-                          Margin="0,0,0,8">
+                          Margin="0,0,0,4">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
                             <iconPacks:PackIconFontAwesome Kind="BookmarkSolid" Width="14" Height="14" Foreground="#2E86AB" VerticalAlignment="Center" Margin="0,0,6,0"/>
                             <TextBlock Text="{Binding SavedConfigurationsHeaderText}" Style="{StaticResource SectionHeaderStyle1}" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Expander.Header>
-                    <Grid Margin="12,8,12,8">
+                    <Grid Margin="8,4,8,4">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>

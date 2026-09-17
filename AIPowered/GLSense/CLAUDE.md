@@ -5665,6 +5665,63 @@ rebuild and visually confirm. User will retest after rebuild.
 
 ---
 
+## 59. GLBalanceConfigurator: Insert/Close/Delete reachability - tried removing the outer ScrollViewer, reverted (width regression), fixed via compacting Saved Configurations instead
+
+User caught this from a screenshot after the section 58 width-increase test: with the
+"Saved Configurations" row expanded, the Delete/Update/Close buttons moved inside the
+scrollable region instead of staying reachable.
+
+**First attempt (implemented, then reverted)**: removed the outer `MainScrollViewer`
+wrapper entirely (it wrapped the whole control - Header, Saved Configurations, the field
+list, Options, Action Buttons, Balance Parameters - as one scrollable region, even though
+the field list already had its own internal `ScrollViewer`), relocating its `x:Name` onto
+that internal field-list `ScrollViewer` instead - the same shape as the already-proven
+`GLSegmentValues` fix (section 9.2). This was real progress on the ORIGINAL problem, but
+**introduced a new regression**: a follow-up screenshot showed every row's right-side
+icon buttons (the grid/eraser pair next to each combo) rendered trimmed/cut off - and
+critically, this happened even with Saved Configurations still collapsed, proving it was
+a side effect of the ScrollViewer removal itself, not anything specific to that row.
+Most likely cause (not independently confirmed - no Windows/MSBuild toolchain here to
+test): the removed `ScrollViewer` measured its child at infinite width while `Horizontal
+ScrollBarVisibility="Disabled"` kept it from actually scrolling that direction - taking
+it away changed how the row Grids' `SharedSizeGroup`-based label column (and everything
+to its right) gets measured/negotiated, squeezing the icon-button columns.
+
+**Reverted** via `git revert` of that entire change (both codebases) rather than
+hand-patching it back, to guarantee an exact return to the last known-good state.
+
+**Actual fix - compact the Saved Configurations expander instead of restructuring the
+scroll hierarchy** (identical in both `AIPowered\GLSense\GLSense.Addin.Core\Views\
+GLBalanceConfigurator.xaml` and `FinalWorkingCode\GLSense\Views\GLBalanceConfigurator.xaml`):
+reduced how much vertical space opening that expander adds, so it pushes the rest of the
+content down less, leaving Insert/Close/Delete reachable without scrolling more often (not
+an absolute guarantee on an unusually short/non-maximized Excel window - this pane's height
+is entirely dictated by Excel's own window, there's no independent fallback scroll for the
+fixed content anymore, same accepted trade-off section 9.2 already made elsewhere in this
+app):
+
+| Setting | Old | New |
+|---|---|---|
+| `BlueCircleExpanderStyle`'s header `ToggleButton.Padding` (shared by both expanders in this dialog) | `12,10` | `12,6` |
+| `SavedConfigurationsExpander.Margin` (outer, bottom) | `0,0,0,8` | `0,0,0,4` |
+| Its content `Grid.Margin` | `12,8,12,8` | `8,4,8,4` |
+| `CompactActionButton`/`CompactInsertButtonStyle`/`CompactCloseButtonStyle`'s `MinHeight` | 26 | 24 |
+| Those same 3 styles' `Padding` | `12,4` | `10,3` |
+
+The `ToggleButton.Padding` change is in the shared `BlueCircleExpanderStyle` template, so
+it also slightly compacts the "Balance Parameters" expander's own header - a deliberate,
+harmless side effect (same visual treatment, not something that needed its own separate
+change).
+
+**Status**: implemented in both codebases, AIPowered/FinalWorkingCode `11.1.2` only.
+Verified via XML well-formedness on both edited `.xaml` files - no Windows/MSBuild
+toolchain in this environment to actually rebuild and confirm. User will retest after
+rebuild; if reachability is still a problem on their actual test window size, the next
+step would be measuring the real numbers needed rather than guessing at further
+compaction amounts.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

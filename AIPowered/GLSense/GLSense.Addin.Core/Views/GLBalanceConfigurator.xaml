@@ -37,16 +37,16 @@
                  but shorter, matching this dialog's compact field rows. Ported from
                  FinalWorkingCode's identical local styles. -->
             <Style x:Key="CompactActionButton" TargetType="Button" BasedOn="{StaticResource DynamicContentButton}">
-                <Setter Property="MinHeight" Value="26"/>
-                <Setter Property="Padding" Value="12,4"/>
+                <Setter Property="MinHeight" Value="24"/>
+                <Setter Property="Padding" Value="10,3"/>
             </Style>
             <Style x:Key="CompactInsertButtonStyle" TargetType="Button" BasedOn="{StaticResource InsertButtonStyle}">
-                <Setter Property="MinHeight" Value="26"/>
-                <Setter Property="Padding" Value="12,4"/>
+                <Setter Property="MinHeight" Value="24"/>
+                <Setter Property="Padding" Value="10,3"/>
             </Style>
             <Style x:Key="CompactCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CloseButtonStyle}">
-                <Setter Property="MinHeight" Value="26"/>
-                <Setter Property="Padding" Value="12,4"/>
+                <Setter Property="MinHeight" Value="24"/>
+                <Setter Property="Padding" Value="10,3"/>
             </Style>
 
             <!-- Balance-Configurator-local styles. These are not shared/registered in the
@@ -116,7 +116,7 @@
                                               HorizontalAlignment="Stretch"
                                               HorizontalContentAlignment="Left"
                                               Cursor="Hand"
-                                              Padding="12,10">
+                                              Padding="12,6">
                                     <Grid HorizontalAlignment="Stretch">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
@@ -204,7 +204,7 @@
                           Background="White"
                           BorderThickness="0"
                           HorizontalAlignment="Stretch"
-                          Margin="0,0,0,8">
+                          Margin="0,0,0,4">
                     <Expander.Header>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
                             <iconPacks:PackIconFontAwesome Kind="BookmarkSolid" Width="14" Height="14" Foreground="#2E86AB" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -216,7 +216,7 @@
                             <TextBlock Text="Save the current field selections below as a named configuration, so you can reload the same setup again later without re-entering every field." TextWrapping="Wrap" MaxWidth="260"/>
                         </ToolTip>
                     </Expander.ToolTip>
-                    <Grid Margin="12,8,12,8">
+                    <Grid Margin="8,4,8,4">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
