@@ -52,57 +52,72 @@ namespace GLSense.Drilldowns
             if (!CommonMethods.TryDisableExcelSettings("DrilldownSl.ProcessSLDrilldown"))
                 return;
 
-            if (!IsValidSingleColumnSelection(SlRange))
-                return;
-
-            if (!HasAnyValue(SlRange))
-                return;
-
-            if (!IsInRange(SlRange))
-                return;
-
-            int headerIndex = TryGetColumnHeaderIndex(SlWorksheet);
-            if (headerIndex == -1)
-            {
-                await ShowHeaderNotFoundAsync();
-                return;
-            }
-
-            _ctsHelper = new CancellationHelper();
-
-            Win = CreateAndShowProgressWindow(_ctsHelper);
-
+            // Everything below this point runs with Excel settings disabled - every
+            // early return (validation failures, header-not-found) as well as the
+            // actual drilldown work must go through this single outer try/finally so
+            // TryEnableExcelSettings always runs exactly once. Previously the
+            // validation checks below returned directly, outside of any try/finally,
+            // leaving ScreenUpdating/EnableEvents/DisplayAlerts disabled forever
+            // (Excel looks hung) whenever e.g. HasAnyValue's "Current selection is
+            // empty!" message box was the reason for bailing out - matches DD_BL.cs's/
+            // DD_JL.cs's already-correct pattern of a single all-encompassing try/finally.
             try
             {
-                await InitializeProgressWindowAsync(DrilldownMetadata.GetDisplay(DrilldownType.SL), "Processing request...");
-
-                if (!await TryRunDrilldownAsync(SlWorksheet, SlRange, headerIndex))
+                if (!IsValidSingleColumnSelection(SlRange))
                     return;
-            }
-            catch (OperationCanceledException)
-            {
-                await ShowCancelledAsync();
-                LogUtility.LogWarn("Subledger drilldown operation cancelled by user.");
-            }
-            catch (Exception ex)
-            {
-                await HandleUnexpectedErrorAsync(ex);
-            }
-            finally
-            {
+
+                if (!HasAnyValue(SlRange))
+                    return;
+
+                if (!IsInRange(SlRange))
+                    return;
+
+                int headerIndex = TryGetColumnHeaderIndex(SlWorksheet);
+                if (headerIndex == -1)
+                {
+                    await ShowHeaderNotFoundAsync();
+                    return;
+                }
+
+                _ctsHelper = new CancellationHelper();
+
+                Win = CreateAndShowProgressWindow(_ctsHelper);
+
                 try
                 {
-                    if (!_ctsHelper.IsCancellationRequested)
-                        _ctsHelper.Cancel();
+                    await InitializeProgressWindowAsync(DrilldownMetadata.GetDisplay(DrilldownType.SL), "Processing request...");
 
-                    _ctsHelper.Dispose();  // safe
+                    if (!await TryRunDrilldownAsync(SlWorksheet, SlRange, headerIndex))
+                        return;
+                }
+                catch (OperationCanceledException)
+                {
+                    await ShowCancelledAsync();
+                    LogUtility.LogWarn("Subledger drilldown operation cancelled by user.");
                 }
                 catch (Exception ex)
                 {
-                    // Swallow dispose exceptions (Excel COM weirdness) but still log for diagnostics.
-                    LogUtility.LogWarn($"DrilldownSl.ProcessSLDrilldown: exception disposing CancellationHelper (ignored): {ex.Message}");
+                    await HandleUnexpectedErrorAsync(ex);
                 }
-                await SafelyCloseWindowAsync();
+                finally
+                {
+                    try
+                    {
+                        if (!_ctsHelper.IsCancellationRequested)
+                            _ctsHelper.Cancel();
+
+                        _ctsHelper.Dispose();  // safe
+                    }
+                    catch (Exception ex)
+                    {
+                        // Swallow dispose exceptions (Excel COM weirdness) but still log for diagnostics.
+                        LogUtility.LogWarn($"DrilldownSl.ProcessSLDrilldown: exception disposing CancellationHelper (ignored): {ex.Message}");
+                    }
+                    await SafelyCloseWindowAsync();
+                }
+            }
+            finally
+            {
                 CommonMethods.TryEnableExcelSettings("DrilldownSl.ProcessSLDrilldown");
             }
         }
