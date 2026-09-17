@@ -777,3 +777,36 @@ there.**
   cleanly onto `11.1.0`, same feature/bug present there too; needs the identical port to
   AIPowered's `GLSense.Addin.Core\Views\GLSegmentValues.xaml(.cs)`/
   `GLRollerGroups.xaml(.cs)` on `11.1.2`).**
+
+## `Drilldowns\DD_SL.cs`
+
+- **Excel hangs/becomes unresponsive after "Current selection is empty!" on a Subledger
+  drilldown**: reported as - performing a Subledger drilldown from the Journal Drilldown
+  sheet (double-clicking an `Accounted_Credit_Amount` cell with no balance) shows "Current
+  selection is empty!", and after clicking OK, Excel becomes unresponsive/hangs.
+  Root cause: `DrilldownSl.ProcessSLDrilldown()` called `CommonMethods.TryDisableExcelSettings(...)`
+  (sets `ScreenUpdating`/`DisplayAlerts`/`EnableEvents` all to `false`), then ran
+  `IsValidSingleColumnSelection`/`HasAnyValue`/`IsInRange`/the header-index lookup as a flat
+  sequence of early `return`s **outside of any try/finally** - only the later,
+  actual-drilldown phase (after all of those checks pass) was wrapped in a try/finally that
+  calls `CommonMethods.TryEnableExcelSettings(...)`. `HasAnyValue(SlRange)` returning `false`
+  for an empty cell shows the "Current selection is empty!" message box and then hits
+  exactly one of these unguarded early returns - leaving Excel with `ScreenUpdating=false`/
+  `EnableEvents=false` permanently, with nothing left in the call chain to ever restore
+  them. Not a genuine deadlock: Excel simply stops redrawing (`ScreenUpdating=false`) and
+  stops responding to further events (`EnableEvents=false`), indistinguishable from a hang
+  to the user. Confirmed via direct comparison against `DD_BL.cs`'s `ProcessBLDrilldown`/
+  `DD_JL.cs`'s `ProcessJLDrilldown` in this same project, both of which already wrap their
+  entire body (including every validation early-return) in one outer try/finally with a
+  single `TryEnableExcelSettings` call - `DD_SL.cs` was the one file that deviated from
+  that already-established, correct pattern.
+  Fixed by wrapping everything from right after the successful `TryDisableExcelSettings()`
+  call through the end of the method in one outer try/finally, moving the single
+  `TryEnableExcelSettings(...)` call into that outer `finally` (removed from the old inner
+  finally, which still handles `_ctsHelper` disposal/`SafelyCloseWindowAsync()` exactly as
+  before). No business logic changed - purely a control-flow fix, matching `DD_BL.cs`/
+  `DD_JL.cs`'s existing pattern.
+  **Status: fixed on `11.1.1` first (build-verified there), ported identically onto
+  `11.1.0` here (and onto `11.1.2`/`main` - see this same file on those branches). Also
+  fixed in AIPowered's `GLSense.Addin.Core\Drilldowns\DD_SL.cs` - see that project's
+  `CLAUDE.md` section 47.**
