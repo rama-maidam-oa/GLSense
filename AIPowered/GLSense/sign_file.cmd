@@ -68,6 +68,30 @@ if "%TARGET_FILE%"=="" (
     exit /b 1
 )
 
+REM ===== Dev-machine opt-out: GLSENSE_SKIP_SIGNING =====
+REM Each real Authenticode signing operation below counts against a metered
+REM DigiCert Keylocker quota. Any project whose source actually changes in a
+REM Release build gets a freshly compiled, as-yet-unsigned DLL every time -
+REM this isn't specific to "Rebuild All", an ordinary incremental Build of a
+REM changed project hits it just the same - and GLSense.Addin.Core in
+REM particular is the project this codebase's whole hot-reload dev loop is
+REM built around iterating on constantly, so routine local dev/testing in
+REM Release config can burn through that quota fast with no real benefit
+REM (nobody is installing a throwaway local dev build). Set this environment
+REM variable to any non-empty value in your own Windows user/session
+REM environment (e.g. `setx GLSENSE_SKIP_SIGNING 1`, then restart Visual
+REM Studio so it picks up the new environment) to skip every signing
+REM operation entirely, regardless of Release/Debug or FORCE, until you
+REM unset it again. This takes priority over everything below - deliberately
+REM stronger than FORCE, since the whole point is to fully stop burning
+REM quota, not just skip the "already validly signed" optimization. Nothing
+REM changes for anyone who never sets this - a CI/build-server machine that
+REM never defines it keeps signing exactly as before.
+if not "%GLSENSE_SKIP_SIGNING%"=="" (
+    echo [sign_file] GLSENSE_SKIP_SIGNING is set - skipping signing entirely for "%TARGET_FILE%".
+    exit /b 0
+)
+
 if /I not "%BUILD_CONFIG%"=="Release" (
     echo [sign_file] DEBUG mode - no signing needed for "%TARGET_FILE%".
     exit /b 0

@@ -5408,6 +5408,62 @@ by the user.
 
 ---
 
+## 55. `sign_file.cmd`: `GLSENSE_SKIP_SIGNING` dev-machine opt-out - every real Release build/rebuild burns a metered DigiCert signing operation
+
+User rebuilt the whole solution in Release right after section 53/54 landed, specifically
+to confirm the host DLL signing removal took effect (it did - `GLSense.dll`/
+`adxloader.GLSense.dll`/`adxloader64.GLSense.dll` showed zero `[sign_file]` lines). But the
+same rebuild log showed `GLSense.Contracts.dll`/`GLSense.Shared.dll`/
+`GLSense.Loader.Core.dll`/`GLSense.Addin.Core.dll`/both `e_sqlite3.dll` copies all getting
+freshly (re-)signed, and the user raised a real, urgent concern: DigiCert Keylocker
+signing operations are metered/purchased in bulk, and routine local dev/testing in Release
+config was about to burn through that quota fast, requiring a repurchase.
+
+**Root cause of why this isn't just a Rebuild-All quirk**: `sign_file.cmd`'s skip-if-
+already-signed check (section 41) only has something to skip when the exact same
+already-signed file is still sitting in `bin\Release\` from a prior build. A freshly
+compiled DLL - whether from `Rebuild All` (which clears `bin\` first) or an ordinary
+incremental `Build` of a project whose source actually changed - has no signature at all
+yet, so `sign_file.cmd` correctly (and unavoidably, given the current design) signs it
+every time. `GLSense.Addin.Core` in particular is the project this codebase's entire
+hot-reload dev loop is built around iterating on constantly (see PORTING_GUIDE.md/section
+1's whole saga) - so it was going to hit this on nearly every dev cycle, not just on an
+occasional full Rebuild.
+
+**Deliberately NOT the same fix as section 53** (moving these 4 projects' signing into
+the not-yet-built installer project) - that's a bigger architectural call already
+explicitly parked as unresolved. This is a narrower, immediately-actionable, fully
+reversible escape hatch instead: `sign_file.cmd` now checks a new environment variable,
+`GLSENSE_SKIP_SIGNING`, before anything else (even before the Debug/Release check and
+even before `FORCE`) - if it's set to any non-empty value, every call skips signing
+entirely and prints `"GLSENSE_SKIP_SIGNING is set - skipping signing entirely for ..."`,
+for every one of this solution's callers (`GLSense.Contracts`/`GLSense.Shared`/
+`GLSense.Loader.Core`/`GLSense.Addin.Core`'s DLL and both `e_sqlite3.dll` copies/
+`GLSense` host - though the host's 3 files no longer call `sign_file.cmd` at all per
+section 53).
+
+**How to use it**: set `GLSENSE_SKIP_SIGNING=1` (any non-empty value works) as a normal
+Windows user/session environment variable on your own dev machine - e.g. `setx
+GLSENSE_SKIP_SIGNING 1`, then **restart Visual Studio** so its process picks up the new
+environment (a running `devenv.exe` won't see an env var set after it launched). Rebuild
+as much as you want with zero signing operations burned. Unset it (`setx
+GLSENSE_SKIP_SIGNING ""` then restart VS again, or delete the user env var via System
+Properties) whenever you need a genuinely signed local build again - e.g. to test the
+actual Add-in Express loader-trust behavior, or before handing a build to someone else.
+
+**Nothing changes for anyone who never sets this** - a CI/build-server machine, or any
+other dev machine that's never defined this variable, keeps signing exactly as before,
+every time, with no code-path difference. This is purely an opt-in, per-machine
+convenience switch, not a change to default behavior.
+
+**Status**: implemented, AIPowered `11.1.2` only (shared build script, no application
+code touched). Not independently re-verified against a real `setx`+VS-restart+rebuild
+cycle in this pass - the early-exit logic itself is a simple, direct `if not
+"%VAR%"=="" (...)` check, standard batch-file behavior, not something that needed a live
+test to have confidence in.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
