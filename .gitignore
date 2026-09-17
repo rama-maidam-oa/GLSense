@@ -37,6 +37,10 @@
 /AIPowered/bkpup1/
 /AIPowered/bkpup2/
 
-# Built installer output (.msi) is a build artifact, not source - the .vdproj it's
-# built from stays tracked.
-**/GLSenseSetup/**/*.msi
+# Built installer output is a build artifact, not source - the .vdproj it's built
+# from stays tracked. VS Setup (.vdproj) projects build into Debug/Release folders
+# directly under the project folder (not bin/obj), and this repo has had more than
+# one such project (GLSenseSetup, OrbitGLSenseSetups) - match any "*Setup*"-named
+# folder so a future rename/recreation doesn't need this list updated again.
+**/*Setup*/Debug/
+**/*Setup*/Release/
