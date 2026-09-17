@@ -291,20 +291,22 @@ namespace GLSense.Addin.Core.Drilldowns
             if (key == null)
                 return string.Empty;
 
-            if (key.Equals("ptd_net", StringComparison.OrdinalIgnoreCase))
+            // Normalize spaces to underscores so "PTD NET" matches the same as "PTD_NET".
+            string normalizedKey = key.Replace(' ', '_');
+
+            if (normalizedKey.Equals("PTD_NET", StringComparison.OrdinalIgnoreCase))
                 return "PTD";
 
-            if (key.Equals("ytd_net", StringComparison.OrdinalIgnoreCase))
+            if (normalizedKey.Equals("YTD_NET", StringComparison.OrdinalIgnoreCase))
                 return "YTD";
 
-            if (key.Equals("quarter_to_date_net", StringComparison.OrdinalIgnoreCase) ||
-                key.Equals("qtd_net", StringComparison.OrdinalIgnoreCase))
+            if (normalizedKey.Equals("QUARTER_TO_DATE_NET", StringComparison.OrdinalIgnoreCase) ||
+                normalizedKey.Equals("QTD_NET", StringComparison.OrdinalIgnoreCase))
                 return "QTD";
 
             var jlTypes = new[] { "ENTERED_DR", "ENTERED_CR", "ENTERED_NET", "ACCOUNTED_DR", "ACCOUNTED_CR", "ACCOUNTED_NET" };
 
-            if (!string.IsNullOrEmpty(key) &&
-                jlTypes.Any(valid => valid.Equals(key, StringComparison.OrdinalIgnoreCase)))
+            if (jlTypes.Any(valid => valid.Equals(normalizedKey, StringComparison.OrdinalIgnoreCase)))
             {
                 return "JED";
             }
