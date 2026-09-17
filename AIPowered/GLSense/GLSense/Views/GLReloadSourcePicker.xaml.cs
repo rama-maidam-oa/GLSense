@@ -56,7 +56,9 @@ namespace GLSense
             else RbOffline.IsChecked = true;
         }
 
-        private async void Mode_Checked(object sender, RoutedEventArgs e)
+        // Not async: switching mode no longer triggers a scan itself (see the Offline
+        // branch below), so there is nothing left in this method to await.
+        private void Mode_Checked(object sender, RoutedEventArgs e)
         {
             if (OnlinePanel == null || OfflinePanel == null) return; // fires during InitializeComponent
 
@@ -72,8 +74,16 @@ namespace GLSense
             }
             else
             {
-                TxtFolder.Text = GetDownloadsFolder();
-                await ScanFolderAsync(TxtFolder.Text);
+                // Deliberately no default folder and no auto-scan here anymore - this
+                // used to default straight to the Downloads folder and immediately
+                // scan it the instant the window opened (Downloads is very often the
+                // largest, most heavily-populated folder on a machine, so this could
+                // visibly delay the window even showing up). Offline mode now starts
+                // empty; scanning only ever happens when the user explicitly clicks
+                // Browse... (which still conveniently defaults ITS OWN starting folder
+                // to Downloads - see BtnBrowse_Click - without scanning anything until
+                // a folder is actually chosen).
+                TxtStatus.Text = "Click \"Browse...\" to select a folder to scan for a manifest.json + zip pair.";
             }
         }
 

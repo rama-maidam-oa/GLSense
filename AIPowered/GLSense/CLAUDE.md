@@ -6688,6 +6688,32 @@ indicate a policy tuning opportunity rather than expected behavior.
 
 ---
 
+## 72. `GLReloadSourcePicker`: removed the auto-scan-Downloads-on-open default
+
+`Mode_Checked`'s Offline branch used to default `TxtFolder.Text` straight to the
+Downloads folder and immediately `await ScanFolderAsync(...)` it - which fires
+unconditionally the instant the window opens (Offline is the default mode whenever
+`_onlineAvailable` is false, i.e. most of the time), regardless of what the user
+actually wants to do. Downloads is very often the largest, most heavily-populated
+folder on a machine, so enumerating it (`Directory.GetFiles(folder, "manifest*.json")`
++ `Directory.GetFiles(folder, "v*.zip")`) right at window construction could visibly
+delay the window even appearing, for a scan the user may not have wanted at all.
+
+**Fix**: `Mode_Checked`'s Offline branch no longer defaults or scans anything - it just
+sets a placeholder prompt ("Click \"Browse...\" to select a folder..."). Scanning only
+ever happens now when the user explicitly clicks **Browse...**, which already had its
+own independent Downloads fallback (`BtnBrowse_Click`'s `dialog.SelectedPath =
+Directory.Exists(TxtFolder.Text) ? TxtFolder.Text : GetDownloadsFolder()`) for the
+folder-picker dialog's own starting point - that convenience is unchanged, it just no
+longer triggers an actual scan until a folder is deliberately chosen. `Mode_Checked`
+no longer needs `async`/`await` at all now that its only asynchronous work was this
+removed auto-scan - changed from `async void` to plain `void` accordingly (would
+otherwise be a CS1998 "lacks await operators" warning).
+
+**Status**: implemented, not yet rebuilt/tested by the user.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
