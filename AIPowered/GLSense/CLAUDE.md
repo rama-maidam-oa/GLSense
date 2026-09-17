@@ -6809,11 +6809,110 @@ by-eye pass in section 67/68 couldn't answer with confidence:
   the file, and that `GLSense.dll`/`GLSenseUninstallCleanup` each appear the expected
   number of times.
 
-**Status**: implemented. Not yet rebuilt/tested by the user - needs a real VS build
-followed by the same `msiexec /a "OrbitGLSense.msi" /qn TARGETDIR=<dir>`
-administrative-extraction check established in section 67, to independently re-confirm
-`GLSense.Addin.Core.dll`/MahApps/SQLite/WebView2 are genuinely absent from the built
-MSI (not just absent from the `.vdproj` source) before trusting this on a real install.
+**Status**: superseded by 73.1 below - the fix above was real but incomplete; a real
+rebuild's `msiexec /a` extraction caught a second, more serious bug in the same pass.
+
+### 73.1 The real bug the fix above introduced: removing Primary Output also silently broke every other Detected Dependency's SourcePath resolution
+
+The user rebuilt in VS immediately after 73's fix and reported "All dependencies are
+vanished" in VS's own File System editor. Before touching anything further, the actual
+`.vdproj` text was re-checked directly (not VS's UI) - all ~20 kept dependencies
+(`GLSense.Contracts`/`Shared`/`Loader.Core`, AddinExpress, Office/Excel/Vbe interop,
+NLog, the `System.Text.Json` chain) were still present with `IsDependency=TRUE` and
+`Exclude=FALSE`. The working theory at that point was that this was purely a VS UI
+quirk (the "Detected Dependencies" tree view needing a live Project Output reference
+to render itself, cosmetic only) - the user was warned not to "reload dependencies"
+via VS (re-adding Primary Output), since that would immediately reintroduce the whole
+section 67/73 leak, and a real rebuild + `msiexec /a` extraction was proposed instead
+to settle it properly rather than trust either assumption.
+
+**The rebuild + extraction proved the "cosmetic UI quirk" theory wrong.** The build
+itself succeeded with no errors, but its own `Packaging file '...'` log lines already
+hinted at the real problem (only 10 files logged, not the ~30 expected) - and the
+`msiexec /a "OrbitGLSense.msi" /qn TARGETDIR=<dir>` extraction confirmed it
+definitively: **every single kept dependency with a bare (folder-less) `SourcePath`
+was silently absent from the actual installed payload** - `GLSense.Contracts.dll`,
+`GLSense.Shared.dll`, `GLSense.Loader.Core.dll`, `AddinExpress.MSO.2005.dll`,
+`Microsoft.Office.Interop.Excel.dll`, `NLog.dll`, the whole `System.Text.Json` chain,
+all of it. No error, no warning - the setup build engine just quietly skipped them.
+This would have shipped a broken add-in (every one of those DLLs is a hard runtime
+dependency of `GLSense.dll` itself).
+
+**Root cause**: a `{9F6F8455-...}` AssemblyEntry-type File entry with `AssemblyIsInGAC
+= FALSE` and a bare filename `SourcePath` (no folder) has no path of its own to
+resolve from - it relies entirely on VS's Setup Project engine using the *live Project
+Output reference* as a resolution anchor (walking the referencing project's own
+resolved-reference list to find where each bare-named dependency actually sits on
+disk) at build time. This is a separate, previously-unknown-to-this-engagement
+mechanism from the "Detected Dependencies" *scanning* trigger fixed in section 67/73 -
+removing Primary Output didn't just stop the scan (the intended, correct effect), it
+also broke the resolution path for every dependency that scan had ever found with a
+bare `SourcePath`, even ones we deliberately wanted to KEEP.
+
+**How this was actually fixed - by diffing against the section 67/68-era, independently
+`msiexec /a`-verified OLD project** (pulled from git history, `commit 77e7d88`, before
+its own deletion) rather than reasoning from first principles a second time: every kept
+dependency in the OLD project had one of two forms, and NONE were left as an
+unresolvable bare filename:
+- `AssemblyIsInGAC = TRUE` + bare `SourcePath` (e.g. `AddinExpress.MSO.2005.dll`,
+  `AddinExpress.XL.2005.dll`, `System.IO.Compression.dll`,
+  `System.IO.Compression.FileSystem.dll`) - resolved via the GAC by strong name at
+  build time, genuinely independent of any Project Output reference. Confirmed all
+  four are actually present in this machine's GAC
+  (`C:\Windows\Microsoft.NET\assembly\GAC_MSIL\...`) before trusting this.
+- `AssemblyIsInGAC = FALSE` + an **explicit** `..\bin\Release\<file>` `SourcePath` -
+  every other kept dependency (17 of them: `GLSense.Contracts`/`Shared`/`Loader.Core`,
+  `Microsoft.Bcl.AsyncInterfaces`, `Microsoft.Office.Interop.Excel`,
+  `Microsoft.Vbe.Interop`, `NLog`, `office`/`Office.dll`, `stdole`, `System.Buffers`,
+  `System.IO.Pipelines`, `System.Memory`, `System.Numerics.Vectors`,
+  `System.Runtime.CompilerServices.Unsafe`, `System.Text.Encodings.Web`,
+  `System.Text.Json`, `System.Threading.Tasks.Extensions`) - all confirmed to
+  genuinely exist at `GLSense\bin\Release\` (MSBuild's normal Copy-Local behavior for
+  a ProjectReference/non-GAC reference) before assigning the path.
+
+A PowerShell script (no `python3`/`python` available in this environment) parsed both
+the old and new `.vdproj`'s `File` sections and diffed `SourcePath`/`Exclude`/
+`AssemblyIsInGAC` per assembly name to catch every discrepancy systematically, rather
+than re-eyeballing ~30 entries a second time - this is what caught all 22 fixes needed
+(17 SourcePath corrections, 3 `AssemblyIsInGAC` flips to `TRUE`, 2 `Exclude` flips:
+`System.IO.Compression`'s GAC copy `TRUE`->`FALSE`, since the old project shipped it
+too). One entry - `AddinExpress.MSO.2005.tlb` - was in the old project with
+`Exclude=FALSE`, but the `.tlb` file couldn't be found anywhere on this machine (not in
+`GLSense.Build\bin\Release\`, not in the Add-in Express install directory, not in the
+GAC) - rather than guess a path and risk breaking a build that had just started
+succeeding, this one entry was deliberately left `Exclude=TRUE` (its already-proven-
+working state) and flagged as an unresolved, lower-priority difference rather than
+force-matched.
+
+**User-confirmed, full end-to-end validation after this fix**:
+1. A real VS rebuild succeeded with the packaging log now showing every expected file
+   (not just 10).
+2. A real install + Excel session's log file was checked specifically for
+   `AssemblyResolve` activity (the user's own direct ask, since this is exactly the
+   kind of symptom that would show up as a runtime `FileNotFoundException` if any
+   dependency were still silently missing) - all 16 occurrences were the benign,
+   expected `"ignoring resource assembly request: ...resources, ... Culture=en-US/en"`
+   pattern (.NET's normal satellite-resource-culture probing for `GLSense.Addin.Core`
+   and `MahApps.Metro.IconPacks.FontAwesome`, which ship no localized resources - the
+   code already explicitly recognizes and logs-ignores these at `DEBUG` level). Zero
+   `ERROR`-level entries, zero exceptions, only 3 already-expected `WARN` lines
+   (`[RibbonDiagnostic]` pre-login dump, `GLReloadSourcePicker`'s "no manifest+zip
+   pair" message on a fresh install).
+3. Uninstall was tested and confirmed the whole `Orbit Analytics` folder under
+   `%LOCALAPPDATA%` was fully cleaned up - the `GLSenseUninstallCleanup.exe` custom
+   action (added in this same recreation pass, section 73) works correctly end to end.
+
+**If a future recreation of this installer project shows the same "all dependencies
+vanished" symptom again**: don't assume it's a harmless VS UI quirk a second time -
+that assumption was wrong here. Immediately diff the new project's `File` section
+against this section's confirmed-good baseline (or the git history of this exact
+commit) for bare, non-GAC `SourcePath` entries, and fix those before ever running
+`msiexec /a` again.
+
+**Status**: RESOLVED, user-confirmed via a real install + Excel session + uninstall
+cycle. This closes out the `OrbitGLSense.vdproj` recreation effort (sections 67-73.1) -
+the installer project is back to full parity with its pre-recreation, proven-working
+state, now with `GLSenseUninstallCleanup.exe` included from the start.
 
 ---
 
