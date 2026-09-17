@@ -165,10 +165,14 @@
     </UserControl.Resources>
 
     <Grid>
-    <ScrollViewer x:Name="MainScrollViewer"
-                  VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled"
-                  Margin="0">
+        <!-- Deliberately NOT wrapped in an outer ScrollViewer - the Saved Configurations
+             row, Options row, Action Buttons (Insert/Close), and Balance Parameters
+             expander must always stay reachable without scrolling, same reasoning as
+             section 9.2's GLSegmentValues fix ("placing window contents inside the scroll
+             viewer" trapped always-needed controls out of view). The only content that
+             genuinely needs to scroll - the config field list - already has its own
+             internal ScrollViewer (x:Name="MainScrollViewer", below, in Grid.Row="2") with
+             its own MaxHeight; that is the sole scrollable region in this control. -->
         <Grid MinWidth="640" VerticalAlignment="Stretch">
             <Grid Margin="4">
                 <Grid.RowDefinitions>
@@ -329,7 +333,8 @@
                          AccountAssignments) the old 500px cap could clip the last row
                          (Account Assignment(s) was reported rendering only partially
                          visible) instead of just letting the ScrollViewer scroll. -->
-                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                    <ScrollViewer x:Name="MainScrollViewer"
+                                  VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   MaxHeight="620">
                         <!-- IsSharedSizeScope: makes every row's Auto-width label column
@@ -1222,9 +1227,8 @@
                 </Expander>
             </Grid>
         </Grid>
-    </ScrollViewer>
 
-        <!-- Toast / Busy overlay - deliberately a sibling of MainScrollViewer, not
+        <!-- Toast / Busy overlay - deliberately a sibling of the content Grid above, not
              inside its scrollable content. It was previously inside the scrollable
              Grid with VerticalAlignment="Stretch", so its ActualHeight (and therefore
              the Toast's VerticalAlignment="Top" anchor) matched the full scrollable

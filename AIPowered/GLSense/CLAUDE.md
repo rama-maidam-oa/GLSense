@@ -5665,6 +5665,62 @@ rebuild and visually confirm. User will retest after rebuild.
 
 ---
 
+## 59. GLBalanceConfigurator: Insert/Close/Delete trapped inside a scrollable region (both codebases)
+
+User caught this from a screenshot after the section 58 width-increase test: with the
+"Saved Configurations" row expanded, the Delete/Update/Close buttons moved inside the
+scrollable region instead of staying reachable - not visible as a static-screenshot
+truncation the way it first looked, but a real structural bug once actually scrolled.
+
+**Root cause**: `MainScrollViewer` (the top-level `ScrollViewer` wrapping this whole
+`UserControl`'s content) wrapped **everything** - Header, Saved Configurations Expander,
+the config field list, the Options row, the Action Buttons row (Insert/Close), and the
+Balance Parameters Expander - as one continuous scrollable region. The field list (`Grid.
+Row="2"`) already had its own **internal** `ScrollViewer` with its own `MaxHeight` (620 in
+AIPowered, 500 in FinalWorkingCode) - that's the only thing that genuinely needs to
+scroll. Wrapping the whole control in a second, outer `ScrollViewer` on top of that meant
+any content taller than the pane's actual visible height pushed the always-needed
+Insert/Close/Delete buttons into the scrollable area alongside it. Structurally the exact
+same bug already fixed once in this codebase for `GLSegmentValues` (section 9.2 - "we are
+placing window contents inside the scroll viewer... bring the top 2 rows out the scroll
+viewer").
+
+**Fix** (identical in both `AIPowered\GLSense\GLSense.Addin.Core\Views\
+GLBalanceConfigurator.xaml` and `FinalWorkingCode\GLSense\Views\GLBalanceConfigurator.xaml`):
+removed the outer `MainScrollViewer` wrapper entirely (its opening and closing tags only -
+the `Grid MinWidth="640"` it wrapped is now a direct child of the root `Grid`), and moved
+the `x:Name="MainScrollViewer"` onto the field list's own already-existing internal
+`ScrollViewer` (`Grid.Row="2"`) instead. This is the field list's the sole remaining
+scrollable region.
+
+**Why renaming instead of just deleting the name**: `GLBalanceConfigurator.xaml.cs` has
+substantial code built around the `MainScrollViewer` identifier - `MinWidth` enforcement
+(`EnsureMinimumWidth()`), `UpdateLayout()` calls after layout-affecting changes, and a
+`PreviewMouseWheel` handler that centralizes ALL wheel-scrolling through
+`MainScrollViewer.LineUp()`/`LineDown()` regardless of which child control is under the
+cursor (a workaround for mouse wheel not working over this reparented-into-Excel content
+at all otherwise). All of that logic is legitimately meant to apply to whichever
+`ScrollViewer` is the real scrollable region - relocating the name to the field list's
+`ScrollViewer` means every one of those code-behind call sites keeps working completely
+unchanged, now correctly targeting the actual scrollable content instead of the whole
+control. Zero `.xaml.cs` changes were needed in either codebase.
+
+**Accepted trade-off, not treated as a bug**: this task pane's height is entirely
+dictated by Excel's own window height (it's a docked pane, not a resizable floating
+window) - with the outer scroll fallback removed, an unusually short/non-maximized Excel
+window could in theory leave the bottom of this control's fixed (non-field-list) content
+harder to reach. This wasn't treated as something to guard against here, since it matches
+how every other window in this app already behaves (section 9.2's own fix made the same
+trade-off deliberately) and Saved Configurations/Balance Parameters both default to
+collapsed, keeping the fixed content's total height modest in the common case.
+
+**Status**: implemented in both codebases, AIPowered/FinalWorkingCode `11.1.2` only.
+Verified via XML well-formedness on both edited `.xaml` files - no Windows/MSBuild
+toolchain in this environment to actually rebuild and confirm Insert/Close/Delete stay
+reachable after scrolling the field list. User will retest after rebuild.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
