@@ -6136,6 +6136,93 @@ trusted.
 
 ---
 
+## 65. Ribbon tab caption fixed, and the testing-only `_New` logs suffix retired (AIPowered-only)
+
+### 65.1 Ribbon tab caption: "Orbit GLSense DLL's" -> "Orbit GLSense"
+
+`AddinModule.Designer.cs`'s `orbittab.Caption` read `"Orbit GLSense DLL\'s"` -
+a leftover, oddly-worded caption never cleaned up. Cross-checked against
+FinalWorkingCode's own `AddinModule.Designer.cs`, which already has
+`orbittab.Caption = "Orbit GLSense";` - fixed AIPowered to match exactly.
+
+### 65.2 `PathProvider`'s log root: drop the testing-only `_New` suffix
+
+`PathProvider.cs`'s `_root` was `Path.Combine(_basePath, "GLSense_Logs_New")` -
+`_New` was a deliberate, temporary suffix adopted specifically so this
+project's own testing on a machine that might also have FinalWorkingCode
+installed wouldn't collide in the same log folder (see the reference memory
+on this exact distinction). That reason no longer applies - the user
+confirmed `_New` was only ever a testing convenience, and this change directs
+AIPowered at its real, intended production logs folder.
+
+Changed to `Path.Combine(_basePath, "GLSense_Logs")` - **verified against
+FinalWorkingCode's own `AppPaths.cs:22`** (`Path.Combine(BaseFolder,
+"GLSense_Logs")`) before making this change, so AIPowered's production logs
+folder now matches FinalWorkingCode's naming exactly:
+`%LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs\`.
+
+This is the ONLY functional code reference to the old name in the whole
+solution - grepped for `GLSense_Logs_New` across every `.cs`/`.cmd` file
+first; the two hits in `GLSense.Addin.Core\post_build.cmd` and
+`GLSense.Loader.Core\post_build.cmd` were explanatory comments only (no path
+construction), updated to match for accuracy. `GLSenseContext.cs`'s own
+mention is likewise just a comment ("the separate Excel_Logs tree"), not a
+literal path, so it needed no change. `CLAUDE.md` itself and the two
+`docs/superpowers/specs|plans/2026-08-30-hotreload-release-history*`/
+`2026-09-04-addincore-colocated-storage*` documents still say `GLSense_Logs_New`
+in places - deliberately left untouched, since those are dated historical
+records of decisions made while `_New` was still the real, active folder name
+at the time they were written; rewriting them would misrepresent what was
+actually true when those decisions were made.
+
+**Real, practical consequence worth knowing**: on any machine that was
+already running a build with the old `_New` suffix, this rebuild will NOT see
+the previous `Versions\`/`ReleaseHistory.json`/`Manifest\` state at all - it
+starts completely fresh under the new `GLSense_Logs` folder path (the old
+`GLSense_Logs_New` folder is simply abandoned in place, not migrated or
+deleted). This is expected and desired here (the `_New` folder was explicitly
+testing-only data), but is the kind of thing to remember if a "why did my
+release history disappear" report ever comes up against a machine that still
+has both folders sitting side by side under `%LOCALAPPDATA%\ORBIT\Excel_Logs\`.
+
+**Not independently verified in this environment**: no Windows/MSBuild
+toolchain available here to rebuild and confirm Excel actually creates/reads
+from the new `GLSense_Logs` folder end to end. This is a one-line, low-risk
+change (matches an already-proven-working sibling codebase's exact naming),
+but still needs a real rebuild + fresh Excel session to confirm.
+
+### 65.3 Note: unrelated VS-generated `OrbitGLSense.vdproj` drift found and discarded, not committed
+
+While checking for uncommitted changes per this session's own request, found
+`OrbitGLSense.vdproj` had unstaged modifications neither requested nor made in
+this session - almost certainly Visual Studio's "Detected Dependencies"
+auto-refresh from having the project open (consistent with a screenshot
+earlier in this engagement showing it open in VS with **Debug** as the active
+solution configuration). Confirmed via diff inspection this drift was NOT
+safe to commit - two concrete problems found:
+1. The "Primary output from GLSense (Active)" file entry's `SourcePath`
+   changed from `..\obj\Release\GLSense.dll` to `..\obj\Debug\GLSense.dll` -
+   a direct consequence of Debug being the active configuration when VS last
+   touched this project. Building the installer as-is would have packaged
+   **debug binaries** into the shipped MSI.
+2. `System.IO.Compression.dll`'s `Exclude` flag reverted from `TRUE` back to
+   `FALSE` - undoing an earlier, deliberate fix (see this file's own
+   `System.IO.Compression`/`System.IO.Compression.FileSystem` history) for a
+   duplicate-target-location/WFP build warning.
+
+Everything else in that diff was cosmetic GUID renumbering from VS re-listing
+the same "Detected Dependencies" assembly set in a different order - not
+functionally significant on its own, but not worth preserving either since it
+was bundled with the two real problems above. Discarded the entire file's
+uncommitted state via `git checkout --` rather than committing any of it -
+the section 62/63 work (`GLSenseUninstallCleanup.exe`/`OrbitGLSense.zip`)
+already committed earlier is untouched by this discard. **If this vdproj is
+opened in Visual Studio again, switch the active Solution Configuration to
+Release first** - opening/building it under Debug appears to be exactly what
+triggers this class of drift.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

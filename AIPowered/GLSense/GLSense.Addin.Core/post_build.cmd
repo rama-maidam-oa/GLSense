@@ -37,7 +37,7 @@ REM output (gitignored, not committed, regenerated every build). This is a
 REM staging/hand-off point only: GLSense\post_build.cmd (the host project)
 REM copies from here into its own bin\{Config}\AddinCore\Manifest\, which is
 REM what PathProvider.ManifestDirectory now resolves to at runtime (colocated
-REM with GLSense.dll itself, not GLSense_Logs_New) - see
+REM with GLSense.dll itself, not GLSense_Logs) - see
 REM docs/superpowers/specs/2026-09-04-addincore-colocated-storage-design.md.
 REM
 REM Because GLSense.csproj has a build-order-only ProjectReference to this
@@ -132,9 +132,9 @@ echo .pdb> "%ZIP_EXCLUDE_LIST%"
 
 xcopy /Y /E /I /EXCLUDE:%ZIP_EXCLUDE_LIST% "%CORE_BIN_DIR%\*" "%ZIP_STAGE_DIR%\" 2>&1
 
-REM SetupFiles is this project's own folder, not GLSense_Logs_New - creating
+REM SetupFiles is this project's own folder, not GLSense_Logs - creating
 REM it here is ordinary build output, not subject to section 14.5's
-REM "build shouldn't create GLSense_Logs_New folders" rule at all.
+REM "build shouldn't create GLSense_Logs folders" rule at all.
 if not exist "%MANIFEST_DIR%" mkdir "%MANIFEST_DIR%"
 
 powershell -NoProfile -Command "Compress-Archive -Path '%ZIP_STAGE_DIR%\*' -DestinationPath '%OUT_ZIP%' -Force"

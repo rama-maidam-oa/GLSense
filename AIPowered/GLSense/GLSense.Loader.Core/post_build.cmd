@@ -5,7 +5,7 @@ echo ========================================
 
 REM ============================================================================
 REM This script no longer xcopies this project's DLL into
-REM %LOCALAPPDATA%\...\GLSense_Logs_New\Versions\vX\ directly - that
+REM %LOCALAPPDATA%\...\GLSense_Logs\Versions\vX\ directly - that
 REM direct-copy-to-Versions approach was removed everywhere (see
 REM GLSense.Addin.Core\post_build.cmd's own comment header and CLAUDE.md
 REM section 16): the ONLY way DLLs reach Versions\vX\ now is through

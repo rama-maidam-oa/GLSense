@@ -65,7 +65,13 @@ namespace GLSense.Shared
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "ORBIT", "Excel_Logs");
 
-            _root = Path.Combine(_basePath, "GLSense_Logs_New");
+            // "_New" was a deliberate, temporary suffix used only during this feature's
+            // own testing (to avoid colliding with a real production install's log
+            // folder on the same test machine) - see CLAUDE.md for the dated entry on
+            // this specific change. Dropping it here points AIPowered at its real,
+            // production logs folder (matching FinalWorkingCode's own "GLSense_Logs",
+            // no suffix - see the reference memory on this).
+            _root = Path.Combine(_basePath, "GLSense_Logs");
 
             _installRoot = Path.Combine(_installRootOverride ?? _root, "AddinCore");
 

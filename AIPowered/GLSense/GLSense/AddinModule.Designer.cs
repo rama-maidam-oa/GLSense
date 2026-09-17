@@ -220,7 +220,7 @@ namespace GLSense
             // 
             // orbittab
             // 
-            this.orbittab.Caption = "Orbit GLSense DLL\'s";
+            this.orbittab.Caption = "Orbit GLSense";
             this.orbittab.Controls.Add(this.adxRibbonGroup1);
             this.orbittab.Controls.Add(this.adxRibbonGroup2);
             this.orbittab.Controls.Add(this.adxRibbonGroup3);
