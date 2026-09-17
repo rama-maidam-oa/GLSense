@@ -1,0 +1,25 @@
+<Window x:Class="GLSense.GLReloadProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GLSense"
+        Icon="/GLSense;component/Resources/OrbitGLSense.ico"
+        Width="380" Height="150"
+        SizeToContent="Manual"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="White">
+    <Grid Margin="20,24,20,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="TxtMessage" Grid.Row="0" FontSize="13" Foreground="#FF212121"
+                   TextWrapping="Wrap" TextAlignment="Center"
+                   Text="Reloading GLSense Add-in..." Margin="0,0,0,16"/>
+
+        <ProgressBar Grid.Row="1" IsIndeterminate="True" Height="6"/>
+    </Grid>
+</Window>

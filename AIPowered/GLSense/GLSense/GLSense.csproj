@@ -165,6 +165,9 @@
     <Compile Include="Views\GLReleaseHistoryBrowser.xaml.cs">
       <DependentUpon>GLReleaseHistoryBrowser.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Views\GLReloadProgressWindow.xaml.cs">
+      <DependentUpon>GLReloadProgressWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Views\WindowChromeHelper.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -187,6 +190,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Views\GLReleaseHistoryBrowser.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Views\GLReloadProgressWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

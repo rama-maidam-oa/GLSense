@@ -5486,6 +5486,59 @@ isn't re-derived from scratch if the quota concern resurfaces.
 
 ---
 
+## 56. Reload/Release-History flows had no visible progress and could be clicked mid-reload - new `GLReloadProgressWindow`
+
+`AddinModule.ReloadAddinCore` - the shared method behind both `RibReload_OnClick` and
+`RibReleaseHistory_OnClick` - does its real work (`oldAddin.Shutdown()`, `AppDomain.Unload`,
+resolving/extracting the new release, then `loader.Load()` to stand up the new AppDomain)
+entirely *after* `GLReloadSourcePicker`/`GLReleaseHistoryBrowser` has already staged its
+chosen zip+manifest and closed. Until now the only feedback during that whole window was a
+WinForms `Cursor.Current = WaitCursor` set by the caller - no visible indication of what was
+happening, no estimate of how long it might take, and nothing stopping a user from clicking
+something else (or the picker/browser being reopened) while the AppDomain swap was actually
+in flight.
+
+**Fix**: new host-side window, `Views\GLReloadProgressWindow.xaml(.cs)` - a plain `Window`
+(same reasoning as section 40.4: can't inherit `GLSense.Addin.Core.Views.BaseWindow`, since
+it must keep working precisely while Addin.Core is between instances) showing an
+indeterminate `ProgressBar` + a message, `Topmost`, `ShowInTaskbar="False"`, minimize/
+maximize removed via the existing `WindowChromeHelper`. Its `Closing` handler always cancels
+unless `AllowCloseAndClose()` has been called first - covers the title bar X, Alt+F4, and
+Escape all in one place, so it cannot be dismissed mid-reload by any route.
+
+`ReloadAddinCore` now shows this window (via a new `ShowAndRender()` - `Show()` alone
+doesn't paint anything before the caller immediately starts blocking work on the same
+thread; two forced dispatcher passes at `Render`/`Background` priority guarantee the first
+frame is actually on screen first, the same `PumpDispatcherFrame` idea as section 1.4d,
+reimplemented here since the host project can't reference Addin.Core's version) right at
+its start, and closes it via `AllowCloseAndClose()` in a `finally` around the reload logic.
+The method's three `MessageBox.Show` call sites (resolve-failed, load-failed, and the
+outer-catch failure message) were restructured to defer showing until *after* that `finally`
+has already run - collecting the outcome into `failureMessage`/`thrownException` locals
+instead of calling `MessageBox.Show` inline - specifically so no error dialog can ever end up
+rendering underneath (or behind) the `Topmost` progress window.
+
+Showing/hiding the progress window is wrapped in its own defensive try/catch that never
+rethrows and logs instead - a failure to construct or show this purely cosmetic window must
+never prevent an actual reload from proceeding.
+
+**Not changed**: `GLReloadSourcePicker`/`GLReleaseHistoryBrowser`'s own buttons during their
+staging step (`BtnReload_Click`/`BtnLoad_Click`) - that step is a synchronous, fast local
+file copy with no `await`, so WPF's single-threaded UI model already makes it impossible to
+click anything else (including Reload/Load again) until that handler returns; adding an
+explicit disable there would be redundant protection for an operation that's already
+non-reentrant by construction. The real, user-visible gap was entirely in the silent
+post-window-close reload work, which is what this fix targets.
+
+**Status**: implemented, AIPowered `11.1.2` only. Not independently re-verified against a
+real reload (no Windows/MSBuild toolchain in this environment) - verified by parsing the new
+`.xaml`/updated `.csproj` as XML (well-formed) and a full brace/paren-balance check on the
+edited `AddinModule.cs`. Please exercise both RibReload and Release History flows after a
+rebuild and confirm the progress window appears, can't be closed mid-reload, and any
+failure dialog appears cleanly after it closes.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

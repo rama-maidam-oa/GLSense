@@ -307,6 +307,30 @@ namespace GLSense
         /// </summary>
         private void ReloadAddinCore(Func<ResolvedRelease> resolveRelease)
         {
+            // Busy indicator for the duration of this method's blocking AppDomain
+            // unload/resolve/load work - see GLReloadProgressWindow's own header comment.
+            // Defensive: a failure to construct/show this window must never prevent the
+            // actual reload from running, so it's wrapped separately from the reload logic
+            // itself and never rethrows.
+            GLReloadProgressWindow progressWindow = null;
+            try
+            {
+                progressWindow = new GLReloadProgressWindow("Reloading GLSense Add-in...\nPlease wait, this may take a few seconds.");
+                new System.Windows.Interop.WindowInteropHelper(progressWindow).Owner = GlobalsEx.Context.ExcelHandle;
+                progressWindow.ShowAndRender();
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "ReloadAddinCore: failed to show the reload progress window");
+                progressWindow = null;
+            }
+
+            // Deferred until after the progress window has actually closed (in the finally
+            // below) - a MessageBox.Show() reachable from inside the try block would
+            // otherwise pop up while the (Topmost) progress window is still showing.
+            string failureMessage = null;
+            Exception thrownException = null;
+
             try
             {
                 GlobalsEx.Context?.Logger?.LogDebug("Reload requested via ribbon (RibReload) or Release History browser.");
@@ -330,43 +354,55 @@ namespace GLSense
                 if (resolved == null)
                 {
                     GlobalsEx.Context?.Logger?.LogError("ReloadAddinCore: could not resolve a release to load.");
-                    MessageBox.Show(
+                    failureMessage =
                         "Reload failed - no usable add-in version was found. Make sure GLSense.Addin.Core " +
                         "has been rebuilt (its post_build.cmd publishes a zip + manifest.json into the " +
-                        "Manifest folder), then try again.",
-                        "Reload GLSense Add-in",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                    return;
-                }
-
-                GlobalsEx.Context.Version = resolved.Version;
-                GlobalsEx.Context.ReleaseDate = resolved.ReleaseDate;
-                GlobalsEx.Context.ActiveFolderName = resolved.FolderName;
-                GlobalsEx.Context?.Logger?.LogDebug($"ReloadAddinCore: version={resolved.Version}, releaseDate={resolved.ReleaseDate}, folderName={resolved.FolderName}");
-
-                GlobalsEx.Addin = loader?.Load(GlobalsEx.Context);
-
-                if (GlobalsEx.Addin != null)
-                {
-                    GlobalsEx.Context?.Logger?.LogDebug("Reload complete - GlobalsEx.Addin re-pointed to a fresh instance.");
+                        "Manifest folder), then try again.";
                 }
                 else
                 {
-                    GlobalsEx.Context?.Logger?.LogError("Reload failed - GlobalsEx.Addin is null after Load(). The add-in is unavailable until Excel is restarted.");
-                    MessageBox.Show(
-                        "Reload failed - the add-in could not be loaded. Check the logs. " +
-                        "Excel will need to be restarted to recover.",
-                        "Reload GLSense Add-in",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
+                    GlobalsEx.Context.Version = resolved.Version;
+                    GlobalsEx.Context.ReleaseDate = resolved.ReleaseDate;
+                    GlobalsEx.Context.ActiveFolderName = resolved.FolderName;
+                    GlobalsEx.Context?.Logger?.LogDebug($"ReloadAddinCore: version={resolved.Version}, releaseDate={resolved.ReleaseDate}, folderName={resolved.FolderName}");
+
+                    GlobalsEx.Addin = loader?.Load(GlobalsEx.Context);
+
+                    if (GlobalsEx.Addin != null)
+                    {
+                        GlobalsEx.Context?.Logger?.LogDebug("Reload complete - GlobalsEx.Addin re-pointed to a fresh instance.");
+                    }
+                    else
+                    {
+                        GlobalsEx.Context?.Logger?.LogError("Reload failed - GlobalsEx.Addin is null after Load(). The add-in is unavailable until Excel is restarted.");
+                        failureMessage =
+                            "Reload failed - the add-in could not be loaded. Check the logs. " +
+                            "Excel will need to be restarted to recover.";
+                    }
                 }
             }
             catch (Exception ex)
             {
                 GlobalsEx.Context?.Logger?.LogException(ex, "ReloadAddinCore");
+                thrownException = ex;
+            }
+            finally
+            {
+                progressWindow?.AllowCloseAndClose();
+            }
+
+            if (thrownException != null)
+            {
                 MessageBox.Show(
-                    $"Reload failed: {ex.Message}{Environment.NewLine}Excel may need to be restarted to recover.",
+                    $"Reload failed: {thrownException.Message}{Environment.NewLine}Excel may need to be restarted to recover.",
+                    "Reload GLSense Add-in",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            else if (failureMessage != null)
+            {
+                MessageBox.Show(
+                    failureMessage,
                     "Reload GLSense Add-in",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
