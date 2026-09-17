@@ -96,8 +96,21 @@ namespace GLSense
         // Busy state + step log helpers
         // ------------------------------------------------------------------
 
+        // This host's WPF window doesn't reliably run under a DispatcherSynchronizationContext
+        // (see the reference memory on WPF dispatcher-thread-loss in this VSTO add-in), so an
+        // `await` continuation - including the plain `await Task.Delay(...)` pacing used in the
+        // Offline flow - can resume on a background ThreadPool thread instead of hopping back to
+        // the UI thread automatically. Every method here that touches a UI element must be
+        // callable from any thread - guard with CheckAccess()/synchronous Invoke (not
+        // InvokeAsync) rather than assuming the caller is already on the UI thread.
         private void SetBusy(bool busy)
         {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => SetBusy(busy));
+                return;
+            }
+
             BusyProgress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
             BtnCheckOnline.IsEnabled = !busy;
             BtnBrowse.IsEnabled = !busy;
@@ -109,6 +122,12 @@ namespace GLSense
 
         private void AppendLine(string prefix, string message)
         {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => AppendLine(prefix, message));
+                return;
+            }
+
             if (!string.IsNullOrEmpty(TxtStatus.Text)) TxtStatus.AppendText(Environment.NewLine);
             TxtStatus.AppendText($"{prefix} {message}");
             TxtStatus.ScrollToEnd();
@@ -154,6 +173,12 @@ namespace GLSense
 
         private void PromptNoUpdate(string candidateVersion, string candidateReleaseDate)
         {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => PromptNoUpdate(candidateVersion, candidateReleaseDate));
+                return;
+            }
+
             MessageBox.Show(
                 this,
                 $"No updates available.\n\nYou already have the latest version: {GlobalsEx.Context?.Version} (released {GlobalsEx.Context?.ReleaseDate}).\n\nChecked release: {candidateVersion} ({candidateReleaseDate}).",

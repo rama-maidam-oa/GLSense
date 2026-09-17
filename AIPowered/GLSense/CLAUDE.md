@@ -6520,6 +6520,64 @@ exactly once in the installed folder, not twice.**
 
 ---
 
+## 69. `GLReloadSourcePicker` crashed on first real install - cross-thread UI access from section 64's own step-log helpers
+
+User did a genuine fresh install of the fixed MSI (sections 66-68), launched Reload from
+the ribbon, and Excel crashed. Found directly from the real log
+(`%LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs\Logs\GLSense_Logs_17-Sep-2026.log` -
+itself confirming section 65.2's `_New`-suffix removal is working correctly in a real
+install) rather than guessing:
+
+```
+Context: AppDomain.UnhandledException (host)
+Type: System.InvalidOperationException
+Message: The calling thread cannot access this object because a different thread owns it.
+Source: WindowsBase
+TargetSite: Void VerifyAccess()
+StackTrace:
+   at System.Windows.Threading.Dispatcher.VerifyAccess()
+   at System.Windows.DependencyObject.SetValue(DependencyProperty dp, Object value)
+   at GLSense.GLReloadSourcePicker.SetBusy(Boolean busy)
+   at GLSense.GLReloadSourcePicker.<ScanFolderAsync>d__21.MoveNext()
+```
+
+**Root cause**: this is the exact, already-documented WPF-dispatcher-thread-loss gotcha
+specific to this VSTO hosting environment (see the reference memory on it) - this
+host's WPF window doesn't reliably run under a `DispatcherSynchronizationContext`, so
+an `await` continuation can resume on a background ThreadPool thread instead of hopping
+back to the UI thread automatically. Section 64's own `ScanFolderAsync`/
+`ValidateCandidateAsync` (the step-by-step progress feature) used plain `await
+Task.Delay(OfflineStepDelayMs)` calls purely for pacing - and their continuations
+(including the `SetBusy(false)` in `ScanFolderAsync`'s own `finally` block) resumed on
+the wrong thread, throwing the moment they tried to set a `DependencyProperty`
+(`BusyProgress.Visibility`, etc.) from off the UI thread. This is a real bug I
+introduced with section 64's own enhancement - I should have applied this codebase's
+own established pattern for this exact gotcha from the start rather than assuming a
+normal WPF app's automatic UI-thread marshaling would hold here.
+
+**Fix**: made every UI-touching leaf method in `GLReloadSourcePicker.xaml.cs`
+thread-safe by construction, rather than trying to guard every individual call site -
+`SetBusy(bool)`, `AppendLine(string, string)`, and `PromptNoUpdate(string, string)` now
+each check `Dispatcher.CheckAccess()` first and re-invoke themselves via a
+**synchronous** `Dispatcher.Invoke(...)` (never `await ...InvokeAsync(...)` - the
+reference memory on this exact gotcha explicitly warns against that variant too) if
+not already on the UI thread. `LogStep`/`LogSuccess`/`LogWarning`/`LogFailure` all
+route through the now-safe `AppendLine`, so this covers every current call site without
+needing individual fixes at each `await` point - traced through the whole file to
+confirm no other direct `DependencyObject` touch happens after an `await` anywhere
+(`ResetValidation()` and the `_candidate*`/`_isValidated` field writes are the only
+other post-await-adjacent writes, and none of those are `DependencyObject`s, so they
+carry no thread-affinity risk).
+
+**Not independently verified in this environment**: no way to launch Excel/trigger this
+exact flow here - fix reasoned through by tracing every code path in the file (matches
+the same "make the leaf UI-touching method itself dispatcher-safe" pattern already used
+elsewhere in this codebase, e.g. `GLBalanceConfigurator.xaml.cs`'s `ShowBusyOverlayAsync`
+per CLAUDE.md section 2.4). **Needs a real rebuild + install + Reload-picker exercise
+(both Online and Offline flows) to confirm the crash is actually gone.**
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
