@@ -148,6 +148,33 @@ if not exist "%OUT_ZIP%" (
 )
 
 echo ========================================
+echo STEP 3b: Release only - stage a fixed-name copy for the Setup project
+echo ========================================
+
+REM OrbitGLSense.vdproj's File System editor needs a SourcePath that never
+REM changes release to release - a versioned filename like v11.1.2.zip
+REM otherwise forces a manual vdproj edit (and rebuild-the-installer-project
+REM step) every single release. InstallerPayload is a SEPARATE folder from
+REM Manifest\ above, read ONLY by the .vdproj at installer-build time.
+REM GLSense\post_build.cmd's own xcopy (which feeds the live
+REM bin\%CONFIG%\AddinCore\Manifest\ folder that PathProvider/UpdateBootstrapper
+REM actually read at runtime, for both the Debug dev-loop and a real install)
+REM only ever copies from SetupFiles\%CONFIG%\Manifest\, never from here - so
+REM this can never introduce a second, ambiguous *.zip into that live folder.
+REM Release only: Debug has no installer to feed.
+REM INSTALLER_PAYLOAD_DIR is set OUTSIDE the if-block on purpose: cmd.exe
+REM expands a parenthesized block's %VAR% references at parse time, before any
+REM statement inside that same block (like "set") has run - setting it inside
+REM the block below would make every %INSTALLER_PAYLOAD_DIR% reference in that
+REM same block resolve to blank instead of the path just assigned.
+set INSTALLER_PAYLOAD_DIR=%PROJECT_DIR%\SetupFiles\Release\InstallerPayload
+if /I "%CONFIG%"=="Release" (
+    if not exist "%INSTALLER_PAYLOAD_DIR%" mkdir "%INSTALLER_PAYLOAD_DIR%"
+    copy /Y "%OUT_ZIP%" "%INSTALLER_PAYLOAD_DIR%\OrbitGLSense.zip" >nul
+    echo Published: %INSTALLER_PAYLOAD_DIR%\OrbitGLSense.zip
+)
+
+echo ========================================
 echo STEP 4: Write manifest.json alongside the zip
 echo ========================================
 

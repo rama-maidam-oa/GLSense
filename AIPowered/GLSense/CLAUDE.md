@@ -5943,6 +5943,87 @@ condition is the first place to re-verify, not the recursive-delete command itse
 
 ---
 
+## 63. Installer's seed zip given a fixed filename (`OrbitGLSense.zip`) so `OrbitGLSense.vdproj` never needs a per-release edit
+
+Following on from section 62's cleanup work: `OrbitGLSense.vdproj`'s File System
+editor previously referenced `GLSense.Addin.Core\SetupFiles\Release\Manifest\
+v11.1.2.zip` by its exact, version-suffixed filename - meaning every release bump
+required manually re-pointing that `SourcePath`/`TargetName` in the vdproj and
+rebuilding the installer project, a manual, easy-to-forget, per-release step.
+
+**Constraint that shaped the fix**: a Custom Action (or the File System editor)
+can only reference files that are actually embedded in the MSI - it can't reach
+back to the build machine's own `SetupFiles\` folder at install time on a
+customer's PC. So the fix isn't "extract from the build tree at install time" -
+it's "make the file the vdproj already declares have a name that never changes."
+
+**Also had to avoid breaking anything else that reads `SetupFiles\{Config}\
+Manifest\`**: that folder is a shared hand-off point, read by 3 things -
+`GLSense\post_build.cmd`'s copy into the live `bin\%CONFIG%\AddinCore\Manifest\`
+(used by BOTH Debug and Release for the hot-reload dev loop and Excel's actual
+runtime `UpdateBootstrapper`), and `GLReloadSourcePicker.xaml.cs:102`'s Offline
+"browse to a folder" validation, which specifically searches for `v*.zip` -
+i.e. it REQUIRES the "v" prefix. Renaming the zip IN PLACE inside `Manifest\`
+would have broken that Offline-browse search pattern. Also, if a second,
+fixed-name zip were added into that same `Manifest\` folder, `GLSense\
+post_build.cmd`'s wildcard `xcopy /Y /I "...\Manifest\*" "...\AddinCore\
+Manifest\"` would copy BOTH zips into the live runtime folder, and
+`UpdateBootstrapper.cs`'s own `Directory.GetFiles(paths.ManifestDirectory,
+"*.zip").First()` (used identically at 3 call sites) would then face an
+ambiguous choice between two zips sitting side by side - a real regression,
+not just cosmetic.
+
+**Fix**: introduced a brand-new, installer-only staging folder,
+`GLSense.Addin.Core\SetupFiles\Release\InstallerPayload\`, that NOTHING else in
+the codebase ever reads from:
+- `GLSense.Addin.Core\post_build.cmd` (Step 3b, new, Release-only - gated
+  `if /I "%CONFIG%"=="Release"`): after the existing Step 3 successfully builds
+  `SetupFiles\%CONFIG%\Manifest\v%FILE_VERSION%.zip` exactly as before (untouched -
+  Debug's dev loop and Offline browse still see the same `v{version}.zip` naming
+  they always have), copies that same zip into
+  `SetupFiles\Release\InstallerPayload\OrbitGLSense.zip` - a second, ADDITIONAL
+  copy in a folder `GLSense\post_build.cmd`'s xcopy never looks at, so the live
+  `AddinCore\Manifest\` folder only ever sees one zip, exactly as before.
+  - Real bug caught and fixed while writing this: the new step's `if /I
+    "%CONFIG%"=="Release" ( ... )` block originally did `set
+    INSTALLER_PAYLOAD_DIR=...` INSIDE the parenthesized block and then referenced
+    `%INSTALLER_PAYLOAD_DIR%` later in that same block - classic cmd.exe gotcha,
+    a parenthesized block's `%VAR%` references are expanded at PARSE time,
+    before any `set` inside that same block has actually run, so every
+    reference would have resolved to blank instead of the path just assigned
+    (this project doesn't use `setlocal enabledelayedexpansion`/`!VAR!`
+    anywhere, so that wasn't the intended escape hatch either). Fixed by moving
+    the `set INSTALLER_PAYLOAD_DIR=...` line to before the `if` block, as its
+    own standalone statement - matches how every other variable in this script
+    (`FILE_VERSION`/`OUT_ZIP`/`ZIP_CHECKSUM`/etc.) is already set outside any
+    block before being read.
+- `OrbitGLSense.vdproj`: the zip `File` entry's `SourcePath` changed from
+  `...\SetupFiles\Release\Manifest\v11.1.2.zip` to `...\SetupFiles\Release\
+  InstallerPayload\OrbitGLSense.zip`, and its `TargetName` from `v11.1.2.zip` to
+  `OrbitGLSense.zip` - this is the LAST time this specific edit is needed; every
+  future release's zip will already be sitting at this exact same path/name.
+  The sibling `manifest.json` `File` entry (`SourcePath = ...\SetupFiles\
+  Release\Manifest\manifest.json`) was deliberately left completely untouched -
+  its filename was already fixed/version-agnostic, so it never had this
+  problem.
+- Once MSI extracts this onto a real machine, `UpdateBootstrapper`'s wildcard
+  `Directory.GetFiles(paths.ManifestDirectory, "*.zip")` calls don't care what
+  the file is named - `OrbitGLSense.zip` sitting alone in the installed
+  `AddinCore\Manifest\` folder is indistinguishable to that code from
+  `v11.1.2.zip` sitting there today. No runtime (`GLSense.Loader.Core`/
+  `GLSense.Shared`) code needed any change at all.
+
+**Not independently verified in this environment**: no Windows/MSBuild/Visual
+Studio toolchain available here to actually run `post_build.cmd` end-to-end or
+rebuild the MSI. Before trusting this: do a real Release build of
+`GLSense.Addin.Core`, confirm `SetupFiles\Release\InstallerPayload\
+OrbitGLSense.zip` actually appears (and that `SetupFiles\Release\Manifest\
+v{version}.zip` still appears too, unchanged), then open `OrbitGLSense.vdproj`
+in Visual Studio and rebuild the installer, confirming it picks up the new
+fixed-path file without complaint.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

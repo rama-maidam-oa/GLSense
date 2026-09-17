@@ -966,8 +966,8 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_29C3110D7D124755964E32BE79DD2A20"
             {
-            "SourcePath" = "8:..\\..\\GLSense.Addin.Core\\SetupFiles\\Release\\Manifest\\v11.1.2.zip"
-            "TargetName" = "8:v11.1.2.zip"
+            "SourcePath" = "8:..\\..\\GLSense.Addin.Core\\SetupFiles\\Release\\InstallerPayload\\OrbitGLSense.zip"
+            "TargetName" = "8:OrbitGLSense.zip"
             "Tag" = "8:"
             "Folder" = "8:_F212BA712DC248F3AAE1235F226D2934"
             "Condition" = "8:"
