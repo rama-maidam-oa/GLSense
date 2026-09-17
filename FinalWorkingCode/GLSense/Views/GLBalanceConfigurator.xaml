@@ -904,11 +904,11 @@
 
                     <!-- Content that fills available space -->
                     <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
-                        <Border BorderBrush="#E9ECEF" 
-                                BorderThickness="1" 
-                                CornerRadius="4" 
-                                Background="White" 
-                                Margin="2" 
+                        <Border BorderBrush="#E9ECEF"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Background="White"
+                                Margin="2"
                                 Padding="0"
                                 VerticalAlignment="Stretch">
                             <ScrollViewer VerticalScrollBarVisibility="Auto"

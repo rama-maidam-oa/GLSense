@@ -3140,8 +3140,15 @@ namespace GLSense.ViewModels
                 // document property (which can trigger bindings and layout).
                 var doc = ParameterDisplayText ?? CreateFormattedDocument();
 
-                // Ensure basic formatting is applied
-                doc.PagePadding = new Thickness(4, 4, 4, 4);
+                // Ensure basic formatting is applied. Right padding deliberately larger
+                // than the other 3 sides - the parameter summary text was rendering right
+                // up against (and visually appearing to run past) the RichTextBox's own
+                // right edge in AIPowered's 11.1.2, confirmed via screenshots even after
+                // widening the whole pane 10-25px, so the extra buffer is applied here
+                // directly rather than relying on the pane's own outer width. Ported here
+                // for parity even though not independently confirmed as reproducing in
+                // FinalWorkingCode.
+                doc.PagePadding = new Thickness(4, 4, 14, 4);
                 doc.TextAlignment = TextAlignment.Left;
                 doc.FontSize = 11;
                 doc.FontFamily = new FontFamily("Segoe UI");

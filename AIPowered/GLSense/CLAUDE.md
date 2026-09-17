@@ -5722,6 +5722,46 @@ compaction amounts.
 
 ---
 
+## 60. "Get Balance Function Parameters" text ran off the right edge, unaffected by pane width - actual fix was a single Thickness value (both codebases)
+
+Follow-up to section 59: after that fix, the summary text under "Get Balance Function
+Parameters" (bottom expander) still ran off the pane's right edge with no wrapping -
+confirmed via screenshots even after manually widening the pane 10-25px, which had zero
+effect, ruling out "not enough width" as the cause.
+
+**Red herring investigated and ruled out**: `CreateFormattedDocument()`'s `FlowDocument`
+sets `ColumnWidth = double.PositiveInfinity`, which in isolation is well-documented WPF
+behavior for "render as one unbounded-width column, never wrap" - a very plausible-looking
+culprit. User correctly pushed back with direct evidence: this exact line has existed
+since FinalWorkingCode's `11.1.1` branch (confirmed via `git show origin/11.1.1:
+FinalWorkingCode/GLSense/ViewModels/GLConfiguratorViewModel.cs`, byte-identical), from
+before the Saved Configurations feature existed, and never caused a visible problem during
+that branch's own DPI-adaptability testing. Left untouched in both codebases - don't
+re-suspect this property without new evidence.
+
+**Actual fix**: `GLConfiguratorViewModel.cs`'s `UpdateParameterSummary()` (called on every
+summary refresh) sets `doc.PagePadding = new Thickness(4, 4, 4, 4)` on every update -
+this OVERWRITES whatever `CreateFormattedDocument()` set initially, so it's the one that
+actually controls the live rendered padding, not the constructor. Changed the right value
+specifically: `new Thickness(4, 4, 14, 4)` - directly reserves extra space on the right
+side of the FlowDocument's own content area, which is what actually constrains where the
+text itself can render/wrap, independent of the surrounding pane's width.
+
+**First attempt also bumped the containing `Border`'s outer `Margin` from `2` to
+`2,2,14,2`** - this fixed the overflow too, but user caught (from a screenshot, red-circled)
+that it made this one card's outer edge sit visibly further from the pane's true right
+edge than every sibling card (Ledger row, Options row, etc.), whose own total right-side
+spacing is ~16-20px versus this card's resulting ~44px once the `Border` margin bump
+stacked on top of the `PagePadding` bump. **Reverted the `Border.Margin` change entirely**
+(back to plain `2`, matching its original value byte-for-byte in AIPowered) - the
+`PagePadding` change alone is sufficient to fix the wrapping, and reverting the redundant
+outer-margin bump restores this card's visual alignment with its siblings.
+
+**Status**: implemented and user-confirmed working in both codebases, AIPowered/
+FinalWorkingCode `11.1.2` only.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
