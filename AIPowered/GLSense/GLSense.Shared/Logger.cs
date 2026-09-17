@@ -169,7 +169,7 @@ namespace GLSense.Shared
             string defaultCommitDate = PathProvider.Instance.LatestReleaseDate;
             var sb = new StringBuilder();
 
-            string header = $"Orbit GLSense(version : {defaultVersion} Released on : {defaultCommitDate}). Logs As On {DateTime.Now:dddd, dd MMMM yyyy}. Time Zone: {TimeZoneInfo.Local.DisplayName}";
+            string header = $"Orbit GLSense Logs As On {DateTime.Now:dddd, dd MMMM yyyy}. Time Zone: {TimeZoneInfo.Local.DisplayName}";
             sb.AppendLine(header);
             sb.AppendLine(new string('-', header.Length));
 
