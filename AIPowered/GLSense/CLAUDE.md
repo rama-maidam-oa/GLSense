@@ -5762,6 +5762,82 @@ FinalWorkingCode `11.1.2` only.
 
 ---
 
+## 61. GLReleaseHistoryBrowser/GLReloadSourcePicker: primary-brush visual pass, and a real DataGrid selection gotcha
+
+User-requested visual polish pass on both host-side windows (section 40's two windows -
+plain `Window`s, can't reference `GLSense.Addin.Core`'s `GlobalStyles.xaml` directly, so
+every color below is a duplicated literal `#2E86AB` = Addin.Core's `PrimaryBrush`, matching
+the "recreated, not shared" convention this file already uses for its ToolTip style).
+
+### 61.1 GLReleaseHistoryBrowser.xaml
+
+- Title TextBlock (`Grid.Row="0"`) and the `DataGridColumnHeader`'s Background both
+  standardized on `#2E86AB`, White, SemiBold text - previously the title used a different
+  blue (`#FF1565C0`, the buttons' own color) and the headers had no color at all (plain
+  WPF default gray).
+- `DataGridColumnHeader` `Padding="6,2,6,2"` added - WPF's default header has no vertical
+  padding of its own, so 2px top + 2px bottom is exactly +4px of header height, as
+  requested.
+- **Notes column tooltip now wraps.** `Setter Property="ToolTip" Value="{Binding Notes}"`
+  (a bare string) renders via WPF's default ToolTip content template, which does NOT wrap
+  plain strings and has no `MaxWidth` - a long user-typed note (see `ReleaseNotes.txt`)
+  would render as one unbounded-width line. Replaced with an explicit `<ToolTip><TextBlock
+  TextWrapping="Wrap" MaxWidth="300"/></ToolTip>` - every other column's tooltip stayed a
+  bare string Setter since their values are always short/fixed-format.
+- **Selected-row color - real gotcha, worth remembering**: a `DataGridRow`-level
+  `IsSelected` `Trigger` setting `Background`/`Foreground` has **zero visible effect** in
+  WPF. `DataGridCell`'s own default `ControlTemplate` paints its selected state from
+  `SystemColors.HighlightBrushKey`/`HighlightTextBrushKey` (the OS selection color) and
+  that opaque per-cell background paints directly over whatever the row's own Background
+  was set to - confirmed via an actual screenshot showing the row still rendering the
+  default Windows selection blue despite the row trigger being in place and firing
+  correctly. The correct, standard WPF fix is to override those two system-color resources
+  directly (scoped to `Window.Resources` here, since this window has no other
+  selection-aware control like a ComboBox/ListBox that overriding them could unintentionally
+  affect): `SystemColors.HighlightBrushKey` → `#82B6CD` (a lighter tint of the same
+  `#2E86AB` family), `SystemColors.HighlightTextBrushKey` → White. **If a future window's
+  DataGrid selection color doesn't respond to a row-level trigger, this is why - don't
+  re-derive it from scratch, go straight to the SystemColors resource override.**
+  (Note: `GLSense.Addin.Core\Themes\GlobalStyles.xaml`'s own `ModernDataGridRow` style
+  already uses a related but not identical tint, `#9BCEE4`, for its own `IsSelected`
+  trigger - that one apparently DOES work, most likely because whatever `DataGridCell`
+  style Addin.Core's own theme applies overrides the cell-level template differently than
+  the plain WPF default used in this host-side window. Not reconciled into one shared
+  value here since the user had already confirmed `#82B6CD` working before this was
+  noticed - flagging for awareness, not treated as a bug.)
+
+### 61.2 GLReloadSourcePicker.xaml
+
+- Title TextBlock (`SectionHeader` style) standardized on `#2E86AB`, matching
+  GLReleaseHistoryBrowser's title exactly.
+- New `ModernRadioButton` style: custom-drawn ring + dot (`Ellipse` pair, dot visibility
+  bound to `IsChecked`) rather than relying on WPF's default RadioButton chrome, whose
+  checked-indicator color follows the Windows accent color, not this app's own primary
+  brush - same hand-drawn-indicator technique already proven safe in this codebase via
+  `GLBalanceConfigurator.xaml`'s `BlueCircleExpanderStyle`. Mirrors Addin.Core's own
+  `ModernRadioButton` typography (FontSize 13, Cursor Hand) - that style never touched the
+  dot's color either, so this adds a layer it was missing rather than diverging from it.
+  Applied to `RbOnline`/`RbOffline`.
+- `ActionButton`/`SecondaryButton`: kept byte-for-byte in sync with
+  GLReleaseHistoryBrowser.xaml's own copies (per both files' existing header comments) -
+  `ActionButton` (Reload) now shares `SecondaryButton`'s (Cancel) exact rest-state look
+  (light gray/dark text/gray border) instead of its own solid blue; both converge on
+  `#2E86AB` + white text on hover instead of the old `#FF0D47A1`/`#FF1565C0`.
+- **`BtnCheckOnline`/`BtnBrowse` had no `Style` at all** - confirmed via grep neither ever
+  referenced `ActionButton` or `SecondaryButton`, so they were rendering with WPF's plain
+  default button chrome the whole time; this is why the hover-color fix above appeared to
+  have "no effect" on them when first tested - they were never wired to either style in the
+  first place. Applied `Style="{StaticResource SecondaryButton}"` to both. Their own
+  existing local `Padding="10,4"` still overrides the style's default `16,6` padding (local
+  values win over style Setters), so their compact sizing is unchanged - only
+  Background/Foreground/BorderBrush/hover behavior now come from the shared style.
+
+**Status**: implemented, AIPowered `11.1.2` only (both windows are AIPowered-specific per
+section 40 - no FinalWorkingCode equivalent exists). Verified via XML well-formedness on
+both edited `.xaml` files. User confirmed working after rebuild for every item above.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
