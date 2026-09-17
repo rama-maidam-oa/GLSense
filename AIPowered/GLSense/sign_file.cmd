@@ -68,15 +68,6 @@ if "%TARGET_FILE%"=="" (
     exit /b 1
 )
 
-REM Diagnostic entry line (timestamped) - always printed, regardless of
-REM config/skip outcome below, so the build log unambiguously shows every
-REM invocation of this script: which file, which config, and exactly when
-REM (down to the second) relative to every OTHER line in the same build log -
-REM e.g. an installer's PostBuildEvent step (adxpatch.exe) that runs after
-REM this script signed a file. Added specifically to help pin down whether
-REM anything AFTER signing touches these files again.
-echo [sign_file][DEBUG] %DATE% %TIME% - invoked for "%TARGET_FILE%" (config=%BUILD_CONFIG%, force=%FORCE_MODE%)
-
 if /I not "%BUILD_CONFIG%"=="Release" (
     echo [sign_file] DEBUG mode - no signing needed for "%TARGET_FILE%".
     exit /b 0
@@ -131,7 +122,6 @@ for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "try { $sig = 
 
 if /I "%CERT_STATE%"=="VALID" (
     echo [sign_file] RELEASE mode - already signed and certificate still valid, skipping: "%TARGET_FILE%"
-    call :LogHashDebug
     exit /b 0
 )
 
@@ -146,19 +136,4 @@ if !errorlevel! neq 0 (
 )
 
 echo [sign_file] SUCCESS: signed "%TARGET_FILE%"
-call :LogHashDebug
-exit /b 0
-
-:LogHashDebug
-REM Prints a timestamped SHA256 hash for TARGET_FILE right at the moment
-REM sign_file.cmd is done with it (whether just-signed or skip-because-
-REM already-valid) - this is the "before" baseline. Anything downstream in
-REM the SAME build (e.g. an installer's PostBuildEvent running adxpatch.exe
-REM on the built .msi) that touches this exact file's bytes afterward would
-REM show a DIFFERENT hash if independently re-checked later in the log -
-REM compare against a corresponding "after" hash logged elsewhere (see
-REM OrbitGLSense.vdproj's PostBuildEvent / verify_signatures.cmd).
-for /f "usebackq delims=" %%H in (`powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 -LiteralPath '%TARGET_FILE%').Hash"`) do (
-    echo [sign_file][DEBUG] %DATE% %TIME% - post-sign_file.cmd SHA256 for "%TARGET_FILE%": %%H
-)
 exit /b 0

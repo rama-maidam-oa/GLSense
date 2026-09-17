@@ -6315,6 +6315,70 @@ this file's own header comment, which says so explicitly).
 
 ---
 
+### 66.3 Question settled: `adxpatch.exe` does NOT invalidate the signatures - diagnostic removed
+
+User ran a real Release rebuild with the 66.2 diagnostic in place and shared the
+full build log. Direct comparison of `sign_file.cmd`'s pre-`adxpatch` SHA256 hash
+against `verify_signatures.cmd`'s post-`adxpatch` SHA256 hash for all 3 files
+came back **byte-for-byte identical**, with `Get-AuthenticodeSignature` reporting
+`Status=Valid` post-`adxpatch` too:
+
+| File | Pre-adxpatch SHA256 | Post-adxpatch SHA256 |
+|---|---|---|
+| `GLSense.dll` | `67D545C9...4C3CDA3` | `67D545C9...4C3CDA3` (match) |
+| `adxloader.GLSense.dll` | `A35C04F6...889F7F` | `A35C04F6...889F7F` (match) |
+| `adxloader64.GLSense.dll` | `0252EAE6...13D9E2` | `0252EAE6...13D9E2` (match) |
+
+This also matched `adxpatch.exe`'s own console output exactly: `Disable UAC
+action: The UAC popup window will not be shown for the MSI installer.` /
+`Impersonation action: The 'adxregistrator.exe' custom action will be run with
+the invoker's privileges.` - confirming the earlier inference from its
+`/UAC=Off`/`/RunActionsAsInvoker=true` arguments: it patches the built `.msi`'s
+own **CustomAction table** (elevation/impersonation settings for the
+`adxregistrator.exe` custom action specifically), never the embedded file
+payload bytes. **Conclusion: `PreBuildEvent`'s signing of `GLSense.dll`/
+`adxloader.GLSense.dll`/`adxloader64.GLSense.dll` is genuinely what ships in
+the final `.msi` - `adxpatch.exe` is not a risk to it.**
+
+Same rebuild also confirmed 66.1's `SourcePath` fix is working (log shows
+signing/packaging correctly resolving to `..\bin\Release\adxloader*.GLSense.dll`
+now, not `..\Loader\...`).
+
+**A real, separate, unrelated issue this same rebuild surfaced**: a transient
+DigiCert timestamp-server failure (`SignTool error: The specified timestamp
+server either could not be reached or returned an invalid response.`) caused
+`GLSense.Addin.Core\bin\Release\x64\e_sqlite3.dll`'s signing to fail mid-build.
+Because `post_build.cmd`'s three `sign_file.cmd` calls in Step 1 aren't
+`&&`-chained/guarded, the script continued past that failure and completed
+Steps 2-4 anyway - so that particular build's `OrbitGLSense.zip` was staged
+with an **unsigned** `x64\e_sqlite3.dll` baked in (confirmed via
+`Get-AuthenticodeSignature` directly - `NotSigned` - and the zip's timestamp
+postdating the failed signing attempt), and `GLSense.Addin.Core` showed as
+"failed" in VS's overall build summary despite its compile succeeding. Not a
+code bug - a network hiccup reaching `http://timestamp.digicert.com` - but
+worth knowing: **a single project reporting "failed" in the Rebuild summary
+does not guarantee the resulting zip/MSI is fully signed** with this script
+shape. Simply rebuilding again (retrying the timestamp call) resolves it. Not
+fixed proactively in this pass (e.g. making Step 1's signing calls abort the
+whole `post_build.cmd` on failure) since it wasn't asked for - flagging here in
+case a future session wants to harden that.
+
+Two other warnings seen in that log are benign/pre-existing, not new problems:
+the `System.IO.Compression.dll` duplicate-target-location warning (already
+known from earlier sessions) and a Windows-System-File-Protection warning
+about `GLSenseUninstallCleanup.exe`'s source (`cmd.exe`) - advisory only, it
+still packaged successfully (confirmed by the log's own `Packaging file
+'GLSenseUninstallCleanup.exe'...` line).
+
+**Diagnostic removed** per the user's explicit request now that the question
+is settled: `sign_file.cmd` reverted to byte-identical with its pre-diagnostic
+state (verified via `git diff` against the prior commit - empty diff),
+`GLSenseSetup\verify_signatures.cmd` deleted, and `OrbitGLSense.vdproj`'s
+`PostBuildEvent` reverted to just the plain `adxpatch.exe` call. Only 66.1's
+genuine `SourcePath` bugfix remains in the vdproj.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
