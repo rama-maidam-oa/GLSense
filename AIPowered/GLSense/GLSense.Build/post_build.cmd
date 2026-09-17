@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 echo ========================================================================
 echo GLSense.Build: solution build finished
 echo ========================================================================
@@ -42,5 +43,38 @@ echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\AddinCore\Manifest\manifest.json
 echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\AddinCore\Manifest\v*.zip
 echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\AddinCore\Versions\   (populated at runtime by UpdateBootstrapper)
 echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\AddinCore\ReleaseHistory.json   (populated at runtime by UpdateBootstrapper)
+
+REM ===== Dev-mode signing check (see sign_file.cmd / CLAUDE.md section 55) =====
+REM Runs last, after every project's own post_build.cmd, so this is the final
+REM thing printed for the whole solution build - the one place a marker left
+REM by GLSENSE_SKIP_SIGNING can't be missed by someone scrolling straight to
+REM the bottom of the Output window.
+set "DEV_MODE_WARNING_FOUND=0"
+for %%D in (
+    "%SOLUTION_DIR%\GLSense.Contracts\bin\%CONFIG%"
+    "%SOLUTION_DIR%\GLSense.Shared\bin\%CONFIG%"
+    "%SOLUTION_DIR%\GLSense.Loader.Core\bin\%CONFIG%"
+    "%SOLUTION_DIR%\GLSense.Addin.Core\bin\%CONFIG%"
+    "%SOLUTION_DIR%\GLSense.Addin.Core\bin\%CONFIG%\x86"
+    "%SOLUTION_DIR%\GLSense.Addin.Core\bin\%CONFIG%\x64"
+) do (
+    if exist "%%~D\_DEV_UNSIGNED_BUILD.txt" (
+        set "DEV_MODE_WARNING_FOUND=1"
+        echo   %%~D\_DEV_UNSIGNED_BUILD.txt
+    )
+)
+
+if "%DEV_MODE_WARNING_FOUND%"=="1" (
+    echo.
+    echo ****************************************************************
+    echo *** WARNING: THIS BUILD CONTAINS UNSIGNED DEV-MODE OUTPUT!    ***
+    echo *** GLSENSE_SKIP_SIGNING was set when at least one file above ***
+    echo *** was built - see the _DEV_UNSIGNED_BUILD.txt marker^(s^)     ***
+    echo *** listed above for exactly which folder^(s^). Do NOT ship,   ***
+    echo *** install, or hand off this build until it has been        ***
+    echo *** rebuilt with GLSENSE_SKIP_SIGNING unset ^(see CLAUDE.md    ***
+    echo *** section 55^).                                             ***
+    echo ****************************************************************
+)
 
 echo ========================================================================

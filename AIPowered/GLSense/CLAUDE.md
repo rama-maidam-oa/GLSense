@@ -5462,6 +5462,59 @@ cycle in this pass - the early-exit logic itself is a simple, direct `if not
 "%VAR%"=="" (...)` check, standard batch-file behavior, not something that needed a live
 test to have confidence in.
 
+### 55.1 Corrected: `setx` was itself the dangerous part - replaced with a session-scoped launcher + a marker-file/build-summary safety net
+
+User immediately and correctly pushed back on 55's own recommended usage
+(`setx GLSENSE_SKIP_SIGNING 1`, restart VS): a `setx`-set variable is written to the
+current user's environment in the registry and survives indefinitely - every future VS
+session, every future day, until someone remembers to manually remove it. Exactly the
+scenario this needed to guard against didn't require anything exotic: set it once during
+a busy week to save quota, get pulled onto something else, come back later in a rush and
+Rebuild/ship without remembering it's still set - every Release build since would have
+been silently unsigned, with only an easy-to-miss `[sign_file]` log line as the only
+record. A per-machine, sticky, invisible opt-out is a real footgun for exactly the
+"go live soon, moving fast" situation this whole engagement is in.
+
+**Redesigned around a hard requirement: the safe (signed) behavior must be what happens
+by default, with nothing to remember to undo.**
+
+1. **`BuildDevMode.cmd`** (new, solution root) replaces the `setx` recommendation
+   entirely. It sets `GLSENSE_SKIP_SIGNING=1` only in its own process's environment (never
+   touching the registry/user environment at all), then launches `devenv.exe` as a CHILD
+   of that process - Windows child processes inherit their parent's environment, so only
+   that one VS instance (and everything it builds) sees the variable as set. The very next
+   time VS is opened normally - Start Menu, double-clicking `GLSense.sln`, Recent Projects
+   - there is nothing set, and signing is back to its default, always-on behavior with
+   zero manual cleanup required. `sign_file.cmd`'s own header comment for this variable now
+   explicitly says `DO NOT set this via setx/System Properties` and points at this launcher
+   instead.
+2. **Defense in depth, in case someone sets it persistently by hand anyway**: every time
+   `sign_file.cmd` actually skips signing due to this variable, it now drops a
+   `_DEV_UNSIGNED_BUILD.txt` marker file (via a new `:WriteDevModeMarker` subroutine) in
+   the exact same output folder as the file it didn't sign - sitting right next to the
+   unsigned DLL, not buried in scrollback. That marker is automatically removed (via a new
+   `:ClearDevModeMarker` subroutine, called from both the "already validly signed" and
+   "signed successfully" exit paths) the next time a file in that same folder is actually
+   (re-)signed for real - so it can never go stale and falsely warn about a folder that's
+   since been properly signed again.
+3. **`GLSense.Build\post_build.cmd`** (runs last, after every project, per the existing
+   dependency-ordered build) now scans `GLSense.Contracts`/`GLSense.Shared`/
+   `GLSense.Loader.Core`/`GLSense.Addin.Core`'s `bin\{Config}\` folders (plus Addin.Core's
+   `x86\`/`x64\` subfolders) for that marker and prints an impossible-to-miss warning
+   banner at the very bottom of the whole solution build's output if it finds one -
+   `GLSense.Build` is the last project to build, so this is the last thing printed,
+   specifically so scrolling straight to the bottom of a huge build log still surfaces it.
+
+This is layered defense, not a single fix: the launcher removes the main failure mode
+(forgetting to unset a sticky toggle) by construction, and the marker+banner catch the
+remaining edge case (someone insists on `setx` anyway, or manually exports the variable
+in a terminal session that outlives their attention) without requiring anyone to
+remember anything mid-build.
+
+**Status**: implemented, AIPowered `11.1.2` only. Not independently re-verified against a
+real launcher-double-click + VS-build + banner-appears cycle in this pass - same
+toolchain-availability caveat as section 55 itself.
+
 ---
 
 ## Deployment note (important when a fix "doesn't seem to work")
