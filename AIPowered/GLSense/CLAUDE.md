@@ -6714,6 +6714,109 @@ otherwise be a CS1998 "lacks await operators" warning).
 
 ---
 
+## 73. `OrbitGLSense.vdproj` recreated from scratch via VS's New Project wizard - the section 67 leak reappeared immediately, fixed the same way plus a stronger, evidence-based audit
+
+User decided to recreate the whole `OrbitGLSense` installer project from scratch (own
+call: "I wish to recreate the installer project again as i might have messed up few
+things") rather than keep hand-patching the old one. Sequence: old project's
+`.vdproj` file and its `GLSense.sln` reference were deleted as a checkpoint commit
+(`d0fccb7`), the user then created a brand-new Setup Project via VS's wizard at the
+same path (`GLSense\GLSenseSetup\OrbitGLSense.vdproj`), added most of the pieces
+themselves, and asked for the remaining gaps to be wired directly (no VS UI access in
+this environment - direct `.vdproj` text edits, same approach as sections 67/68).
+
+**The exact same architectural leak from section 67 was back, from this project's very
+first "Detected Dependencies" scan** - proof this isn't something that only happens
+after repeated manual edits over time, it's inherent to how VS's Setup Project
+dependency detector treats a "Primary output from GLSense (Active)" / "Localized
+resources from GLSense (Active)" Project-Output reference: walking GLSense.dll's own
+build graph pulled in `GLSense.Addin.Core.dll` and its entire private dependency tree
+(MahApps.Metro.IconPacks.Core/FontAwesome, System.Data.SQLite, Microsoft.Web.WebView2.
+Core/Wpf, System.Net.Http, plus a duplicate non-GAC `System.IO.Compression.dll`) right
+back into the installer, exactly like before.
+
+**This time, instead of eyeballing the ~35-entry Detected Dependencies list to guess
+which are genuinely host-required vs. Addin.Core-only leaks, the vdproj's own
+`Hierarchy` block (`MsmKey`/`OwnerKey` pairs - VS's internal "what requires what" merge
+-module ownership graph) was parsed programmatically** (a small PowerShell regex
+script, `python3`/`python` weren't available in this environment) to get a ground-truth
+answer per entry: does this dependency have ANY path back to a genuinely
+host-referenced project (`GLSense.Contracts`/`GLSense.Shared`/`GLSense.Loader.Core`/
+`AddinExpress.MSO.2005`/`AddinExpress.XL.2005`/Office-Excel-Vbe interop), or is its
+*only* non-root owner `GLSense.Addin.Core` itself? This settled two things the earlier,
+by-eye pass in section 67/68 couldn't answer with confidence:
+- The whole `System.Text.Json` dependency chain (`Microsoft.Bcl.AsyncInterfaces`,
+  `System.Buffers`, `System.Memory`, `System.Numerics.Vectors`,
+  `System.Runtime.CompilerServices.Unsafe`, `System.Text.Encodings.Web`,
+  `System.IO.Pipelines`, `System.Threading.Tasks.Extensions`) turned out to be
+  genuinely needed - `System.Text.Json` itself is owned by BOTH `GLSense.Addin.Core`
+  AND `GLSense.Shared` (which parses `manifest.json` via `VersionParser`, see section
+  14.2), and the host references `GLSense.Shared` directly. All of these were kept.
+- `System.Net.Http` looked ambiguous at first (it was a legitimate dependency of the
+  old `UpdateBootstrapper`'s remote-manifest-check code path), but section 17 already
+  removed that entire HTTP branch from `GLSense.Loader.Core` ("local-host removed" -
+  `UpdateBootstrapper` is now a strictly 3-branch, folder-only decision tree with no
+  network calls at all). The Hierarchy graph confirmed `System.Net.Http`'s only
+  non-root owner is `GLSense.Addin.Core` now - genuinely Addin.Core-exclusive today,
+  even though it wouldn't have been a few sections ago. Deleted.
+- `System.IO.Compression.FileSystem` and the GAC-flavored `System.IO.Compression`
+  (v4.0.0.0, `AssemblyIsInGAC=TRUE`) are genuinely needed - both are owned by
+  `GLSense.Loader.Core` (which still does the zip-extraction step in
+  `UpdateBootstrapper`, per section 15/17) as well as by `GLSense.Addin.Core` - kept,
+  `Exclude` left as `TRUE` on the GAC copy (Windows already has it, shouldn't ship it)
+  and `FALSE` on `.FileSystem` (needs shipping). Only the SECOND, non-GAC
+  `System.IO.Compression` v4.2.0.0 duplicate (owned only by `GLSense.Addin.Core` + the
+  Primary Output root) was the actual leak - deleted, matching the section 66.1-era
+  "keep the GAC one, delete the non-GAC duplicate" reasoning, now confirmed by the
+  ownership graph instead of inferred from `msiexec /a` output alone.
+
+**Fix, mirroring section 67/68's proven pattern exactly:**
+- Removed both `ProjectOutput` entries (`Built` = Primary Output, and
+  `LocalizedResourceDlls`) - `"ProjectOutput" { }` is now empty.
+- Added `GLSense.dll` as a plain `{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}` File entry
+  (`SourcePath = "..\bin\Release\GLSense.dll"`) instead - the same plain-FileEntry type
+  GUID already used for `adxloader.GLSense.dll`/`adxloader64.GLSense.dll` in this same
+  project, deliberately NOT the `{9F6F8455-...}` AssemblyEntry type (which carries the
+  `AssemblyAsmDisplayName`/`ScatterAssemblies` metadata that makes VS treat it as
+  something to re-walk for dependencies).
+- Deleted (not merely `Exclude="TRUE"`, per section 67's own hard-won "Exclude doesn't
+  reliably keep a file out of the built MSI" finding) all 7 confirmed Addin.Core-only
+  entries: `GLSense.Addin.Core.dll`, `MahApps.Metro.IconPacks.FontAwesome.dll` +
+  `.Core.dll`, `Microsoft.Web.WebView2.Wpf.dll` + `.Core.dll`,
+  `System.Data.SQLite.dll`, `System.Net.Http.dll`, and the duplicate non-GAC
+  `System.IO.Compression.dll` v4.2.0.0.
+- Fixed both `adxloader.GLSense.dll`/`adxloader64.GLSense.dll` `SourcePath`s (this
+  brand-new project had reverted to the unsigned `..\Loader\...` copies again) back to
+  `..\bin\Release\...`, matching section 66.1.
+- Added the missing uninstall-cleanup wiring (user supplied the exact checklist,
+  matching the original `cc412fc` commit byte-for-byte): a plain File entry
+  (`SourcePath = "C:\Windows\System32\cmd.exe"`, `TargetName =
+  "GLSenseUninstallCleanup.exe"` - Windows Installer copies and renames it during
+  install, it's never literally `cmd.exe` on the target machine) plus its Uninstall-only
+  `CustomAction` (`InstallAction="3:4"`, `Condition = "REMOVE=\"ALL\" AND NOT
+  UPGRADINGPRODUCTCODE"`, `Arguments = "/c if exist \"[TARGETDIR]AddinCore\" rd /s /q
+  \"[TARGETDIR]AddinCore\" & exit /b 0"`), completing the same 4-custom-action set
+  (Install/Rollback/Uninstall `adxregistrator.exe` + this) the old project had.
+- Left the `Hierarchy` block's now-dangling `Entry` records (pointing at the 7 deleted
+  `MsmKey`s) untouched - this block is only VS's own UI bookkeeping for the Detected
+  Dependencies tree view, not something the MSI build itself validates; section 68's
+  prior successful fix left the same kind of stale entries behind with no observed
+  ill effect, and VS reconciles/regenerates this block the next time the project is
+  opened or a dependency is re-scanned.
+- Verified via brace-balance count (372 open / 372 close) and targeted regex sweeps
+  that zero occurrences of `MahApps.Metro.IconPacks`/`System.Data.SQLite`/
+  `Microsoft.Web.WebView2`/`System.Net.Http`/`GLSense.Addin.Core.dll` remain anywhere in
+  the file, and that `GLSense.dll`/`GLSenseUninstallCleanup` each appear the expected
+  number of times.
+
+**Status**: implemented. Not yet rebuilt/tested by the user - needs a real VS build
+followed by the same `msiexec /a "OrbitGLSense.msi" /qn TARGETDIR=<dir>`
+administrative-extraction check established in section 67, to independently re-confirm
+`GLSense.Addin.Core.dll`/MahApps/SQLite/WebView2 are genuinely absent from the built
+MSI (not just absent from the `.vdproj` source) before trusting this on a real install.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
