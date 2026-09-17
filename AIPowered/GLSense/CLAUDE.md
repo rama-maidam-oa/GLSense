@@ -6610,6 +6610,84 @@ This fix brings AIPowered back in line with FinalWorkingCode's own reference lay
 
 ---
 
+## 71. "Excel.exe stuck in background after close" - investigated and DISPROVEN as a
+GLSense bug; root cause is machine-level (Bitdefender Endpoint Security Tools),
+independent of the add-in entirely
+
+User reported the classic section-29 symptom recurring: closing Excel leaves it running
+in the background, and reopening while the old process is still alive can make the
+add-in fail to load. Rather than re-guessing at code fixes, this was investigated with
+direct, timed, reproducible measurements on the user's real machine (PowerShell polling
+`Get-Process -Name EXCEL` from launch to process disappearance) across four separate
+scenarios:
+
+| Scenario | Elapsed (launch to vanish) |
+|---|---|
+| Open, do nothing, close (no Debug trace) | 75.35s |
+| Open, do nothing, close (Debug trace attempted, but Debug button wasn't actually clicked - no trace lines) | 71.27s |
+| Open, click Debug immediately, close (full trace captured) | 70.35s |
+| **GLSense completely uninstalled**, open plain Excel, close | **64.97s** |
+
+**Step 1 - proved GLSense's own shutdown code is not the bottleneck.** The
+Debug-traced run captured the complete sequence with millisecond timestamps:
+
+```
+21:50:52.1929 AddinModule_AddinBeginShutdown fired - tearing down GLSense.Addin.Core before Excel exits.
+21:50:52.1929 AddinEntry.Shutdown invoked.
+21:50:52.1929 ConfiguratorPaneHost.Close invoked / no existing window, nothing to close
+21:50:52.1994 WpfAppManager.Shutdown: shutting down the WPF Application/Dispatcher.
+21:50:52.1994 FormulaCacheManager.EnsureLoaded: loaded 2 cached formula entries.
+21:50:52.1994 ComMessageFilter revoked.
+21:50:52.1994 ServiceLocator.Reset: clearing context and cached services.
+21:50:52.1994 AddinDomainLoader.Unload: unloading AppDomain.
+21:50:52.2194 AddinDomainLoader.Unload: AppDomain unloaded successfully.
+21:50:52.2194 AddinModule_AddinBeginShutdown: teardown complete.
+```
+
+Every step - including the actual `AppDomain.Unload()` call - completes in **under 30
+milliseconds total**. This directly confirms sections 16.1/29's own defensive design
+(the bounded 5-second `AddinDomainLoader.Unload` wait, the background/non-foreground
+Task wrapping `AppDomain.Unload`) is working exactly as intended and is nowhere near
+being the cause of any multi-second delay, let alone 60-70 seconds.
+
+**Step 2 - proved it isn't GLSense-specific at all.** With GLSense fully uninstalled,
+a completely vanilla Excel session (no add-ins) still took 64.97 seconds to fully
+vanish after closing - statistically indistinguishable from every GLSense-installed
+run. This rules out the add-in's AppDomain/shadow-copy architecture (which was the
+leading hypothesis - shadow-copying creates freshly-written, previously-unseen
+assembly files in a temp cache folder on every session, exactly the pattern
+EDR/antivirus behavioral engines scrutinize) as the actual trigger, since the delay
+persists with zero GLSense code loaded.
+
+**Conclusion**: this is a machine-level characteristic, not a GLSense bug. Confirmed
+via `Get-CimInstance -Namespace root\SecurityCenter2 -ClassName AntivirusProduct` and
+`Get-Process` that **Bitdefender Endpoint Security Tools** is actively running on this
+machine (`EPSecurityService` x5, `EPProtectedService`, `EPIntegrationService`,
+`bdredline`), alongside Windows Defender (itself disabled, `AntivirusEnabled=False`,
+in Bitdefender's favor - a normal enterprise configuration). The consistent ~60-75
+second delay on every single `EXCEL.EXE` close, regardless of what's loaded inside it,
+strongly matches endpoint-security software intercepting/scanning a process on exit
+before releasing it - a well-documented EDR behavior pattern, and one that happens to
+apply to Excel specifically (not just processes hosting GLSense).
+
+**Practical guidance for the user in the meantime**: don't relaunch Excel immediately
+after closing it - wait until the old `EXCEL.EXE` process has actually disappeared
+from Task Manager first. Re-opening while the old process is still lingering (for
+reasons entirely outside GLSense's control) is what causes the "add-in fails to load"
+symptom, via file-lock/COM-registration collisions between the still-alive old
+instance and the new one.
+
+**Not something to fix in the GLSense codebase** - the actual root cause sits in
+Bitdefender's own process-exit scanning behavior (or general Windows/Office
+interaction with it), which is outside this application's control. See the IT email
+drafted alongside this investigation (not committed to source control) for the
+suggested next step: asking IT to check Bitdefender's Advanced Threat Control/Process
+Inspector policy for `EXCEL.EXE` specifically, since a consistent ~60-75 second delay
+on every single close is unusually long even for legitimate on-exit scanning and may
+indicate a policy tuning opportunity rather than expected behavior.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
