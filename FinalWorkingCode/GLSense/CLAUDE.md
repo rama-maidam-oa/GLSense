@@ -808,3 +808,34 @@ there.**
   Build-verified (`GLSense.csproj`, Debug config).
   **Status: fixed in both FinalWorkingCode and AIPowered.** See AIPowered's `CLAUDE.md`
   section 47 for the identical port.
+
+- **Whole-codebase audit for the same bug shape (performed on `11.1.1`, this fix's home
+  branch), requested directly after the fix above**: checked every call site of
+  `DisableExcelSettings`/`TryDisableExcelSettings`/`EnableExcelSettings`/
+  `TryEnableExcelSettings` in FinalWorkingCode, plus every direct `ScreenUpdating`/
+  `DisplayAlerts`/`EnableEvents`/`Calculation` toggle that bypasses those helpers, for
+  whether every early `return` between the disable and its matching restore is actually
+  covered by a try/finally (i.e. the exact structural gap `DD_SL.cs` had). **`DD_SL.cs`
+  was the only occurrence** - every other site already follows the safe pattern:
+  - `DD_BL.cs` (`ProcessBLDrilldown`), `DD_JL.cs` (`ProcessJLDrilldown`) - whole body in
+    one try/finally.
+  - `AddinModule.cs` - all 5 sites (`SheetFollowHyperlink`, `RibHighlight_OnClick`,
+    `RibRefreshRange_OnClick`, `ResetBalances`, `RowProcessor.ExecuteAsync`) disable
+    inside (or immediately before) a try whose finally always re-enables.
+  - `Utilities\SegmentDiscoverer.cs` (`SegmentAction`), `Utilities\PeriodsDiscoverer.cs`
+    (`FillPeriods`), `Views\GLSegmentDiscovery.xaml.cs` (`BtnSubmit_Click`),
+    `Views\ExcelRefEditControl.xaml.cs` (`BtnEdit_Click`) - safe.
+  - `Drilldowns\DrillCellHighlighter.cs` (`RibCellHighlight_OnClick`) - safe; also
+    manually restores `DisplayStatusBar`/`Interactive`/`Calculation` via a
+    `snapshotTaken` flag, correctly finally-guarded.
+  - `Drilldowns\DD_ExcelPrecedents.cs` - disable/enable live in separate methods
+    (`ExecuteDrilldownProcess`/`CleanupResources`), but the caller's (`ProcessEPDrilldown`)
+    try/finally guarantees `CleanupResources` always runs.
+  - `Drilldowns\BalanceRefresh.cs` - both `SubmitSnapshotInternalAsync` and
+    `RefreshBalancesInternalAsync` (via shared `InitializeAsync`/`CleanupAsync`) - safe.
+  - `Drilldowns\DDDatatoWorksheet.cs` (`DD_DatetoWorksheet`) - safe, `snapshotTaken` flag
+    + finally.
+  - `Drilldowns\BulkRefreshProcess.cs` (`RunSnapshotInIsolatedExcelAsync`) - not this bug
+    class at all: spins up its own throwaway `Excel.Application` instance, always
+    `Quit()`/released in `finally`, never touches the shared `AppState.Instance.ExcelApp`.
+  Read-only audit - no code changed as a result (nothing else to fix).
