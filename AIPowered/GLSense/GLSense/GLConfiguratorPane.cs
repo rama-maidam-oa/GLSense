@@ -50,8 +50,8 @@ namespace GLSense
         // title text and CustomWindowCloseButtonStyle, so the same floor is expected to
         // hold, but this has not been independently re-measured on this project's own
         // build/DPI matrix and should be verified the same way before shipping.
-        private readonly int _minWidthDip = 595;
-        private readonly int _maxWidthDip = 900;
+        private readonly int _minWidthDip = 635;
+        private readonly int _maxWidthDip = 940;
         // The pane's width target as a fraction of Excel's own current window width - see
         // GetWidthBoundsPx(). Keeps the pane a consistent proportion of the available
         // space across any monitor/resolution/DPI, instead of a fixed DIP size that could
@@ -67,7 +67,7 @@ namespace GLSense
         private readonly int _minRangeSlackDip = 100;
         // Width the pane opens at (GLConfiguratorPane_ADXBeforeTaskPaneShow) - distinct
         // from _minWidthDip so the pane can launch wider than its floor.
-        private readonly int _defaultWidthDip = 610;
+        private readonly int _defaultWidthDip = 650;
         private readonly int _minHeightDip = 300;
         private const int DefaultDpi = 96;
         private const int WM_WINDOWPOSCHANGING = 0x0046;

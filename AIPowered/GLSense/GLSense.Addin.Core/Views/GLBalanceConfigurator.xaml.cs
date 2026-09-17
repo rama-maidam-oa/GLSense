@@ -89,7 +89,7 @@ namespace GLSense.Addin.Core.Views
         // columns to force-fit. See GLConfiguratorPane._minWidthDip's own comment for the
         // full write-up (inherited from FinalWorkingCode's measured fix for the identical
         // header XAML shape - not independently re-measured here).
-        private const double MinimumConfiguratorWidth = 595;
+        private const double MinimumConfiguratorWidth = 635;
 
         private sealed class CellData
         {

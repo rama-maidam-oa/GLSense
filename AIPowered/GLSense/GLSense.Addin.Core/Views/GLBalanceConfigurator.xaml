@@ -6,7 +6,7 @@
              xmlns:conv="clr-namespace:GLSense.Addin.Core.Converters"
              xmlns:iconPacks="clr-namespace:MahApps.Metro.IconPacks;assembly=MahApps.Metro.IconPacks.FontAwesome"
              Background="#F8F9FA"
-             MinWidth="595"
+             MinWidth="635"
              HorizontalAlignment="Stretch"
              VerticalAlignment="Stretch"
              ClipToBounds="True">
@@ -169,7 +169,7 @@
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
                   Margin="0">
-        <Grid MinWidth="600" VerticalAlignment="Stretch">
+        <Grid MinWidth="640" VerticalAlignment="Stretch">
             <Grid Margin="4">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>

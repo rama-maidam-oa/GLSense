@@ -29,8 +29,8 @@ namespace GLSense
         // right edge, independent of any layout/repaint invalidation - genuine content
         // overflow, not a timing bug. 75 DIP of headroom over that measured shortfall
         // leaves a safety margin for font/ClearType rendering variance across machines.
-        private readonly int _minWidthDip = 595;
-        private readonly int _maxWidthDip = 900;
+        private readonly int _minWidthDip = 635;
+        private readonly int _maxWidthDip = 940;
         // The pane's width target as a fraction of Excel's own current window width
         // (AppState.Instance.ExcelApp.Width) - see GetWidthBoundsPx(). Keeps the pane a
         // consistent proportion of the available space across any monitor/resolution/DPI,
@@ -47,7 +47,7 @@ namespace GLSense
         private readonly int _minRangeSlackDip = 100;
         // Width the pane opens at (GLConfiguratorPane_ADXBeforeTaskPaneShow) - distinct
         // from _minWidthDip so the pane can launch wider than its floor.
-        private readonly int _defaultWidthDip = 610;
+        private readonly int _defaultWidthDip = 650;
         private readonly int _minHeightDip = 300;
         private const int DefaultDpi = 96;
         private const int WM_WINDOWPOSCHANGING = 0x0046;

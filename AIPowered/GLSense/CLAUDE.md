@@ -5619,6 +5619,52 @@ the log file header line reads exactly like FinalWorkingCode's.
 
 ---
 
+## 58. Balance Configurator: +40px width across the board (both codebases) to make room for the Saved Configurations row
+
+Both AIPowered's and FinalWorkingCode's `11.1.2` branches have gained a "Saved
+Configurations" row (combo + Save New/Update/Delete buttons) in `GLBalanceConfigurator`
+since these width numbers were last tuned (section 2.1/57's own history predates this
+row). User's call: rather than wait for a visible clipping report, add headroom now -
++40px to every width bound governing this dialog, in both codebases, since they were
+confirmed byte-for-byte identical (section 57.2's investigation already diffed every one
+of these values between AIPowered and FinalWorkingCode `11.1.1`/`11.1.2` and found them
+equal).
+
+**Changed** (identical edit applied to both `AIPowered\GLSense\GLSense\GLConfiguratorPane.cs`
+and `FinalWorkingCode\GLSense\GLConfiguratorPane.cs`, and both codebases' `Views\
+GLBalanceConfigurator.xaml`/`.xaml.cs`):
+
+| Setting | Old | New |
+|---|---|---|
+| `GLConfiguratorPane._minWidthDip` | 595 | 635 |
+| `GLConfiguratorPane._maxWidthDip` | 900 | 940 |
+| `GLConfiguratorPane._defaultWidthDip` | 610 | 650 |
+| `GLBalanceConfigurator.MinimumConfiguratorWidth` (const) | 595 | 635 |
+| `GLBalanceConfigurator.xaml` root `MinWidth` | 595 | 635 |
+| `GLBalanceConfigurator.xaml` inner content `Grid.MinWidth` | 600 | 640 |
+
+`MinWidthPercent`/`MaxWidthPercent` (25%/35% of Excel's own window width) and
+`_minHeightDip` (300, no max) were left untouched - this is a width-only request, and the
+percentage bounds already scale independently of the absolute DIP floor/ceiling they're
+clamped into. The field-list `ScrollViewer.MaxHeight` (620 in AIPowered, 500 in
+FinalWorkingCode - section 57's own documented, deliberate divergence) is a height
+setting and untouched here too.
+
+**Deliberately not re-derived from first principles**: the +40px figure was requested
+directly by the user as a reasonable buffer for the new row's extra controls, not
+independently measured against the Saved-Configurations row's actual rendered width the
+way the original 595/900/610 figures were (see `GLConfiguratorPane._minWidthDip`'s own
+long comment for that original measurement's history) - if 40px turns out to be
+insufficient or excessive after real testing, treat it as a number to retune, not a
+load-bearing constant with its own derivation to preserve.
+
+**Status**: implemented in both codebases, AIPowered/FinalWorkingCode `11.1.2` only.
+Verified via brace-balance checks on all 4 edited `.cs` files and XML well-formedness on
+both edited `.xaml` files - no Windows/MSBuild toolchain in this environment to actually
+rebuild and visually confirm. User will retest after rebuild.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

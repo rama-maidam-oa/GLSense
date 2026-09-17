@@ -30,7 +30,7 @@ namespace GLSense.Views
         // columns) genuinely need more room than that; WPF's Grid doesn't compress Auto
         // columns to force-fit, confirmed via direct measurement (see
         // GLConfiguratorPane._minWidthDip's own comment for the full write-up).
-        private const double MinimumConfiguratorWidth = 595;
+        private const double MinimumConfiguratorWidth = 635;
 
         private sealed class CellData
         {
