@@ -875,7 +875,7 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_065924003BD749BC864364CB30199C11"
             {
-            "SourcePath" = "8:..\\Loader\\adxloader64.GLSense.dll"
+            "SourcePath" = "8:..\\bin\\Release\\adxloader64.GLSense.dll"
             "TargetName" = "8:adxloader64.GLSense.dll"
             "Tag" = "8:"
             "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"
@@ -1861,7 +1861,7 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_E369ACDA2B434E21BB456611DF57C948"
             {
-            "SourcePath" = "8:..\\Loader\\adxloader.GLSense.dll"
+            "SourcePath" = "8:..\\bin\\Release\\adxloader.GLSense.dll"
             "TargetName" = "8:adxloader.GLSense.dll"
             "Tag" = "8:"
             "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"
@@ -2043,7 +2043,7 @@
         "UseSystemSearchPath" = "11:TRUE"
         "TargetPlatform" = "3:1"
         "PreBuildEvent" = "8:rundll32 %windir%\\system32\\dfshim.dll CleanOnlineAppCache && call \"$(ProjectDir)..\\..\\sign_file.cmd\" \"$(ProjectDir)..\\bin\\Release\\GLSense.dll\" \"Release\" && call \"$(ProjectDir)..\\..\\sign_file.cmd\" \"$(ProjectDir)..\\bin\\Release\\adxloader.GLSense.dll\" \"Release\" && call \"$(ProjectDir)..\\..\\sign_file.cmd\" \"$(ProjectDir)..\\bin\\Release\\adxloader64.GLSense.dll\" \"Release\""
-        "PostBuildEvent" = "8:\"C:\\Program Files (x86)\\Add-in Express\\Add-in Express for .NET\\Bin\\adxpatch.exe\" \"$(BuiltOuputPath)\" /UAC=Off /RunActionsAsInvoker=true"
+        "PostBuildEvent" = "8:\"C:\\Program Files (x86)\\Add-in Express\\Add-in Express for .NET\\Bin\\adxpatch.exe\" \"$(BuiltOuputPath)\" /UAC=Off /RunActionsAsInvoker=true && call \"$(ProjectDir)verify_signatures.cmd\""
         "RunPostBuildEvent" = "3:0"
         }
         "Registry"

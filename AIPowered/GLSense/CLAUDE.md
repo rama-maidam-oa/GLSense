@@ -6223,6 +6223,98 @@ triggers this class of drift.
 
 ---
 
+## 66. `adxloader*.dll` SourcePath bug found and fixed, plus a TEMPORARY diagnostic to settle whether `adxpatch.exe` invalidates signatures afterward
+
+### 66.1 Real bug found and fixed: the installer was packaging the UNSIGNED copies of adxloader.GLSense.dll/adxloader64.GLSense.dll
+
+Investigating a user question about duplicate-signing led to comparing the two
+physical copies of these files directly (`Get-FileHash`/`Get-AuthenticodeSignature`
+in PowerShell, not guesswork): `OrbitGLSense.vdproj`'s `SourcePath` for both files
+pointed at `..\Loader\adxloader*.GLSense.dll` (the git-tracked, Add-in-Express-
+generated loader-stub source, confirmed via `git ls-files` - genuinely committed,
+not build output), while `OrbitGLSense.vdproj`'s own `PreBuildEvent` signs a
+COMPLETELY DIFFERENT file at `..\bin\Release\adxloader*.GLSense.dll` (the normal
+per-build copy). Confirmed these are two distinct files on disk (different sizes -
+`Loader\` copies were ~11,760 bytes smaller, exactly the size of an Authenticode
+signature block) and confirmed via `Get-AuthenticodeSignature`: `Loader\` copies
+were `NotSigned`; `bin\Release\` copies were `Valid` (correct Orbit Analytics, Inc.
+cert, expires 2028-05-11). **The installer had been shipping unsigned
+`adxloader.GLSense.dll`/`adxloader64.GLSense.dll` this whole time** - section 41's
+signing work for these 2 specific files was a no-op for what actually ends up in
+the MSI, since nobody had pointed the vdproj at the signed copy.
+
+**Fix**: changed both `File` entries' `SourcePath` from `..\Loader\adxloader*.GLSense.dll`
+to `..\bin\Release\adxloader*.GLSense.dll` - now matches exactly what `PreBuildEvent`
+already signs. `TargetName` (what the file is called once installed) is unchanged.
+The sibling `adxloader.dll.manifest` `File` entry was checked too and left alone -
+confirmed byte-identical between `Loader\` and `bin\Release\` (manifests are plain
+XML, not PE files, so Authenticode signing never touches them - no divergence risk
+there).
+
+**Status**: fixed, not yet rebuilt/tested (needs a real installer build to confirm
+the packaged zip/MSI now contains the signed copies).
+
+### 66.2 TEMPORARY diagnostic added to settle a second, still-open question: does `adxpatch.exe` invalidate signatures afterward?
+
+`OrbitGLSense.vdproj`'s `PostBuildEvent` runs `adxpatch.exe` (Add-in Express's own
+`/UAC=Off /RunActionsAsInvoker=true` MSI patcher) AFTER `PreBuildEvent` has already
+signed `GLSense.dll`/`adxloader*.GLSense.dll`. Whether `adxpatch.exe` rewrites those
+files' bytes as part of patching the built `.msi` (which would invalidate the
+signature just applied moments earlier in the same build) couldn't be confirmed
+from `adxpatch.exe`'s own usage output (it prints nothing at all, even with `/?`,
+exit code 0) - its argument names (`/UAC`, `/RunActionsAsInvoker`) are known MSI
+CustomAction-table/execution-context concepts, suggesting it patches MSI metadata
+rather than embedded file payloads, but that's inference, not proof.
+
+A live test attempt (`devenv.exe /Build Release /Project OrbitGLSense.vdproj`) did
+NOT reach this question - it was blocked by two unrelated problems before
+`OrbitGLSense`'s own `PreBuildEvent` ever ran:
+1. `GLSense.Shared.pfx`/`GLSense.Loader.Core.pfx` strong-name key import failures
+   (`MSB3325`/`MSB3321`, "may be password protected") - a pre-existing issue
+   already noted in earlier CLAUDE.md sections, unrelated to today's work.
+2. `OrbitGLSense`'s own pre-build validation failing with `HRESULT = 8000000A`
+   under command-line `devenv /Build` specifically - possibly a known quirk of
+   building legacy VS Setup/Deployment Projects headlessly rather than through the
+   interactive IDE.
+
+That attempt DID consume 3 real signing operations as a side effect
+(`GLSense.Addin.Core.dll` + both `e_sqlite3.dll` copies genuinely needed re-signing
+since `GLSense.Addin.Core` recompiled) - a real, if not wasted, cost, and a
+concrete demonstration of "any recompile produces a fresh unsigned binary" from
+the earlier discussion. `GLSense.dll` also recompiled during that attempt and is
+currently sitting **unsigned** in `bin\Release\` (confirmed via
+`Get-AuthenticodeSignature`) - this will self-heal the next time `OrbitGLSense`'s
+own `PreBuildEvent` actually runs to completion.
+
+**Diagnostic tooling added** so the NEXT real build (through the IDE, where the
+`.pfx` prompt and Setup Project validation are expected to behave more reliably)
+answers the question directly, without a second round-trip:
+- `sign_file.cmd`: every invocation now logs a timestamped `[sign_file][DEBUG] ...
+  invoked for "..." (config=..., force=...)` entry line, and - right after a file is
+  either freshly signed or confirmed already-validly-signed - a
+  `[sign_file][DEBUG] ... post-sign_file.cmd SHA256 for "...": <hash>` line via a
+  new `:LogHashDebug` subroutine. This is the "before" baseline.
+- `GLSenseSetup\verify_signatures.cmd` (new file): checks `GLSense.dll`/
+  `adxloader.GLSense.dll`/`adxloader64.GLSense.dll` in `bin\Release\` and logs each
+  one's current `Get-AuthenticodeSignature` status AND SHA256 hash, tagged
+  `[verify-post-adxpatch]`. Wired into `OrbitGLSense.vdproj`'s `PostBuildEvent`,
+  chained with `&&` right after `adxpatch.exe` - so it runs immediately after
+  `adxpatch.exe`, in the same build, using the same file paths `sign_file.cmd`
+  already signed moments earlier (during `PreBuildEvent`).
+- **How to read the result**: if a file's SHA256 in the `[verify-post-adxpatch]`
+  line matches the SAME file's `[sign_file][DEBUG] ... post-sign_file.cmd SHA256`
+  line earlier in the same build log, `adxpatch.exe` did not touch it - the
+  `PreBuildEvent` signature is genuinely what ships. If the hash differs, or
+  `Status` isn't `Valid`, `adxpatch.exe` (or something else in that `PostBuildEvent`
+  step) invalidated it after the fact.
+
+**This is a TEMPORARY diagnostic, not a permanent build requirement** - both
+`verify_signatures.cmd`'s wiring into the `PostBuildEvent` and `sign_file.cmd`'s
+extra debug lines should be removed once this question is settled either way (see
+this file's own header comment, which says so explicitly).
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
