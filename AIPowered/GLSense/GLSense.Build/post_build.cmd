@@ -26,7 +26,8 @@ echo   GLSense.Contracts -^> GLSense.Shared -^> GLSense.Loader.Core -^> GLSense 
 echo Each of those projects' own post_build.cmd already ran too - scroll up
 echo for their [sign_file] lines to confirm what was (or wasn't) signed.
 echo.
-echo Host add-in output:
+echo Host add-in output (UNSIGNED - see CLAUDE.md section 53; these 3 files
+echo are now signed once by the HOST add-in installer project instead):
 echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\GLSense.dll
 echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\adxloader.GLSense.dll
 echo   %SOLUTION_DIR%\GLSense\bin\%CONFIG%\adxloader64.GLSense.dll

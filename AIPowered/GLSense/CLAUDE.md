@@ -5301,6 +5301,77 @@ FinalWorkingCode's `11.1.0`/`11.1.1`/`11.1.2` and AIPowered's `11.1.2`).
 **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1`, and `11.1.2`; fixed in
 AIPowered on `11.1.2` only, per request.**
 
+## 53. Host DLL signing moved out of `GLSense\post_build.cmd`, into the (not-yet-built) HOST add-in installer project
+
+Go-live prep. Section 41 settled on a cert-expiry-aware skip check so `GLSense.dll`/
+`adxloader.GLSense.dll`/`adxloader64.GLSense.dll` get (re-)signed automatically on every
+Release rebuild whenever they're unsigned or their embedded cert has expired - correct
+behavior, but it means every developer's local Release rebuild burns a real DigiCert
+Keylocker signing operation (network round-trip to DigiCert's timestamp/signing service)
+for files that only actually need to be trustworthy once: at the point they're packaged
+into the MSI the user installs. User's call: since the MSI "is installed once and rarely
+changes," move signing of these 3 files into the new HOST add-in installer project
+(not yet built) instead, so it happens once per release build, not once per dev rebuild.
+
+**Explicitly NOT a repeat of section 41's "round 2" mistake**: that earlier attempt
+removed signing from these files with nothing replacing it, discovered only after the
+fact that an MSI's own Authenticode signature does not propagate to the individual files
+it extracts, and had to re-add signing here. Confirmed with the user before making this
+change: the new HOST installer project's own build step will sign the actual
+`GLSense.dll`/`adxloader.GLSense.dll`/`adxloader64.GLSense.dll` bytes itself (e.g. via its
+own `sign_file.cmd`-style step against its staged output), not merely sign the resulting
+`.msi` wrapper. As long as that holds, removing the per-dev-rebuild signing here is safe -
+Add-in Express's loader-trust check and Office Trust Center/AV heuristics only ever see
+whatever ships inside the MSI, never these projects' own `bin\Release\` output directly.
+
+**Changed**: removed the three `call "%SOLUTION_DIR%\sign_file.cmd" ...` lines for
+`GLSense.dll`/`adxloader.GLSense.dll`/`adxloader64.GLSense.dll` from
+`GLSense\post_build.cmd`, replacing the surrounding comment block with an explanation of
+where signing now happens and why removing it here doesn't repeat section 41's mistake.
+Updated `GLSense.Build\post_build.cmd`'s summary echo (the "Host add-in output:" block)
+to explicitly call out that these 3 files are now unsigned at this stage, pointing at this
+section, so a future reader scrolling that build-summary output isn't misled into
+thinking `[sign_file]` ran for them.
+
+**Deliberately left unchanged**: `sign_file.cmd` itself (still shared infrastructure - its
+cert-expiry-aware skip-check logic, and its own header comment's historical account of
+why that check exists, are still accurate and still used by every other caller).
+`GLSense.Addin.Core.dll`/the two `e_sqlite3.dll` copies (signed in
+`GLSense.Addin.Core\post_build.cmd`) - also unaffected; not requested, and that DLL is
+loaded into a separate, hot-reloadable AppDomain via a different trust path
+(`AddinDomainLoader`/`UpdateBootstrapper`'s manifest+zip mechanism, not Add-in Express's
+COM-registration loader-trust check that specifically flagged the 3 host files in
+section 41), so the same expired-cert failure mode hasn't been confirmed to apply there
+the same way.
+
+**PARKED - explicitly unresolved, revisit once the HOST installer project exists**:
+`GLSense.Contracts.dll`/`GLSense.Shared.dll`/`GLSense.Loader.Core.dll` still self-sign in
+their own `post_build.cmd` at every dev Release rebuild (untouched by this pass) - they
+also ship inside the host's output folder and inside the MSI, so the exact same "sign once
+at installer-build time instead of on every dev rebuild" reasoning applied to the 3 host
+files above could plausibly extend to these 3 libraries too. **Deliberately not decided
+either way here** - user asked specifically about "GLSense (host)" this round, and this
+question is being parked on purpose rather than resolved by assumption. Do not silently
+extend or silently rule out installer-time signing for these 3 libraries on your own -
+raise it explicitly as an open decision once the HOST installer project is actually being
+built, and let the user decide then, with the installer project's real shape in front of
+them.
+
+**Not yet done**: the HOST add-in installer project itself doesn't exist yet - this
+change only removes signing from the dev-build path; there is currently no build step
+anywhere that signs these 3 files at all until that installer project is built and wired
+up with its own DLL-signing step. Until then, a Release build's `GLSense\bin\Release\`
+output is unsigned - this is expected and intentional, not a regression, but worth
+remembering if anyone side-loads that raw `bin\Release\` output into Excel directly
+(bypassing the not-yet-built installer) and hits the same Add-in-Express-refuses/AV-flags
+symptom section 41 first diagnosed.
+
+**Status**: implemented, AIPowered `11.1.2` only (batch-script change, no application code
+touched - no build verification needed/possible beyond confirming the `.cmd` files still
+parse; not yet exercised via a real Release rebuild in this pass).
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

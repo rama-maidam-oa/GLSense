@@ -22,33 +22,29 @@ for %%F in ("%TARGET_DIR%") do set CONFIG=%%~nxF
 echo Target Directory: %TARGET_DIR%
 echo Configuration: %CONFIG%
 
-REM This project's own outputs are signed here: the host COM add-in DLL
-REM itself, plus the two Add-in Express loader stubs (the actual files
-REM registered in Excel's COM registry and loaded at every Excel startup -
-REM the most important files to sign for SmartScreen/AV trust, since an MSI
-REM installer's own signature never propagates to the individual files it
-REM installs - see CLAUDE.md section 40 for the full back-and-forth history
-REM on this decision).
-REM
-REM Plain (non-FORCE) calls: sign only if not already validly signed, same
-REM as every other project's post_build.cmd - skips a wasted signing
-REM operation on a rebuild that didn't change the bytes. NOTE this does NOT
-REM protect against the specific expired-cert failure mode documented in
-REM CLAUDE.md section 40 (signtool verify /pa can keep passing on a
-REM timestamped signature even after the signing cert itself expires, while
-REM Add-in Express's own loader-trust check does not appear to honor that
-REM timestamp the same way) - if that recurs, pass "FORCE" as a 3rd argument
-REM to each call below (sign_file.cmd already supports it) to always
-REM re-sign with the current cert regardless of what's already there.
+REM This project's own outputs (GLSense.dll, adxloader.GLSense.dll,
+REM adxloader64.GLSense.dll - the actual files registered in Excel's COM
+REM registry and loaded at every Excel startup) are DELIBERATELY NOT signed
+REM here anymore (see CLAUDE.md section 41 for the original back-and-forth
+REM that led to signing them from this script, and section 53 for why that
+REM was reversed). Signing these 3 files now happens once, in the separate
+REM HOST add-in installer project, as part of building the MSI - NOT on
+REM every dev rebuild here. That installer project's own build step must
+REM sign the actual DLL/EXE bytes it packages (not merely the resulting
+REM .msi wrapper) - an MSI's own Authenticode signature does NOT propagate
+REM to the individual files it extracts, so signing only the .msi would
+REM silently reintroduce the exact Add-in-Express-refuses-to-load /
+REM AV-flags-unsigned-code-in-a-trusted-process problem section 41 already
+REM solved once.
 REM
 REM GLSense.Contracts.dll/GLSense.Shared.dll/GLSense.Loader.Core.dll also sit
-REM in this output folder (copied in via ProjectReference), but they are NOT
-REM signed here - they were already signed once, in their own project's
-REM post_build.cmd, before MSBuild copied them here. Re-signing those copies
-REM would just waste a signing operation.
-call "%SOLUTION_DIR%\sign_file.cmd" "%TARGET_DIR%\GLSense.dll" "%CONFIG%"
-call "%SOLUTION_DIR%\sign_file.cmd" "%TARGET_DIR%\adxloader.GLSense.dll" "%CONFIG%"
-call "%SOLUTION_DIR%\sign_file.cmd" "%TARGET_DIR%\adxloader64.GLSense.dll" "%CONFIG%"
+REM in this output folder (copied in via ProjectReference), and still sign
+REM themselves in their own project's post_build.cmd, on every dev Release
+REM rebuild - untouched by this change. PARKED, explicitly unresolved: see
+REM CLAUDE.md section 53 - whether those 3 libraries should also move to
+REM installer-time signing is a real open question, deliberately not decided
+REM here. Raise it once the HOST installer project actually exists; don't
+REM assume either answer in the meantime.
 
 echo ========================================
 echo Copying AddinCore manifest+zip from GLSense.Addin.Core's SetupFiles
