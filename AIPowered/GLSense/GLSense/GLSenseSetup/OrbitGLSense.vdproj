@@ -1544,7 +1544,7 @@
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:GLSense"
         "ProductCode" = "8:{2EED321B-2B13-44EE-A298-FD8EE630A3FA}"
-        "PackageCode" = "8:{834B6CAB-E2E2-4893-9CEB-8DB44AC843FB}"
+        "PackageCode" = "8:{99A747E4-E8C1-4D2B-988C-70585AD4B341}"
         "UpgradeCode" = "8:{2EED321B-2B13-44EE-A298-FD8EE630A3FB}"
         "AspNetVersion" = "8:4.0.30220.0"
         "RestartWWWService" = "11:FALSE"

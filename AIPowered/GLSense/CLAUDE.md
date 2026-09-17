@@ -6578,6 +6578,38 @@ per CLAUDE.md section 2.4). **Needs a real rebuild + install + Reload-picker exe
 
 ---
 
+## 70. Balance Configurator: Combo/RefEdit column width reverted to 50/50 (AIPowered-only)
+
+User flagged (with a screenshot) that every field row's ComboBox visibly dominates the
+row while its RefEdit control (grid+eraser icon box) is cramped narrow next to it -
+this is exactly section 2.3b's own deliberate change from an earlier session
+("increase combo size, reduce refedit width": RefEdit's column changed from `Width="*"`
+to a fixed `Width="150"`, letting the Combo's `Width="*"` column claim the rest).
+Asked directly which way to adjust it; user chose a plain 50/50 split (reverting
+2.3b's asymmetry, not just narrowing the gap).
+
+**Fix**: all 15 field rows' `Grid.ColumnDefinitions` (Ledger, Activity, BalanceType,
+StartDate, EndDate, Period, EndPeriod, Currency, CurrencyType, ActualFlag, Budget,
+Encumbrance, JournalSource, JournalCategory, AccountAssignments) share the identical
+`<ColumnDefinition Width="*"/>` (Combo) + `<ColumnDefinition Width="150"/>` (RefEdit)
+pair with an identical preceding comment - changed the RefEdit column to `Width="*"`
+too in one `replace_all` pass (all 15 confirmed via before/after grep counts: 15
+instances of `Width="150"` -> 0; 15 instances of the new comment text). Label column
+(`Width="Auto" SharedSizeGroup="ConfigLabelCol"`) is untouched - this fix is scoped
+purely to the Combo/RefEdit split, not the label sizing established in section 2.3b.
+
+**FinalWorkingCode needed no change** - checked its equivalent
+`Views\GLBalanceConfigurator.xaml` before touching anything, and it already uses
+`Width="140"` (label) + `Width="*"` (combo) + `Width="*"` (refedit) - a plain 50/50
+split was already its existing state, meaning section 2.3b's "combo gets the lion's
+share" change was AIPowered-only from the start (never mirrored to FinalWorkingCode).
+This fix brings AIPowered back in line with FinalWorkingCode's own reference layout.
+
+**Status**: implemented (AIPowered only), verified well-formed XML via PowerShell's
+`[xml]` parser. Not yet rebuilt/tested by the user.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

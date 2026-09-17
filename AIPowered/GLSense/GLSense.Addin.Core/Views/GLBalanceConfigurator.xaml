@@ -349,11 +349,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Ledger:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbLedgers"
@@ -392,11 +392,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Activity:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbActivity"
@@ -434,11 +434,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Balance Type:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbBT"
@@ -477,11 +477,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Start Date:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <DatePicker x:Name="dtpStartDate"
@@ -542,11 +542,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="End Date:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <DatePicker x:Name="dtpEndDate"
@@ -607,11 +607,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Period:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbPeriods"
@@ -658,11 +658,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="End Period:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbEndPeriods"
@@ -706,11 +706,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Currency:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbCurrency"
@@ -748,11 +748,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Currency Type:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbCurrencyType"
@@ -790,11 +790,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Actual Flag:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbAF"
@@ -833,11 +833,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Budgets:" Style="{StaticResource ConfigLabelStyle}" VerticalAlignment="Center"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbBudgets"
@@ -884,11 +884,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Encumbrances:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbEncumbrances"
@@ -934,11 +934,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Journal Source:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbJS"
@@ -988,11 +988,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Journal Category:" Style="{StaticResource ConfigLabelStyle}"/>
                                 <ctrls:SuggestAppendComboBox x:Name="CmbJC"
@@ -1041,11 +1041,11 @@
                                          while every row's combo/refedit still lines up at the same x
                                          (all rows share the same computed column width). -->
                                     <ColumnDefinition Width="Auto" SharedSizeGroup="ConfigLabelCol"/>
-                                    <!-- Combo gets the lion's share of the remaining width; RefEdit
-                                         is fixed+narrower per request ("increase combo size, reduce
-                                         refedit width"). -->
+                                    <!-- Combo and RefEdit split the remaining width evenly (50/50) -
+                                         reverted from the earlier "combo gets the lion's share, fixed
+                                         150px RefEdit" change (section 2.3b) per direct request. -->
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Label Grid.Column="0" Content="Account Assignment(s):" Style="{StaticResource ConfigLabelStyle}"/>
                                 <views:GLAccountsRef x:Name="AcctsRef"
