@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace GLSense
@@ -19,6 +20,15 @@ namespace GLSense
         private string _candidateManifestPath;
         private string _candidateZipPath;
         private bool _isValidated;
+        private bool _onlineAvailable;
+
+        // Small, deliberate pacing between Offline validation steps (which are
+        // otherwise near-instant local file checks) so the step log is actually
+        // readable instead of flashing by in one frame - same technique already
+        // used elsewhere in this codebase for busy-overlay visibility (see
+        // CLAUDE.md 27.2's Dispatcher.Yield pattern). Online's own steps never
+        // need this - real network/download latency already paces them.
+        private const int OfflineStepDelayMs = 150;
 
         public GLReloadSourcePicker()
         {
@@ -29,25 +39,24 @@ namespace GLSense
 
         private void InitializeModeAvailability()
         {
-            bool onlineAvailable;
             try
             {
                 var loginInfo = GlobalsEx.Addin?.GetLoginInfo();
-                onlineAvailable = loginInfo != null && loginInfo.IsLoggedIn && !string.IsNullOrWhiteSpace(loginInfo.LoginUrl);
+                _onlineAvailable = loginInfo != null && loginInfo.IsLoggedIn && !string.IsNullOrWhiteSpace(loginInfo.LoginUrl);
             }
             catch
             {
                 // Defensive: an older historical Addin.Core build reloaded via the
                 // Release History browser may not implement GetLoginInfo at all.
-                onlineAvailable = false;
+                _onlineAvailable = false;
             }
 
-            RbOnline.IsEnabled = onlineAvailable;
-            if (onlineAvailable) RbOnline.IsChecked = true;
+            RbOnline.IsEnabled = _onlineAvailable;
+            if (_onlineAvailable) RbOnline.IsChecked = true;
             else RbOffline.IsChecked = true;
         }
 
-        private void Mode_Checked(object sender, RoutedEventArgs e)
+        private async void Mode_Checked(object sender, RoutedEventArgs e)
         {
             if (OnlinePanel == null || OfflinePanel == null) return; // fires during InitializeComponent
 
@@ -57,23 +66,107 @@ namespace GLSense
 
             ResetValidation();
 
-            if (!isOnline)
+            if (isOnline)
+            {
+                TxtStatus.Text = "Click \"Check for Update\" to begin.";
+            }
+            else
             {
                 TxtFolder.Text = GetDownloadsFolder();
-                ScanFolder(TxtFolder.Text);
+                await ScanFolderAsync(TxtFolder.Text);
             }
         }
 
+        // Clears to empty (not a static placeholder) since TxtStatus is now an
+        // append-based step log, not a single overwritten status line - a
+        // placeholder set here would sit above the real log lines as a stale
+        // first entry. Callers that need a placeholder (e.g. switching to
+        // Online mode, which doesn't immediately run anything) set one
+        // explicitly right after calling this.
         private void ResetValidation()
         {
             _isValidated = false;
             _candidateManifestPath = null;
             _candidateZipPath = null;
             BtnReload.IsEnabled = false;
-            TxtStatus.Text = "Select Online or Offline to begin.";
+            TxtStatus.Text = string.Empty;
         }
 
-        private void BtnBrowse_Click(object sender, RoutedEventArgs e)
+        // ------------------------------------------------------------------
+        // Busy state + step log helpers
+        // ------------------------------------------------------------------
+
+        private void SetBusy(bool busy)
+        {
+            BusyProgress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+            BtnCheckOnline.IsEnabled = !busy;
+            BtnBrowse.IsEnabled = !busy;
+            BtnReload.IsEnabled = !busy && _isValidated;
+            BtnCancel.IsEnabled = !busy;
+            RbOnline.IsEnabled = !busy && _onlineAvailable;
+            RbOffline.IsEnabled = !busy;
+        }
+
+        private void AppendLine(string prefix, string message)
+        {
+            if (!string.IsNullOrEmpty(TxtStatus.Text)) TxtStatus.AppendText(Environment.NewLine);
+            TxtStatus.AppendText($"{prefix} {message}");
+            TxtStatus.ScrollToEnd();
+        }
+
+        /// <summary>Routine progress narration. UI-only plus LogDebug (gated on
+        /// DebugMode, matching every other routine narration line in this host
+        /// project) - not the kind of thing worth always-on logging.</summary>
+        private void LogStep(string message)
+        {
+            AppendLine("•", message);
+            GlobalsEx.Context?.Logger?.LogDebug($"GLReloadSourcePicker: {message}");
+        }
+
+        /// <summary>A step that completed successfully - same log level as
+        /// LogStep, just a distinct glyph so the final "ready to reload" line
+        /// stands out from the routine narration above it.</summary>
+        private void LogSuccess(string message)
+        {
+            AppendLine("✓", message);
+            GlobalsEx.Context?.Logger?.LogDebug($"GLReloadSourcePicker: {message}");
+        }
+
+        /// <summary>A blocking-but-expected condition (not logged in, no
+        /// manifest+zip pair in the folder, missing checksum) - always written
+        /// to the log file (LogWarn), not just DebugMode-gated.</summary>
+        private void LogWarning(string message)
+        {
+            AppendLine("⚠", message);
+            GlobalsEx.Context?.Logger?.LogWarn($"GLReloadSourcePicker: {message}");
+        }
+
+        /// <summary>A genuine failure (parse error, checksum mismatch, network
+        /// exception, staging copy failure) - always written to the log file.</summary>
+        private void LogFailure(string message, Exception ex = null)
+        {
+            AppendLine("✗", message);
+            if (ex != null)
+                GlobalsEx.Context?.Logger?.LogException(ex, $"GLReloadSourcePicker: {message}");
+            else
+                GlobalsEx.Context?.Logger?.LogError($"GLReloadSourcePicker: {message}");
+        }
+
+        private void PromptNoUpdate(string candidateVersion, string candidateReleaseDate)
+        {
+            MessageBox.Show(
+                this,
+                $"No updates available.\n\nYou already have the latest version: {GlobalsEx.Context?.Version} (released {GlobalsEx.Context?.ReleaseDate}).\n\nChecked release: {candidateVersion} ({candidateReleaseDate}).",
+                "No Updates Available",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
+        // ------------------------------------------------------------------
+        // Offline flow
+        // ------------------------------------------------------------------
+
+        private async void BtnBrowse_Click(object sender, RoutedEventArgs e)
         {
             using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
@@ -81,72 +174,98 @@ namespace GLSense
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
                     TxtFolder.Text = dialog.SelectedPath;
-                    ScanFolder(dialog.SelectedPath);
+                    await ScanFolderAsync(dialog.SelectedPath);
                 }
             }
         }
 
-        private void ScanFolder(string folder)
+        private async Task ScanFolderAsync(string folder)
         {
             ResetValidation();
+            SetBusy(true);
 
-            if (!Directory.Exists(folder))
+            try
             {
-                TxtStatus.Text = $"Folder not found: {folder}";
-                return;
+                LogStep($"Scanning folder: {folder}");
+                await Task.Delay(OfflineStepDelayMs);
+
+                if (!Directory.Exists(folder))
+                {
+                    LogWarning($"Folder not found: {folder}");
+                    return;
+                }
+
+                string manifestPath = Directory.GetFiles(folder, "manifest*.json")
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .FirstOrDefault();
+                string zipPath = Directory.GetFiles(folder, "v*.zip")
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .FirstOrDefault();
+
+                if (manifestPath == null || zipPath == null)
+                {
+                    LogWarning("No manifest.json + zip pair found in this folder.");
+                    return;
+                }
+
+                LogStep($"Found {Path.GetFileName(manifestPath)} and {Path.GetFileName(zipPath)}.");
+                await Task.Delay(OfflineStepDelayMs);
+
+                await ValidateCandidateAsync(manifestPath, zipPath);
             }
-
-            string manifestPath = Directory.GetFiles(folder, "manifest*.json")
-                .OrderByDescending(File.GetLastWriteTimeUtc)
-                .FirstOrDefault();
-            string zipPath = Directory.GetFiles(folder, "v*.zip")
-                .OrderByDescending(File.GetLastWriteTimeUtc)
-                .FirstOrDefault();
-
-            if (manifestPath == null || zipPath == null)
+            catch (Exception ex)
             {
-                TxtStatus.Text = "No manifest.json + zip pair found in this folder.";
-                return;
+                LogFailure($"Folder scan failed: {ex.Message}", ex);
             }
-
-            ValidateCandidate(manifestPath, zipPath);
+            finally
+            {
+                SetBusy(false);
+            }
         }
 
-        private void ValidateCandidate(string manifestPath, string zipPath)
+        private async Task ValidateCandidateAsync(string manifestPath, string zipPath)
         {
+            LogStep("Parsing manifest.json...");
+            await Task.Delay(OfflineStepDelayMs);
+
             var parser = new VersionParser();
             var result = parser.ParseVersionFile(manifestPath);
 
             if (!result.Success)
             {
-                TxtStatus.Text = $"Could not parse manifest.json: {result.ErrorMessage}";
+                LogFailure($"Could not parse manifest.json: {result.ErrorMessage}");
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(result.Checksum))
             {
-                TxtStatus.Text = "manifest.json has no checksum recorded - cannot verify, refusing to reload.";
+                LogWarning("manifest.json has no checksum recorded - cannot verify, refusing to reload.");
                 return;
             }
 
+            LogStep("Verifying checksum...");
+            await Task.Delay(OfflineStepDelayMs);
             string actualChecksum = ComputeSha256(zipPath);
             if (!string.Equals(actualChecksum, result.Checksum, StringComparison.OrdinalIgnoreCase))
             {
-                TxtStatus.Text = $"Checksum mismatch - the zip may be corrupt or incomplete. Expected {result.Checksum}, got {actualChecksum}.";
+                LogFailure($"Checksum mismatch - the zip may be corrupt or incomplete. Expected {result.Checksum}, got {actualChecksum}.");
                 return;
             }
+            LogSuccess("Checksum verified.");
 
+            LogStep($"Checking version - candidate is {result.Version} (released {result.ReleaseDate})...");
+            await Task.Delay(OfflineStepDelayMs);
             if (!IsStrictlyNewer(result.ReleaseDate))
             {
-                TxtStatus.Text = $"No update available - {result.Version} ({result.ReleaseDate}) is not newer than the currently loaded release ({GlobalsEx.Context?.Version} / {GlobalsEx.Context?.ReleaseDate}).";
+                LogStep("No newer version available.");
+                PromptNoUpdate(result.Version, result.ReleaseDate.ToString());
                 return;
             }
 
             _candidateManifestPath = manifestPath;
             _candidateZipPath = zipPath;
             _isValidated = true;
-            BtnReload.IsEnabled = true;
-            TxtStatus.Text = $"Ready to reload: version {result.Version}, released {result.ReleaseDate}.\n{Path.GetFileName(zipPath)} ({new FileInfo(zipPath).Length / 1024} KB)";
+            LogSuccess($"Ready to reload: version {result.Version}, released {result.ReleaseDate} ({new FileInfo(zipPath).Length / 1024} KB).");
         }
 
         // VersionParseResult.ReleaseDate is already a parsed DateTime (see
@@ -162,58 +281,76 @@ namespace GLSense
             return candidateReleaseDate > baselineDate;
         }
 
+        // ------------------------------------------------------------------
+        // Online flow
+        // ------------------------------------------------------------------
+
         private async void BtnCheckOnline_Click(object sender, RoutedEventArgs e)
         {
             ResetValidation();
-
-            LoginInfo loginInfo;
-            try { loginInfo = GlobalsEx.Addin?.GetLoginInfo(); }
-            catch { loginInfo = null; }
-
-            if (loginInfo == null || !loginInfo.IsLoggedIn || string.IsNullOrWhiteSpace(loginInfo.LoginUrl))
-            {
-                TxtStatus.Text = "Not logged in - switch to Offline mode.";
-                return;
-            }
-
-            OnlineProgress.Visibility = Visibility.Visible;
-            BtnCheckOnline.IsEnabled = false;
+            SetBusy(true);
 
             try
             {
+                LogStep("Checking login status...");
+
+                LoginInfo loginInfo;
+                try { loginInfo = GlobalsEx.Addin?.GetLoginInfo(); }
+                catch (Exception ex)
+                {
+                    loginInfo = null;
+                    LogWarning($"Could not read login info from Addin.Core: {ex.Message}");
+                }
+
+                if (loginInfo == null || !loginInfo.IsLoggedIn || string.IsNullOrWhiteSpace(loginInfo.LoginUrl))
+                {
+                    LogWarning("Not logged in - switch to Offline mode.");
+                    return;
+                }
+
                 string url = loginInfo.LoginUrl.TrimEnd('/') + "/glsense/projectdlls";
+                LogStep($"Fetching latest release info from {url}...");
+
                 using (var client = new HttpClient())
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginInfo.LoginToken);
 
                     string responseJson = await client.GetStringAsync(url);
+                    LogStep("Parsing server response...");
 
                     var parser = new VersionParser();
                     var result = parser.ParseVersionJson(responseJson);
 
                     if (!result.Success)
                     {
-                        TxtStatus.Text = $"Could not parse server response: {result.ErrorMessage}";
+                        LogFailure($"Could not parse server response: {result.ErrorMessage}");
                         return;
                     }
+
+                    LogStep($"Server has version {result.Version} (released {result.ReleaseDate}). Comparing against the currently loaded release ({GlobalsEx.Context?.Version} / {GlobalsEx.Context?.ReleaseDate})...");
 
                     if (!IsStrictlyNewer(result.ReleaseDate))
                     {
-                        TxtStatus.Text = $"No updates available - server has {result.Version} ({result.ReleaseDate}), which is not newer than the currently loaded release.";
+                        LogStep("No newer version available.");
+                        PromptNoUpdate(result.Version, result.ReleaseDate.ToString());
                         return;
                     }
 
+                    LogStep($"New version found: {result.Version}. Downloading update...");
                     string tempZip = Path.Combine(Path.GetTempPath(), $"GLSenseOnline_{Guid.NewGuid():N}.zip");
                     var zipBytes = await client.GetByteArrayAsync(result.DownloadUrl);
                     File.WriteAllBytes(tempZip, zipBytes);
+                    LogStep($"Downloaded {zipBytes.Length / 1024} KB.");
 
+                    LogStep("Verifying checksum...");
                     string actualChecksum = ComputeSha256(tempZip);
                     if (!string.Equals(actualChecksum, result.Checksum, StringComparison.OrdinalIgnoreCase))
                     {
-                        TxtStatus.Text = $"Downloaded zip failed checksum verification - expected {result.Checksum}, got {actualChecksum}. Not reloading.";
+                        LogFailure($"Downloaded zip failed checksum verification - expected {result.Checksum}, got {actualChecksum}. Not reloading.");
                         File.Delete(tempZip);
                         return;
                     }
+                    LogSuccess("Checksum verified.");
 
                     string tempManifest = Path.Combine(Path.GetTempPath(), $"GLSenseOnline_{Guid.NewGuid():N}.json");
                     File.WriteAllText(tempManifest, responseJson);
@@ -221,20 +358,22 @@ namespace GLSense
                     _candidateManifestPath = tempManifest;
                     _candidateZipPath = tempZip;
                     _isValidated = true;
-                    BtnReload.IsEnabled = true;
-                    TxtStatus.Text = $"Ready to reload: version {result.Version}, released {result.ReleaseDate}.";
+                    LogSuccess($"Ready to reload: version {result.Version}, released {result.ReleaseDate}.");
                 }
             }
             catch (Exception ex)
             {
-                TxtStatus.Text = $"Online check failed: {ex.Message}";
+                LogFailure($"Online check failed: {ex.Message}", ex);
             }
             finally
             {
-                OnlineProgress.Visibility = Visibility.Collapsed;
-                BtnCheckOnline.IsEnabled = true;
+                SetBusy(false);
             }
         }
+
+        // ------------------------------------------------------------------
+        // Reload / Cancel
+        // ------------------------------------------------------------------
 
         private void BtnReload_Click(object sender, RoutedEventArgs e)
         {
@@ -274,12 +413,13 @@ namespace GLSense
                     File.Copy(_candidateManifestPath, manifestDestination, true);
 
                 SelectedSource = RbOnline.IsChecked == true ? "Online" : "Offline";
+                GlobalsEx.Context?.Logger?.LogDebug($"GLReloadSourcePicker: staged release into Manifest folder from {SelectedSource} mode - proceeding with reload.");
                 DialogResult = true;
                 Close();
             }
             catch (Exception ex)
             {
-                TxtStatus.Text = $"Failed to stage the new release: {ex.Message}";
+                LogFailure($"Failed to stage the new release: {ex.Message}", ex);
             }
         }
 

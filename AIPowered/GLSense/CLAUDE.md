@@ -6024,6 +6024,118 @@ fixed-path file without complaint.
 
 ---
 
+## 64. `GLReloadSourcePicker`: step-by-step progress, a "no updates available" prompt, and real logging (AIPowered-only, host project)
+
+Fine-tuning pass on the Online/Offline reload picker (section 40's `GLReloadSourcePicker.xaml`).
+Before this, both modes only ever showed a single overwritten status line at
+the very end (`TxtStatus.Text = "..."`) with no visibility into what was
+actually happening while a check ran, no logging at all (confirmed via a full
+read of the file - zero `GlobalsEx.Context?.Logger` calls anywhere in it,
+unlike every other host-project file), and "no update available" was just
+inline text easy to miss.
+
+### 64.1 `TxtStatus` converted from a single-line `TextBlock` into an append-based step log
+
+Changed `TxtStatus` from `TextBlock` to a read-only, multi-line `TextBox`
+(`IsReadOnly="True"`, `TextWrapping="Wrap"`, `VerticalScrollBarVisibility="Auto"`)
+and added a shared `BusyProgress` indeterminate `ProgressBar` above it (replacing
+the old Online-only `OnlineProgress` bar, which only ever covered half the
+window's flows). New helper methods narrate every stage instead of one final
+message:
+- `LogStep(msg)` - routine narration ("Scanning folder...", "Verifying
+  checksum...", "Fetching latest release info..."). UI-only glyph (`•`) plus
+  `LogDebug` (DebugMode-gated, matching every other routine narration line in
+  this host project - see `Logger.cs:390-393`, confirmed the ONLY gated level;
+  `LogInfo`/`LogWarn`/`LogError` all write immediately regardless of DebugMode).
+- `LogSuccess(msg)` - a completed step (`✓`), same `LogDebug` level as `LogStep`.
+- `LogWarning(msg)` - a blocking-but-expected condition (`⚠` - not logged in, no
+  manifest+zip pair found, missing checksum) - always written via `LogWarn`.
+- `LogFailure(msg, ex?)` - a genuine failure (`✗` - parse error, checksum
+  mismatch, network exception, staging copy failure) - always written via
+  `LogError`/`LogException`.
+
+This split directly matches the user's own instruction ("write to the logs if
+necessary for any errors or warnings or any failures") - routine progress
+narration doesn't need to always hit the log file, only the things worth a
+support engineer's attention do.
+
+Layout gotcha caught and fixed before shipping: the window's `RowDefinitions`
+had the SMALL Online/Offline panel row as `"*"` (absorbing all leftover space)
+and the status row as `Auto` - a pre-existing shape from the original design,
+but increasing the window's `Height` (440->560, to fit the taller log) would
+have made that dead-space gap dramatically worse rather than giving the room to
+the log that actually needed it. Swapped the two rows' `Height` values (panel
+row -> `Auto`, status row -> `"*"`), and changed the status `Border`'s inner
+container from `StackPanel` to `DockPanel` (`LastChildFill="True"`) - a
+`StackPanel` never stretches a child past its own `DesiredSize` even when the
+`StackPanel` itself is stretched to fill a `"*"` row, so the log box would
+otherwise have sat at its `MinHeight` regardless of how much room was actually
+available; `DockPanel` correctly stretches its last (fill) child.
+
+### 64.2 Online flow: step-by-step narration end to end
+
+`BtnCheckOnline_Click` now narrates: checking login -> fetching from the
+server URL -> parsing the response -> comparing versions -> (if newer)
+downloading -> verifying checksum -> ready to reload. Every branch that used
+to just set `TxtStatus.Text` now calls the matching `LogStep`/`LogWarning`/
+`LogFailure` instead, and the whole method is wrapped in one try/catch/finally
+so `SetBusy(false)` always runs regardless of which branch returns.
+
+### 64.3 Offline flow: same narration, plus small deliberate pacing since local validation is otherwise instant
+
+`ScanFolderAsync`/`ValidateCandidateAsync` (renamed from the old synchronous
+`ScanFolder`/`ValidateCandidate`, now `async Task`) narrate: scanning the
+folder -> found manifest.json + zip -> parsing manifest.json -> verifying
+checksum -> checking version -> ready to reload (or the matching warning/
+failure at whichever step doesn't pass). Since local file validation normally
+completes in well under a frame, added a small `Task.Delay(150ms)` between
+steps (`OfflineStepDelayMs`) purely so the step log is actually readable
+instead of flashing through in one paint - same "let the busy state actually
+render" reasoning already used elsewhere in this codebase (see CLAUDE.md
+27.2's `Dispatcher.Yield` pacing for `GLSegmentDiscovery`'s busy overlay), just
+using `Task.Delay` here since there's no real async work to yield around.
+Online's own steps never needed this pacing - genuine network/download latency
+already paces them naturally.
+
+### 64.4 "No updates available" is now an explicit prompt, not just inline text
+
+Added `PromptNoUpdate(candidateVersion, candidateReleaseDate)` - a
+`MessageBox.Show` (Information icon) stating the currently-loaded version and
+the checked release that wasn't newer. Called from both the Online and
+Offline "not strictly newer" branches, replacing the old approach of only
+ever updating the inline status text (easy to miss, especially since the
+inline log area no longer holds just one line the user's eye is already on).
+
+### 64.5 `SetBusy(bool)` - one shared method disabling the right controls, restoring `_onlineAvailable` correctly
+
+Every entry point (`BtnCheckOnline_Click`, `ScanFolderAsync`) now calls
+`SetBusy(true)`/`SetBusy(false)` instead of directly toggling individual
+controls. Disables `BtnCheckOnline`/`BtnBrowse`/`BtnReload`/`BtnCancel` and
+both radio buttons while busy, and - real bug avoided while writing this -
+does NOT simply set `RbOnline.IsEnabled = true` when un-busying, since that
+would incorrectly re-enable Online mode even on a machine where it was never
+available in the first place (no login this session). Added a `_onlineAvailable`
+field (set once in `InitializeModeAvailability`, previously a local variable
+discarded after that method returned) so `SetBusy(false)` can correctly restore
+`RbOnline.IsEnabled = _onlineAvailable` instead of unconditionally `true`.
+
+### 64.6 Not independently verified in this environment
+
+No Windows/MSBuild/Visual Studio toolchain available here to actually build
+and click through this dialog. Verified instead by: full manual re-read of the
+rewritten file for control-flow correctness, confirming `VersionParseResult
+.ReleaseDate` is genuinely `DateTime` (`VersionParser.cs:38`) matching
+`PromptNoUpdate`'s/`IsStrictlyNewer`'s usage, confirming `Logger.cs`'s actual
+`LogDebug`-is-gated/`LogWarn`+`LogError`-are-immediate behavior directly from
+source rather than assuming it, grepping for any stale reference to the
+removed `OnlineProgress` control (none found), and validating the edited XAML
+is well-formed via PowerShell's `[xml]` parser. **Needs a real build + a live
+run of both Online and Offline flows** (including a deliberate "already up to
+date" case, to confirm the `MessageBox` prompt reads correctly) before being
+trusted.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

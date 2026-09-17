@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Reload GLSense Add-in"
         Icon="/GLSense;component/Resources/OrbitGLSense.ico"
-        Width="520" Height="440"
+        Width="520" Height="560"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
@@ -149,8 +149,8 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -170,8 +170,6 @@
                 <Button x:Name="BtnCheckOnline" Style="{StaticResource SecondaryButton}" Content="Check for Update" HorizontalAlignment="Left"
                         Padding="10,4" Click="BtnCheckOnline_Click"
                         ToolTip="Query the logged-in GLSense server for the latest published release, download it, verify its checksum, and enable Reload if it is newer than what's currently loaded."/>
-                <ProgressBar x:Name="OnlineProgress" Height="6" Margin="0,10,0,0" IsIndeterminate="True" Visibility="Collapsed"
-                             ToolTip="Checking the server for an update..."/>
             </StackPanel>
 
             <StackPanel x:Name="OfflinePanel" Visibility="Collapsed">
@@ -186,8 +184,19 @@
         </Grid>
 
         <Border Grid.Row="4" Background="White" BorderBrush="#FFDDDDDD" BorderThickness="1" Padding="10" Margin="0,12,0,0"
-                ToolTip="Result of the last validation check - explains what will happen if you click Reload, or why Reload is not yet available.">
-            <TextBlock x:Name="TxtStatus" TextWrapping="Wrap" Text="Select Online or Offline to begin."/>
+                ToolTip="Live progress while a check/validation is running, and the full step-by-step result once it finishes.">
+            <!-- DockPanel (not StackPanel) so TxtStatus actually stretches to fill this
+                 Border's available height (Row 4 is the "*" row) - a StackPanel never
+                 grows a child past its own DesiredSize even when the StackPanel itself is
+                 stretched, so the log box would otherwise sit at MinHeight regardless of
+                 how much room Row 4 actually has. -->
+            <DockPanel LastChildFill="True">
+                <ProgressBar x:Name="BusyProgress" DockPanel.Dock="Top" Height="4" Margin="0,0,0,8" IsIndeterminate="True" Visibility="Collapsed"
+                             ToolTip="A check or validation is currently running..."/>
+                <TextBox x:Name="TxtStatus" IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0"
+                         TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="60"
+                         Text="Select Online or Offline to begin."/>
+            </DockPanel>
         </Border>
 
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
