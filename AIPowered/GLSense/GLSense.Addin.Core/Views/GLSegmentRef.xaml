@@ -15,7 +15,6 @@
                   MinHeight="850"
                   ResizeMode="CanResize"
                   WindowStyle="None"
-                  WindowStartupLocation="CenterOwner"
                   Loaded="Window_Loaded">
 
     <Window.Resources>

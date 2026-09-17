@@ -44,7 +44,6 @@ namespace GLSense.Addin.Core.Views
         {
             InitializeComponent();
             ServiceLocator.Logger?.LogDebug("GLSegmentValues constructor invoked");
-            EnableExcelCentering = false;
 
             // NOTE: this window does NOT use DataGridColumnFillHelper for Description/
             // Segment (unlike some other windows in this project). That helper exists

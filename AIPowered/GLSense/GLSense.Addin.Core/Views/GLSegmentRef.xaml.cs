@@ -53,7 +53,6 @@ namespace GLSense.Addin.Core.Views
         {
             InitializeComponent();
             ServiceLocator.Logger?.LogDebug($"GLSegmentRef constructor invoked - selectedSegValues={selectedSegValues}");
-            EnableExcelCentering = false;
 
             // "Description"/"Segment" fill any left-over width in their respective grids
             // instead of leaving a blank gap now that every column is Width="Auto" (see

@@ -226,11 +226,7 @@ namespace GLSense.Addin.Core.Views
             ServiceLocator.Logger?.LogDebug("GLBalanceConfigurator.AcctsRef_EditRequested invoked");
             try
             {
-                var dlg = new GLSegmentRef(AcctsRef.Text)
-                {
-                    EnableExcelCentering = false,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner
-                };
+                var dlg = new GLSegmentRef(AcctsRef.Text);
 
                 if (dlg.ShowDialog() == true)
                 {

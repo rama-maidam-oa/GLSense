@@ -5539,6 +5539,86 @@ failure dialog appears cleanly after it closes.
 
 ---
 
+## 57. Log header text drifted from FinalWorkingCode; GLSegmentValues/GLSegmentRef not centering like other windows
+
+Two small, unrelated fixes from user-reported post-installer testing.
+
+### 57.1 `GLSense.Shared\Logger.cs`: log file header line didn't match FinalWorkingCode's
+
+FinalWorkingCode's `Helpers\LogHelper.cs` writes a plain header line:
+`"Orbit GLSense Logs As On {day}. Time Zone: {tz}"`. AIPowered's `Logger.cs` had grown an
+extra version/release-date fragment inserted into that same line:
+`"Orbit GLSense(version : {v} Released on : {d}). Logs As On {day}. Time Zone: {tz}"` -
+confirmed via a direct diff against FinalWorkingCode's `LogHelper.cs` (identical on both
+`11.1.1` and `11.1.2`, per `git diff origin/11.1.1 origin/11.1.2` on that file - no branch
+drift to account for). That version/release-date info was never unique to the header line
+anyway - both files' `AppendEnvironmentSnapshot` already print
+`"GLSense version: {v} (released {d})"` a few lines below, inside the "Environment
+Snapshot" block, so removing it from the header line loses no information, just removes a
+duplicate and restores an exact match with FinalWorkingCode's wording.
+
+**Fix**: `BuildLogHeader()`'s `header` string reverted to the plain FinalWorkingCode
+wording. `defaultVersion`/`defaultCommitDate` locals are still read and still passed into
+`AppendEnvironmentSnapshot`, so the snapshot section is unaffected.
+
+### 57.2 GLSegmentValues/GLSegmentRef not centering over Excel like every other window
+
+User reported these two windows don't open centered like `GLRollerGroups`/`GLLOVs` do.
+Root cause: both set `EnableExcelCentering = false` in their own constructors and
+declared `WindowStartupLocation="CenterOwner"` in XAML - the ONE thing different about
+them versus every other correctly-centering dialog in this app, which instead rely on
+`BaseWindow`'s own `CenterOverExcelOnce()` (the mechanism the whole app-wide centering fix
+in section 33 is about) by simply not overriding `EnableExcelCentering` at all (defaults
+to `true`). `ModalToExcel` (which sets `WindowInteropHelper.Owner` to Excel's HWND in
+`OnSourceInitialized`) is `true` by default for both, same as every other window, so the
+Owner-assignment timing isn't the differentiator - native WPF `CenterOwner` positioning
+against an HWND-only owner is a fundamentally different code path than `BaseWindow`'s own
+manual, already-proven, DPI/multi-monitor-aware centering logic, and was never given a
+documented reason for existing here (no CLAUDE.md history explains why these two opted
+out) - nothing else in this app intentionally uses native `CenterOwner` for a real
+top-level dialog.
+
+**Fix**: removed `EnableExcelCentering = false;` from both `GLSegmentValues.xaml.cs`'s and
+`GLSegmentRef.xaml.cs`'s constructors (now default `true`, same as `GLRollerGroups`/
+`GLLOVs`), and removed `WindowStartupLocation="CenterOwner"` from both `.xaml` files.
+`GLBalanceConfigurator.xaml.cs`'s `AcctsRef_EditRequested` (opens `GLSegmentRef` when
+editing an Account Assignment from inside the Balance Configurator) had its own redundant
+re-assertion of the exact same two properties on the constructed instance - removed that
+too, so this window centers the same way regardless of which of its two call sites
+(`AddinEntry.ShowSegmentValues` / `GLBalanceConfigurator.AcctsRef_EditRequested`) opened
+it. Confirmed via grep these are the only two construction sites for either window.
+
+**Deliberately NOT touched**: `GLBalanceConfigurator` itself still sets
+`EnableExcelCentering = false` on ITSELF (not on a window it opens) - that's correct and
+different: it's hosted inside the docked task pane (`ConfiguratorPaneHost`/
+`GLConfiguratorPane.cs`, still the sole Balance Configurator entry point in AIPowered -
+see the note below on why this differs from FinalWorkingCode), not a free top-level
+dialog, so "center over Excel" doesn't apply to it the same way. `GLSegmentManager`,
+mentioned in this file's own much earlier history (sections 21.3/24.1/26.x/27.1) as
+sharing this same `EnableExcelCentering=false` pattern, no longer exists anywhere in this
+codebase (confirmed via `find` - genuinely removed at some point without that removal
+being logged here) - not a gap in this fix, just stale history worth knowing about if a
+future session goes looking for that file.
+
+**Note for future sessions**: an internal auto-memory (`project_floating_balance_configurator.md`)
+describes the docked task pane being fully removed in favor of a floating window - that is
+real, but scoped to a separate `floating-balance-configurator` feature branch, and is
+**FinalWorkingCode-only** even there (confirmed via `git show --stat` on every commit in
+that saga - every one touches only `FinalWorkingCode/GLSense/...` files). AIPowered's
+`11.1.x` branches (including this one) never received that change - the docked task pane
+(`GLConfiguratorPane.cs` in the host project + `ConfiguratorPaneHost.cs`/
+`GLBalanceConfigurator.xaml.cs` in Addin.Core) is still AIPowered's only Balance
+Configurator entry point today. Don't assume the floating-window architecture applies here
+without checking which codebase/branch a given piece of history was actually about.
+
+**Status**: both implemented, AIPowered `11.1.2` only. Verified via brace-balance checks
+on all edited `.cs` files and XML well-formedness on both edited `.xaml` files - no
+Windows/MSBuild toolchain in this environment to actually rebuild and visually confirm
+centering. Please rebuild and confirm both windows now open centered over Excel, and that
+the log file header line reads exactly like FinalWorkingCode's.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
