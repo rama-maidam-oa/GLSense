@@ -5838,6 +5838,111 @@ both edited `.xaml` files. User confirmed working after rebuild for every item a
 
 ---
 
+## 62. `AddinCore\Manifest` (and its siblings `Versions\`/`ReleaseHistory.json`) survive a full uninstall - not a missed vdproj setting, an inherent MSI limitation for runtime-created content
+
+**Reported**: unlike FinalWorkingCode's `runtimes\` folder (native WebView2Loader.dll
+payloads under the Setup project's File System editor), AIPowered's `AddinCore\Manifest`
+folder (seeded with `manifest.json` + `v11.1.2.zip` in `OrbitGLSense.vdproj`) isn't
+cleaned up when the MSI is uninstalled.
+
+**Investigated and ruled out**: compared every per-file/per-folder attribute between the
+two vdprojs (`Permanent`, `Vital`, `AlwaysCreate`, `Transitive`, `SharedLegacy`,
+`Exclude`) - byte-for-byte identical shape in both. There is no per-folder "delete on
+uninstall" checkbox that's set for one and missing for the other; `AlwaysCreate` in
+particular only controls whether Windows Installer force-creates an otherwise-empty
+folder at install time - it does **not** make Windows Installer force-delete a
+non-empty folder at uninstall time, and there's no vdproj-exposed equivalent that does.
+
+**Actual root cause**: architectural, not a setting. Per
+`docs/superpowers/specs/2026-09-04-addincore-colocated-storage-design.md`,
+`GLSenseContext.cs:44-45` deliberately colocates the hot-reload state
+(`Manifest\`/`Versions\`/`ReleaseHistory.json`) under the SAME folder `GLSense.dll`
+itself runs from (`PathProvider.ConfigureInstallRoot(glsenseAssemblyDir)` ->
+`_installRoot = TARGETDIR\AddinCore`) - specifically so a real uninstall would take
+this state with it, instead of leaving it under the separate `Excel_Logs` tree. The
+vdproj only ever registers the 2 SEED files (`manifest.json`, `v11.1.2.zip`) inside
+`AddinCore\Manifest\` - it has zero knowledge of:
+- `Versions\V{version}_{timestamp}\...` - extracted DLL payloads
+  (`PathProvider.cs:84`, `UpdateBootstrapper.cs:155-169`)
+- `ReleaseHistory.json` - the release catalog (`PathProvider.cs:94`, written by
+  `ReleaseHistoryStore.cs`)
+- On first run, the fresh-install path even deletes the MSI-seeded `Manifest\` folder
+  outright once done seeding (`UpdateBootstrapper.cs:197-198`)
+
+None of that runtime-created content is in the MSI's File table, so Windows Installer's
+uninstall has no record of it and **cannot** remove it - and Windows Installer refuses
+to delete a non-empty folder as a safety measure (same reason it won't blow away user
+data it doesn't recognize). Since `Versions\`/`ReleaseHistory.json` live as siblings of
+`Manifest\` directly under `AddinCore`, that folder ends up non-empty at uninstall time
+even after the 2 tracked seed files are removed - and that non-emptiness cascades
+upward: `AddinCore` survives -> `TARGETDIR` (`...\GLSense`) survives -> `Orbit
+Analytics` survives. FinalWorkingCode's `runtimes\` folder never hits this because
+nothing is ever added to it after install - every file under it is pure, unmodified
+MSI payload, so it genuinely ends up empty at uninstall and gets removed cleanly. This
+is a fundamental capability gap in classic VS "Setup and Deployment" projects (and MSI
+generally): there is no File-System-editor setting that tracks/removes files an
+application creates *after* installation.
+
+**Fix**: added an uninstall-only Custom Action (`OrbitGLSense.vdproj`) that recursively
+deletes `[TARGETDIR]AddinCore` via a renamed copy of `cmd.exe`:
+- New `File` entry (`Folder = _D3166896672F4C2CB92062B90A3F2E2D`, i.e. TARGETDIR):
+  `SourcePath = C:\Windows\System32\cmd.exe`, `TargetName = GLSenseUninstallCleanup.exe`
+  - renamed (not left as literal `cmd.exe`) purely so the installed folder is
+  self-documenting about why a copy of `cmd.exe` is sitting next to `GLSense.dll`; the
+  bytes/behavior are unchanged, so `/c` argument execution works identically. NOT
+  `Exclude`d - it's genuinely installed as a real payload file (mirroring exactly how
+  `adxregistrator.exe`'s own Uninstall custom action already references a file that's
+  part of the same package and gets removed in the same uninstall transaction - proven,
+  working precedent already in this project, so this file being present when the
+  custom action fires is not a new risk).
+- New `CustomAction` entry, `Object` pointing at that File, `InstallAction = 3:4`
+  (Uninstall only - matches the enum already visible from `adxregistrator.exe`'s own 3
+  entries: `1`=Install, `3`=Rollback, `4`=Uninstall; `2`/Commit is unused by either
+  action), `Sequence = 3:2` (runs after `adxregistrator.exe`'s own Uninstall entry,
+  `Sequence = 3:1`).
+- `Arguments = /c if exist "[TARGETDIR]AddinCore" rd /s /q "[TARGETDIR]AddinCore" & exit
+  /b 0` - `[TARGETDIR]` is expanded by Windows Installer the same way `DefaultLocation`
+  fields already do (`[LocalAppDataFolder][Manufacturer]\[ProductName]`), and always
+  ends in a trailing `\`, so `[TARGETDIR]AddinCore` resolves cleanly with no
+  double-backslash. `if exist` guards against `rd` erroring on an already-gone folder
+  (the fresh-install path deletes `Manifest\` itself, so this is the common case, not
+  an edge case). The trailing `& exit /b 0` unconditionally forces exit code 0
+  regardless of whether `rd` itself succeeds (e.g. a leftover file lock from a not-yet-
+  fully-closed Excel process) - this custom action must never fail/block the uninstall
+  transaction just because best-effort cleanup couldn't fully complete.
+- `Condition = REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE` - the standard MSI idiom for
+  "only on a genuine, final Add/Remove-Programs uninstall, never as the old-version-
+  removal step of a major upgrade." This matters a lot here specifically: this
+  project's `Product` block already has `RemovePreviousVersions = TRUE`, and a major
+  upgrade internally runs the OLD product's full uninstall sequence
+  (`RemoveExistingProducts`) as part of installing the new version - without this
+  condition, EVERY future version upgrade would silently wipe `ReleaseHistory.json` and
+  every extracted `Versions\` folder, destroying section 40's whole rollback feature on
+  every routine update instead of only on a genuine uninstall.
+
+**Scope note**: only `[TARGETDIR]AddinCore` is targeted - the separate `Excel_Logs\
+GLSense_Logs_New` tree (`Logs`/`Database`/`Temp`/`BrowserLogs`/`Resources`, driven by
+`_root`, not `_installRoot` - see `PathProvider.cs`) is untouched by this cleanup and
+was never part of this complaint; those are actual user logs, not colocated
+install-time state, and there was no request to wipe them on uninstall.
+
+**Not independently verified in this environment**: no Windows/Visual Studio/MSBuild
+toolchain available here to actually build the MSI and test a real install-run-
+uninstall cycle. Hand-editing a `.vdproj`'s `CustomAction`/`File` sections is
+inherently less certain than using the VS Setup Project designer's own editors (there
+is no schema/compiler to validate this text against ahead of a real `devenv`/MSBuild
+build) - **this must be opened in Visual Studio and rebuilt before trusting it**,
+specifically to confirm: (1) VS reloads the project without complaint and shows the new
+action correctly under Custom Actions -> Uninstall in the designer, (2) a real
+install -> launch Excel once (so `Versions\`/`ReleaseHistory.json` actually get
+created) -> full uninstall via Add/Remove Programs leaves `AddinCore` (and, once empty,
+the whole `GLSense`/`Orbit Analytics` chain) genuinely gone, and (3) installing a NEWER
+version over an existing one (major upgrade path) does **not** wipe `ReleaseHistory.json`
+- if either check fails, the `InstallAction` enum mapping or the `UPGRADINGPRODUCTCODE`
+condition is the first place to re-verify, not the recursive-delete command itself.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
