@@ -6468,6 +6468,58 @@ design depends on `GLSense.dll`'s own folder being the install root).
 
 ---
 
+## 68. Section 67's manual fix left 17 duplicate host-dependency entries - removed
+
+After the user made section 67's structural fix (deleted "Primary output from GLSense
+(Active)"/"Localized resources from GLSense (Active)", added `GLSense.dll` back as a
+plain `File` entry via VS's own `Add File...` dialog), the File System editor showed
+every one of the host's own legitimate shared dependencies listed TWICE (screenshot
+confirmed: `NLog.dll`, `Office.dll`, `stdole.dll`, `System.Text.Json.dll`, etc. each
+appearing as two rows under Application Folder).
+
+**Root cause**: deleting the old Project-Output-Group reference removed the reference
+itself but left its ALREADY-auto-detected dependency File-table entries behind as
+orphans (VS doesn't retroactively clean those up). Then `Add File...` for the new plain
+`GLSense.dll` entry triggered its OWN fresh dependency scan (a normal thing VS does when
+you manually add an assembly file), re-detecting the exact same set of legitimate host
+dependencies and adding a SECOND, new copy of each - layering on top of the stale
+orphans instead of replacing them.
+
+**Verified precisely via direct vdproj text audit** (not the File System editor UI,
+which had already proven unreliable at surfacing true duplicate counts - see section
+67's `System.IO.Compression.dll` finding): exactly 17 assembly names had 2 backing
+File-table entries each (34 total, only 17 needed) - `GLSense.Contracts`, `GLSense.
+Shared`, `GLSense.Loader.Core`, `NLog`, `office`/`Office.dll`, `stdole`,
+`Microsoft.Office.Interop.Excel`, `Microsoft.Vbe.Interop`, `Microsoft.Bcl.
+AsyncInterfaces`, `System.Buffers`, `System.Memory`, `System.Numerics.Vectors`,
+`System.Runtime.CompilerServices.Unsafe`, `System.IO.Pipelines`, `System.Text.Json`,
+`System.Text.Encodings.Web`, `System.Threading.Tasks.Extensions`.
+
+**Reliable rule found for which copy to keep**: every pair had one entry with an
+EXPLICIT `SourcePath = ..\bin\Release\<file>.dll` (the correct, newly-added-via-
+`GLSense.dll`'s-own-scan copy) and one with a BARE `SourcePath = <file>.dll` (the stale
+orphan, left resolvable only by whatever VS's original, now-deleted Project-Output scan
+happened to find on disk at the time - GAC, NuGet cache, or another project's own bin
+folder). Kept the explicit `..\bin\Release\` copy in every case, deleted the bare one -
+confirmed each block is a consistent 31-line structure (GUID header through closing
+`}`), verified 3 different blocks' exact boundaries before bulk-deleting via `sed`
+across 9 merged line ranges (many of the 17 duplicate blocks were physically adjacent,
+having all been added in the same batch scan), then re-verified via the same
+`AssemblyAsmDisplayName` count script used in section 67 - every name now shows exactly
+`1`, and a targeted grep confirmed all 17 kept entries have the correct `..\bin\Release\`
+`SourcePath`. Brace-balance-checked before and after (`open=389 close=389`, and total
+line count dropped by exactly 527 = 17 x 31, confirming no partial/malformed deletion).
+
+**Status**: fixed via direct text edit (chosen over further manual UI cleanup, since the
+File System editor has now proven unreliable twice at surfacing true duplicate/backing-
+entry counts). Not yet rebuilt/tested - **next step: rebuild, then re-run the same
+`msiexec /a "OrbitGLSense.msi" /qn TARGETDIR=<tempdir>` real-extraction check from
+section 67 to confirm (a) `GLSense.Addin.Core.dll` and its exclusive dependency tree are
+still genuinely absent from `TARGETDIR`, and (b) each of these 17 files now appears
+exactly once in the installed folder, not twice.**
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
