@@ -5372,6 +5372,42 @@ parse; not yet exercised via a real Release rebuild in this pass).
 
 ---
 
+## 54. HOST installer prep, Phase-1: `Resources\` folder in the `GLSense` host project + orbit icon on the two host-side windows
+
+First step of building the new HOST add-in installer project (see section 53's parked
+signing decision, which that installer project will eventually resolve). Ported the two
+branding assets FinalWorkingCode already had - `Images\OrbitGLSense.ico` and
+`Images\orbit_bitmap.bmp` - into a new `GLSense\Resources\` folder in AIPowered's host
+project (deliberately in `GLSense`, not `GLSense.Addin.Core` - matches where the user
+asked for it, and where the two windows that use the icon already live per section 40.4's
+"host-side windows, no Addin.Core reference" rule). Added both as `<Resource Include=...>`
+in `GLSense.csproj`, the same WPF Resource build action FinalWorkingCode uses for its own
+copies (`GLSense.csproj` line ~509-510) - not `<EmbeddedResource>`, which is a different
+build action already used in this same project for `AddinModule.resx`.
+
+Wired `OrbitGLSense.ico` as `Window.Icon` on both `GLReloadSourcePicker.xaml` and
+`GLReleaseHistoryBrowser.xaml` (section 40's two host-side windows) - `Icon="/GLSense;
+component/Resources/OrbitGLSense.ico"`, matching the pack-URI convention this codebase
+already uses for `orbit_logo.png` in `GLAbout.xaml` (`/AssemblyName;component/Folder/
+file`), just with `GLSense` as the assembly instead of `GLSense.Addin.Core`. This puts the
+orbit icon in these two windows' own title bar/taskbar/Alt-Tab icon, which is what "refer
+to orbit icon on the header" means for a plain `<Window>` with no custom title-bar chrome
+(neither window inherits `BaseWindow`, so there's no `IconSymbol`/custom-header-glyph
+mechanism to hook into here the way section 4's `BaseWindow.IconSymbol` works for
+Addin.Core windows).
+
+`orbit_bitmap.bmp` is not referenced by any code/XAML yet - copied over per the request
+("images... orbit_bitmap.bmp and OrbitGLSense.ico") for the installer project to use later
+(FinalWorkingCode's own `OrbitGLSense.vdproj` uses it as setup-UI banner art), not because
+anything in this pass needed it.
+
+**Status**: implemented, AIPowered `11.1.2` only. Verified by parsing the edited
+`.csproj`/`.xaml` files as XML (well-formed) - no Windows/MSBuild toolchain available in
+this environment to actually build and confirm the icon renders. Not yet rebuilt/tested
+by the user.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

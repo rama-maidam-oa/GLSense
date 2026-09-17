@@ -173,6 +173,15 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <!-- Ported from FinalWorkingCode\GLSense\Images\ - same two files, same Resource build
+         action. OrbitGLSense.ico is used as the Window.Icon for GLReloadSourcePicker/
+         GLReleaseHistoryBrowser (see CLAUDE.md); orbit_bitmap.bmp isn't referenced by any
+         code/XAML yet - carried over for installer-project use, matching FinalWorkingCode's
+         own OrbitGLSense.vdproj, which uses it as setup UI branding. -->
+    <Resource Include="Resources\OrbitGLSense.ico" />
+    <Resource Include="Resources\orbit_bitmap.bmp" />
+  </ItemGroup>
+  <ItemGroup>
     <Page Include="Views\GLReloadSourcePicker.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
