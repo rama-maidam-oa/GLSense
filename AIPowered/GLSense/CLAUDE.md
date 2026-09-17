@@ -5408,112 +5408,81 @@ by the user.
 
 ---
 
-## 55. `sign_file.cmd`: `GLSENSE_SKIP_SIGNING` dev-machine opt-out - every real Release build/rebuild burns a metered DigiCert signing operation
+## 55. Signing-quota concern: tried, then reverted, a `GLSENSE_SKIP_SIGNING` dev-mode opt-out - the actual answer was already free (build in Debug)
 
-User rebuilt the whole solution in Release right after section 53/54 landed, specifically
-to confirm the host DLL signing removal took effect (it did - `GLSense.dll`/
-`adxloader.GLSense.dll`/`adxloader64.GLSense.dll` showed zero `[sign_file]` lines). But the
-same rebuild log showed `GLSense.Contracts.dll`/`GLSense.Shared.dll`/
-`GLSense.Loader.Core.dll`/`GLSense.Addin.Core.dll`/both `e_sqlite3.dll` copies all getting
-freshly (re-)signed, and the user raised a real, urgent concern: DigiCert Keylocker
-signing operations are metered/purchased in bulk, and routine local dev/testing in Release
-config was about to burn through that quota fast, requiring a repurchase.
+User rebuilt the whole solution in Release right after section 53/54 landed, to confirm
+the host DLL signing removal took effect (it did). But the same rebuild log showed
+`GLSense.Contracts.dll`/`GLSense.Shared.dll`/`GLSense.Loader.Core.dll`/
+`GLSense.Addin.Core.dll`/both `e_sqlite3.dll` copies all getting freshly (re-)signed, and
+the user raised a real, urgent concern: DigiCert Keylocker signing operations are
+metered/purchased in bulk, and routine local dev/testing in Release config was about to
+burn through that quota fast, requiring a repurchase - `GLSense.Addin.Core` in particular
+is the project this codebase's entire hot-reload dev loop is built around iterating on
+constantly (see PORTING_GUIDE.md/section 1's saga), so nearly every dev cycle would hit
+this, not just an occasional full Rebuild.
 
-**Root cause of why this isn't just a Rebuild-All quirk**: `sign_file.cmd`'s skip-if-
-already-signed check (section 41) only has something to skip when the exact same
-already-signed file is still sitting in `bin\Release\` from a prior build. A freshly
-compiled DLL - whether from `Rebuild All` (which clears `bin\` first) or an ordinary
-incremental `Build` of a project whose source actually changed - has no signature at all
-yet, so `sign_file.cmd` correctly (and unavoidably, given the current design) signs it
-every time. `GLSense.Addin.Core` in particular is the project this codebase's entire
-hot-reload dev loop is built around iterating on constantly (see PORTING_GUIDE.md/section
-1's whole saga) - so it was going to hit this on nearly every dev cycle, not just on an
-occasional full Rebuild.
+**Two attempts were made and both were reverted - read this before re-inventing either
+one:**
 
-**Deliberately NOT the same fix as section 53** (moving these 4 projects' signing into
-the not-yet-built installer project) - that's a bigger architectural call already
-explicitly parked as unresolved. This is a narrower, immediately-actionable, fully
-reversible escape hatch instead: `sign_file.cmd` now checks a new environment variable,
-`GLSENSE_SKIP_SIGNING`, before anything else (even before the Debug/Release check and
-even before `FORCE`) - if it's set to any non-empty value, every call skips signing
-entirely and prints `"GLSENSE_SKIP_SIGNING is set - skipping signing entirely for ..."`,
-for every one of this solution's callers (`GLSense.Contracts`/`GLSense.Shared`/
-`GLSense.Loader.Core`/`GLSense.Addin.Core`'s DLL and both `e_sqlite3.dll` copies/
-`GLSense` host - though the host's 3 files no longer call `sign_file.cmd` at all per
-section 53).
+1. **First attempt**: added a `GLSENSE_SKIP_SIGNING` environment variable to
+   `sign_file.cmd`, checked before everything else (even `FORCE`) - if set, skip signing
+   entirely. Recommended setting it via `setx GLSENSE_SKIP_SIGNING 1` + restarting Visual
+   Studio.
+2. **User immediately and correctly identified why that recommendation itself was
+   dangerous**: a `setx`-set variable is written to the current user's environment in the
+   registry and survives indefinitely - every future VS session, every future day, until
+   someone remembers to manually remove it. Set it once during a busy week to save quota,
+   get pulled onto something else, come back later in a rush and Rebuild/ship without
+   remembering it's still set - every Release build since would have been silently
+   unsigned, with only an easy-to-miss `[sign_file]` log line as the only record. A
+   per-machine, sticky, invisible opt-out is a real footgun for exactly the "go live
+   soon, moving fast" situation this whole engagement is in.
+3. **Second attempt, addressing that specific flaw**: replaced the `setx` recommendation
+   with `BuildDevMode.cmd` (new script, solution root) - it set `GLSENSE_SKIP_SIGNING=1`
+   only in its own process before launching `devenv.exe` as a child, so only that one VS
+   instance built unsigned, and opening VS normally afterward reverted to always-on
+   signing with nothing to remember to undo. Layered with defense-in-depth for anyone who
+   still set it persistently anyway: a `_DEV_UNSIGNED_BUILD.txt` marker file dropped next
+   to any skipped-signing output (auto-cleared the next time that folder was genuinely
+   re-signed), and `GLSense.Build\post_build.cmd` (last project to build) scanning for
+   those markers and printing an unmissable warning banner at the very bottom of the whole
+   solution's build output if any were found.
+4. **User questioned whether even the session-scoped launcher was worth keeping** - a
+   fair challenge: a long-running VS session opened via `BuildDevMode.cmd` could still be
+   used, hours later, to produce what someone *intends* as a real build without
+   remembering that instance is still in dev mode - the marker/banner defense helps, but
+   doesn't make the underlying "this VS instance quietly produces unsigned Release output"
+   design fully safe. That prompted re-examining whether the entire mechanism was even
+   necessary.
+5. **The actual answer was already sitting there, free, with no new mechanism needed**:
+   `GLSense.Addin.Core\post_build.cmd`'s own header comment states the zip+manifest.json
+   publish pipeline (the thing routine Addin.Core dev iteration - the Reload button,
+   `GLReloadSourcePicker`'s Offline mode - actually depends on) runs identically in
+   **both Debug and Release, with no per-Configuration branching at all**. Signing is the
+   *only* thing Release config adds over Debug for this project. Since nobody would ever
+   mistake a Debug build for a real release candidate (unlike a "looks-like-Release but
+   secretly unsigned" dev mode), routine `GLSense.Addin.Core` iteration should simply be
+   done in **Debug** config - zero signing operations burned, zero risk of ever
+   accidentally shipping something unsigned, and no new tooling/mode to remember at all.
+   Release config should be reserved for when a genuinely signed, install-candidate build
+   is actually wanted - at which point paying for the signing operation is the whole
+   point, not a cost to avoid.
 
-**How to use it**: set `GLSENSE_SKIP_SIGNING=1` (any non-empty value works) as a normal
-Windows user/session environment variable on your own dev machine - e.g. `setx
-GLSENSE_SKIP_SIGNING 1`, then **restart Visual Studio** so its process picks up the new
-environment (a running `devenv.exe` won't see an env var set after it launched). Rebuild
-as much as you want with zero signing operations burned. Unset it (`setx
-GLSENSE_SKIP_SIGNING ""` then restart VS again, or delete the user env var via System
-Properties) whenever you need a genuinely signed local build again - e.g. to test the
-actual Add-in Express loader-trust behavior, or before handing a build to someone else.
+**Fully reverted** (back to the state right after section 54): `sign_file.cmd` and
+`GLSense.Build\post_build.cmd` restored to their pre-`GLSENSE_SKIP_SIGNING` content
+(commit `2f9b8fb`); `BuildDevMode.cmd` deleted entirely. `sign_file.cmd` is back to just
+the section-41 cert-expiry-aware skip check, nothing else.
 
-**Nothing changes for anyone who never sets this** - a CI/build-server machine, or any
-other dev machine that's never defined this variable, keeps signing exactly as before,
-every time, with no code-path difference. This is purely an opt-in, per-machine
-convenience switch, not a change to default behavior.
+**If the signing-quota concern comes up again**: the answer is "build `GLSense.Addin.Core`
+in Debug for routine iteration" - not a dev-mode signing bypass. If a future need for
+Release-config iteration ever turns up (e.g. testing actual Add-in Express loader-trust
+behavior, or debugging the eventual installer project itself), treat the resulting
+signing operations as a small, bounded, accepted cost of deliberately wanting Release
+output, not a recurring problem to engineer around again.
 
-**Status**: implemented, AIPowered `11.1.2` only (shared build script, no application
-code touched). Not independently re-verified against a real `setx`+VS-restart+rebuild
-cycle in this pass - the early-exit logic itself is a simple, direct `if not
-"%VAR%"=="" (...)` check, standard batch-file behavior, not something that needed a live
-test to have confidence in.
-
-### 55.1 Corrected: `setx` was itself the dangerous part - replaced with a session-scoped launcher + a marker-file/build-summary safety net
-
-User immediately and correctly pushed back on 55's own recommended usage
-(`setx GLSENSE_SKIP_SIGNING 1`, restart VS): a `setx`-set variable is written to the
-current user's environment in the registry and survives indefinitely - every future VS
-session, every future day, until someone remembers to manually remove it. Exactly the
-scenario this needed to guard against didn't require anything exotic: set it once during
-a busy week to save quota, get pulled onto something else, come back later in a rush and
-Rebuild/ship without remembering it's still set - every Release build since would have
-been silently unsigned, with only an easy-to-miss `[sign_file]` log line as the only
-record. A per-machine, sticky, invisible opt-out is a real footgun for exactly the
-"go live soon, moving fast" situation this whole engagement is in.
-
-**Redesigned around a hard requirement: the safe (signed) behavior must be what happens
-by default, with nothing to remember to undo.**
-
-1. **`BuildDevMode.cmd`** (new, solution root) replaces the `setx` recommendation
-   entirely. It sets `GLSENSE_SKIP_SIGNING=1` only in its own process's environment (never
-   touching the registry/user environment at all), then launches `devenv.exe` as a CHILD
-   of that process - Windows child processes inherit their parent's environment, so only
-   that one VS instance (and everything it builds) sees the variable as set. The very next
-   time VS is opened normally - Start Menu, double-clicking `GLSense.sln`, Recent Projects
-   - there is nothing set, and signing is back to its default, always-on behavior with
-   zero manual cleanup required. `sign_file.cmd`'s own header comment for this variable now
-   explicitly says `DO NOT set this via setx/System Properties` and points at this launcher
-   instead.
-2. **Defense in depth, in case someone sets it persistently by hand anyway**: every time
-   `sign_file.cmd` actually skips signing due to this variable, it now drops a
-   `_DEV_UNSIGNED_BUILD.txt` marker file (via a new `:WriteDevModeMarker` subroutine) in
-   the exact same output folder as the file it didn't sign - sitting right next to the
-   unsigned DLL, not buried in scrollback. That marker is automatically removed (via a new
-   `:ClearDevModeMarker` subroutine, called from both the "already validly signed" and
-   "signed successfully" exit paths) the next time a file in that same folder is actually
-   (re-)signed for real - so it can never go stale and falsely warn about a folder that's
-   since been properly signed again.
-3. **`GLSense.Build\post_build.cmd`** (runs last, after every project, per the existing
-   dependency-ordered build) now scans `GLSense.Contracts`/`GLSense.Shared`/
-   `GLSense.Loader.Core`/`GLSense.Addin.Core`'s `bin\{Config}\` folders (plus Addin.Core's
-   `x86\`/`x64\` subfolders) for that marker and prints an impossible-to-miss warning
-   banner at the very bottom of the whole solution build's output if it finds one -
-   `GLSense.Build` is the last project to build, so this is the last thing printed,
-   specifically so scrolling straight to the bottom of a huge build log still surfaces it.
-
-This is layered defense, not a single fix: the launcher removes the main failure mode
-(forgetting to unset a sticky toggle) by construction, and the marker+banner catch the
-remaining edge case (someone insists on `setx` anyway, or manually exports the variable
-in a terminal session that outlives their attention) without requiring anyone to
-remember anything mid-build.
-
-**Status**: implemented, AIPowered `11.1.2` only. Not independently re-verified against a
-real launcher-double-click + VS-build + banner-appears cycle in this pass - same
-toolchain-availability caveat as section 55 itself.
+**Status**: reverted, AIPowered `11.1.2` only. Both attempts were real, reasoned steps
+that surfaced the actual answer - kept here (per this file's own convention) so this
+isn't re-derived from scratch if the quota concern resurfaces.
 
 ---
 

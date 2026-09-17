@@ -73,56 +73,6 @@ if /I not "%BUILD_CONFIG%"=="Release" (
     exit /b 0
 )
 
-REM ===== Dev-machine opt-out: GLSENSE_SKIP_SIGNING =====
-REM Each real Authenticode signing operation below counts against a metered
-REM DigiCert Keylocker quota. Any project whose source actually changes in a
-REM Release build gets a freshly compiled, as-yet-unsigned DLL every time -
-REM this isn't specific to "Rebuild All", an ordinary incremental Build of a
-REM changed project hits it just the same - and GLSense.Addin.Core in
-REM particular is the project this codebase's whole hot-reload dev loop is
-REM built around iterating on constantly, so routine local dev/testing in
-REM Release config can burn through that quota fast with no real benefit
-REM (nobody is installing a throwaway local dev build).
-REM
-REM DO NOT set this via `setx`/System Properties - a persistent, HKCU-level
-REM environment variable is exactly the failure mode this needs to avoid: it
-REM silently survives every future VS session until someone remembers to
-REM manually remove it, so a rushed/forgotten "just this once" toggle could
-REM quietly leave EVERY subsequent Release build unsigned indefinitely,
-REM including one someone eventually ships or hands off. Use
-REM "BuildDevMode.cmd" (solution root) instead - it sets this variable only
-REM for the one Visual Studio process it launches, so the very next time VS
-REM is opened normally (Start Menu, double-clicking the .sln, Recent
-REM Projects), signing is back to its default, safe, always-on behavior with
-REM nothing to remember to undo.
-REM
-REM Defense in depth, in case this still gets set persistently by hand
-REM anyway: every time signing is actually skipped here, a
-REM "_DEV_UNSIGNED_BUILD.txt" marker file is dropped in the same output
-REM folder as TARGET_FILE, and GLSense.Build's own post_build.cmd (which
-REM runs last, after every project) scans for these markers and prints an
-REM unmissable warning banner at the very end of the whole solution build if
-REM any are found. The marker is automatically removed from a folder the
-REM next time a file there is actually (re-)signed, so it can't go stale and
-REM falsely warn about a folder that's since been properly re-signed.
-REM
-REM Takes priority over everything below - deliberately stronger than
-REM FORCE, since the whole point is to fully stop burning quota, not just
-REM skip the "already validly signed" optimization. Nothing changes for
-REM anyone who never sets this - a CI/build-server machine that never
-REM defines it keeps signing exactly as before.
-if not "%GLSENSE_SKIP_SIGNING%"=="" (
-    echo [sign_file] ============================================================
-    echo [sign_file] !!! DEV MODE - GLSENSE_SKIP_SIGNING is set - NOT SIGNING  !!!
-    echo [sign_file] !!! "%TARGET_FILE%"
-    echo [sign_file] !!! A _DEV_UNSIGNED_BUILD.txt marker was left next to it.
-    echo [sign_file] !!! Do NOT distribute or install this build until it has
-    echo [sign_file] !!! been rebuilt with GLSENSE_SKIP_SIGNING unset.
-    echo [sign_file] ============================================================
-    call :WriteDevModeMarker
-    exit /b 0
-)
-
 if not exist "%TARGET_FILE%" (
     echo [sign_file] WARNING: file not found, skipping - "%TARGET_FILE%"
     exit /b 0
@@ -172,7 +122,6 @@ for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "try { $sig = 
 
 if /I "%CERT_STATE%"=="VALID" (
     echo [sign_file] RELEASE mode - already signed and certificate still valid, skipping: "%TARGET_FILE%"
-    call :ClearDevModeMarker
     exit /b 0
 )
 
@@ -187,25 +136,4 @@ if !errorlevel! neq 0 (
 )
 
 echo [sign_file] SUCCESS: signed "%TARGET_FILE%"
-call :ClearDevModeMarker
 exit /b 0
-
-REM ============================================================================
-REM Subroutines - dev-mode marker file (see the GLSENSE_SKIP_SIGNING comment
-REM above). Both are called via "call :Label" and return via "goto :eof",
-REM never falling through to the rest of the script.
-REM ============================================================================
-
-:WriteDevModeMarker
-setlocal
-for %%F in ("%TARGET_FILE%") do set "MARKER_FILE=%%~dpF_DEV_UNSIGNED_BUILD.txt"
->>"%MARKER_FILE%" echo %DATE% %TIME% - "%TARGET_FILE%" was NOT signed (GLSENSE_SKIP_SIGNING dev mode)
-endlocal
-goto :eof
-
-:ClearDevModeMarker
-setlocal
-for %%F in ("%TARGET_FILE%") do set "MARKER_FILE=%%~dpF_DEV_UNSIGNED_BUILD.txt"
-if exist "%MARKER_FILE%" del /f /q "%MARKER_FILE%" >nul 2>&1
-endlocal
-goto :eof
