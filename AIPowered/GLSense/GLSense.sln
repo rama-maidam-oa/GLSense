@@ -15,7 +15,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GLSense.Addin.Core", "GLSen
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GLSense.Build", "GLSense.Build\GLSense.Build.csproj", "{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}"
 EndProject
-Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "OrbitGLSense", "GLSense\GLSenseSetup\OrbitGLSense.vdproj", "{1261CBFE-BFF5-8BBA-571D-742BC68B3232}"
+Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "OrbitGLSense", "GLSense\OrbitGLSenseSetups\OrbitGLSense.vdproj", "{BEC51E75-F1A1-1F3B-FA65-782622A89E4F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -47,10 +47,10 @@ Global
 		{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9C3E2F7A-1B4D-4C8E-8A2F-6D5B7E9A1C3F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1261CBFE-BFF5-8BBA-571D-742BC68B3232}.Debug|Any CPU.ActiveCfg = Debug
-		{1261CBFE-BFF5-8BBA-571D-742BC68B3232}.Debug|Any CPU.Build.0 = Debug
-		{1261CBFE-BFF5-8BBA-571D-742BC68B3232}.Release|Any CPU.ActiveCfg = Release
-		{1261CBFE-BFF5-8BBA-571D-742BC68B3232}.Release|Any CPU.Build.0 = Release
+		{BEC51E75-F1A1-1F3B-FA65-782622A89E4F}.Debug|Any CPU.ActiveCfg = Debug
+		{BEC51E75-F1A1-1F3B-FA65-782622A89E4F}.Debug|Any CPU.Build.0 = Debug
+		{BEC51E75-F1A1-1F3B-FA65-782622A89E4F}.Release|Any CPU.ActiveCfg = Release
+		{BEC51E75-F1A1-1F3B-FA65-782622A89E4F}.Release|Any CPU.Build.0 = Release
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

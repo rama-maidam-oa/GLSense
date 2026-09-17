@@ -6916,6 +6916,88 @@ state, now with `GLSenseUninstallCleanup.exe` included from the start.
 
 ---
 
+## 74. Second recreation of `OrbitGLSense.vdproj` (`GLSense\OrbitGLSenseSetups\`) - the
+"Exclude via VS's right-click UI" approach, done properly, is the actual, final,
+correct answer - not the Primary-Output-removal approach from sections 67-73.1
+
+After 73.1 closed out, the user recreated the installer project a THIRD time (again at
+a fresh location, `GLSense\OrbitGLSenseSetups\OrbitGLSense.vdproj` - not the old
+`GLSense\GLSenseSetup\` path, which is now an orphaned, still-git-tracked leftover no
+longer referenced by `GLSense.sln`; left untouched, not deleted, since removing it
+wasn't asked for), explicitly rejecting the sections 67-73.1 approach (deleting the
+Primary Output reference and hand-managing every dependency's `SourcePath`) in favor of
+the much simpler, VS-native one this whole saga had circled around without fully
+trusting: **keep Primary Output, let VS auto-detect every dependency exactly as it
+always does, and exclude the unwanted ones via VS's own right-click "Exclude" context
+menu action** - explicit user instruction: "Let the installer add project dependencies
+or primary output. We only need to exclude them in UI by right click and exclude."
+
+This is a deliberate reversal of the section 67 finding ("Exclude=TRUE does not
+reliably prevent packaging") - but that finding was never re-tested via the actual VS
+UI action; every prior test of it was against `Exclude=TRUE` flags already sitting in
+the `.vdproj` text (inherited from a stale prior scan, or set by direct text edit), not
+freshly applied via a live right-click in the IDE. This time it was tested properly,
+with real, mechanical, three-round verification:
+
+1. **First check (cosmetic-only)**: after applying the excludes, the user closed and
+   reopened Visual Studio specifically to see whether the excluded state survives a
+   project reload - it did. (Recall section 73.1: reopening a project can visually
+   reset the "Detected Dependencies" tree in VS's own UI, unrelated to the underlying
+   file - the user was specifically checking this wasn't happening here.)
+2. **Second check (real install, ground truth)**: a clean rebuild + MSI install,
+   directly inspecting the real installed folder
+   (`%LOCALAPPDATA%\Orbit Analytics\GLSense\`) file-by-file, cross-referenced against
+   the `.vdproj`'s actual `Exclude` flags (parsed with the same PowerShell block-parser
+   used throughout this saga, not by eye). First pass: `MahApps.Metro.IconPacks.Core`/
+   `.FontAwesome`, `Microsoft.Web.WebView2.Wpf`/`.Core`, and `System.Data.SQLite` were
+   all correctly `Exclude=TRUE` and genuinely absent from the real install - proving
+   the UI-driven exclude DOES work reliably, contrary to the original section 67
+   assumption. The same pass found `GLSense.Addin.Core` and `System.Net.Http`
+   themselves were still `Exclude=FALSE` (simply never excluded - an easy pair to miss
+   in a ~30-entry list, not a mechanism failure) and genuinely present in the install.
+3. **Third check (after the fix)**: user excluded those two remaining entries,
+   rebuilt, reinstalled, and the same folder-vs-`.vdproj` cross-reference confirmed
+   both are now genuinely absent, with every legitimate dependency (`GLSense.Contracts`/
+   `Shared`, `AddinExpress.MSO.2005`/`.XL.2005`, Office/Excel/Vbe interop, `NLog`,
+   `stdole`, the whole `System.Text.Json` chain) still present and correct.
+
+**What this means for future work on this file**: the section 67-73.1 approach
+(deleting Primary Output, hand-writing every `SourcePath`) is now SUPERSEDED - it was a
+real, working fix for its time, but it fights VS's own dependency model and requires
+manually re-deriving every dependency's correct path/GAC-resolution strategy by hand
+(the exact fragility that caused 73.1's whole silent-packaging-failure detour). The
+proven, simpler, VS-native approach going forward is: **keep the Primary Output/
+Project Output reference in place, let VS auto-populate Detected Dependencies, and
+individually right-click -> Exclude every entry that's actually Addin.Core-exclusive**
+(currently: `GLSense.Addin.Core` itself, `MahApps.Metro.IconPacks.Core`/`.FontAwesome`,
+`Microsoft.Web.WebView2.Wpf`/`.Core`, `System.Data.SQLite`, `System.Net.Http` - and
+optionally the duplicate non-GAC `System.IO.Compression` v4.2.0.0 entry, which is
+redundant but harmless since the GAC v4.0.0.0 copy already ships correctly excluded).
+If a future project recreation reintroduces this leak again, exclude exactly this list
+via the UI and verify with the same real-install-folder-vs-`.vdproj`-Exclude-flag cross
+-check - don't reach for Primary-Output removal again.
+
+My own added pieces (signing paths + custom action) were layered on top of the user's
+UI-driven setup without disturbing it: both `adxloader.GLSense.dll`/
+`adxloader64.GLSense.dll` `SourcePath`s were corrected from the unsigned `..\Loader\...`
+copies (VS's fresh detection default) to the signed `..\bin\Release\...` copies
+(section 66.1's standing fix, re-applied here), and `GLSenseUninstallCleanup.exe` (a
+renamed `cmd.exe` File entry + its Uninstall-only `CustomAction`, `Condition =
+REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE`, deleting `[TARGETDIR]AddinCore`) was added
+fresh, matching the original `cc412fc` commit exactly - everything else in the file
+(Primary Output, every auto-detected dependency, the 3 `adxregistrator.exe` custom
+actions, `manifest.json`/`OrbitGLSense.zip`/the `AddinCore\Manifest` folder,
+`ProductCode`/`UpgradeCode`) was left exactly as VS and the user had already set it up,
+per explicit instruction not to delete or restructure anything.
+
+**Status**: RESOLVED, user-confirmed via a real clean rebuild + MSI install + direct
+installed-folder inspection (not just a build-log read) showing every unwanted
+dependency absent and every required one present. This is now the standing, trusted
+approach for this installer project - see this section first if the leak or a missing-
+dependency symptom ever reappears, before re-deriving anything from sections 67-73.1.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
