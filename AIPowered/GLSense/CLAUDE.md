@@ -6379,6 +6379,95 @@ genuine `SourcePath` bugfix remains in the vdproj.
 
 ---
 
+## 67. Architectural leak: `GLSense.Addin.Core.dll` (and its whole private dependency
+tree) is genuinely installed into `TARGETDIR`, defeating the AppDomain/hot-reload
+design - `Exclude=TRUE` does not reliably prevent packaging
+
+User-identified, then independently confirmed with ground-truth evidence (not just
+build-log text). Per the whole hot-reload/AppDomain architecture (sections 14-17/40),
+`GLSense.Addin.Core.dll` and its own exclusive dependencies are meant to exist ONLY
+inside `OrbitGLSense.zip` (extracted at runtime by `UpdateBootstrapper` into
+`AddinCore\Versions\{folder}\`) - never as static, permanently-installed loose files
+sitting directly in `TARGETDIR`. `GLSense.csproj`'s own `ProjectReference` to
+`GLSense.Addin.Core` is deliberately `<Private>False</Private>` specifically to
+prevent this (confirmed: `GLSense.Addin.Core.dll` is genuinely absent from
+`GLSense\bin\Release\` - `Private=False` correctly blocks the ProjectReference's own
+copy-local step).
+
+**Root cause**: `OrbitGLSense.vdproj` doesn't reference `GLSense.dll` as a plain file -
+it uses `"Primary output from GLSense (Active)"`, a Project-Output-Group reference. VS's
+Setup Project designer resolves this by inspecting the COMPILED ASSEMBLY's own metadata
+(which still lists `GLSense.Addin.Core` as a referenced assembly regardless of
+`Private=False` - that MSBuild setting only controls copy-local, not the compiled
+reference list), locates the physical DLL wherever it can find it on disk (`GLSense.
+Addin.Core`'s OWN separate `bin\Release\` output folder), and auto-adds it - plus its
+entire transitive dependency chain - as individual "Detected Dependencies" File entries
+that get packaged into `TARGETDIR`. This re-scan appears to run on effectively every
+build/project-reload (consistent with section 65.3's earlier finding of VS silently
+reordering/regenerating this same section's GUIDs).
+
+**Confirmed via direct MSI extraction** (`msiexec /a "OrbitGLSense.msi" /qn
+TARGETDIR=<tempdir>` - a real administrative extraction, not just reading the build
+log's "Packaging file..." trace lines, which turned out to be an unreliable signal -
+see below): the actually-installed folder genuinely contains `GLSense.Addin.Core.dll`,
+`MahApps.Metro.IconPacks.Core.dll`, `MahApps.Metro.IconPacks.FontAwesome.dll`,
+`Microsoft.Web.WebView2.Core.dll`, `Microsoft.Web.WebView2.Wpf.dll`,
+`System.Data.SQLite.dll`, `AddinExpress.XL.2005.dll`, `AddinExpress.MSO.2005.dll` -
+none of which are needed or wanted directly in `TARGETDIR` at all, since they're only
+ever loaded by `AddinDomainLoader` from inside `AddinCore\Versions\{folder}\` (extracted
+from `OrbitGLSense.zip`), never from the install root.
+
+**Important secondary finding while verifying this**: the same MSI extraction also
+showed `System.IO.Compression.dll` genuinely present in `TARGETDIR`, DESPITE both of
+its existing vdproj entries (v4.0.0.0 GAC copy, v4.2.0.0 non-GAC copy) already being
+marked `Exclude="11:TRUE"` from an earlier session's fix for the identical "duplicate
+target location" warning. **`Exclude=TRUE` does not reliably keep a Detected-Dependency
+file out of the actual packaged output** - this invalidates the originally-planned fix
+for this section (marking the ~8 leaked Addin.Core-exclusive entries `Exclude=TRUE`,
+matching the existing `System.IO.Compression.dll` pattern) before it was ever applied -
+caught specifically by extracting and inspecting the real MSI rather than trusting the
+vdproj's own `Exclude` flag or the build log's "Packaging file..." lines (which fire
+regardless of Exclude status - an unreliable progress trace, not proof of inclusion).
+
+**The only durable fix identified**: stop using `"Primary output from GLSense
+(Active)"` (a Project-Output-Group reference) entirely, and replace it with a plain
+`File` entry for `GLSense.dll` (`SourcePath = ..\bin\Release\GLSense.dll`) - exactly
+the same pattern already proven working for `adxloader.GLSense.dll`/
+`adxloader64.GLSense.dll` after section 66.1's fix. Plain `File` entries do not trigger
+VS's automatic dependency-walking at all, so this is structural, not another flag to
+maintain. `PreBuildEvent` already signs exactly this path (`$(ProjectDir)..\bin\Release\
+GLSense.dll`), so no change needed there.
+
+**Known, accepted tradeoff, not yet resolved**: `"Primary output from GLSense
+(Active)"` is also what auto-creates the Solution-level build dependency (`OrbitGLSense`
+depends on `GLSense`, confirmed in an earlier session - this is why building/rebuilding
+`OrbitGLSense` alone also builds `GLSense`/`GLSense.Addin.Core`/`GLSense.Shared`/etc. in
+the correct order). Removing it will very likely drop that automatic wiring. After
+making this change, verify via Solution Explorer's Project Dependencies dialog whether
+`OrbitGLSense` still depends on `GLSense` - if not, either re-check it there manually,
+or rely on `Build > Rebuild Solution` (which builds everything regardless of per-project
+dependency wiring) instead of building `OrbitGLSense` alone going forward.
+
+**Decision**: given this exact vdproj has now shown two separate, surprising failure
+modes from blind text-editing in this session alone (section 65.3's VS-generated GUID/
+config drift, and this section's `Exclude=TRUE`-doesn't-work discovery), the user chose
+to make this specific structural change (delete "Primary output from GLSense (Active)"
++ "Localized resources from GLSense (Active)" from the File System editor, then `Add
+File...` browsing to `bin\Release\GLSense.dll`, then manually delete the now-orphaned
+Addin.Core-exclusive Detected Dependency entries) themselves via the Visual Studio
+Setup Project designer's own UI, rather than have it done via another blind text edit.
+
+**Status**: diagnosed and confirmed with ground-truth evidence (real MSI extraction),
+not yet fixed. **Next verification step once fixed**: re-run the same `msiexec /a`
+extraction check and confirm `GLSense.Addin.Core.dll` and its exclusive dependencies
+are genuinely gone from `TARGETDIR`, while `GLSense.dll`/`GLSense.Loader.Core.dll`/
+`GLSense.Contracts.dll`/`GLSense.Shared.dll`/`adxloader*.dll`/`OrbitGLSense.zip`/
+`manifest.json` remain (these are all genuinely needed directly in `TARGETDIR` - see
+this section's own reasoning, and section 40 for why `AddinCore`'s colocated storage
+design depends on `GLSense.dll`'s own folder being the install root).
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
