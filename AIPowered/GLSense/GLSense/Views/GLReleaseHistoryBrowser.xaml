@@ -196,7 +196,7 @@
                     </DataGridTemplateColumn.HeaderStyle>
                     <DataGridTemplateColumn.CellStyle>
                         <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
-                            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
                             <Setter Property="VerticalContentAlignment" Value="Center"/>
                             <Setter Property="BorderBrush" Value="#FFE5E5E5"/>
                             <Setter Property="BorderThickness" Value="0,0,1,0"/>
@@ -211,8 +211,9 @@
                     </DataGridTemplateColumn.CellStyle>
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Border HorizontalAlignment="Left"
-                                    Padding="7,3"
+                            <Border HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Padding="6,1"
                                     Background="#FFE3F2FD"
                                     BorderBrush="#FF9BC9DC"
                                     BorderThickness="1"
