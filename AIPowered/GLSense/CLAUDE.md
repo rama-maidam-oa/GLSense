@@ -6998,12 +6998,174 @@ dependency symptom ever reappears, before re-deriving anything from sections 67-
 
 ---
 
+## 75. Manifest.json schema rework: dropped `downloadUrl`, added `release`/`folderName`/
+`fileName`; zip filename and `Versions\` folder name both switched to lowercase `v`
+
+Follow-up request, after section 45's colocated-storage work had already shipped: the
+manifest.json post_build.cmd writes needed three schema changes, plus a naming-
+consistency fix once the schema change exposed a real accumulation bug.
+
+**A) `downloadUrl` removed entirely** (not left as an empty string) from
+`GLSense.Addin.Core\post_build.cmd`'s hand-rolled manifest JSON. Verified via a full
+grep before removing it: the only real reader of `VersionInfo.DownloadUrl` is
+`GLReloadSourcePicker.xaml.cs`'s Online flow, which parses a completely separate JSON
+payload fetched live from `{LoginUrl}/glsense/projectdlls` (now section 76's list
+endpoint) - never this local file. The zip is already sitting right next to this
+manifest, so there was never anywhere for a local download URL to point.
+
+**B) `"release": false`** added - a placeholder for a future "was this a deliberately
+cut, non-dev release" flag. No consumer reads it yet; always written `false` for now.
+
+**C) `"folderName"`/`"fileName"`** added - the exact `Versions\{folderName}\` extraction
+target and the zip's own filename, both computed once in a new STEP 2b (before the zip
+is built) and reused verbatim for the JSON body, so they can never drift from each
+other. `VersionInfo.cs` (`GLSense.Contracts`) gained matching `FolderName`/`FileName`
+properties (added later, in section 76's Task 1, once a real consumer needed them -
+before that they were write-only, inert JSON fields, same "ignored until something
+reads them" pattern as section 14.2's `downloadUrl`/`checksum`/`notes`/`mandatory`).
+
+**D) The zip filename gained a timestamp for uniqueness** - `v{version}.zip` (stable
+only because the version rarely changes) became `v{version}_{releaseDateSafe}.zip`
+(same shape as the `Versions\` folder name, computed by the identical safe-date
+algorithm). **This surfaced a real accumulation bug that had to be fixed in the same
+pass**: since the zip filename is no longer stable across builds at the same version,
+two things that used to be implicitly true (only ever one zip in
+`SetupFiles\{Config}\Manifest\`; only ever one zip in the live `AddinCore\Manifest\`
+folder `GLSense\post_build.cmd` copies into) stopped being true - a build no longer
+overwrites the previous build's differently-named zip, it just adds another one
+alongside it. `UpdateBootstrapper`/`GLReloadSourcePicker`'s Offline scan both resolve
+"the" zip via a bare `Directory.GetFiles(dir, "*.zip").First()`/`FirstOrDefault()`
+wildcard with no newest-first ordering - two zips present means whichever one Windows
+happens to enumerate first could get extracted instead of the one just built. Fixed by
+adding explicit cleanup (`for %%Z in ("...\*.zip") do del /Q "%%Z"`) immediately before
+each write/copy step in both `GLSense.Addin.Core\post_build.cmd` (before compressing)
+and `GLSense\post_build.cmd` (before the `xcopy` into `AddinCore\Manifest\`) -
+guarantees exactly one zip survives at each stage, verified via three consecutive real
+rebuilds confirming no accumulation.
+
+**E) Lowercase `v` everywhere, not just the zip.** Follow-up request: make
+`ReleaseHistoryStore.BuildFolderName` (`GLSense.Shared`) - the actual function that
+computes the REAL `Versions\{folderName}\` extraction target at runtime, independent of
+what post_build.cmd writes into the manifest as metadata - use lowercase `v{version}_
+{releaseDateSafe}` instead of uppercase `V{version}_{releaseDateSafe}`, so the folder
+name visually matches the zip filename's own `v` prefix. This is safe: NTFS folder
+lookups are case-insensitive regardless, and every consumer of an already-catalogued
+`FolderName` (from `ReleaseHistory.json`) reads it back verbatim rather than
+re-deriving or case-comparing it - pre-existing `V...` folders from before this change
+keep resolving correctly, nothing needed to migrate.
+
+**Verification**: every change in this section was verified with real MSBuild rebuilds
+in this environment (not just code review) - confirmed the manifest.json produced
+matches the new schema exactly, confirmed no zip accumulation across 3 consecutive
+rebuilds in both Debug and Release, and fed the generated manifest.json through the
+real compiled `VersionParser`/`VersionInfo` classes to confirm it parses without error
+(missing `downloadUrl` correctly defaults to empty; the new fields are silently ignored
+by anything that doesn't yet read them, per `System.Text.Json`'s default
+non-strict-unmapped-member behavior, already relied on throughout this codebase since
+section 14.2).
+
+**Status**: implemented and build-verified, user-confirmed. See section 76 for the
+feature this schema rework was actually done in service of.
+
+---
+
+## 76. GLReloadSourcePicker: multi-version Online mode (server integration still
+pending - `/glsense/versions`/`/glsense/manifest`/`/glsense/download` don't exist yet)
+
+Replaces Online mode's old single-"check the latest release" flow with a server release
+list: every release not yet on this machine is shown as a checkbox row (Loaded/Already
+Downloaded/New), selected releases get fetched and catalogued in one batch, and the
+newest release across the whole local catalog afterward becomes what's actually loaded
+- with **no new "pick latest" logic needed anywhere**, since `UpdateBootstrapper.
+ResolveVersionToLoad`'s existing branch 3 (already shipped, section 17/40) already does
+exactly this once nothing is staged in `Manifest\`.
+
+Full design: `docs/superpowers/specs/2026-09-18-online-reload-multiversion-design.md`.
+Full implementation plan (7 tasks, each independently reviewed, plus a consolidated
+final-review fix wave): `docs/superpowers/plans/2026-09-18-online-reload-multiversion.md`.
+**Dedicated follow-up checklist for once the server exists**:
+`docs/superpowers/plans/2026-09-18-online-reload-multiversion-followup.md` - read that
+file, not this section, when server integration work actually resumes.
+
+### What shipped (code-complete, build-verified, NOT live-tested - no server exists yet)
+
+- `VersionInfo.cs` (`GLSense.Contracts`) - added `FolderName`/`FileName` properties
+  (the write-only fields section 75 added to the JSON schema now have a real reader).
+- `UpdateBootstrapper.ExtractAndCatalog` (`GLSense.Loader.Core`, new) - verifies a
+  zip's checksum against its manifest, extracts into `Versions\{folderName}\`, writes
+  the per-version manifest.json snapshot, appends to `ReleaseHistory.json`. Shared by
+  BOTH the existing Install/Offline path (`ExtractManifestZipAndAdopt`, refactored into
+  a thin wrapper around this) and the new Online bulk-download loop - one
+  verify-extract-catalog implementation, not two.
+- `OnlineReleaseRow.cs`/`OnlineReleaseClassifier.cs` (new, `GLSense\Views\`) - the grid
+  row model and the pure (no WPF/HTTP) Loaded/Already-Downloaded/New classification +
+  default-selection logic.
+- `GLReloadSourcePicker.xaml`/`.xaml.cs` - Online panel replaced with a DataGrid +
+  details panel; `BtnCheckOnline_Click` now fetches/classifies the server's full list
+  instead of checking one version; `BtnFetchAndReload_Click` is the new per-row
+  download-and-catalog loop, closing the dialog only if at least one release succeeds.
+
+### Bugs found and fixed DURING this implementation (all via real testing, not just
+code review - worth knowing before touching this code again)
+
+- **Dispatcher-safety gaps caught twice in the plan's own authoring, not just the
+  implementation.** Both `LoadOnlineReleasesAsync`'s row-population loop and
+  `BtnFetchAndReload_Click`'s `DialogResult`/`Close()` sequence originally ran
+  unguarded after a real network `await` in this VSTO host (which does not reliably
+  resume continuations on the UI thread - the same class of bug documented throughout
+  this file, e.g. sections 2.4/2.5/21.2/69). Both fixed with the same unconditional
+  `Dispatcher.CheckAccess()`/synchronous `Dispatcher.Invoke` pattern already
+  established by `SetBusy`/`AppendLine` in this file - `AddOnlineRows` and
+  `CompleteOnlineFetch` respectively.
+- **Re-entrancy**: `BtnFetchAndReload` was never disabled while its own download loop
+  ran, so a double-click raced two `ExtractAndCatalog` calls against the same
+  `versionFolder` and could double-close the dialog. Fixed with a `_fetchInProgress`
+  guard (matching `AddinModule.RibReload_OnClick`'s existing `_reloadInProgress`
+  pattern) plus disabling the button in `SetBusy`.
+- **Closed-window race**: closing the dialog via the title-bar X mid-download let the
+  in-flight loop finish and set `DialogResult`/call `Close()` on an already-closed
+  `Window` - `InvalidOperationException`, escaping straight out of an `async void`
+  handler to `AppDomain.UnhandledException` (the exact failure class sections 36/71
+  already document at length). Fixed with an `_isClosed` flag (set in a new `OnClosed`
+  override) plus wrapping `BtnFetchAndReload_Click`'s entire body in try/catch,
+  matching its sibling `BtnReload_Click`'s existing shape in the same file.
+- **Unvalidated server input reaching a recursive delete**: `ExtractAndCatalog` takes
+  `folderName` from the parsed manifest (server-controlled on this new path) and does
+  `Directory.Delete(Path.Combine(paths.VersionsPath, folderName), true)`. First
+  validation attempt (`Path.GetFileName(folderName) != folderName`) missed a bare `"."`
+  or `".."` with no separator (`Path.GetFileName` doesn't canonicalize a separator-free
+  input) - either would delete the whole `AddinCore` install folder or the whole
+  `Versions` folder. Caught by a scoped re-review of the fix wave, confirmed by direct
+  fixture testing against the real compiled DLL, and closed with an explicit
+  `folderName == "." || folderName == ".."` check alongside the existing one.
+- **A per-task review calibrated a finding Minor that the final whole-branch review
+  correctly overturned to load-bearing** - worth remembering the general lesson: the
+  missing-outer-catch item above looked narrow in isolation (only `Dispatcher.Invoke`
+  itself could realistically throw), but combined with the re-entrancy and
+  closed-window gaps above, it was two ordinary user actions away from taking the
+  add-in down, and the Online path can't be exercised at all until a server exists -
+  so it would have shipped completely unnoticed. When a "residual exposure is narrow"
+  Minor sits next to other findings touching the same code path, re-check whether they
+  compound before accepting the narrow framing.
+
+### Status
+
+Code-complete and build-verified (real MSBuild rebuilds throughout, including a full
+`GLSense.Build.csproj` solution build). **Not live-tested** - no server implementation
+exists yet ("under process" per the original request), so the entire Online flow has
+only ever been exercised via PowerShell fixture scripts against compiled DLLs, never a
+real Excel session. See the dedicated follow-up doc referenced above for exactly what
+to verify once server integration resumes.
+
+---
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
 (`GLSense.Loader.Core\AddinDomainLoader.cs`) from a **timestamp-keyed deployment
-folder** under `GLSense\bin\{Config}\AddinCore\Versions\V{version}_{releaseDateSafe}\`
-(colocated with `GLSense.dll` itself since section 45 - NOT under
+folder** under `GLSense\bin\{Config}\AddinCore\Versions\v{version}_{releaseDateSafe}\`
+(lowercase `v` - see section 75; colocated with `GLSense.dll` itself since section 45 -
+NOT under
 `%LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs_New\` any more), populated at runtime by
 `UpdateBootstrapper` extracting whatever zip+manifest.json it finds in
 `GLSense\bin\{Config}\AddinCore\Manifest\` (see section 45 for how that folder gets
