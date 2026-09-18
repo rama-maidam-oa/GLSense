@@ -1588,15 +1588,34 @@ Replace the placeholder `BtnFetchAndReload_Click` from Task 6 with:
                     return;
                 }
 
-                SelectedSource = "Online";
-                GlobalsEx.Context?.Logger?.LogDebug($"GLReloadSourcePicker: fetched {succeeded} of {checkedRows.Count} selected release(s) - proceeding with reload.");
-                DialogResult = true;
-                Close();
+                CompleteOnlineFetch(succeeded, checkedRows.Count);
             }
             finally
             {
                 SetBusy(false);
             }
+        }
+
+        // DialogResult/Close are Window members with the same UI-thread affinity as
+        // any other WPF DependencyObject/Window API - setting DialogResult or calling
+        // Close() off the UI thread throws InvalidOperationException. By this point in
+        // BtnFetchAndReload_Click, several `await`s (the per-row manifest/zip fetches)
+        // have already run, and this VSTO host's WPF window doesn't reliably resume
+        // continuations back onto the UI thread - so this closing sequence needs the
+        // same unconditional dispatcher guard as AddOnlineRows (see Task 6's fix round
+        // for the identical class of bug caught there).
+        private void CompleteOnlineFetch(int succeeded, int totalChecked)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => CompleteOnlineFetch(succeeded, totalChecked));
+                return;
+            }
+
+            SelectedSource = "Online";
+            GlobalsEx.Context?.Logger?.LogDebug($"GLReloadSourcePicker: fetched {succeeded} of {totalChecked} selected release(s) - proceeding with reload.");
+            DialogResult = true;
+            Close();
         }
 ```
 
