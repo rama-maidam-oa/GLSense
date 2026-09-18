@@ -231,36 +231,18 @@ namespace GLSense.Loader.Core
             var logger = context.Logger;
             var paths = context.Paths;
 
-            string version = paths.LatestVersion;
-            string releaseDate = paths.LatestReleaseDate;
-            string folderName = ReleaseHistoryStore.BuildFolderName(version, releaseDate);
-            string versionFolder = Path.Combine(paths.VersionsPath, folderName);
             string zipPath = Directory.GetFiles(paths.ManifestDirectory, "*.zip").First();
+            string manifestJson = File.ReadAllText(paths.ManifestFile);
+            byte[] zipBytes = File.ReadAllBytes(zipPath);
 
-            logger?.LogDebug($"UpdateBootstrapper: extracting '{zipPath}' into '{versionFolder}' (source={source}).");
+            logger?.LogDebug($"UpdateBootstrapper: extracting '{zipPath}' (source={source}).");
 
-            if (Directory.Exists(versionFolder))
-                Directory.Delete(versionFolder, true);
-            Directory.CreateDirectory(versionFolder);
-
-            ZipFile.ExtractToDirectory(zipPath, versionFolder);
-
-            // Per-version manifest snapshot - a permanent, self-contained record of
-            // exactly what this folder is, independent of the transient copy in
-            // Manifest\ (which the caller may delete afterward - e.g. the fresh-install
-            // path).
-            File.Copy(paths.ManifestFile, Path.Combine(versionFolder, "manifest.json"), true);
-
-            var entry = new ReleaseEntry
+            var resolved = ExtractAndCatalog(context, manifestJson, zipBytes, source);
+            if (resolved == null)
             {
-                Version = version,
-                ReleaseDate = releaseDate,
-                FolderName = folderName,
-                Checksum = paths.LatestChecksum,
-                Notes = string.IsNullOrWhiteSpace(paths.LatestNotes) ? "Published by GLSense.Addin.Core" : paths.LatestNotes,
-                Source = source
-            };
-            ReleaseHistoryStore.Append(paths.ReleaseHistoryFile, entry);
+                logger?.LogError($"UpdateBootstrapper: ExtractAndCatalog failed for '{zipPath}' - leaving it in place for the next launch to retry.");
+                return null;
+            }
 
             // Delete the zip only after the catalog append has genuinely succeeded -
             // if anything above throws, the zip is still there so the next launch can
@@ -268,9 +250,9 @@ namespace GLSense.Loader.Core
             // on disk but no catalog entry and no way to retry (the zip already gone).
             File.Delete(zipPath);
 
-            logger?.LogDebug($"UpdateBootstrapper: extracted, catalogued (source={source}), and deleted '{zipPath}'. Adopting '{folderName}'.");
+            logger?.LogDebug($"UpdateBootstrapper: extracted, catalogued (source={source}), and deleted '{zipPath}'. Adopting '{resolved.FolderName}'.");
 
-            return new ResolvedRelease { Version = version, ReleaseDate = releaseDate, FolderName = folderName };
+            return resolved;
         }
 
         private void DeleteManifestFolder(IGLSenseContext context)
