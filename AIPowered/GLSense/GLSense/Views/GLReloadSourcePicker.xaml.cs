@@ -25,6 +25,17 @@ namespace GLSense
         private string _candidateZipPath;
         private bool _isValidated;
         private bool _onlineAvailable;
+        private bool _isClosed;
+
+        // Guards BtnFetchAndReload_Click against re-entrancy (e.g. an accidental rapid
+        // double-click while the multi-release download loop is running) - mirrors the
+        // exact pattern AddinModule.RibReload_OnClick already uses (_reloadInProgress)
+        // for the same reason. This is a second, independent layer on top of SetBusy
+        // disabling the button itself - see SetBusy's own comment for why the button
+        // being disabled isn't, on its own, a guaranteed-sufficient guard here (the
+        // button's IsEnabled state is UI-thread state; this field is checked
+        // synchronously at the very top of the handler before anything else runs).
+        private bool _fetchInProgress;
 
         private readonly ObservableCollection<OnlineReleaseRow> _onlineRows = new ObservableCollection<OnlineReleaseRow>();
         private const string VersionsListPath = "/glsense/versions";
@@ -44,6 +55,18 @@ namespace GLSense
             InitializeComponent();
             SourceInitialized += (s, e) => WindowChromeHelper.RemoveMinimizeMaximizeButtons(this);
             InitializeModeAvailability();
+        }
+
+        // Tracks whether this window has already been closed (e.g. via the title-bar X
+        // or Alt+F4 while a background download loop was still running - SetBusy
+        // disables BtnCancel but cannot prevent those two close routes). Read/written
+        // only from CompleteOnlineFetch, which is itself only ever reached after that
+        // method's own dispatcher-guard has already ensured it's running on the UI
+        // thread - see CompleteOnlineFetch's own comment.
+        protected override void OnClosed(EventArgs e)
+        {
+            _isClosed = true;
+            base.OnClosed(e);
         }
 
         private void InitializeModeAvailability()
@@ -141,6 +164,18 @@ namespace GLSense
             BtnCancel.IsEnabled = !busy;
             RbOnline.IsEnabled = !busy && _onlineAvailable;
             RbOffline.IsEnabled = !busy;
+
+            if (busy)
+            {
+                // Disable outright while a fetch/download loop is running - re-enabling
+                // via UpdateFetchButtonState() below (not unconditionally true) so its
+                // enabled state still correctly reflects whether anything is checked.
+                BtnFetchAndReload.IsEnabled = false;
+            }
+            else
+            {
+                UpdateFetchButtonState();
+            }
         }
 
         private void AppendLine(string prefix, string message)
@@ -473,6 +508,13 @@ namespace GLSense
 
         private async void BtnFetchAndReload_Click(object sender, RoutedEventArgs e)
         {
+            // Re-entrancy guard: BtnFetchAndReload is disabled by SetBusy(true) for the
+            // duration of the loop below, but this check is a second, independent layer
+            // - matching AddinModule.RibReload_OnClick's own _reloadInProgress pattern -
+            // in case the button's disabled state hasn't visually/logically taken effect
+            // yet at the moment of a rapid double-click.
+            if (_fetchInProgress) return;
+
             var checkedRows = _onlineRows
                 .Where(r => r.IsSelectable && r.IsChecked)
                 .OrderBy(r => OnlineReleaseClassifier.ParseReleaseDateOrMin(r.ReleaseDate))
@@ -480,6 +522,7 @@ namespace GLSense
 
             if (checkedRows.Count == 0) return;
 
+            _fetchInProgress = true;
             SetBusy(true);
             int succeeded = 0;
 
@@ -522,6 +565,17 @@ namespace GLSense
                                 continue;
                             }
 
+                            // Confirm the server actually returned the release that was
+                            // requested - if it ignored folderName (or returned the wrong
+                            // entry), don't silently count this as success or proceed to
+                            // reload onto an unexpected release.
+                            if (!string.Equals(resolved.Version, row.Version, StringComparison.OrdinalIgnoreCase) ||
+                                !string.Equals(resolved.ReleaseDate, row.ReleaseDate, StringComparison.OrdinalIgnoreCase))
+                            {
+                                LogFailure($"Server returned a different release than requested for {row.Version} ({row.ReleaseDate}) - got {resolved.Version} ({resolved.ReleaseDate}).");
+                                continue;
+                            }
+
                             LogSuccess($"Cataloged {row.Version}.");
                             succeeded++;
                         }
@@ -540,9 +594,20 @@ namespace GLSense
 
                 CompleteOnlineFetch(succeeded, checkedRows.Count);
             }
+            catch (Exception ex)
+            {
+                // Matches BtnReload_Click's own try/catch shape in this file - an outer
+                // safety net so nothing from this handler's several `await` points can
+                // ever escape this async void method uncaught into
+                // AppDomain.UnhandledException (e.g. the window having been closed via
+                // the title-bar X/Alt+F4 mid-download - see CompleteOnlineFetch's own
+                // _isClosed guard for the specific case this was written for).
+                LogFailure($"Unexpected error during fetch: {ex.Message}", ex);
+            }
             finally
             {
                 SetBusy(false);
+                _fetchInProgress = false;
             }
         }
 
@@ -559,6 +624,21 @@ namespace GLSense
             if (!Dispatcher.CheckAccess())
             {
                 Dispatcher.Invoke(() => CompleteOnlineFetch(succeeded, totalChecked));
+                return;
+            }
+
+            // The user can close this window via the title-bar X/Alt+F4 while the
+            // download loop above is still running (SetBusy disables BtnCancel, but not
+            // those two close routes) - in that case the loop keeps running in the
+            // background and eventually reaches here anyway. Setting DialogResult/
+            // calling Close() on an already-closed Window throws InvalidOperationException,
+            // which would otherwise escape BtnFetchAndReload_Click's async void handler
+            // uncaught. _isClosed is only ever read/written on the UI thread (set in
+            // OnClosed), so it's safe to check here now that the dispatcher guard above
+            // has already ensured we're on that thread.
+            if (_isClosed)
+            {
+                GlobalsEx.Context?.Logger?.LogDebug("GLReloadSourcePicker: fetch completed after the window was already closed - discarding the result (nothing more to do; the fetched release(s) are already cataloged).");
                 return;
             }
 

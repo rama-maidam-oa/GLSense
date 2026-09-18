@@ -107,6 +107,18 @@ namespace GLSense.Loader.Core
                             ReleaseHistoryStore.Reconcile(paths.ReleaseHistoryFile, paths.VersionsPath);
                         }
 
+                        // A dev machine's GLSense\post_build.cmd copies a fresh zip+manifest
+                        // into Manifest\ on every host rebuild, so this branch can win over
+                        // whatever an Online fetch just downloaded/cataloged - the staged
+                        // local dev build gets adopted here instead, silently, with only a
+                        // LogDebug line (below) explaining why. That's out of scope to change
+                        // here (which release wins is unaffected), but when this happens right
+                        // after an Online fetch it's worth being loud about in the log.
+                        if (string.Equals(source, "Online", StringComparison.OrdinalIgnoreCase))
+                        {
+                            logger?.LogWarn($"UpdateBootstrapper: a manifest+zip is already staged in '{paths.ManifestDirectory}' (version={candidateVersion}, releaseDate={candidateReleaseDate}) - adopting THAT staged release instead of the one just fetched via Online. If this wasn't expected, check whether a local dev rebuild (GLSense\\post_build.cmd) staged it.");
+                        }
+
                         return ExtractManifestZipAndAdopt(context, source);
                     }
                 }
@@ -125,7 +137,7 @@ namespace GLSense.Loader.Core
                     .Where(e => !string.IsNullOrWhiteSpace(e.FolderName) &&
                                 Directory.Exists(Path.Combine(paths.VersionsPath, e.FolderName)) &&
                                 Directory.GetFiles(Path.Combine(paths.VersionsPath, e.FolderName), "*.dll").Any())
-                    .OrderByDescending(e => e.ReleaseDate)
+                    .OrderByDescending(e => ParseReleaseDateOrMin(e.ReleaseDate))
                     .FirstOrDefault();
 
                 if (activeEntry != null)
@@ -175,6 +187,20 @@ namespace GLSense.Loader.Core
             string folderName = !string.IsNullOrWhiteSpace(info.FolderName)
                 ? info.FolderName
                 : ReleaseHistoryStore.BuildFolderName(version, releaseDate);
+
+            // folderName can be server-supplied on the Online path - validate it before
+            // it ever reaches Path.Combine/a recursive Directory.Delete below. A single
+            // Path.GetFileName(folderName) != folderName check catches path separators,
+            // ".." traversal, and rooted paths all at once (any of those change what
+            // GetFileName returns from the original string). Also refuse to ever
+            // delete/overwrite the folder the currently-loaded release lives in.
+            if (!string.Equals(Path.GetFileName(folderName), folderName, StringComparison.Ordinal) ||
+                string.Equals(folderName, context.ActiveFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                logger?.LogError($"UpdateBootstrapper.ExtractAndCatalog: rejected folderName '{folderName}' for '{version}' ({releaseDate}) - either not a bare folder name or matches the currently active release's folder. Not extracting.");
+                return null;
+            }
+
             string checksum = info.Checksum ?? string.Empty;
             string notes = string.IsNullOrWhiteSpace(info.Notes) ? "Published by GLSense.Addin.Core" : info.Notes;
 
@@ -253,6 +279,19 @@ namespace GLSense.Loader.Core
             logger?.LogDebug($"UpdateBootstrapper: extracted, catalogued (source={source}), and deleted '{zipPath}'. Adopting '{resolved.FolderName}'.");
 
             return resolved;
+        }
+
+        // "Newest wins" catalog lookups must sort by parsed date, not raw string - that
+        // was only ever chronologically correct because every LOCAL writer emits the
+        // fixed yyyy-MM-ddTHH:mm:ss format. The Online path is the first to ingest
+        // releaseDate strings from an external server, which might use a different
+        // format - falls back to DateTime.MinValue for an unparseable value, same
+        // defensive shape as OnlineReleaseClassifier.ParseReleaseDateOrMin (a different
+        // project/namespace - GLSense.Views vs. this one - so not shared/reused
+        // directly here).
+        private static DateTime ParseReleaseDateOrMin(string releaseDate)
+        {
+            return DateTime.TryParse(releaseDate, out var dt) ? dt : DateTime.MinValue;
         }
 
         private void DeleteManifestFolder(IGLSenseContext context)
