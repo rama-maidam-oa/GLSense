@@ -59,14 +59,25 @@ namespace GLSense
 
             GridReleases.ItemsSource = rows;
 
-            TxtStatus.Text = entries.Count == 0
-                ? "No releases recorded yet."
-                : "Select a release, then click Load This Release.";
+            if (entries.Count == 0)
+            {
+                TxtStatus.Text = "No version recorded yet.";
+            }
+            else
+            {
+                TxtStatus.Inlines.Clear();
+                TxtStatus.Inlines.Add(new System.Windows.Documents.Run("Select a version, then click "));
+                TxtStatus.Inlines.Add(new System.Windows.Documents.Run("Load This Version")
+                {
+                    FontWeight = FontWeights.SemiBold
+                });
+                TxtStatus.Inlines.Add(new System.Windows.Documents.Run("."));
+            }
 
             var loadedRow = rows.FirstOrDefault(r => r.IsCurrentlyLoaded);
             if (loadedRow != null)
             {
-                TxtLoadedStatus.Text = $"Currently loaded: version {loadedRow.Version}, released {loadedRow.ReleaseDate}.";
+                TxtLoadedStatus.Text = $"Currently loaded: version {loadedRow.Version}, released on {loadedRow.ReleaseDate}.";
                 GridReleases.SelectedItem = loadedRow;
                 GridReleases.ScrollIntoView(loadedRow);
             }

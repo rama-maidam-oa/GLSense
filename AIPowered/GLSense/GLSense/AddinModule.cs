@@ -287,6 +287,58 @@ namespace GLSense
         }
 
         /// <summary>
+        /// Pre-flight safeguard, shared by RibReload and Release History (both funnel into
+        /// ReloadAddinCore below): warns before tearing down the currently-loaded
+        /// GLSense.Addin.Core AppDomain if it still has a visible WPF window open (Balance
+        /// Configurator, a segment/account picker, GLWaitWindow, etc.). AppDomain.Unload
+        /// forcibly aborts any thread still executing inside the domain being unloaded, and
+        /// an open modal window means its ShowDialog() loop - and whatever background work
+        /// it may have started - is still running on that domain's own dispatcher thread.
+        /// This is the same underlying risk class that produced the locked-native-DLL
+        /// (e_sqlite3.dll) crash UpdateBootstrapper.ExtractAndCatalog now tolerates - this
+        /// check surfaces it to the user up front instead of letting them hit some other
+        /// shape of it later.
+        ///
+        /// IGLSenseAddin.GetOpenWindowTitles() was added after the first shipped version of
+        /// this interface, so it's called defensively - an older historical build loaded
+        /// via Release History may not implement it, and any failure here must never block
+        /// a reload the user actually wants. Returns true (proceed) whenever no open windows
+        /// are reported, the check itself fails, or the user confirms anyway.
+        /// </summary>
+        private bool ConfirmOpenWindowsOkToProceed()
+        {
+            string[] openWindows;
+            try
+            {
+                openWindows = GlobalsEx.Addin?.GetOpenWindowTitles() ?? Array.Empty<string>();
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "ConfirmOpenWindowsOkToProceed: GetOpenWindowTitles failed - proceeding as if nothing is open");
+                return true;
+            }
+
+            if (openWindows.Length == 0)
+                return true;
+
+            GlobalsEx.Context?.Logger?.LogWarn($"ConfirmOpenWindowsOkToProceed: {openWindows.Length} GLSense window(s) still open before a reload was requested: {string.Join(", ", openWindows)}");
+
+            var result = MessageBox.Show(
+                "The following GLSense window(s) are still open:" + Environment.NewLine + Environment.NewLine +
+                string.Join(Environment.NewLine, openWindows) + Environment.NewLine + Environment.NewLine +
+                "Reloading now will forcibly close them and abort anything they're doing, which can leave an " +
+                "operation half-finished or (rarely) cause an error. Close them first for a clean reload." +
+                Environment.NewLine + Environment.NewLine +
+                "Reload anyway?",
+                "Reload GLSense Add-in",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            return result == DialogResult.Yes;
+        }
+
+        /// <summary>
         /// Hot-reload orchestration: tear down the current Addin.Core instance/AppDomain
         /// and load a fresh one, re-pointing GlobalsEx.Addin so every ribbon/Excel-event
         /// handler in this file (which only ever go through GlobalsEx.Addin?./GlobalsEx.
@@ -301,12 +353,18 @@ namespace GLSense
         /// forcibly aborts any thread still executing inside the domain being unloaded.
         /// If a background Task.Run from a drilldown/refresh/UDF is genuinely mid-flight
         /// (as opposed to just idle) when this runs, it can be aborted mid-operation,
-        /// including potentially mid-COM-call. The confirmation dialog in RibReload_OnClick
-        /// exists specifically to surface this risk to the user rather than hide it -
-        /// reload only when nothing else is actively running.
+        /// including potentially mid-COM-call. ConfirmOpenWindowsOkToProceed above exists
+        /// specifically to surface this risk to the user rather than hide it - reload only
+        /// when nothing else is actively running (or the user explicitly accepts the risk).
         /// </summary>
         private void ReloadAddinCore(Func<ResolvedRelease> resolveRelease)
         {
+            if (!ConfirmOpenWindowsOkToProceed())
+            {
+                GlobalsEx.Context?.Logger?.LogDebug("ReloadAddinCore: user cancelled reload due to open GLSense window(s).");
+                return;
+            }
+
             // Busy indicator for the duration of this method's blocking AppDomain
             // unload/resolve/load work - see GLReloadProgressWindow's own header comment.
             // Defensive: a failure to construct/show this window must never prevent the

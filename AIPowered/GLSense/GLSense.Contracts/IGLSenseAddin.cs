@@ -129,5 +129,29 @@ namespace GLSense.Contracts
         /// section 9.
         /// </summary>
         LoginInfo GetLoginInfo();
+
+        /// <summary>
+        /// Titles (or, for an untitled window, its type name) of every currently VISIBLE
+        /// WPF window in this AppDomain's Application - Balance Configurator, segment/
+        /// account pickers, GLWaitWindow, etc. Used by the host's ReloadAddinCore
+        /// (RibReload and Release History share this one code path) as a pre-flight
+        /// check before tearing this AppDomain down: AppDomain.Unload forcibly aborts any
+        /// thread still executing inside the domain being unloaded, and a modal window
+        /// still open means its ShowDialog() loop - and whatever background work it may
+        /// have started - is still running on this AppDomain's own WPF dispatcher thread.
+        /// Reloading out from under that is exactly the class of bug that produced the
+        /// locked-native-DLL (e_sqlite3.dll) crash fixed in UpdateBootstrapper - this
+        /// surfaces the risk to the user up front instead of letting them hit it again in
+        /// some other shape.
+        ///
+        /// Added after the very first shipped version of this interface - any caller
+        /// MUST wrap this call in try/catch (or otherwise tolerate a
+        /// MissingMethodException/RemotingException), because the Release History browser
+        /// can reload an OLDER historical build of GLSense.Addin.Core whose own compiled
+        /// copy of this interface predates this member. Treat any failure exactly like
+        /// "no open windows" (return/assume an empty array) - never let this check itself
+        /// block a reload. See GetLoginInfo's own doc comment for the same rule.
+        /// </summary>
+        string[] GetOpenWindowTitles();
     }
 }

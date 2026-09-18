@@ -21,6 +21,16 @@
 //      release already has DLLs -> reuse it, nothing to do.
 //   4. Nothing usable anywhere -> return null so the caller can skip loading the
 //      AppDomain instead of crashing Excel.
+//
+// ExtractAndCatalog is idempotent by design: if Versions\{folderName}\ already has
+// DLLs on disk (e.g. this exact release was already extracted earlier - via Reload's
+// Offline picker, an earlier Online fetch, or simply because it's the release
+// currently/previously active this Excel session), it skips the delete+re-extract and
+// just catalogs it. This matters because a native DLL that folder holds (e.g.
+// e_sqlite3.dll) is never released once loaded via P/Invoke/LoadLibrary, even after
+// the AppDomain that loaded it unloads - so deleting that folder again would throw
+// UnauthorizedAccessException. Re-loading a release via Release History, then coming
+// back to Reload and picking the SAME (already-extracted) build again, must not throw.
 using GLSense.Contracts;
 using GLSense.Shared;
 using System;
@@ -28,6 +38,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading;
 
 namespace GLSense.Loader.Core
 {
@@ -225,24 +236,76 @@ namespace GLSense.Loader.Core
                 return null;
             }
 
+            // If this folder already exists with content, don't wipe and re-extract it -
+            // it's the identical (version, releaseDate) release, already on disk from an
+            // earlier extraction. Deleting it unconditionally used to crash here with
+            // UnauthorizedAccessException on a native DLL (e_sqlite3.dll) whenever that
+            // folder had ever been the active release during this Excel process: native
+            // DLLs loaded via P/Invoke/LoadLibrary are never released when an AppDomain
+            // unloads (a well-known .NET Framework limitation - unlike managed assemblies,
+            // which are shadow-copied), so the file stays locked for the life of the
+            // process even after switching to a different release via Reload/Release
+            // History. Treat an already-populated folder as already-extracted instead of
+            // trying to recreate identical content; ReleaseHistoryStore.Append below
+            // already dedupes an identical catalog entry, so this stays idempotent.
             string versionFolder = Path.Combine(paths.VersionsPath, folderName);
-            if (Directory.Exists(versionFolder))
-                Directory.Delete(versionFolder, true);
-            Directory.CreateDirectory(versionFolder);
+            bool alreadyExtracted = Directory.Exists(versionFolder) &&
+                Directory.GetFiles(versionFolder, "*.dll").Any();
 
-            string tempZipPath = Path.Combine(Path.GetTempPath(), $"GLSenseOnline_{Guid.NewGuid():N}.zip");
-            try
+            if (alreadyExtracted)
             {
-                File.WriteAllBytes(tempZipPath, zipBytes);
-                ZipFile.ExtractToDirectory(tempZipPath, versionFolder);
+                logger?.LogDebug($"UpdateBootstrapper.ExtractAndCatalog: '{folderName}' already exists on disk with content - skipping re-extraction (its files may still be locked by a native DLL loaded earlier in this process). Cataloging only.");
             }
-            finally
+            else
             {
-                if (File.Exists(tempZipPath))
-                    File.Delete(tempZipPath);
-            }
+                // This folder exists but has no DLLs yet (a stray/partial leftover, not a
+                // genuine prior extraction) - try to clear it, but a transient lock (e.g.
+                // antivirus still scanning a file that was only just written, or a handle
+                // not yet released a beat after AppDomain.Unload/ReloadAddinCore's own
+                // pre-flight window-close) shouldn't take the whole reload down either.
+                // Retry briefly, then fall back to extracting into the folder as-is -
+                // ZipFile.ExtractToDirectory overwrites whatever files it needs to, and any
+                // genuinely unrelated leftover file is harmless clutter, consistent with
+                // this feature's own "never auto-prune Versions\" design (see the first-run
+                // seed's identical non-fatal wipe above).
+                if (Directory.Exists(versionFolder))
+                {
+                    const int maxAttempts = 3;
+                    for (int attempt = 1; attempt <= maxAttempts; attempt++)
+                    {
+                        try
+                        {
+                            Directory.Delete(versionFolder, true);
+                            break;
+                        }
+                        catch (Exception ex) when (attempt < maxAttempts)
+                        {
+                            logger?.LogWarn($"UpdateBootstrapper.ExtractAndCatalog: attempt {attempt}/{maxAttempts} to clear stray '{folderName}' failed ({ex.GetType().Name}: {ex.Message}) - retrying shortly.");
+                            Thread.Sleep(200);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogException(ex, $"UpdateBootstrapper.ExtractAndCatalog: could not clear stray '{folderName}' after {maxAttempts} attempts - extracting into it as-is instead of failing the reload.");
+                        }
+                    }
+                }
 
-            File.WriteAllText(Path.Combine(versionFolder, "manifest.json"), manifestJson);
+                Directory.CreateDirectory(versionFolder);
+
+                string tempZipPath = Path.Combine(Path.GetTempPath(), $"GLSenseOnline_{Guid.NewGuid():N}.zip");
+                try
+                {
+                    File.WriteAllBytes(tempZipPath, zipBytes);
+                    ZipFile.ExtractToDirectory(tempZipPath, versionFolder);
+                }
+                finally
+                {
+                    if (File.Exists(tempZipPath))
+                        File.Delete(tempZipPath);
+                }
+
+                File.WriteAllText(Path.Combine(versionFolder, "manifest.json"), manifestJson);
+            }
 
             var entry = new ReleaseEntry
             {
@@ -278,13 +341,26 @@ namespace GLSense.Loader.Core
                 return null;
             }
 
-            // Delete the zip only after the catalog append has genuinely succeeded -
-            // if anything above throws, the zip is still there so the next launch can
-            // retry the full extract+catalog sequence, instead of being left with DLLs
-            // on disk but no catalog entry and no way to retry (the zip already gone).
-            File.Delete(zipPath);
-
-            logger?.LogDebug($"UpdateBootstrapper: extracted, catalogued (source={source}), and deleted '{zipPath}'. Adopting '{resolved.FolderName}'.");
+            // Delete the zip only after the catalog append has genuinely succeeded - if
+            // anything above throws, the zip is still there so the next launch can retry
+            // the full extract+catalog sequence, instead of being left with DLLs on disk
+            // but no catalog entry and no way to retry (the zip already gone). A failure
+            // to delete it here (e.g. still locked by an antivirus scan of the file this
+            // process just finished writing) must NOT undo the successful extract+catalog
+            // above by throwing out of this method - that would report a working reload as
+            // a failure. Leaving the zip behind on that path is harmless and safe to retry:
+            // the next call into ExtractAndCatalog for this same manifest finds the target
+            // folder already has DLLs and simply skips re-extraction (see that method's own
+            // idempotency comment).
+            try
+            {
+                File.Delete(zipPath);
+                logger?.LogDebug($"UpdateBootstrapper: extracted, catalogued (source={source}), and deleted '{zipPath}'. Adopting '{resolved.FolderName}'.");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogException(ex, $"UpdateBootstrapper: extracted and catalogued '{resolved.FolderName}' (source={source}), but could not delete '{zipPath}' - leaving it in place, harmless to retry. Adopting '{resolved.FolderName}' anyway.");
+            }
 
             return resolved;
         }

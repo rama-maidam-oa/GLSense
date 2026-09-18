@@ -120,14 +120,14 @@ namespace GLSense
             this.adxRibbonGroup10 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.Riburl = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibUserConfig = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibReload = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonSeparator5 = new AddinExpress.MSO.ADXRibbonSeparator(this.components);
             this.RibDebug = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
             this.RibVersionCheck = new AddinExpress.MSO.ADXRibbonCheckBox(this.components);
-            this.RibReload = new AddinExpress.MSO.ADXRibbonButton(this.components);
-            this.RibReleaseHistory = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxRibbonGroup11 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibAbout = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibHelp = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibReleaseHistory = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.adxExcelTaskPanesManager1 = new AddinExpress.XL.ADXExcelTaskPanesManager(this.components);
             this.adxExcelTaskPanesCollectionItem1 = new AddinExpress.XL.ADXExcelTaskPanesCollectionItem(this.components);
             this.adxExcelAppEvents1 = new AddinExpress.MSO.ADXExcelAppEvents(this.components);
@@ -1229,6 +1229,19 @@ namespace GLSense
             this.RibUserConfig.SuperTip = "Add or remove the user preferences settings.";
             this.RibUserConfig.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibUserConfig_OnClick);
             // 
+            // RibReload
+            // 
+            this.RibReload.Caption = "Reload Add-in";
+            this.RibReload.Id = "adxRibbonButton_7c4a1e0b9d3f4a2ea6c8f5b1d2e7a9c4";
+            this.RibReload.Image = 40;
+            this.RibReload.ImageList = this.ImageList_16X16;
+            this.RibReload.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibReload.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibReload.ScreenTip = "Reload Add-in";
+            this.RibReload.SuperTip = "Rebuild GLSense.Addin.Core, then click here to reload it without restarting Excel" +
+    ".";
+            this.RibReload.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReload_OnClick);
+            // 
             // adxRibbonSeparator5
             // 
             this.adxRibbonSeparator5.Id = "adxRibbonSeparator_6e1fe97f952e414793231fa12cfb83a0";
@@ -1251,33 +1264,6 @@ namespace GLSense
             this.RibVersionCheck.ScreenTip = "Version Check";
             this.RibVersionCheck.SuperTip = "ON/OFF version compatibility check";
             this.RibVersionCheck.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibVersionCheck_OnClick);
-            // 
-            // RibReload
-            // 
-            this.RibReload.Caption = "Reload Add-in";
-            this.RibReload.Id = "adxRibbonButton_7c4a1e0b9d3f4a2ea6c8f5b1d2e7a9c4";
-            this.RibReload.Image = 40;
-            this.RibReload.ImageList = this.ImageList_16X16;
-            this.RibReload.ImageTransparentColor = System.Drawing.Color.Transparent;
-            this.RibReload.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
-            this.RibReload.ScreenTip = "Reload Add-in";
-            this.RibReload.SuperTip = "Rebuild GLSense.Addin.Core, then click here to reload it without restarting Excel" +
-    ".";
-            this.RibReload.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReload_OnClick);
-            // 
-            // RibReleaseHistory
-            // 
-            this.RibReleaseHistory.Caption = "Release History";
-            this.RibReleaseHistory.Id = "adxRibbonButton_9f2e6c1a4b7d4e3f8a1c6d9e2b5f7a3c";
-            this.RibReleaseHistory.Image = 34;
-            this.RibReleaseHistory.ImageList = this.ImageList_32X32;
-            this.RibReleaseHistory.ImageTransparentColor = System.Drawing.Color.Transparent;
-            this.RibReleaseHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
-            this.RibReleaseHistory.ScreenTip = "Release History";
-            this.RibReleaseHistory.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
-            this.RibReleaseHistory.SuperTip = "Browse every GLSense.Addin.Core release ever adopted on this machine, and load an" +
-    "y of them without restarting Excel.";
-            this.RibReleaseHistory.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReleaseHistory_OnClick);
             // 
             // adxRibbonGroup11
             // 
@@ -1316,6 +1302,20 @@ namespace GLSense
             this.RibHelp.SuperTip = "Help on Orbit Financial Reporting";
             this.RibHelp.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibHelp_OnClick);
             // 
+            // RibReleaseHistory
+            // 
+            this.RibReleaseHistory.Caption = "Version History";
+            this.RibReleaseHistory.Id = "adxRibbonButton_9f2e6c1a4b7d4e3f8a1c6d9e2b5f7a3c";
+            this.RibReleaseHistory.Image = 34;
+            this.RibReleaseHistory.ImageList = this.ImageList_32X32;
+            this.RibReleaseHistory.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibReleaseHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibReleaseHistory.ScreenTip = "Release History";
+            this.RibReleaseHistory.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
+            this.RibReleaseHistory.SuperTip = "Browse every GLSense.Addin.Core versions ever adopted on this machine, and load a" +
+    "ny of them without restarting Excel.";
+            this.RibReleaseHistory.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReleaseHistory_OnClick);
+            // 
             // adxExcelTaskPanesManager1
             // 
             this.adxExcelTaskPanesManager1.Items.Add(this.adxExcelTaskPanesCollectionItem1);
@@ -1335,9 +1335,9 @@ namespace GLSense
             this.adxExcelAppEvents1.SheetChange += new AddinExpress.MSO.ADXExcelSheet_EventHandler(this.adxExcelAppEvents1_SheetChange);
             this.adxExcelAppEvents1.WorkbookActivate += new AddinExpress.MSO.ADXHostActiveObject_EventHandler(this.adxExcelAppEvents1_WorkbookActivate);
             this.adxExcelAppEvents1.WorkbookBeforeSave += new AddinExpress.MSO.ADXHostBeforeSave_EventHandler(this.adxExcelAppEvents1_WorkbookBeforeSave);
-            this.adxExcelAppEvents1.SheetFollowHyperlink += new AddinExpress.MSO.ADXExcelHyperlink_EventHandler(this.adxExcelAppEvents1_SheetFollowHyperlink);
             this.adxExcelAppEvents1.WindowResize += new AddinExpress.MSO.ADXHostWindow_EventHandler(this.adxExcelAppEvents1_WindowResize);
-            //
+            this.adxExcelAppEvents1.SheetFollowHyperlink += new AddinExpress.MSO.ADXExcelHyperlink_EventHandler(this.adxExcelAppEvents1_SheetFollowHyperlink);
+            // 
             // AddinModule
             // 
             this.AddinName = "GLSense";

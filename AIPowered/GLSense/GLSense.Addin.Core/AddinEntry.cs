@@ -2009,6 +2009,49 @@ namespace GLSense.Addin.Core
             };
         }
 
+        /// <summary>IGLSenseAddin.GetOpenWindowTitles() - see that interface member's own
+        /// doc comment. Reads Application.Current.Windows on this AppDomain's own WPF
+        /// dispatcher thread (via WpfAppManager.InvokeOnWpfThread - Window/WindowCollection
+        /// have the same dispatcher-thread affinity as any other DependencyObject, and this
+        /// is typically called from the host, off that thread), filtered to windows that
+        /// are actually visible on screen right now (IsVisible) - a window that was merely
+        /// created once and left hidden/reparented (e.g. the Balance Configurator's host
+        /// window when the task pane isn't currently shown) should not trigger a false
+        /// "something is open" warning on every future reload.</summary>
+        public string[] GetOpenWindowTitles()
+        {
+            try
+            {
+                // Don't call InvokeOnWpfThread if the WPF Application was never even
+                // initialized (e.g. no window has ever been opened this session) -
+                // EnsureApplication() would otherwise spin one up as a side effect of a
+                // supposedly read-only query, just to immediately find zero windows.
+                if (!Utilities.WpfAppManager.IsInitialized)
+                    return Array.Empty<string>();
+
+                string[] titles = Array.Empty<string>();
+
+                Utilities.WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    if (System.Windows.Application.Current == null)
+                        return;
+
+                    titles = System.Windows.Application.Current.Windows
+                        .OfType<Window>()
+                        .Where(w => w.IsVisible)
+                        .Select(w => string.IsNullOrWhiteSpace(w.Title) ? w.GetType().Name : w.Title)
+                        .ToArray();
+                });
+
+                return titles;
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "AddinEntry.GetOpenWindowTitles");
+                return Array.Empty<string>();
+            }
+        }
+
         /// <summary>
         /// IGLSenseAddin.CreateConfiguratorPaneContent() - see ConfiguratorPaneHost.cs's
         /// header comment for the full HWND-reparenting rationale. Thin delegation only;

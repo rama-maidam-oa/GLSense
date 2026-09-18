@@ -4,9 +4,11 @@
         Title="Reload GLSense Add-in"
         Icon="/GLSense;component/Resources/OrbitGLSense.ico"
         Width="660" Height="760"
+        MinWidth="600" MinHeight="680"
+        MaxWidth="900" MaxHeight="1000"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
-        ResizeMode="NoResize"
+        ResizeMode="CanResize"
         Background="White">
     <Window.Resources>
         <!-- Recreated from GLSense.Addin.Core\Themes\GlobalStyles.xaml's "SimpleBrowserToolTip"
