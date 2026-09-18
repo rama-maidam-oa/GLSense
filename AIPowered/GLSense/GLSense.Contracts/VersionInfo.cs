@@ -23,5 +23,14 @@ namespace GLSense.Contracts
         public string Checksum { get; set; }
         public string Notes { get; set; }
         public bool Mandatory { get; set; }
+
+        // Added for the Online multi-version reload feature - binds against the
+        // "folderName"/"fileName" keys every manifest.json already writes (see
+        // GLSense.Addin.Core\post_build.cmd STEP 2b/4). FolderName is always
+        // lowercase "v{version}_{releaseDateSafe}" - see
+        // ReleaseHistoryStore.BuildFolderName, the authoritative generator this
+        // mirrors.
+        public string FolderName { get; set; }
+        public string FileName { get; set; }
     }
 }
