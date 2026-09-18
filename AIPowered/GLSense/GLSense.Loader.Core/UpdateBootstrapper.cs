@@ -27,6 +27,7 @@ using System;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
 
 namespace GLSense.Loader.Core
 {
@@ -141,6 +142,88 @@ namespace GLSense.Loader.Core
                 logger?.LogException(ex, "UpdateBootstrapper.ResolveVersionToLoad");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Verifies zipBytes against the manifest's own checksum, extracts into
+        /// Versions\{folderName}\, writes manifestJson as that folder's own
+        /// manifest.json snapshot, and appends a ReleaseEntry to the catalog. Shared
+        /// by ExtractManifestZipAndAdopt (which reads manifestJson/zipBytes from the
+        /// Manifest\ folder on disk - see that method) and GLReloadSourcePicker's
+        /// Online bulk-download loop (which fetches both over the network - see
+        /// docs/superpowers/specs/2026-09-18-online-reload-multiversion-design.md).
+        /// Returns null (does not throw) on a missing/unparseable version entry or a
+        /// checksum mismatch - the caller decides what "one release in a batch
+        /// failed" means for its own flow; nothing is extracted or catalogued in
+        /// that case.
+        /// </summary>
+        public ResolvedRelease ExtractAndCatalog(IGLSenseContext context, string manifestJson, byte[] zipBytes, string source)
+        {
+            var logger = context.Logger;
+            var paths = context.Paths;
+
+            var parsed = new VersionParser(logger).ParseVersionJson(manifestJson);
+            var info = parsed.AllVersions?.FirstOrDefault();
+            if (info == null || string.IsNullOrWhiteSpace(info.Version))
+            {
+                logger?.LogError("UpdateBootstrapper.ExtractAndCatalog: manifest JSON did not contain a usable version entry.");
+                return null;
+            }
+
+            string version = info.Version;
+            string releaseDate = info.ReleaseDate;
+            string folderName = !string.IsNullOrWhiteSpace(info.FolderName)
+                ? info.FolderName
+                : ReleaseHistoryStore.BuildFolderName(version, releaseDate);
+            string checksum = info.Checksum ?? string.Empty;
+            string notes = string.IsNullOrWhiteSpace(info.Notes) ? "Published by GLSense.Addin.Core" : info.Notes;
+
+            string actualChecksum;
+            using (var sha256 = SHA256.Create())
+            {
+                actualChecksum = BitConverter.ToString(sha256.ComputeHash(zipBytes)).Replace("-", "");
+            }
+
+            if (!string.IsNullOrWhiteSpace(checksum) &&
+                !string.Equals(actualChecksum, checksum, StringComparison.OrdinalIgnoreCase))
+            {
+                logger?.LogError($"UpdateBootstrapper.ExtractAndCatalog: checksum mismatch for '{version}' ({releaseDate}) - expected {checksum}, got {actualChecksum}. Not extracting.");
+                return null;
+            }
+
+            string versionFolder = Path.Combine(paths.VersionsPath, folderName);
+            if (Directory.Exists(versionFolder))
+                Directory.Delete(versionFolder, true);
+            Directory.CreateDirectory(versionFolder);
+
+            string tempZipPath = Path.Combine(Path.GetTempPath(), $"GLSenseOnline_{Guid.NewGuid():N}.zip");
+            try
+            {
+                File.WriteAllBytes(tempZipPath, zipBytes);
+                ZipFile.ExtractToDirectory(tempZipPath, versionFolder);
+            }
+            finally
+            {
+                if (File.Exists(tempZipPath))
+                    File.Delete(tempZipPath);
+            }
+
+            File.WriteAllText(Path.Combine(versionFolder, "manifest.json"), manifestJson);
+
+            var entry = new ReleaseEntry
+            {
+                Version = version,
+                ReleaseDate = releaseDate,
+                FolderName = folderName,
+                Checksum = checksum,
+                Notes = notes,
+                Source = source
+            };
+            ReleaseHistoryStore.Append(paths.ReleaseHistoryFile, entry);
+
+            logger?.LogDebug($"UpdateBootstrapper.ExtractAndCatalog: extracted and catalogued '{folderName}' (source={source}).");
+
+            return new ResolvedRelease { Version = version, ReleaseDate = releaseDate, FolderName = folderName };
         }
 
         private ResolvedRelease ExtractManifestZipAndAdopt(IGLSenseContext context, string source)
