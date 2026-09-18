@@ -14,13 +14,10 @@
              IsSelected Trigger setting Background has no visible effect at all, since each
              cell's own opaque selected background paints on top of it (confirmed: an earlier
              attempt using exactly that Trigger produced zero visible change). Overriding these
-             two system-color resources locally is the standard, correct way to recolor DataGrid
-             selection - #82B6CD is a lighter tint of the same #2E86AB primary brush family used
-             for the DGV header/title elsewhere in this window (not an unrelated color), chosen
-             light enough to read as "highlighted" but still dark enough for white text to stay
-             readable on top of it.-->
-        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#82B6CD"/>
-        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="White"/>
+             two system-color resources locally is the standard, correct way to make the
+             selected row remain white with dark text.-->
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="White"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FF212121"/>
         <!-- Recreated from GLSense.Addin.Core\Themes\GlobalStyles.xaml's "SimpleBrowserToolTip"
              (same colors/padding/drop-shadow) - this host project can't reference Addin.Core's
              resources directly (separate assembly/AppDomain by design), so the look is
@@ -127,7 +124,16 @@
              below (targeting DataGridCell, not this TextBlock), so it always covers the
              cell's FULL rectangle regardless of how little text there is to display. -->
         <Style x:Key="TrimmedCellTextStyle" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+        <Style x:Key="ReleaseCellStyle" TargetType="DataGridCell">
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="BorderBrush" Value="#FFE5E5E5"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
         </Style>
     </Window.Resources>
     <Grid Margin="16">
@@ -154,17 +160,29 @@
              outright, rather than just leaving it unset). -->
         <DataGrid x:Name="GridReleases" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True"
                   SelectionMode="Single" SelectionUnit="FullRow" CanUserAddRows="False"
+                  HeadersVisibility="Column"
+                  GridLinesVisibility="Horizontal"
+                  HorizontalGridLinesBrush="#FFE5E5E5"
+                  VerticalGridLinesBrush="#FFE5E5E5"
                   Background="White" RowBackground="White" AlternatingRowBackground="White"
                   BorderBrush="#FFDDDDDD" BorderThickness="1"
                   SelectionChanged="GridReleases_SelectionChanged"
                   ToolTip="Every GLSense release this machine has ever adopted. The highlighted row is the one currently loaded into this Excel session.">
             <DataGrid.RowStyle>
                 <Style TargetType="DataGridRow">
+                    <Setter Property="MinHeight" Value="24"/>
+                    <Setter Property="Padding" Value="0,1"/>
+                    <Setter Property="Foreground" Value="#FF212121"/>
+                    <Setter Property="Background" Value="White"/>
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
                             <Setter Property="Background" Value="#FFE3F2FD"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </DataTrigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="Foreground" Value="#FF212121"/>
+                        </Trigger>
                     </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>
@@ -176,7 +194,11 @@
                         </Style>
                     </DataGridTemplateColumn.HeaderStyle>
                     <DataGridTemplateColumn.CellStyle>
-                        <Style TargetType="DataGridCell">
+                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
+                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                            <Setter Property="VerticalContentAlignment" Value="Center"/>
+                            <Setter Property="BorderBrush" Value="#FFE5E5E5"/>
+                            <Setter Property="BorderThickness" Value="0,0,1,0"/>
                             <Setter Property="ToolTipService.IsEnabled" Value="False"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
@@ -233,7 +255,7 @@
                         </Style>
                     </DataGridTextColumn.HeaderStyle>
                     <DataGridTextColumn.CellStyle>
-                        <Style TargetType="DataGridCell">
+                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
                             <Setter Property="ToolTip" Value="{Binding Version}"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding Version}" Value="{x:Null}">
@@ -253,7 +275,7 @@
                         </Style>
                     </DataGridTextColumn.HeaderStyle>
                     <DataGridTextColumn.CellStyle>
-                        <Style TargetType="DataGridCell">
+                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
                             <Setter Property="ToolTip" Value="{Binding ReleaseDate}"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding ReleaseDate}" Value="{x:Null}">
@@ -273,7 +295,7 @@
                         </Style>
                     </DataGridTextColumn.HeaderStyle>
                     <DataGridTextColumn.CellStyle>
-                        <Style TargetType="DataGridCell">
+                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
                             <Setter Property="ToolTip" Value="{Binding Source}"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding Source}" Value="{x:Null}">
@@ -293,7 +315,7 @@
                         </Style>
                     </DataGridTextColumn.HeaderStyle>
                     <DataGridTextColumn.CellStyle>
-                        <Style TargetType="DataGridCell">
+                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
                             <!-- Plain string ToolTip="{Binding Notes}" would render as one
                                  unbounded-width, non-wrapping line (WPF's default ToolTip
                                  content template doesn't wrap plain strings) - Notes can be
@@ -326,7 +348,7 @@
 
         <Border Grid.Row="2" Background="White" BorderBrush="#FFDDDDDD" BorderThickness="1" Padding="10" Margin="0,10,0,0"
                 ToolTip="Status of your current selection - explains what will happen if you click Load This Release.">
-            <TextBlock x:Name="TxtStatus" TextWrapping="Wrap" Text="Select a release, then click Load This Release."/>
+            <TextBlock x:Name="TxtStatus" FontWeight="SemiBold" TextWrapping="Wrap" Text="Select a release, then click Load This Release."/>
         </Border>
 
         <Grid Grid.Row="3" Margin="0,16,0,0">
