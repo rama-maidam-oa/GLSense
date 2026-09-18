@@ -1,5 +1,6 @@
 // GLReloadSourcePicker.xaml.cs in GLSense\Views
 using GLSense.Contracts;
+using GLSense.Loader.Core;
 using GLSense.Shared;
 using System;
 using System.Collections.ObjectModel;
@@ -27,6 +28,8 @@ namespace GLSense
 
         private readonly ObservableCollection<OnlineReleaseRow> _onlineRows = new ObservableCollection<OnlineReleaseRow>();
         private const string VersionsListPath = "/glsense/versions";
+        private const string ManifestByFolderPath = "/glsense/manifest";
+        private const string DownloadPath = "/glsense/download";
 
         // Small, deliberate pacing between Offline validation steps (which are
         // otherwise near-instant local file checks) so the step log is actually
@@ -468,9 +471,101 @@ namespace GLSense
             DetailsPanel.Visibility = Visibility.Visible;
         }
 
-        private void BtnFetchAndReload_Click(object sender, RoutedEventArgs e)
+        private async void BtnFetchAndReload_Click(object sender, RoutedEventArgs e)
         {
-            // Implemented in Task 7 of the implementation plan.
+            var checkedRows = _onlineRows
+                .Where(r => r.IsSelectable && r.IsChecked)
+                .OrderBy(r => OnlineReleaseClassifier.ParseReleaseDateOrMin(r.ReleaseDate))
+                .ToList();
+
+            if (checkedRows.Count == 0) return;
+
+            SetBusy(true);
+            int succeeded = 0;
+
+            try
+            {
+                LoginInfo loginInfo;
+                try { loginInfo = GlobalsEx.Addin?.GetLoginInfo(); }
+                catch (Exception ex)
+                {
+                    LogFailure($"Could not read login info from Addin.Core: {ex.Message}", ex);
+                    return;
+                }
+
+                if (loginInfo == null || !loginInfo.IsLoggedIn || string.IsNullOrWhiteSpace(loginInfo.LoginUrl))
+                {
+                    LogWarning("Not logged in - switch to Offline mode.");
+                    return;
+                }
+
+                using (var client = new HttpClient())
+                {
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginInfo.LoginToken);
+
+                    foreach (var row in checkedRows)
+                    {
+                        try
+                        {
+                            LogStep($"Fetching manifest for {row.Version} ({row.ReleaseDate})...");
+                            string manifestUrl = loginInfo.LoginUrl.TrimEnd('/') + ManifestByFolderPath + "?folderName=" + Uri.EscapeDataString(row.FolderName);
+                            string manifestJson = await client.GetStringAsync(manifestUrl);
+
+                            LogStep($"Downloading {row.FileName}...");
+                            string zipUrl = loginInfo.LoginUrl.TrimEnd('/') + DownloadPath + "?file=" + Uri.EscapeDataString(row.FileName);
+                            byte[] zipBytes = await client.GetByteArrayAsync(zipUrl);
+
+                            var resolved = new UpdateBootstrapper().ExtractAndCatalog(GlobalsEx.Context, manifestJson, zipBytes, "Online");
+                            if (resolved == null)
+                            {
+                                LogFailure($"Failed to catalog {row.Version} ({row.ReleaseDate}) - checksum mismatch or invalid manifest.");
+                                continue;
+                            }
+
+                            LogSuccess($"Cataloged {row.Version}.");
+                            succeeded++;
+                        }
+                        catch (Exception ex)
+                        {
+                            LogFailure($"Failed to fetch {row.Version} ({row.ReleaseDate}): {ex.Message}", ex);
+                        }
+                    }
+                }
+
+                if (succeeded == 0)
+                {
+                    LogFailure("No releases were fetched successfully - nothing to reload.");
+                    return;
+                }
+
+                CompleteOnlineFetch(succeeded, checkedRows.Count);
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+        }
+
+        // DialogResult/Close are Window members with the same UI-thread affinity as
+        // any other WPF DependencyObject/Window API - setting DialogResult or calling
+        // Close() off the UI thread throws InvalidOperationException. By this point in
+        // BtnFetchAndReload_Click, several `await`s (the per-row manifest/zip fetches)
+        // have already run, and this VSTO host's WPF window doesn't reliably resume
+        // continuations back onto the UI thread - so this closing sequence needs the
+        // same unconditional dispatcher guard as AddOnlineRows (see Task 6's fix round
+        // for the identical class of bug caught there).
+        private void CompleteOnlineFetch(int succeeded, int totalChecked)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => CompleteOnlineFetch(succeeded, totalChecked));
+                return;
+            }
+
+            SelectedSource = "Online";
+            GlobalsEx.Context?.Logger?.LogDebug($"GLReloadSourcePicker: fetched {succeeded} of {totalChecked} selected release(s) - proceeding with reload.");
+            DialogResult = true;
+            Close();
         }
 
         // ------------------------------------------------------------------
