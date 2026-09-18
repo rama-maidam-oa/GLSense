@@ -3,6 +3,7 @@ using GLSense.Contracts;
 using GLSense.Loader.Core;
 using GLSense.Shared;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -106,6 +107,12 @@ namespace GLSense
             {
                 TxtStatus.Text = "Click \"Check for Updates\" to see every release not yet on this machine.";
                 DetailsPanel.Visibility = Visibility.Collapsed;
+                // Clear any list left over from a previous "Check for Updates" run - a
+                // stale list (built against whatever was loaded/local at that earlier
+                // moment) could otherwise flash up before the user clicks the button
+                // again. Same Clear() the fetch itself already does at the start of
+                // LoadOnlineReleasesAsync, just also on re-entering Online mode.
+                _onlineRows.Clear();
                 UpdateFetchButtonState();
             }
             else
@@ -458,7 +465,7 @@ namespace GLSense
         // in LoadOnlineReleasesAsync, and per this file's own dispatcher-thread-loss
         // note above SetBusy, that continuation is not guaranteed to resume on the UI
         // thread - so guard unconditionally here too, same pattern as SetBusy/AppendLine.
-        private void AddOnlineRows(System.Collections.Generic.List<OnlineReleaseRow> rows)
+        private void AddOnlineRows(List<OnlineReleaseRow> rows)
         {
             if (!Dispatcher.CheckAccess())
             {
@@ -558,7 +565,14 @@ namespace GLSense
                             string zipUrl = loginInfo.LoginUrl.TrimEnd('/') + DownloadPath + "?file=" + Uri.EscapeDataString(row.FileName);
                             byte[] zipBytes = await client.GetByteArrayAsync(zipUrl);
 
-                            var resolved = new UpdateBootstrapper().ExtractAndCatalog(GlobalsEx.Context, manifestJson, zipBytes, "Online");
+                            // Extraction (checksum verify + ZipFile.ExtractToDirectory of
+                            // a potentially multi-MB archive) is pure file I/O with no UI
+                            // touch, so it's safe to run off whichever thread this
+                            // continuation happens to be on - if that's the UI thread (this
+                            // VSTO host doesn't reliably marshal continuations off it, see
+                            // this file's own dispatcher-thread-loss note), doing this work
+                            // inline would visibly freeze the dialog for the duration.
+                            var resolved = await Task.Run(() => new UpdateBootstrapper().ExtractAndCatalog(GlobalsEx.Context, manifestJson, zipBytes, "Online"));
                             if (resolved == null)
                             {
                                 LogFailure($"Failed to catalog {row.Version} ({row.ReleaseDate}) - checksum mismatch or invalid manifest.");
@@ -581,7 +595,11 @@ namespace GLSense
                         }
                         catch (Exception ex)
                         {
-                            LogFailure($"Failed to fetch {row.Version} ({row.ReleaseDate}): {ex.Message}", ex);
+                            // Covers failures anywhere in this row's block - the manifest/
+                            // zip HTTP calls above, or ExtractAndCatalog's own extraction
+                            // work - not just the network fetch, despite this one message
+                            // covering both.
+                            LogFailure($"Failed to fetch or catalog {row.Version} ({row.ReleaseDate}): {ex.Message}", ex);
                         }
                     }
                 }
@@ -689,7 +707,9 @@ namespace GLSense
                 if (!manifestAlreadyStaged)
                     File.Copy(_candidateManifestPath, manifestDestination, true);
 
-                SelectedSource = RbOnline.IsChecked == true ? "Online" : "Offline";
+                // Always "Offline" - BtnReload is hidden whenever Online mode is active
+                // (see Mode_Checked), so this handler can only ever fire from Offline mode.
+                SelectedSource = "Offline";
                 GlobalsEx.Context?.Logger?.LogDebug($"GLReloadSourcePicker: staged release into Manifest folder from {SelectedSource} mode - proceeding with reload.");
                 DialogResult = true;
                 Close();
