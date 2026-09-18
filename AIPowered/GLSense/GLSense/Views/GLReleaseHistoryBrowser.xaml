@@ -169,31 +169,63 @@
                 </Style>
             </DataGrid.RowStyle>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Loaded" Binding="{Binding LoadedMarker}" Width="55">
-                    <DataGridTextColumn.HeaderStyle>
+                <DataGridTemplateColumn Header="Loaded" Width="94">
+                    <DataGridTemplateColumn.HeaderStyle>
                         <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                            <Setter Property="ToolTip" Value="Loaded - marks (●) the release currently loaded into this Excel session."/>
+                            <Setter Property="ToolTip" Value="Loaded - identifies the release currently running in this Excel session's GLSense AppDomain."/>
                         </Style>
-                    </DataGridTextColumn.HeaderStyle>
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="HorizontalAlignment" Value="Center"/>
-                            <Setter Property="Foreground" Value="#FF1565C0"/>
-                            <Setter Property="FontWeight" Value="Bold"/>
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                    <DataGridTextColumn.CellStyle>
+                    </DataGridTemplateColumn.HeaderStyle>
+                    <DataGridTemplateColumn.CellStyle>
                         <Style TargetType="DataGridCell">
                             <Setter Property="ToolTipService.IsEnabled" Value="False"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
-                                    <Setter Property="ToolTip" Value="This is the release currently loaded into this Excel session."/>
+                                    <Setter Property="ToolTip" Value="Running - this release is currently loaded into the active GLSense AppDomain in this Excel session."/>
                                     <Setter Property="ToolTipService.IsEnabled" Value="True"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </DataGridTextColumn.CellStyle>
-                </DataGridTextColumn>
+                    </DataGridTemplateColumn.CellStyle>
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border HorizontalAlignment="Center"
+                                    Padding="7,3"
+                                    Background="#FFE3F2FD"
+                                    BorderBrush="#FF9BC9DC"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Visibility="Collapsed">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="12" Height="12" Margin="0,0,4,0">
+                                        <Canvas Width="16" Height="16">
+                                            <Ellipse Width="16" Height="16" Fill="#FF2E86AB"/>
+                                            <Path Data="M 4,8 L 7,11 L 12,5"
+                                                  Stroke="White"
+                                                  StrokeThickness="1.7"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  StrokeLineJoin="Round"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                    <TextBlock Text="Running"
+                                               Foreground="#FF236B89"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="90" ElementStyle="{StaticResource TrimmedCellTextStyle}">
                     <DataGridTextColumn.HeaderStyle>
                         <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
