@@ -7148,6 +7148,31 @@ code review - worth knowing before touching this code again)
   Minor sits next to other findings touching the same code path, re-check whether they
   compound before accepting the narrow framing.
 
+### 76.1 Follow-up cosmetic cleanup pass (commit `d85b6ec`)
+
+After the feature shipped, went through the follow-up doc's "deferred minor" list and
+applied the ones that were genuinely worth doing versus the ones that would just be
+adding code for its own sake:
+
+**Applied**: `BtnReload_Click`'s dead `"Online"` ternary arm simplified to plain
+`"Offline"` (that button is hidden whenever Online mode is active, so the arm was
+unreachable); `Mode_Checked` now clears `_onlineRows` when re-entering Online mode, so
+a stale list from a previous check can't flash up before the next fetch;
+`BtnFetchAndReload_Click`'s `ExtractAndCatalog` call now runs via `await Task.Run(...)`
+since it's pure file I/O with no UI touch, avoiding a visible freeze if the
+continuation happens to resume on the UI thread during a multi-MB extraction;
+`LogFailure`'s per-row message reworded so it no longer says "Failed to fetch" for a
+failure that actually happened during cataloging, after a successful fetch; the
+fully-qualified `System.Collections.Generic.List<>` in `AddOnlineRows`'s signature
+replaced with a proper `using`.
+
+**Deliberately left alone**: consolidating the two independent SHA256 implementations
+(`GLReloadSourcePicker.ComputeSha256`, file-based, Offline-only; `UpdateBootstrapper
+.ExtractAndCatalog`'s own byte-array hashing) - different call shapes in different
+classes, no real benefit to merging them. Unsubscribing `PropertyChanged` on
+`_onlineRows.Clear()` - the rows don't root the window and nothing leaks, so this would
+be handling a problem that doesn't exist.
+
 ### Status
 
 Code-complete and build-verified (real MSBuild rebuilds throughout, including a full

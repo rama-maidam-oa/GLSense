@@ -104,24 +104,29 @@ None of these need to happen before server integration testing - listed here so 
 don't get lost, and can be picked up in the same pass as whatever live-testing fixes
 turn up.
 
-- [ ] `BtnReload_Click`'s `SelectedSource = RbOnline.IsChecked == true ? "Online" :
-  "Offline"` ternary's `"Online"` arm is dead code (that button is hidden whenever
-  Online mode is active) - simplify to a plain `"Offline"`.
-- [ ] Switching Online → Offline → Online doesn't clear `_onlineRows` - stale grid rows
-  can briefly show before the next "Check for Updates" click. One line
-  (`_onlineRows.Clear()`) in `Mode_Checked`'s Online branch.
-- [ ] `UpdateBootstrapper.ExtractAndCatalog` runs synchronously on whichever thread
-  it's invoked from - if that happens to be the UI thread, a multi-MB extraction can
-  visibly freeze the dialog for its duration. `await Task.Run(() => new
-  UpdateBootstrapper().ExtractAndCatalog(...))` would fix it; the method touches no UI
-  so it's safe to run off-thread.
-- [ ] Two independent SHA256-hex implementations now coexist in
+**Fixed already** (commit `d85b6ec`, applied directly after review confirmed they were
+worth doing - see CLAUDE.md section 76 for the reasoning):
+- [x] `BtnReload_Click`'s dead `"Online"` ternary arm - simplified to a plain
+  `"Offline"`.
+- [x] Stale `_onlineRows` surviving an Online → Offline → Online mode switch - now
+  cleared in `Mode_Checked`'s Online branch.
+- [x] `UpdateBootstrapper.ExtractAndCatalog` running synchronously on whichever thread
+  it's invoked from - `BtnFetchAndReload_Click`'s call site now wraps it in
+  `await Task.Run(...)`.
+- [x] `LogFailure`'s misleading "Failed to fetch" wording for post-fetch cataloging
+  failures - reworded to "Failed to fetch or catalog".
+- [x] Fully-qualified `System.Collections.Generic.List<>` in `AddOnlineRows`'s
+  signature - added the missing `using` instead.
+
+**Deliberately left as-is** (not bugs, not worth the churn):
+- [ ] Two independent SHA256-hex implementations coexist in
   `GLReloadSourcePicker.xaml.cs` (`ComputeSha256`, file-based, used by Offline mode)
-  and `UpdateBootstrapper.ExtractAndCatalog` (byte-array-based) - harmless (different
-  inputs), but could share one helper if this file is refactored again.
-- [ ] `LogFailure`'s per-row catch message in the download loop always says "Failed to
-  fetch {version}" even when the actual failure happened after a successful fetch
-  (e.g. `ExtractAndCatalog` throwing during extraction) - cosmetic wording only.
+  and `UpdateBootstrapper.ExtractAndCatalog` (byte-array-based) - different call
+  shapes in different classes; consolidating would mean introducing a shared utility
+  purely for DRY's sake with no real benefit.
+- [ ] `_onlineRows`' `PropertyChanged` subscriptions are never explicitly unsubscribed
+  on `.Clear()` - rows don't root the window and nothing leaks, so unsubscribe logic
+  would be handling a problem that doesn't exist.
 - [ ] `OnlineReleaseClassifier.Classify` silently drops any server entry with a
   null/blank `Version` rather than surfacing it as, say, an error row - reasonable for
   now, but worth knowing a malformed manifest entry just vanishes from the list.
