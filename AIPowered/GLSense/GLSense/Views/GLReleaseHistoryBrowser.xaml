@@ -213,7 +213,7 @@
                         <DataTemplate>
                             <Border HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
-                                    Padding="6,1"
+                                    Padding="6,1.5"
                                     Background="#FFE3F2FD"
                                     BorderBrush="#FF9BC9DC"
                                     BorderThickness="1"
