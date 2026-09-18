@@ -96,6 +96,58 @@ if "%FILE_VERSION%"=="" (
 echo Version: %FILE_VERSION%
 
 echo ========================================
+echo STEP 2b: Resolve release date, release folder name, and zip file name
+echo ========================================
+
+REM Computed here - before the zip is built in STEP 3 - because the zip's own
+REM filename (FILE_NAME, below) now embeds this same timestamp (see STEP 3's
+REM comment for why). Used to just be computed later, in STEP 4, when it was
+REM only needed for the manifest.json body itself.
+REM Local time, not UTC (GLAbout displays this as the build date - it should read
+REM like the machine's own clock, not a Z-suffixed UTC timestamp that would be a
+REM different wall-clock time for whoever is looking at it).
+powershell -NoProfile -Command "[DateTime]::Now.ToString('yyyy-MM-ddTHH:mm:ss')" > "%TEMP%\glsense_releasedate.tmp"
+set /p RELEASE_DATE=<"%TEMP%\glsense_releasedate.tmp"
+del "%TEMP%\glsense_releasedate.tmp" >nul 2>&1
+
+REM Same algorithm as GLSense.Shared\ReleaseHistoryStore.BuildFolderName -
+REM replace every character in the release date that's invalid in a Windows
+REM file/folder name (just the two colons in "HH:mm:ss" for this date format)
+REM with '-'. Computed once and reused for both FOLDER_NAME and FILE_NAME below.
+powershell -NoProfile -Command "$illegal = [System.IO.Path]::GetInvalidFileNameChars(); -join ('%RELEASE_DATE%'.ToCharArray() | ForEach-Object { if ($illegal -contains $_) { '-' } else { $_ } })" > "%TEMP%\glsense_safedate.tmp"
+set /p SAFE_DATE=<"%TEMP%\glsense_safedate.tmp"
+del "%TEMP%\glsense_safedate.tmp" >nul 2>&1
+
+REM FOLDER_NAME: recorded in manifest.json purely as metadata/traceability - the
+REM folder a release is actually extracted into once adopted is still computed
+REM independently, at extraction time, by ReleaseHistoryStore.BuildFolderName
+REM (UpdateBootstrapper never reads this field back) - kept here so the folder
+REM name a release WILL get is visible directly from its own manifest.json
+REM without cross-referencing ReleaseHistory.json. Same lowercase
+REM "v{version}_{safeDate}" shape as BuildFolderName itself, so the two can
+REM never render as different-looking values for the identical
+REM version+releaseDate pair. Lowercase "v" (not "V") specifically so this
+REM matches FILE_NAME's own "v{version}_{safeDate}.zip" prefix below.
+set FOLDER_NAME=v%FILE_VERSION%_%SAFE_DATE%
+
+REM FILE_NAME: the zip's own filename. Used to be just "v{version}.zip" - only
+REM safely unique because the version rarely changes between builds; two builds
+REM at the same version on the same day would otherwise silently overwrite one
+REM another with no way to tell them apart later. Timestamp-suffixed the same
+REM way FOLDER_NAME is, for the identical uniqueness reason. MUST keep the
+REM lowercase "v" prefix: GLReloadSourcePicker.xaml.cs's Offline folder scan
+REM searches for "v*.zip" specifically. Confirmed via a full grep of every
+REM *.zip reference in the solution before making this change: every other
+REM reader (UpdateBootstrapper included) only ever globs "*.zip" and never
+REM compares against a specific literal filename, so this prefix is the only
+REM real naming constraint anywhere in the codebase.
+set FILE_NAME=v%FILE_VERSION%_%SAFE_DATE%.zip
+
+echo Release Date: %RELEASE_DATE%
+echo Folder Name: %FOLDER_NAME%
+echo File Name: %FILE_NAME%
+
+echo ========================================
 echo STEP 3: Build the zip (Addin.Core's bin output, minus *.pdb)
 echo ========================================
 
@@ -106,7 +158,7 @@ if not exist "%CORE_BIN_DIR%" (
 
 REM One destination for both configurations - see the header comment above.
 set MANIFEST_DIR=%PROJECT_DIR%\SetupFiles\%CONFIG%\Manifest
-set OUT_ZIP=%MANIFEST_DIR%\v%FILE_VERSION%.zip
+set OUT_ZIP=%MANIFEST_DIR%\%FILE_NAME%
 set OUT_MANIFEST=%MANIFEST_DIR%\manifest.json
 
 echo Manifest Output Dir: %MANIFEST_DIR%
@@ -136,6 +188,21 @@ REM SetupFiles is this project's own folder, not GLSense_Logs - creating
 REM it here is ordinary build output, not subject to section 14.5's
 REM "build shouldn't create GLSense_Logs folders" rule at all.
 if not exist "%MANIFEST_DIR%" mkdir "%MANIFEST_DIR%"
+
+REM Delete any zip already sitting here before creating this build's zip.
+REM Previously unnecessary - the filename was version-only (v{version}.zip), so
+REM a same-version rebuild just overwrote it in place. Now that FILE_NAME embeds
+REM a timestamp (see STEP 2b), every build produces a differently-named zip, so
+REM without this cleanup, MANIFEST_DIR would accumulate one zip per build.
+REM That's a real correctness problem, not just clutter: UpdateBootstrapper and
+REM GLReloadSourcePicker's Offline scan both resolve "the" zip via a bare
+REM Directory.GetFiles(dir, "*.zip").First()/FirstOrDefault() wildcard with no
+REM way to prefer the newest - with two zips present, whichever one Windows
+REM happens to enumerate first could get extracted/staged instead of the one
+REM this build actually produced. GLSense\post_build.cmd (the host project)
+REM has the matching cleanup on its own copy destination, for the same reason -
+REM see that file's own comment.
+for %%Z in ("%MANIFEST_DIR%\*.zip") do del /Q "%%Z" 2>nul
 
 powershell -NoProfile -Command "Compress-Archive -Path '%ZIP_STAGE_DIR%\*' -DestinationPath '%OUT_ZIP%' -Force"
 
@@ -182,21 +249,33 @@ powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 '%OUT_ZIP%').Has
 set /p ZIP_CHECKSUM=<"%TEMP%\glsense_checksum.tmp"
 del "%TEMP%\glsense_checksum.tmp" >nul 2>&1
 
-REM Local time, not UTC (GLAbout displays this as the build date - it should read like
-REM the machine's own clock, not a Z-suffixed UTC timestamp that would be a different
-REM wall-clock time for whoever is looking at it).
-powershell -NoProfile -Command "[DateTime]::Now.ToString('yyyy-MM-ddTHH:mm:ss')" > "%TEMP%\glsense_releasedate.tmp"
-set /p RELEASE_DATE=<"%TEMP%\glsense_releasedate.tmp"
-del "%TEMP%\glsense_releasedate.tmp" >nul 2>&1
-
+REM RELEASE_DATE/FOLDER_NAME/FILE_NAME were already resolved in STEP 2b, before
+REM the zip was built - reused here as-is so every field in this manifest
+REM describes the exact same release/timestamp, computed exactly once.
+REM
 REM Overwritten on every build (not "seed if missing" like PathProvider's own
 REM CreateDefaultManifestFile) - the whole point is that a fresh manifest.json
 REM + zip sitting together in SetupFiles gives GLSense\post_build.cmd something
 REM current to copy into bin\AddinCore\Manifest\, which is what triggers
 REM UpdateBootstrapper's extract-on-launch path. No per-Configuration branching
 REM here - both Debug and Release follow the same SetupFiles path (see the
-REM header comment above). downloadUrl is left empty - nothing downloads this
-REM locally, the zip is already sitting right next to the manifest.
+REM header comment above).
+REM
+REM "downloadUrl" was removed entirely (rather than left as an empty string) -
+REM it was never read by anything for this LOCAL manifest (confirmed via a full
+REM grep: the only real reader of VersionInfo.DownloadUrl is
+REM GLReloadSourcePicker.xaml.cs's ONLINE flow, which parses a completely
+REM separate JSON payload fetched live from {LoginUrl}/glsense/projectdlls, not
+REM this file) - the zip is already sitting right next to this manifest, so
+REM there was never anywhere for a local download URL to point.
+REM
+REM "release" (new): always written as false for now - a placeholder for a
+REM future "was this a deliberately cut, non-dev release" flag; no consumer
+REM reads it yet.
+REM
+REM "folderName"/"fileName" (new): FOLDER_NAME/FILE_NAME are the exact same
+REM values already resolved in STEP 2b - see that step's comments for what
+REM they mean and why they're safe to add.
 REM
 REM Notes text: this manifest.json "notes" field is what GLReleaseHistoryBrowser
 REM (GLSense\Views\GLReleaseHistoryBrowser.xaml) shows in its "Notes" column for
@@ -241,7 +320,9 @@ set MANIFEST_NOTES=%MANIFEST_NOTES:"=%
     echo   {
     echo     "version": "%FILE_VERSION%",
     echo     "releaseDate": "%RELEASE_DATE%",
-    echo     "downloadUrl": "",
+    echo     "release": false,
+    echo     "folderName": "%FOLDER_NAME%",
+    echo     "fileName": "%FILE_NAME%",
     echo     "checksum": "%ZIP_CHECKSUM%",
     echo     "notes": "%MANIFEST_NOTES%",
     echo     "mandatory": false

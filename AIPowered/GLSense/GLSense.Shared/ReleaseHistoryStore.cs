@@ -106,16 +106,21 @@ namespace GLSense.Shared
         }
 
         /// <summary>Builds the Versions\ folder name for a release:
-        /// V{version}_{releaseDateSafe}. Computed exactly once, at extraction time
+        /// v{version}_{releaseDateSafe}. Computed exactly once, at extraction time
         /// (UpdateBootstrapper) - every other consumer resolves a release's folder by
         /// reading the stored FolderName from its catalog entry, never by
-        /// recomputing this.</summary>
+        /// recomputing this. Lowercase "v" - matches the "v{version}_{releaseDateSafe}.zip"
+        /// filename convention (GLSense.Addin.Core\post_build.cmd) so both are visually
+        /// consistent; NTFS folder lookups are case-insensitive regardless, and every
+        /// consumer of an already-catalogued FolderName reads it back verbatim rather than
+        /// re-deriving or case-comparing it, so pre-existing "V..." folders from before this
+        /// casing change keep resolving correctly.</summary>
         public static string BuildFolderName(string version, string releaseDate)
         {
             char[] illegal = Path.GetInvalidFileNameChars();
             var safeDate = new string((releaseDate ?? string.Empty)
                 .Select(c => illegal.Contains(c) ? '-' : c).ToArray());
-            return $"V{version}_{safeDate}";
+            return $"v{version}_{safeDate}";
         }
 
         private static bool ReleaseFolderHasDlls(string versionsPath, string folderName)

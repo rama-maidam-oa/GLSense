@@ -61,6 +61,24 @@ if not exist "%ADDINCORE_SOURCE%" (
 )
 
 if not exist "%ADDINCORE_DEST%" mkdir "%ADDINCORE_DEST%"
+
+REM Delete any zip already sitting here before copying this build's fresh one
+REM in. GLSense.Addin.Core's post_build.cmd now names its zip with a timestamp
+REM (v{version}_{releaseDateSafe}.zip - see that script's STEP 2b), not a
+REM stable version-only name, so a plain xcopy (which never deletes anything in
+REM the destination) would leave every previous build's differently-named zip
+REM sitting here alongside the new one. That's a real correctness problem, not
+REM just clutter: UpdateBootstrapper resolves "the" zip in this exact folder
+REM via a bare Directory.GetFiles(dir, "*.zip").First()/FirstOrDefault()
+REM wildcard with no way to prefer the newest - with two zips present,
+REM whichever one Windows happens to enumerate first could get extracted
+REM instead of the one this build actually produced. Source-side cleanup in
+REM GLSense.Addin.Core's own post_build.cmd already guarantees %ADDINCORE_SOURCE%
+REM itself never holds more than one zip, but that alone doesn't help - xcopy
+REM only ADDS/overwrites, it never removes something already in the destination
+REM that isn't in the source.
+for %%Z in ("%ADDINCORE_DEST%\*.zip") do del /Q "%%Z" 2>nul
+
 xcopy /Y /I "%ADDINCORE_SOURCE%\*" "%ADDINCORE_DEST%\"
 
 echo Copied to: %ADDINCORE_DEST%
