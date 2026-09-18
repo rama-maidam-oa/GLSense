@@ -232,12 +232,6 @@
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- ===== CUSTOM CLEAN TARGET ===== -->
-  <Target Name="CleanCustomBinContent" AfterTargets="Clean">
-    <!-- RemoveDir recursively deletes the folder AND everything inside it -->
-    <RemoveDir Directories="$(TargetDir)AddinCore" ContinueOnError="true" />
-  </Target>
-  <!-- ===== END CUSTOM CLEAN TARGET ===== -->
   <PropertyGroup>
     <PostBuildEvent>call "$(ProjectDir)post_build.cmd" "$(TargetDir)"</PostBuildEvent>
   </PropertyGroup>
