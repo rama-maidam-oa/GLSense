@@ -169,6 +169,7 @@
       <DependentUpon>GLReloadProgressWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="Views\WindowChromeHelper.cs" />
+    <Compile Include="Views\OnlineReleaseRow.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="AddinModule.resx">
