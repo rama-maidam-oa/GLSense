@@ -387,11 +387,7 @@ namespace GLSense
                     GlobalsEx.Context.Version,
                     GlobalsEx.Context.ReleaseDate);
 
-                foreach (var row in rows)
-                {
-                    row.PropertyChanged += OnlineRow_PropertyChanged;
-                    _onlineRows.Add(row);
-                }
+                AddOnlineRows(rows);
 
                 int newCount = rows.Count(r => r.IsSelectable);
                 if (newCount == 0)
@@ -415,6 +411,28 @@ namespace GLSense
         {
             if (e.PropertyName == nameof(OnlineReleaseRow.IsChecked))
                 UpdateFetchButtonState();
+        }
+
+        // _onlineRows backs GridOnlineReleases.ItemsSource - mutating it off the UI
+        // thread throws NotSupportedException ("This type of CollectionView does not
+        // support changes to its SourceCollection from a thread different from the
+        // Dispatcher thread"). This is called after `await client.GetStringAsync(url)`
+        // in LoadOnlineReleasesAsync, and per this file's own dispatcher-thread-loss
+        // note above SetBusy, that continuation is not guaranteed to resume on the UI
+        // thread - so guard unconditionally here too, same pattern as SetBusy/AppendLine.
+        private void AddOnlineRows(System.Collections.Generic.List<OnlineReleaseRow> rows)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => AddOnlineRows(rows));
+                return;
+            }
+
+            foreach (var row in rows)
+            {
+                row.PropertyChanged += OnlineRow_PropertyChanged;
+                _onlineRows.Add(row);
+            }
         }
 
         private void UpdateFetchButtonState()
