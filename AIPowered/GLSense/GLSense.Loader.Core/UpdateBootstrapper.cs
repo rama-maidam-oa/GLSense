@@ -191,13 +191,21 @@ namespace GLSense.Loader.Core
             // folderName can be server-supplied on the Online path - validate it before
             // it ever reaches Path.Combine/a recursive Directory.Delete below. A single
             // Path.GetFileName(folderName) != folderName check catches path separators,
-            // ".." traversal, and rooted paths all at once (any of those change what
-            // GetFileName returns from the original string). Also refuse to ever
-            // delete/overwrite the folder the currently-loaded release lives in.
+            // embedded ".." traversal, and rooted paths all at once (any of those change
+            // what GetFileName returns from the original string) - but it does NOT catch
+            // a bare "." or ".." with no separator at all, since GetFileName performs no
+            // dot-segment canonicalization on a separator-free input (GetFileName("..")
+            // returns ".." unchanged). Path.Combine(VersionsPath, "..") resolves to
+            // VersionsPath's own PARENT (the whole AddinCore install folder, including
+            // Manifest\/ReleaseHistory.json/every other release), and "." resolves to
+            // VersionsPath itself - either would be wiped by the Directory.Delete below
+            // if not explicitly rejected here too. Also refuse to ever delete/overwrite
+            // the folder the currently-loaded release lives in.
             if (!string.Equals(Path.GetFileName(folderName), folderName, StringComparison.Ordinal) ||
+                folderName == "." || folderName == ".." ||
                 string.Equals(folderName, context.ActiveFolderName, StringComparison.OrdinalIgnoreCase))
             {
-                logger?.LogError($"UpdateBootstrapper.ExtractAndCatalog: rejected folderName '{folderName}' for '{version}' ({releaseDate}) - either not a bare folder name or matches the currently active release's folder. Not extracting.");
+                logger?.LogError($"UpdateBootstrapper.ExtractAndCatalog: rejected folderName '{folderName}' for '{version}' ({releaseDate}) - either not a bare folder name, a bare dot-segment, or matches the currently active release's folder. Not extracting.");
                 return null;
             }
 
