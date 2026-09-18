@@ -2,6 +2,8 @@
 using GLSense.Contracts;
 using GLSense.Shared;
 using System;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -10,6 +12,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace GLSense
 {
@@ -21,6 +24,9 @@ namespace GLSense
         private string _candidateZipPath;
         private bool _isValidated;
         private bool _onlineAvailable;
+
+        private readonly ObservableCollection<OnlineReleaseRow> _onlineRows = new ObservableCollection<OnlineReleaseRow>();
+        private const string VersionsListPath = "/glsense/versions";
 
         // Small, deliberate pacing between Offline validation steps (which are
         // otherwise near-instant local file checks) so the step log is actually
@@ -65,12 +71,16 @@ namespace GLSense
             bool isOnline = RbOnline.IsChecked == true;
             OnlinePanel.Visibility = isOnline ? Visibility.Visible : Visibility.Collapsed;
             OfflinePanel.Visibility = isOnline ? Visibility.Collapsed : Visibility.Visible;
+            BtnFetchAndReload.Visibility = isOnline ? Visibility.Visible : Visibility.Collapsed;
+            BtnReload.Visibility = isOnline ? Visibility.Collapsed : Visibility.Visible;
 
             ResetValidation();
 
             if (isOnline)
             {
-                TxtStatus.Text = "Click \"Check for Update\" to begin.";
+                TxtStatus.Text = "Click \"Check for Updates\" to see every release not yet on this machine.";
+                DetailsPanel.Visibility = Visibility.Collapsed;
+                UpdateFetchButtonState();
             }
             else
             {
@@ -322,8 +332,16 @@ namespace GLSense
 
         private async void BtnCheckOnline_Click(object sender, RoutedEventArgs e)
         {
+            await LoadOnlineReleasesAsync();
+        }
+
+        private async Task LoadOnlineReleasesAsync()
+        {
             ResetValidation();
             SetBusy(true);
+            DetailsPanel.Visibility = Visibility.Collapsed;
+            _onlineRows.Clear();
+            GridOnlineReleases.ItemsSource = _onlineRows;
 
             try
             {
@@ -343,67 +361,98 @@ namespace GLSense
                     return;
                 }
 
-                string url = loginInfo.LoginUrl.TrimEnd('/') + "/glsense/projectdlls";
-                LogStep($"Fetching latest release info from {url}...");
+                string url = loginInfo.LoginUrl.TrimEnd('/') + VersionsListPath;
+                LogStep($"Fetching release list from {url}...");
 
+                string listJson;
                 using (var client = new HttpClient())
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginInfo.LoginToken);
-
-                    string responseJson = await client.GetStringAsync(url);
-                    LogStep("Parsing server response...");
-
-                    var parser = new VersionParser();
-                    var result = parser.ParseVersionJson(responseJson);
-
-                    if (!result.Success)
-                    {
-                        LogFailure($"Could not parse server response: {result.ErrorMessage}");
-                        return;
-                    }
-
-                    LogStep($"Server has version {result.Version} (released {result.ReleaseDate}). Comparing against the currently loaded release ({GlobalsEx.Context?.Version} / {GlobalsEx.Context?.ReleaseDate})...");
-
-                    if (!IsStrictlyNewer(result.ReleaseDate))
-                    {
-                        LogStep("No newer version available.");
-                        PromptNoUpdate(result.Version, result.ReleaseDate.ToString());
-                        return;
-                    }
-
-                    LogStep($"New version found: {result.Version}. Downloading update...");
-                    string tempZip = Path.Combine(Path.GetTempPath(), $"GLSenseOnline_{Guid.NewGuid():N}.zip");
-                    var zipBytes = await client.GetByteArrayAsync(result.DownloadUrl);
-                    File.WriteAllBytes(tempZip, zipBytes);
-                    LogStep($"Downloaded {zipBytes.Length / 1024} KB.");
-
-                    LogStep("Verifying checksum...");
-                    string actualChecksum = ComputeSha256(tempZip);
-                    if (!string.Equals(actualChecksum, result.Checksum, StringComparison.OrdinalIgnoreCase))
-                    {
-                        LogFailure($"Downloaded zip failed checksum verification - expected {result.Checksum}, got {actualChecksum}. Not reloading.");
-                        File.Delete(tempZip);
-                        return;
-                    }
-                    LogSuccess("Checksum verified.");
-
-                    string tempManifest = Path.Combine(Path.GetTempPath(), $"GLSenseOnline_{Guid.NewGuid():N}.json");
-                    File.WriteAllText(tempManifest, responseJson);
-
-                    _candidateManifestPath = tempManifest;
-                    _candidateZipPath = tempZip;
-                    _isValidated = true;
-                    LogSuccess($"Ready to reload: version {result.Version}, released {result.ReleaseDate}.");
+                    listJson = await client.GetStringAsync(url);
                 }
+
+                LogStep("Parsing release list...");
+                var parser = new VersionParser();
+                var parsedList = parser.ParseVersionJson(listJson);
+                if (!parsedList.Success || parsedList.AllVersions == null || parsedList.AllVersions.Count == 0)
+                {
+                    LogFailure($"Could not parse the release list: {parsedList.ErrorMessage ?? "empty response"}");
+                    return;
+                }
+
+                var localEntries = ReleaseHistoryStore.ReadAll(GlobalsEx.Context.Paths.ReleaseHistoryFile);
+                var rows = OnlineReleaseClassifier.Classify(
+                    parsedList.AllVersions,
+                    localEntries,
+                    GlobalsEx.Context.Version,
+                    GlobalsEx.Context.ReleaseDate);
+
+                foreach (var row in rows)
+                {
+                    row.PropertyChanged += OnlineRow_PropertyChanged;
+                    _onlineRows.Add(row);
+                }
+
+                int newCount = rows.Count(r => r.IsSelectable);
+                if (newCount == 0)
+                    LogStep("No new releases available on the server.");
+                else
+                    LogSuccess($"Found {newCount} release(s) not yet on this machine.");
+
+                UpdateFetchButtonState();
             }
             catch (Exception ex)
             {
-                LogFailure($"Online check failed: {ex.Message}", ex);
+                LogFailure($"Failed to load the release list: {ex.Message}", ex);
             }
             finally
             {
                 SetBusy(false);
             }
+        }
+
+        private void OnlineRow_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(OnlineReleaseRow.IsChecked))
+                UpdateFetchButtonState();
+        }
+
+        private void UpdateFetchButtonState()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(UpdateFetchButtonState);
+                return;
+            }
+
+            int count = _onlineRows.Count(r => r.IsChecked);
+            BtnFetchAndReload.Content = count > 0 ? $"Fetch Selected & Reload ({count})" : "Fetch Selected & Reload";
+            BtnFetchAndReload.IsEnabled = count > 0;
+        }
+
+        private void GridOnlineReleases_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            var row = GridOnlineReleases.SelectedItem as OnlineReleaseRow;
+            if (row == null)
+            {
+                DetailsPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            TxtDetailVersion.Text = row.Version;
+            TxtDetailReleased.Text = row.ReleaseDate;
+            TxtDetailStatus.Text = row.StatusText;
+            TxtDetailNotes.Text = row.Notes;
+            TxtDetailMandatory.Text = row.Mandatory ? "Yes" : "No";
+            TxtDetailFolderName.Text = row.FolderName;
+            TxtDetailFileName.Text = row.FileName;
+            TxtDetailChecksum.Text = row.Checksum;
+            DetailsPanel.Visibility = Visibility.Visible;
+        }
+
+        private void BtnFetchAndReload_Click(object sender, RoutedEventArgs e)
+        {
+            // Implemented in Task 7 of the implementation plan.
         }
 
         // ------------------------------------------------------------------

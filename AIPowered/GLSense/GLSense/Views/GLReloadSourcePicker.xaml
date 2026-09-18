@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Reload GLSense Add-in"
         Icon="/GLSense;component/Resources/OrbitGLSense.ico"
-        Width="520" Height="560"
+        Width="660" Height="680"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
@@ -160,16 +160,82 @@
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
             <RadioButton x:Name="RbOnline" Style="{StaticResource ModernRadioButton}" Content="Online" GroupName="Mode" Margin="0,0,20,0" Checked="Mode_Checked"
-                         ToolTip="Check the currently logged-in GLSense server for a newer release and download it automatically. Only available after a successful login this Excel session."/>
+                         ToolTip="Check the currently logged-in GLSense server for every release not yet on this machine. Only available after a successful login this Excel session."/>
             <RadioButton x:Name="RbOffline" Style="{StaticResource ModernRadioButton}" Content="Offline" GroupName="Mode" Checked="Mode_Checked"
                          ToolTip="Load a GLSense release from a manifest.json + zip pair already sitting in a local folder (e.g. one you built or were given)."/>
         </StackPanel>
 
         <Grid Grid.Row="3">
             <StackPanel x:Name="OnlinePanel" Visibility="Collapsed">
-                <Button x:Name="BtnCheckOnline" Style="{StaticResource SecondaryButton}" Content="Check for Update" HorizontalAlignment="Left"
+                <Button x:Name="BtnCheckOnline" Style="{StaticResource SecondaryButton}" Content="Check for Updates" HorizontalAlignment="Left"
                         Padding="10,4" Click="BtnCheckOnline_Click"
-                        ToolTip="Query the logged-in GLSense server for the latest published release, download it, verify its checksum, and enable Reload if it is newer than what's currently loaded."/>
+                        ToolTip="Query the logged-in GLSense server for every release not yet on this machine."/>
+
+                <DataGrid x:Name="GridOnlineReleases" AutoGenerateColumns="False" IsReadOnly="True"
+                          SelectionMode="Single" SelectionUnit="FullRow" CanUserAddRows="False"
+                          Margin="0,8,0,0" MaxHeight="220"
+                          Background="White" RowBackground="White" AlternatingRowBackground="White"
+                          BorderBrush="#FFDDDDDD" BorderThickness="1"
+                          SelectionChanged="GridOnlineReleases_SelectionChanged"
+                          ToolTip="Every release the server knows about. Rows already on this machine (grey) or currently loaded (blue) can't be re-selected here - use Release History for those.">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
+                                    <Setter Property="Background" Value="#FFE3F2FD"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsAlreadyDownloaded}" Value="True">
+                                    <Setter Property="Background" Value="#FFF4F4F4"/>
+                                    <Setter Property="Foreground" Value="#FF8A8A8A"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="" Width="34">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              IsEnabled="{Binding IsSelectable}" HorizontalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="70"/>
+                        <DataGridTextColumn Header="Released" Binding="{Binding ReleaseDate}" Width="140"/>
+                        <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="*"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="110"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <Border x:Name="DetailsPanel" Background="White" BorderBrush="#FFDDDDDD" BorderThickness="1" Padding="10" Margin="0,8,0,0" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Version:" Foreground="#FF777777"/>
+                        <TextBlock x:Name="TxtDetailVersion" Grid.Row="0" Grid.Column="1"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Released:" Foreground="#FF777777"/>
+                        <TextBlock x:Name="TxtDetailReleased" Grid.Row="1" Grid.Column="1"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Status:" Foreground="#FF777777"/>
+                        <TextBlock x:Name="TxtDetailStatus" Grid.Row="2" Grid.Column="1"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Notes:" Foreground="#FF777777"/>
+                        <TextBlock x:Name="TxtDetailNotes" Grid.Row="3" Grid.Column="1" TextWrapping="Wrap"/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Mandatory:" Foreground="#FF777777"/>
+                        <TextBlock x:Name="TxtDetailMandatory" Grid.Row="4" Grid.Column="1"/>
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Folder Name:" Foreground="#FF777777"/>
+                        <TextBlock x:Name="TxtDetailFolderName" Grid.Row="5" Grid.Column="1" TextWrapping="Wrap"/>
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="File Name:" Foreground="#FF777777"/>
+                        <TextBlock x:Name="TxtDetailFileName" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap"/>
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Checksum:" Foreground="#FF777777"/>
+                        <TextBlock x:Name="TxtDetailChecksum" Grid.Row="7" Grid.Column="1" TextWrapping="Wrap"/>
+                    </Grid>
+                </Border>
             </StackPanel>
 
             <StackPanel x:Name="OfflinePanel" Visibility="Collapsed">
@@ -200,6 +266,8 @@
         </Border>
 
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="BtnFetchAndReload" Content="Fetch Selected &amp; Reload" Style="{StaticResource ActionButton}" IsEnabled="False" Visibility="Collapsed" Click="BtnFetchAndReload_Click"
+                    ToolTip="Download every checked release, catalog it, then reload GLSense onto whichever release is now newest - without restarting Excel. Any drilldown/refresh/snapshot in progress will be interrupted."/>
             <Button x:Name="BtnReload" Content="Reload" Style="{StaticResource ActionButton}" IsEnabled="False" Click="BtnReload_Click"
                     ToolTip="Stage the validated release into the Manifest folder and reload GLSense immediately, without restarting Excel. Any drilldown/refresh/snapshot in progress will be interrupted."/>
             <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource SecondaryButton}" Click="BtnCancel_Click"
