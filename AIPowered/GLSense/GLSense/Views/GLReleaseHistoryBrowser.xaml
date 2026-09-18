@@ -193,10 +193,10 @@
                                     Background="#FFE3F2FD"
                                     BorderBrush="#FF9BC9DC"
                                     BorderThickness="1"
-                                    CornerRadius="10"
-                                    Visibility="Collapsed">
+                                    CornerRadius="10">
                                 <Border.Style>
                                     <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
                                                 <Setter Property="Visibility" Value="Visible"/>
