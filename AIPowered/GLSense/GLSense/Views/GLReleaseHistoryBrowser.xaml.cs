@@ -1,6 +1,7 @@
 // GLReleaseHistoryBrowser.xaml.cs in GLSense\Views
 using GLSense.Loader.Core;
 using GLSense.Shared;
+using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -91,7 +92,9 @@ namespace GLSense
 
         private void GridReleases_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            BtnLoad.IsEnabled = GridReleases.SelectedItem is ReleaseRow;
+            var row = GridReleases.SelectedItem as ReleaseRow;
+            BtnLoad.IsEnabled = row != null;
+            BtnRemove.IsEnabled = row != null;
         }
 
         private void BtnLoad_Click(object sender, RoutedEventArgs e)
@@ -111,6 +114,116 @@ namespace GLSense
 
             DialogResult = true;
             Close();
+        }
+
+        private void BtnRemove_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(GridReleases.SelectedItem is ReleaseRow row)) return;
+
+            if (row.IsCurrentlyLoaded)
+            {
+                MessageBox.Show(
+                    "The currently loaded version is active and cannot be removed. Load another version first, then remove this one.",
+                    "Cannot Remove Active Version",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            var confirmation = MessageBox.Show(
+                $"Remove version {row.Version} released on {row.ReleaseDate} from this machine?\n\n" +
+                "This permanently deletes its local files and history entry. " +
+                "The release can be downloaded again later if it is still available.",
+                "Remove Version",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No);
+
+            if (confirmation != MessageBoxResult.Yes) return;
+
+            ReleaseDeleteResult result;
+            Exception error;
+            try
+            {
+                var paths = GlobalsEx.Context.Paths;
+                result = ReleaseHistoryStore.Delete(
+                    paths.ReleaseHistoryFile,
+                    paths.VersionsPath,
+                    row.Entry.FolderName,
+                    GlobalsEx.Context.ActiveFolderName,
+                    out error);
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(
+                    ex,
+                    $"GLReleaseHistoryBrowser: failed to remove version '{row.Version}'.");
+                MessageBox.Show(
+                    $"The version could not be removed.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                    "Remove Version Failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            switch (result)
+            {
+                case ReleaseDeleteResult.Deleted:
+                    GlobalsEx.Context?.Logger?.LogDebug(
+                        $"GLReleaseHistoryBrowser: removed version '{row.Version}' folder '{row.Entry.FolderName}'.");
+                    LoadEntries();
+                    break;
+
+                case ReleaseDeleteResult.ActiveRelease:
+                    MessageBox.Show(
+                        "The selected version is currently active and cannot be removed. Load another version first.",
+                        "Cannot Remove Active Version",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    break;
+
+                case ReleaseDeleteResult.FolderDeleteFailed:
+                    GlobalsEx.Context?.Logger?.LogException(
+                        error,
+                        $"GLReleaseHistoryBrowser: could not remove folder '{row.Entry.FolderName}'.");
+                    MessageBox.Show(
+                        $"The version could not be removed because its files could not be deleted.{Environment.NewLine}{Environment.NewLine}{error?.Message}",
+                        "Remove Version Failed",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    break;
+
+                case ReleaseDeleteResult.CatalogWriteFailed:
+                    GlobalsEx.Context?.Logger?.LogException(
+                        error,
+                        $"GLReleaseHistoryBrowser: folder '{row.Entry.FolderName}' was deleted but the history catalog could not be updated.");
+                    MessageBox.Show(
+                        $"The version files were deleted, but the history catalog could not be updated.{Environment.NewLine}{Environment.NewLine}{error?.Message}",
+                        "History Update Failed",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    LoadEntries();
+                    break;
+
+                case ReleaseDeleteResult.InvalidFolderName:
+                    GlobalsEx.Context?.Logger?.LogWarn(
+                        $"GLReleaseHistoryBrowser: refused unsafe release folder '{row.Entry.FolderName}'.");
+                    MessageBox.Show(
+                        "The selected version has an invalid local folder name and was not removed.",
+                        "Remove Version Failed",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    break;
+
+                case ReleaseDeleteResult.NotFound:
+                    MessageBox.Show(
+                        "That version is no longer present in the local history. The list will be refreshed.",
+                        "Version Not Found",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    LoadEntries();
+                    break;
+            }
         }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)

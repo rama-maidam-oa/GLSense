@@ -17,6 +17,16 @@ using System.Threading;
 
 namespace GLSense.Shared
 {
+    public enum ReleaseDeleteResult
+    {
+        Deleted,
+        NotFound,
+        ActiveRelease,
+        InvalidFolderName,
+        FolderDeleteFailed,
+        CatalogWriteFailed
+    }
+
     public static class ReleaseHistoryStore
     {
         private const string MutexName = "Global\\GLSense_ReleaseHistory_Mutex";
@@ -65,6 +75,75 @@ namespace GLSense.Shared
                     WriteAllUnlocked(releaseHistoryFile, survivors);
                 return survivors;
             });
+        }
+
+        /// <summary>
+        /// Deletes one catalogued release and its extracted folder as one
+        /// mutex-protected operation. The active folder is checked again while
+        /// holding the mutex so stale UI state cannot remove the loaded release.
+        /// </summary>
+        public static ReleaseDeleteResult Delete(
+            string releaseHistoryFile,
+            string versionsPath,
+            string folderName,
+            string activeFolderName,
+            out Exception error)
+        {
+            Exception capturedError = null;
+
+            var result = WithLock(() =>
+            {
+                var entries = ReadAllUnlocked(releaseHistoryFile);
+                var entry = entries.FirstOrDefault(e =>
+                    string.Equals(e.FolderName, folderName, StringComparison.OrdinalIgnoreCase));
+
+                if (entry == null)
+                    return ReleaseDeleteResult.NotFound;
+
+                if (!string.IsNullOrWhiteSpace(activeFolderName) &&
+                    string.Equals(entry.FolderName, activeFolderName, StringComparison.OrdinalIgnoreCase))
+                    return ReleaseDeleteResult.ActiveRelease;
+
+                if (!IsSafeFolderName(folderName))
+                    return ReleaseDeleteResult.InvalidFolderName;
+
+                string folderPath;
+                try
+                {
+                    string versionsRoot = Path.GetFullPath(versionsPath)
+                        .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                        + Path.DirectorySeparatorChar;
+                    folderPath = Path.GetFullPath(Path.Combine(versionsPath, folderName));
+
+                    if (!folderPath.StartsWith(versionsRoot, StringComparison.OrdinalIgnoreCase))
+                        return ReleaseDeleteResult.InvalidFolderName;
+
+                    if (Directory.Exists(folderPath))
+                        Directory.Delete(folderPath, true);
+                }
+                catch (Exception ex)
+                {
+                    capturedError = ex;
+                    return ReleaseDeleteResult.FolderDeleteFailed;
+                }
+
+                entries.RemoveAll(e =>
+                    string.Equals(e.FolderName, entry.FolderName, StringComparison.OrdinalIgnoreCase));
+
+                try
+                {
+                    WriteAllUnlocked(releaseHistoryFile, entries);
+                    return ReleaseDeleteResult.Deleted;
+                }
+                catch (Exception ex)
+                {
+                    capturedError = ex;
+                    return ReleaseDeleteResult.CatalogWriteFailed;
+                }
+            });
+
+            error = capturedError;
+            return result;
         }
 
         private static T WithLock<T>(Func<T> action)
@@ -128,6 +207,17 @@ namespace GLSense.Shared
             if (string.IsNullOrWhiteSpace(folderName)) return false;
             var folder = Path.Combine(versionsPath, folderName);
             return Directory.Exists(folder) && Directory.GetFiles(folder, "*.dll").Any();
+        }
+
+        private static bool IsSafeFolderName(string folderName)
+        {
+            return !string.IsNullOrWhiteSpace(folderName) &&
+                   folderName != "." &&
+                   folderName != ".." &&
+                   !Path.IsPathRooted(folderName) &&
+                   string.Equals(Path.GetFileName(folderName), folderName, StringComparison.Ordinal) &&
+                   folderName.IndexOf(Path.DirectorySeparatorChar) < 0 &&
+                   folderName.IndexOf(Path.AltDirectorySeparatorChar) < 0;
         }
 
         private static List<ReleaseEntry> ReadAllUnlocked(string releaseHistoryFile)

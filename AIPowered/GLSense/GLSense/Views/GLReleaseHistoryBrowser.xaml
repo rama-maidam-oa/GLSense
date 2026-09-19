@@ -4,8 +4,8 @@
         Title="GLSense Version History"
         Icon="/GLSense;component/Resources/OrbitGLSense.ico"
         Width="640" Height="420"
-        MinWidth="560" MinHeight="380"
-        MaxWidth="1000" MaxHeight="750"
+        MinWidth="620" MinHeight="380"
+        MaxWidth="750" MaxHeight="750"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
         Background="White">
@@ -362,7 +362,7 @@
                 <TextBlock x:Name="TxtStatus" Foreground="#FF53636D"
                            VerticalAlignment="Center" TextWrapping="Wrap">
                     <Run Text="Select a version, then click "/>
-                    <Run Text="Load This Version" FontWeight="SemiBold"/>
+                    <Run Text="Load or Remove" FontWeight="SemiBold"/>
                     <Run Text="."/>
                 </TextBlock>
             </DockPanel>
@@ -379,8 +379,10 @@
                        ToolTip="The GLSense version actually running right now, for reference."/>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="BtnLoad" Content="Load This Version" Style="{StaticResource ActionButton}" IsEnabled="False" Click="BtnLoad_Click"
+                <Button x:Name="BtnLoad" Content="Load" Style="{StaticResource ActionButton}" IsEnabled="False" Click="BtnLoad_Click"
                         ToolTip="Reload GLSense using the selected version, without restarting Excel - even an older one; there is no version gate in this window. Any drilldown/refresh/snapshot in progress will be interrupted."/>
+                <Button x:Name="BtnRemove" Content="Remove" Style="{StaticResource SecondaryButton}" IsEnabled="False" Click="BtnRemove_Click"
+                        ToolTip="Permanently remove the selected non-active version from this machine, including its extracted files and history entry. The currently loaded version cannot be removed."/>
                 <Button x:Name="BtnCancel" Content="Close" Style="{StaticResource SecondaryButton}" Click="BtnCancel_Click"
                         ToolTip="Close this window without changing what's loaded."/>
             </StackPanel>
