@@ -3,6 +3,7 @@ using GLSense.Contracts;
 using GLSense.Loader.Core;
 using System;
 using System.ComponentModel;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -183,6 +184,36 @@ namespace GLSense
             // Load Addin.Core
 
             GlobalsEx.Addin = GlobalsEx.Loader.Load(GlobalsEx.Context);
+            LogLoadedAddinAssemblies();
+        }
+
+        private void LogLoadedAddinAssemblies()
+        {
+            if (GlobalsEx.Context?.Logger == null)
+                return;
+
+            try
+            {
+                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    string location;
+                    try
+                    {
+                        location = assembly.Location;
+                    }
+                    catch
+                    {
+                        location = "<dynamic>";
+                    }
+
+                    GlobalsEx.Context.Logger.LogInfo(
+                        $"RibbonLoad assemblies: {assembly.GetName().Name}, version={assembly.GetName().Version}, location='{location}'");
+                }
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context.Logger.LogWarn($"RibbonLoad assemblies: could not enumerate loaded assemblies ({ex.GetType().Name}: {ex.Message}).");
+            }
         }
 
         // Guards RibReload_OnClick against re-entrancy (e.g. an accidental rapid
@@ -2009,4 +2040,3 @@ namespace GLSense
         }
     }
 }
-

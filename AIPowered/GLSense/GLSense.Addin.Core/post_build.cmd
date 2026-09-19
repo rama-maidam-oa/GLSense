@@ -164,12 +164,13 @@ set OUT_MANIFEST=%MANIFEST_DIR%\manifest.json
 echo Manifest Output Dir: %MANIFEST_DIR%
 
 REM Mirror CORE_BIN_DIR into a small staging folder first, excluding *.pdb
+REM and *.xml. XML documentation files are not needed at runtime.
 REM (debug symbols aren't needed to run the add-in, just dead weight in the
 REM zip). Compress-Archive has no clean way to exclude a pattern while zipping
 REM a whole folder without flattening the x86\/x64\/de\/runtimes\ subfolder
 REM structure, so a filtered copy first is the reliable option. The ORIGINAL
-REM %CORE_BIN_DIR%\*.pdb files are untouched - only this zip excludes them, so
-REM local Visual Studio debugging still works exactly as before.
+REM %CORE_BIN_DIR%\*.pdb and *.xml files are untouched - only this zip excludes
+REM them, so local Visual Studio debugging and IntelliSense still work.
 REM
 REM CORE_BIN_DIR already includes GLSense.Loader.Core.dll automatically (see
 REM the ProjectReference in GLSense.Addin.Core.csproj) - AddinDomainLoader
@@ -181,6 +182,7 @@ set ZIP_EXCLUDE_LIST=%TEMP%\glsense_zip_exclude.txt
 if exist "%ZIP_STAGE_DIR%" rmdir /S /Q "%ZIP_STAGE_DIR%"
 mkdir "%ZIP_STAGE_DIR%"
 echo .pdb> "%ZIP_EXCLUDE_LIST%"
+echo .xml>> "%ZIP_EXCLUDE_LIST%"
 
 xcopy /Y /E /I /EXCLUDE:%ZIP_EXCLUDE_LIST% "%CORE_BIN_DIR%\*" "%ZIP_STAGE_DIR%\" 2>&1
 

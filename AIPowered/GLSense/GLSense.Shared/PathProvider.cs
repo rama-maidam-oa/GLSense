@@ -88,6 +88,7 @@ namespace GLSense.Shared
         public string LoginBrowserPath => Path.Combine(_root, "BrowserLogs", "Login");
         public string DrilldownBrowserPath => Path.Combine(_root, "BrowserLogs", "Drilldown");
         public string VersionsPath => Path.Combine(_installRoot, "Versions");
+        public string SharedDependenciesPath => Path.Combine(_installRoot, "SharedDependencies");
         public string Resources => Path.Combine(_root, "Resources");
 
         // "Manifest" (not "Version") since this folder/file is the update-tracking
@@ -118,6 +119,7 @@ namespace GLSense.Shared
             Directory.CreateDirectory(LoginBrowserPath);
             Directory.CreateDirectory(DrilldownBrowserPath);
             Directory.CreateDirectory(VersionsPath);
+            Directory.CreateDirectory(SharedDependenciesPath);
             Directory.CreateDirectory(Resources);
 
             // Ensure Manifest directory exists

@@ -22,13 +22,13 @@
         "Entry"
         {
         "MsmKey" = "8:_02E991D167E17BB01AA8CE584C525474"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_DB51D18A2A5C52C84F5FBDBDF8CBE5B8"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
         {
         "MsmKey" = "8:_02E991D167E17BB01AA8CE584C525474"
-        "OwnerKey" = "8:_DB51D18A2A5C52C84F5FBDBDF8CBE5B8"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -46,7 +46,7 @@
         "Entry"
         {
         "MsmKey" = "8:_12228F62884767B5344D5DA69E724C10"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -118,13 +118,13 @@
         "Entry"
         {
         "MsmKey" = "8:_329841E420216FBA2AF9EFBE3ABB19D2"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_1223A86871044FCB82F28F63D17AA70D"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
         {
         "MsmKey" = "8:_329841E420216FBA2AF9EFBE3ABB19D2"
-        "OwnerKey" = "8:_1223A86871044FCB82F28F63D17AA70D"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -136,7 +136,7 @@
         "Entry"
         {
         "MsmKey" = "8:_385B802BE79DDE770DFB0DE37D11041E"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -172,7 +172,7 @@
         "Entry"
         {
         "MsmKey" = "8:_50956C0764476F057CDB00AFD4B325F6"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -213,6 +213,12 @@
         }
         "Entry"
         {
+        "MsmKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
+        "OwnerKey" = "8:_1223A86871044FCB82F28F63D17AA70D"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
         "MsmKey" = "8:_61349AD7F46E6FF5606CD39D9C5434D5"
         "OwnerKey" = "8:_1223A86871044FCB82F28F63D17AA70D"
         "MsmSig" = "8:_UNDEFINED"
@@ -220,7 +226,7 @@
         "Entry"
         {
         "MsmKey" = "8:_61349AD7F46E6FF5606CD39D9C5434D5"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -268,7 +274,7 @@
         "Entry"
         {
         "MsmKey" = "8:_74F1CB8923E2DA93EFEEA6964485279B"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -316,7 +322,7 @@
         "Entry"
         {
         "MsmKey" = "8:_9C7255AD764243B79BBC3A39E9A064A4"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -334,7 +340,7 @@
         "Entry"
         {
         "MsmKey" = "8:_ABE37C3145E2C46336F4FC4A9B04961C"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -358,7 +364,7 @@
         "Entry"
         {
         "MsmKey" = "8:_B2DB84FFEEA6AC8329A4FE2831FAD6DB"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -400,7 +406,7 @@
         "Entry"
         {
         "MsmKey" = "8:_B58B6C43749428E19A38DED071D438AD"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -424,13 +430,13 @@
         "Entry"
         {
         "MsmKey" = "8:_C37D60E66232EC11699AA565FF2BA355"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
         {
         "MsmKey" = "8:_C37D60E66232EC11699AA565FF2BA355"
-        "OwnerKey" = "8:_56A3E9219847A25683E9B7C79FF022F2"
+        "OwnerKey" = "8:_1223A86871044FCB82F28F63D17AA70D"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -442,7 +448,7 @@
         "Entry"
         {
         "MsmKey" = "8:_C37D60E66232EC11699AA565FF2BA355"
-        "OwnerKey" = "8:_1223A86871044FCB82F28F63D17AA70D"
+        "OwnerKey" = "8:_56A3E9219847A25683E9B7C79FF022F2"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -466,7 +472,7 @@
         "Entry"
         {
         "MsmKey" = "8:_CF1A0B21F537DA85102D20F4FA82BE6A"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -495,12 +501,6 @@
         }
         "Entry"
         {
-        "MsmKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
-        "OwnerKey" = "8:_1223A86871044FCB82F28F63D17AA70D"
-        "MsmSig" = "8:_UNDEFINED"
-        }
-        "Entry"
-        {
         "MsmKey" = "8:_E65CD187717D4F23BBE18B19EB1CE428"
         "OwnerKey" = "8:_UNDEFINED"
         "MsmSig" = "8:_UNDEFINED"
@@ -520,12 +520,6 @@
         "Entry"
         {
         "MsmKey" = "8:_UNDEFINED"
-        "OwnerKey" = "8:_E38A83B0BA0C0029CC2B9DE0137B6837"
-        "MsmSig" = "8:_UNDEFINED"
-        }
-        "Entry"
-        {
-        "MsmKey" = "8:_UNDEFINED"
         "OwnerKey" = "8:_DB51D18A2A5C52C84F5FBDBDF8CBE5B8"
         "MsmSig" = "8:_UNDEFINED"
         }
@@ -539,6 +533,12 @@
         {
         "MsmKey" = "8:_UNDEFINED"
         "OwnerKey" = "8:_7FF5A4CE257C3F73E8F03F05D24F1417"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_UNDEFINED"
+        "OwnerKey" = "8:_5BA1D5AF44402D45F192F2EDDD57454F"
         "MsmSig" = "8:_UNDEFINED"
         }
         "Entry"
@@ -718,6 +718,16 @@
             "ComponentsUrl" = "8:"
                 "Items"
                 {
+                    "{EDC2488A-8267-493A-A98E-7D9C3B36CDF3}:.NETFramework,Version=v4.8.1"
+                    {
+                    "Name" = "8:Microsoft .NET Framework 4.8.1 (x86 and x64)"
+                    "ProductCode" = "8:.NETFramework,Version=v4.8.1"
+                    }
+                    "{EDC2488A-8267-493A-A98E-7D9C3B36CDF3}:Microsoft.VSTORuntime.4.0"
+                    {
+                    "Name" = "8:Microsoft Visual Studio 2010 Tools for Office Runtime (x86 and x64)"
+                    "ProductCode" = "8:Microsoft.VSTORuntime.4.0"
+                    }
                 }
             }
         }
@@ -1189,6 +1199,37 @@
             "PackageAs" = "3:1"
             "Register" = "3:1"
             "Exclude" = "11:FALSE"
+            "IsDependency" = "11:TRUE"
+            "IsolateTo" = "8:"
+            }
+            "{9F6F8455-1EF1-4B85-886A-4223BCC8E7F7}:_5BA1D5AF44402D45F192F2EDDD57454F"
+            {
+            "AssemblyRegister" = "3:1"
+            "AssemblyIsInGAC" = "11:FALSE"
+            "AssemblyAsmDisplayName" = "8:GLSense.Addin.Core, Version=11.1.2.0, Culture=neutral, processorArchitecture=MSIL"
+                "ScatterAssemblies"
+                {
+                    "_5BA1D5AF44402D45F192F2EDDD57454F"
+                    {
+                    "Name" = "8:GLSense.Addin.Core.dll"
+                    "Attributes" = "3:512"
+                    }
+                }
+            "SourcePath" = "8:GLSense.Addin.Core.dll"
+            "TargetName" = "8:"
+            "Tag" = "8:"
+            "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"
+            "Condition" = "8:"
+            "Transitive" = "11:FALSE"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "PackageAs" = "3:1"
+            "Register" = "3:1"
+            "Exclude" = "11:TRUE"
             "IsDependency" = "11:TRUE"
             "IsolateTo" = "8:"
             }
@@ -1870,37 +1911,6 @@
             "IsDependency" = "11:FALSE"
             "IsolateTo" = "8:"
             }
-            "{9F6F8455-1EF1-4B85-886A-4223BCC8E7F7}:_E38A83B0BA0C0029CC2B9DE0137B6837"
-            {
-            "AssemblyRegister" = "3:1"
-            "AssemblyIsInGAC" = "11:FALSE"
-            "AssemblyAsmDisplayName" = "8:GLSense.Addin.Core, Version=11.1.2.0, Culture=neutral, processorArchitecture=MSIL"
-                "ScatterAssemblies"
-                {
-                    "_E38A83B0BA0C0029CC2B9DE0137B6837"
-                    {
-                    "Name" = "8:GLSense.Addin.Core.dll"
-                    "Attributes" = "3:512"
-                    }
-                }
-            "SourcePath" = "8:GLSense.Addin.Core.dll"
-            "TargetName" = "8:"
-            "Tag" = "8:"
-            "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"
-            "Condition" = "8:"
-            "Transitive" = "11:FALSE"
-            "Vital" = "11:TRUE"
-            "ReadOnly" = "11:FALSE"
-            "Hidden" = "11:FALSE"
-            "System" = "11:FALSE"
-            "Permanent" = "11:FALSE"
-            "SharedLegacy" = "11:FALSE"
-            "PackageAs" = "3:1"
-            "Register" = "3:1"
-            "Exclude" = "11:TRUE"
-            "IsDependency" = "11:TRUE"
-            "IsolateTo" = "8:"
-            }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_E65CD187717D4F23BBE18B19EB1CE428"
             {
             "SourcePath" = "8:..\\Resources\\OrbitGLSense.ico"
@@ -2020,7 +2030,7 @@
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:GLSense"
         "ProductCode" = "8:{2EED321B-2B13-44EE-A298-FD8EE630A3FA}"
-        "PackageCode" = "8:{254B7A1F-748A-42F0-B4CF-2E06905866F4}"
+        "PackageCode" = "8:{3BE181A2-521F-4198-9CEB-CE486D1E8322}"
         "UpgradeCode" = "8:{2EED321B-2B13-44EE-A298-FD8EE630A3FB}"
         "AspNetVersion" = "8:4.0.30220.0"
         "RestartWWWService" = "11:FALSE"
@@ -2543,7 +2553,7 @@
             }
             "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_1223A86871044FCB82F28F63D17AA70D"
             {
-            "SourcePath" = "8:..\\obj\\Release\\GLSense.dll"
+            "SourcePath" = "8:..\\obj\\Debug\\GLSense.dll"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_D3166896672F4C2CB92062B90A3F2E2D"

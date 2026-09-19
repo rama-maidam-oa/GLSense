@@ -103,6 +103,7 @@ namespace GLSense.Addin.Core
                 // (e.g. DebugMode off and the SQLite check below takes the "IsInitialized"
                 // branch, whose LogDebug is a no-op without it).
                 ServiceLocator.Logger?.LogInfo("GLSense session started.");
+                LogLoadedAssemblies();
 
                 //Initializing SQLite database
                 // 1. Ensure DB file + tables exist
@@ -139,15 +140,22 @@ namespace GLSense.Addin.Core
                         return null;
                     }
 
-                    var assemblyPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"{assemblyName.Name}.dll");
-
-                    if (File.Exists(assemblyPath))
+                    var assemblyPaths = new[]
                     {
+                        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"{assemblyName.Name}.dll"),
+                        Path.Combine(ServiceLocator.Paths.SharedDependenciesPath, $"{assemblyName.Name}.dll")
+                    };
+
+                    foreach (var assemblyPath in assemblyPaths)
+                    {
+                        if (!File.Exists(assemblyPath))
+                            continue;
+
                         ServiceLocator.Logger?.LogDebug($"Initialize.AssemblyResolve: resolved '{assemblyName.Name}' -> '{assemblyPath}'");
                         return Assembly.LoadFrom(assemblyPath);
                     }
 
-                    ServiceLocator.Logger?.LogDebug($"Initialize.AssemblyResolve: could not resolve '{args.Name}' (expected path '{assemblyPath}' not found).");
+                    ServiceLocator.Logger?.LogDebug($"Initialize.AssemblyResolve: could not resolve '{args.Name}' from release or shared dependency paths.");
                     return null;
                 };
 
@@ -190,6 +198,32 @@ namespace GLSense.Addin.Core
         // Flushes every still-open action buffer first, so the debug trace leading up to
         // the crash survives even though the buffer's own owning LogScope will never
         // Dispose() normally after this.
+        private static void LogLoadedAssemblies()
+        {
+            try
+            {
+                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    string location;
+                    try
+                    {
+                        location = assembly.Location;
+                    }
+                    catch
+                    {
+                        location = "<dynamic>";
+                    }
+
+                    ServiceLocator.Logger?.LogInfo(
+                        $"AddinCore assemblies: {assembly.GetName().Name}, version={assembly.GetName().Version}, location='{location}'");
+                }
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogWarn($"AddinCore assemblies: could not enumerate loaded assemblies ({ex.GetType().Name}: {ex.Message}).");
+            }
+        }
+
         private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             try

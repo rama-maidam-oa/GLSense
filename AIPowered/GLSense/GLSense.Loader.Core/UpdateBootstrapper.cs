@@ -255,6 +255,7 @@ namespace GLSense.Loader.Core
             if (alreadyExtracted)
             {
                 logger?.LogDebug($"UpdateBootstrapper.ExtractAndCatalog: '{folderName}' already exists on disk with content - skipping re-extraction (its files may still be locked by a native DLL loaded earlier in this process). Cataloging only.");
+                MaterializeSharedDependencies(versionFolder, paths.SharedDependenciesPath, logger);
             }
             else
             {
@@ -305,6 +306,7 @@ namespace GLSense.Loader.Core
                 }
 
                 File.WriteAllText(Path.Combine(versionFolder, "manifest.json"), manifestJson);
+                MaterializeSharedDependencies(versionFolder, paths.SharedDependenciesPath, logger);
             }
 
             var entry = new ReleaseEntry
@@ -321,6 +323,104 @@ namespace GLSense.Loader.Core
             logger?.LogDebug($"UpdateBootstrapper.ExtractAndCatalog: extracted and catalogued '{folderName}' (source={source}).");
 
             return new ResolvedRelease { Version = version, ReleaseDate = releaseDate, FolderName = folderName };
+        }
+
+        private static void MaterializeSharedDependencies(string releaseFolder, string sharedFolder, ILogger logger)
+        {
+            Directory.CreateDirectory(sharedFolder);
+
+            foreach (var sourcePath in Directory.GetFiles(releaseFolder, "*", SearchOption.AllDirectories))
+            {
+                string relativePath = sourcePath.Substring(releaseFolder.Length)
+                    .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                if (!IsSharedDependency(relativePath))
+                    continue;
+
+                string destinationPath = Path.Combine(sharedFolder, relativePath);
+                string destinationDirectory = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(destinationDirectory))
+                    Directory.CreateDirectory(destinationDirectory);
+
+                if (!File.Exists(destinationPath))
+                {
+                    File.Copy(sourcePath, destinationPath);
+                    logger?.LogDebug($"UpdateBootstrapper: cached shared dependency '{relativePath}'.");
+                    File.Delete(sourcePath);
+                    continue;
+                }
+
+                if (FilesHaveSameContent(sourcePath, destinationPath))
+                {
+                    File.Delete(sourcePath);
+                }
+                else
+                {
+                    logger?.LogWarn($"UpdateBootstrapper: shared dependency '{relativePath}' changed between releases; retaining the release-local copy to preserve rollback isolation.");
+                }
+            }
+
+            RemoveEmptyDirectories(releaseFolder, logger);
+        }
+
+        private static void RemoveEmptyDirectories(string rootFolder, ILogger logger)
+        {
+            foreach (var directory in Directory.GetDirectories(rootFolder, "*", SearchOption.AllDirectories)
+                .OrderByDescending(path => path.Length))
+            {
+                if (Directory.GetFileSystemEntries(directory).Length != 0)
+                    continue;
+
+                try
+                {
+                    Directory.Delete(directory);
+                    logger?.LogDebug($"UpdateBootstrapper: removed empty release directory '{directory}'.");
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarn($"UpdateBootstrapper: could not remove empty release directory '{directory}': {ex.Message}");
+                }
+            }
+        }
+
+        private static bool IsSharedDependency(string relativePath)
+        {
+            string normalized = relativePath.Replace('\\', '/');
+            string fileName = Path.GetFileName(normalized);
+
+            if (normalized.StartsWith("x86/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("x64/", StringComparison.OrdinalIgnoreCase))
+            {
+                return fileName.Equals("e_sqlite3.dll", StringComparison.OrdinalIgnoreCase) ||
+                       fileName.Equals("SQLite.Interop.dll", StringComparison.OrdinalIgnoreCase);
+            }
+
+            return fileName.Equals("MahApps.Metro.IconPacks.Core.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("MahApps.Metro.IconPacks.FontAwesome.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("Microsoft.Web.WebView2.Core.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("Microsoft.Web.WebView2.Wpf.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("Microsoft.Web.WebView2.WinForms.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.Data.SQLite.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.Data.SQLite.Linq.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("NLog.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.Text.Json.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.Text.Encodings.Web.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.Buffers.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.Memory.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.IO.Pipelines.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.Numerics.Vectors.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.Runtime.CompilerServices.Unsafe.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("System.Threading.Tasks.Extensions.dll", StringComparison.OrdinalIgnoreCase) ||
+                   fileName.Equals("Microsoft.Bcl.AsyncInterfaces.dll", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool FilesHaveSameContent(string left, string right)
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                return sha256.ComputeHash(File.ReadAllBytes(left))
+                    .SequenceEqual(sha256.ComputeHash(File.ReadAllBytes(right)));
+            }
         }
 
         private ResolvedRelease ExtractManifestZipAndAdopt(IGLSenseContext context, string source)

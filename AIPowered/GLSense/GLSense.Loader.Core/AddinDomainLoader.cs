@@ -17,6 +17,7 @@ namespace GLSense.Loader.Core
             _context = context;
 
             string dllPath = Path.Combine(_context.Paths.VersionsPath, _context.ActiveFolderName);
+            string sharedDependenciesPath = _context.Paths.SharedDependenciesPath;
 
             //LogFilesInFolder(dllPath);  this is used for debugging
 
@@ -29,8 +30,8 @@ namespace GLSense.Loader.Core
                     ApplicationBase = dllPath,
                     ShadowCopyFiles = "true",
                     CachePath = Path.Combine(dllPath, "ShadowCache"),
-                    PrivateBinPath = dllPath,
-                    PrivateBinPathProbe = dllPath
+                    PrivateBinPath = string.Join(";", dllPath, sharedDependenciesPath),
+                    PrivateBinPathProbe = string.Join(";", dllPath, sharedDependenciesPath)
                 };
 
                 _domain = AppDomain.CreateDomain($"GLSenseDomain_{_context.Version}", null, setup);
@@ -42,7 +43,7 @@ namespace GLSense.Loader.Core
                     typeof(RemoteLoader).FullName);
                 _context.Logger?.LogDebug("AddinDomainLoader.Load: RemoteLoader created and unwrapped in the new AppDomain.");
 
-                _instance = loader.Create(dllPath, context);
+                _instance = loader.Create(dllPath, sharedDependenciesPath, context);
                 _context.Logger?.LogDebug("AddinDomainLoader.Load: add-in instance created by RemoteLoader; initializing.");
 
                 _instance.Initialize(context);

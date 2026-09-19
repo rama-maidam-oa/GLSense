@@ -90,7 +90,9 @@ namespace GLSense.Addin.Core.Helpers
                 // IGLSenseContext across the AppDomain boundary - see CLAUDE.md section 40
                 // for the class of bug that caused, and the "SQLite native DLL directory
                 // not found" warning this whole area is prone to).
-                string dllPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, platform);
+                string releasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, platform);
+                string sharedPath = Path.Combine(ServiceLocator.Paths.SharedDependenciesPath, platform);
+                string dllPath = Directory.Exists(releasePath) ? releasePath : sharedPath;
 
                 if (!Directory.Exists(dllPath))
                 {
@@ -100,7 +102,7 @@ namespace GLSense.Addin.Core.Helpers
                     // outside the AddinDomainLoader-created AppDomain (e.g. a future unit
                     // test host) where BaseDirectory wouldn't point at a version folder.
                     string fallbackPath = Path.Combine(ServiceLocator.Paths.VersionsPath, ServiceLocator.ActiveFolderName, platform);
-                    ServiceLocator.Logger?.LogWarn($"SQLiteHelper.LoadNativeSQLiteDll: SQLite native DLL directory not found via AppDomain.BaseDirectory ('{dllPath}'); trying fallback: {fallbackPath}");
+                    ServiceLocator.Logger?.LogWarn($"SQLiteHelper.LoadNativeSQLiteDll: SQLite native directory not found in release ('{releasePath}') or shared cache ('{sharedPath}'); trying fallback: {fallbackPath}");
                     dllPath = fallbackPath;
                 }
 

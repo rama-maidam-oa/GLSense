@@ -13,6 +13,7 @@ namespace GLSense.Contracts
         string Temp { get; }
         string UrlsDirectory { get; }
         string VersionsPath { get; }
+        string SharedDependenciesPath { get; }
         string Resources { get; }
         string ManifestFile { get; }
         string ManifestDirectory { get; }
