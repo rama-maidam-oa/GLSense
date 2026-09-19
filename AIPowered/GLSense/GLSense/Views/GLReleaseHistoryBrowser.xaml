@@ -3,30 +3,17 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="GLSense Version History"
         Icon="/GLSense;component/Resources/OrbitGLSense.ico"
-        Width="640" Height="420"
-        MinWidth="620" MinHeight="380"
-        MaxWidth="750" MaxHeight="750"
+        Width="810" Height="530"
+        MinWidth="730" MinHeight="450"
+        MaxWidth="950" MaxHeight="800"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
-        Background="White">
+        Background="#EEF2F6"
+        FontFamily="Segoe UI">
     <Window.Resources>
-        <!-- DataGridCell's own default ControlTemplate paints its selected-state background/
-             foreground from SystemColors.HighlightBrushKey/HighlightTextBrushKey (the
-             system-wide selection blue), not from DataGridRow.Background - a DataGridRow-level
-             IsSelected Trigger setting Background has no visible effect at all, since each
-             cell's own opaque selected background paints on top of it (confirmed: an earlier
-             attempt using exactly that Trigger produced zero visible change). Overriding these
-             two system-color resources locally is the standard, correct way to keep the
-             selected row visibly highlighted across every DataGridCell.-->
         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#82B6CD"/>
         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="White"/>
-        <!-- Recreated from GLSense.Addin.Core\Themes\GlobalStyles.xaml's "SimpleBrowserToolTip"
-             (same colors/padding/drop-shadow) - this host project can't reference Addin.Core's
-             resources directly (separate assembly/AppDomain by design), so the look is
-             duplicated here rather than shared. Deliberately UNKEYED (no x:Key) so it applies
-             automatically to every ToolTip in this window, including the plain string
-             ToolTip="..." Setters on the DataGridCell/DataGridColumnHeader styles below - no
-             need to convert each one into an explicit <ToolTip> element. -->
+
         <Style TargetType="ToolTip">
             <Setter Property="Background" Value="#FFF9DB"/>
             <Setter Property="Foreground" Value="#3C3C3C"/>
@@ -34,358 +21,369 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="HasDropShadow" Value="True"/>
         </Style>
-        <!-- #2E86AB matches GLSense.Addin.Core\Themes\GlobalStyles.xaml's "PrimaryBrush"
-             (PrimaryColor) exactly - same "recreated, can't reference Addin.Core directly"
-             reasoning as the ToolTip style above. Deliberately UNKEYED so every column's own
-             HeaderStyle (each BasedOn="{StaticResource {x:Type DataGridColumnHeader}}" below)
-             inherits this as its base, layering its own ToolTip Setter on top - no need to
-             repeat Background/Foreground/FontWeight in all 5 of them. -->
+
+        <Style x:Key="BrowserButton" TargetType="Button">
+            <Setter Property="Padding" Value="16,7"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#263942"/>
+            <Setter Property="BorderBrush" Value="#CBD8DF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#2E86AB"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#2E86AB"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#1B6B93"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1B6B93"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.48"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#2E86AB"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <!-- WPF's default DataGridColumnHeader has no vertical padding of its own
-                 (height is otherwise just content + border) - 2px top + 2px bottom adds
-                 exactly 4px of header height, as requested. 6px horizontal matches the
-                 existing per-column text/tooltip conventions in this file. -->
-            <Setter Property="Padding" Value="6,2,6,2"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="BorderBrush" Value="#1B6B93"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
         </Style>
-        <!-- ActionButton/SecondaryButton are kept byte-for-byte identical to the copies in
-             GLReloadSourcePicker.xaml on purpose, so the two dialogs' buttons always look
-             and behave the same - see that file's own copy of this comment. Explicit
-             ControlTemplates are used (rather than just Background/Foreground Setters) so
-             hover/disabled states are deliberate instead of relying on the default WPF Button
-             chrome, which layers its own theme overlay on top of a custom Background and can
-             wash the color out on hover (see CLAUDE.md section 4, "Button hover chrome"). -->
-        <!-- ActionButton (Load This Release) now shares SecondaryButton's (Close) exact
-             rest-state Background/Foreground/BorderBrush/BorderThickness, so the two
-             buttons look identical until hovered - only the hover state differentiates
-             them, both converging on the same #2E86AB primary brush + white text. -->
-        <Style x:Key="ActionButton" TargetType="Button">
-            <Setter Property="Padding" Value="16,6"/>
-            <Setter Property="Margin" Value="6,0,0,0"/>
-            <Setter Property="Background" Value="#FFF8F9FA"/>
-            <Setter Property="Foreground" Value="#FF212121"/>
-            <Setter Property="BorderBrush" Value="#FFDDDDDD"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2E86AB"/>
-                                <Setter Property="Foreground" Value="White"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="SecondaryButton" TargetType="Button">
-            <Setter Property="Padding" Value="16,6"/>
-            <Setter Property="Margin" Value="6,0,0,0"/>
-            <Setter Property="Background" Value="#FFF8F9FA"/>
-            <Setter Property="Foreground" Value="#FF212121"/>
-            <Setter Property="BorderBrush" Value="#FFDDDDDD"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2E86AB"/>
-                                <Setter Property="Foreground" Value="White"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <!-- Truncation-only - the tooltip itself lives on each column's own CellStyle
-             below (targeting DataGridCell, not this TextBlock), so it always covers the
-             cell's FULL rectangle regardless of how little text there is to display. -->
+
         <Style x:Key="TrimmedCellTextStyle" TargetType="TextBlock">
-            <Setter Property="HorizontalAlignment" Value="Left"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
         </Style>
+
         <Style x:Key="ReleaseCellStyle" TargetType="DataGridCell">
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="10,0"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="BorderBrush" Value="#FFE5E5E5"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderBrush" Value="#E5EBEF"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
         </Style>
     </Window.Resources>
-    <Grid Margin="16">
+
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="76"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="66"/>
         </Grid.RowDefinitions>
 
-        <!-- Foreground matches the DataGridColumnHeader style above (#2E86AB) exactly -
-             deliberately the same blue as the DGV header fill, not the buttons' own
-             #FF1565C0, for a consistent primary-brush-family accent across this window. -->
-        <TextBlock Grid.Row="0" FontWeight="SemiBold" FontSize="14" Foreground="#2E86AB"
-                   Margin="0,0,0,10" Text="Every GLSense version ever adopted on this machine"/>
-
-        <!-- Column header tooltips: name + short description of what that column shows.
-             Cell tooltips: each column's CellStyle shows that cell's own value, or no
-             tooltip at all when the cell is empty - deliberately NOT left as an unset
-             ToolTip on the inner TextBlock, since WPF's tooltip lookup then walks up the
-             visual tree and would show THIS DataGrid's own ToolTip below instead
-             (ToolTipService.IsEnabled="False" on the DataGridCell - which always fills the
-             whole cell rectangle regardless of the cell's own content - stops that lookup
-             outright, rather than just leaving it unset). -->
-        <DataGrid x:Name="GridReleases" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True"
-                  SelectionMode="Single" SelectionUnit="FullRow" CanUserAddRows="False"
-                  HeadersVisibility="Column"
-                  GridLinesVisibility="Horizontal"
-                  HorizontalGridLinesBrush="#FFE5E5E5"
-                  VerticalGridLinesBrush="#FFE5E5E5"
-                  Background="White" RowBackground="White" AlternatingRowBackground="White"
-                  BorderBrush="#FFDDDDDD" BorderThickness="1"
-                  SelectionChanged="GridReleases_SelectionChanged"
-                  ToolTip="Every GLSense release this machine has ever adopted. The highlighted row is the one currently loaded into this Excel session.">
-            <DataGrid.RowStyle>
-                <Style TargetType="DataGridRow">
-                    <Setter Property="MinHeight" Value="24"/>
-                    <Setter Property="Padding" Value="0,1"/>
-                    <Setter Property="Foreground" Value="#FF212121"/>
-                    <Setter Property="Background" Value="White"/>
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
-                            <Setter Property="Background" Value="#FFE3F2FD"/>
-                            <Setter Property="FontWeight" Value="SemiBold"/>
-                            <Setter Property="MinHeight" Value="32"/>
-                        </DataTrigger>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter Property="Background" Value="#82B6CD"/>
-                            <Setter Property="Foreground" Value="White"/>
-                        </Trigger>
-                    </Style.Triggers>
-                </Style>
-            </DataGrid.RowStyle>
-            <DataGrid.Columns>
-                <DataGridTemplateColumn Header="Loaded" Width="94">
-                    <DataGridTemplateColumn.HeaderStyle>
-                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                            <Setter Property="ToolTip" Value="Loaded - identifies the release currently running in this Excel session's GLSense AppDomain."/>
-                        </Style>
-                    </DataGridTemplateColumn.HeaderStyle>
-                    <DataGridTemplateColumn.CellStyle>
-                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
-                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-                            <Setter Property="VerticalContentAlignment" Value="Center"/>
-                            <Setter Property="BorderBrush" Value="#FFE5E5E5"/>
-                            <Setter Property="BorderThickness" Value="0,0,1,0"/>
-                            <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
-                                    <Setter Property="ToolTip" Value="Running - this release is currently loaded into the active GLSense AppDomain in this Excel session."/>
-                                    <Setter Property="ToolTipService.IsEnabled" Value="True"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGridTemplateColumn.CellStyle>
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Border HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    Padding="6,4"
-                                    Background="#FFE3F2FD"
-                                    BorderBrush="#FF9BC9DC"
-                                    BorderThickness="1"
-                                    CornerRadius="10">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <StackPanel Orientation="Horizontal">
-                                    <Viewbox Width="12" Height="12" Margin="0,0,4,0">
-                                        <Canvas Width="16" Height="16">
-                                            <Ellipse Width="16" Height="16" Fill="#FF2E86AB"/>
-                                            <Path Data="M 4,8 L 7,11 L 12,5"
-                                                  Stroke="White"
-                                                  StrokeThickness="1.7"
-                                                  StrokeStartLineCap="Round"
-                                                  StrokeEndLineCap="Round"
-                                                  StrokeLineJoin="Round"/>
-                                        </Canvas>
-                                    </Viewbox>
-                                    <TextBlock Text="Running"
-                                               Foreground="#FF236B89"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Margin="0,-2,0,0"
-                                               VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="90" ElementStyle="{StaticResource TrimmedCellTextStyle}">
-                    <DataGridTextColumn.HeaderStyle>
-                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                            <Setter Property="ToolTip" Value="Version - the release's version number (e.g. 11.1.2)."/>
-                        </Style>
-                    </DataGridTextColumn.HeaderStyle>
-                    <DataGridTextColumn.CellStyle>
-                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
-                            <Setter Property="ToolTip" Value="{Binding Version}"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Version}" Value="{x:Null}">
-                                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Version}" Value="">
-                                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGridTextColumn.CellStyle>
-                </DataGridTextColumn>
-                <DataGridTextColumn Header="Release Date" Binding="{Binding ReleaseDate}" Width="160" ElementStyle="{StaticResource TrimmedCellTextStyle}">
-                    <DataGridTextColumn.HeaderStyle>
-                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                            <Setter Property="ToolTip" Value="Release Date - when this release was built."/>
-                        </Style>
-                    </DataGridTextColumn.HeaderStyle>
-                    <DataGridTextColumn.CellStyle>
-                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
-                            <Setter Property="ToolTip" Value="{Binding ReleaseDate}"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding ReleaseDate}" Value="{x:Null}">
-                                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding ReleaseDate}" Value="">
-                                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGridTextColumn.CellStyle>
-                </DataGridTextColumn>
-                <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="80" ElementStyle="{StaticResource TrimmedCellTextStyle}">
-                    <DataGridTextColumn.HeaderStyle>
-                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                            <Setter Property="ToolTip" Value="Source - how this release was obtained (e.g. Online or Offline)."/>
-                        </Style>
-                    </DataGridTextColumn.HeaderStyle>
-                    <DataGridTextColumn.CellStyle>
-                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
-                            <Setter Property="ToolTip" Value="{Binding Source}"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Source}" Value="{x:Null}">
-                                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Source}" Value="">
-                                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGridTextColumn.CellStyle>
-                </DataGridTextColumn>
-                <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="*" ElementStyle="{StaticResource TrimmedCellTextStyle}">
-                    <DataGridTextColumn.HeaderStyle>
-                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                            <Setter Property="ToolTip" Value="Notes - the note recorded for this release (see ReleaseNotes.txt)."/>
-                        </Style>
-                    </DataGridTextColumn.HeaderStyle>
-                    <DataGridTextColumn.CellStyle>
-                        <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
-                            <!-- Plain string ToolTip="{Binding Notes}" would render as one
-                                 unbounded-width, non-wrapping line (WPF's default ToolTip
-                                 content template doesn't wrap plain strings) - Notes can be
-                                 an arbitrarily long user-typed note (see ReleaseNotes.txt),
-                                 unlike every other column's short/fixed-format values, so this
-                                 one needs an explicit wrapping TextBlock instead of a bare
-                                 string Setter. Still picks up this window's own unkeyed
-                                 Style TargetType="ToolTip" (background/border/etc.)
-                                 automatically, same as every plain-string tooltip elsewhere. -->
-                            <Setter Property="ToolTip">
-                                <Setter.Value>
-                                    <ToolTip>
-                                        <TextBlock Text="{Binding Notes}" TextWrapping="Wrap" MaxWidth="300"/>
-                                    </ToolTip>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Notes}" Value="{x:Null}">
-                                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Notes}" Value="">
-                                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGridTextColumn.CellStyle>
-                </DataGridTextColumn>
-            </DataGrid.Columns>
-        </DataGrid>
-
-        <Border Grid.Row="2" Background="#FFFBFCFD" BorderBrush="#FFDDDDDD" BorderThickness="1" Padding="10,9" Margin="0,10,0,0"
-                ToolTip="Status of your current selection - explains what will happen if you click Load This Version.">
-            <DockPanel LastChildFill="True">
-                <Border Width="22" Height="22" Margin="0,0,9,0" Background="#2E86AB" CornerRadius="11"
-                        DockPanel.Dock="Left" ToolTip="Select a version from the list to enable loading.">
-                    <TextBlock Text="i" Foreground="White" FontSize="14" FontWeight="Bold"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-                <TextBlock x:Name="TxtStatus" Foreground="#FF53636D"
-                           VerticalAlignment="Center" TextWrapping="Wrap">
-                    <Run Text="Select a version, then click "/>
-                    <Run Text="Load or Remove" FontWeight="SemiBold"/>
-                    <Run Text="."/>
-                </TextBlock>
-            </DockPanel>
-        </Border>
-
-        <Grid Grid.Row="3" Margin="0,16,0,0">
+        <Border Grid.Row="0"
+                Background="White"
+                BorderBrush="#DBE4EA"
+                BorderThickness="0,0,0,1">
+            <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock x:Name="TxtLoadedStatus" Grid.Column="0" VerticalAlignment="Center"
-                       FontSize="11" Foreground="#FF555555" TextWrapping="Wrap"
-                       ToolTip="The GLSense version actually running right now, for reference."/>
-
-            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="BtnLoad" Content="Load" Style="{StaticResource ActionButton}" IsEnabled="False" Click="BtnLoad_Click"
-                        ToolTip="Reload GLSense using the selected version, without restarting Excel - even an older one; there is no version gate in this window. Any drilldown/refresh/snapshot in progress will be interrupted."/>
-                <Button x:Name="BtnRemove" Content="Remove" Style="{StaticResource SecondaryButton}" IsEnabled="False" Click="BtnRemove_Click"
-                        ToolTip="Permanently remove the selected non-active version from this machine, including its extracted files and history entry. The currently loaded version cannot be removed."/>
-                <Button x:Name="BtnCancel" Content="Close" Style="{StaticResource SecondaryButton}" Click="BtnCancel_Click"
-                        ToolTip="Close this window without changing what's loaded."/>
+            <StackPanel Orientation="Horizontal" Margin="24,0" VerticalAlignment="Center">
+                <Border Width="32" Height="32" Background="#2E86AB" CornerRadius="16" Margin="0,0,12,0">
+                    <Path Data="M7,16 L13,22 L25,9"
+                              Stroke="White"
+                              StrokeThickness="2.5"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              StrokeLineJoin="Round"/>
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="GLSense Version History"
+                               FontSize="17"
+                               FontWeight="SemiBold"
+                               Foreground="#1F2D38"/>
+                    <TextBlock Text="Versions adopted on this machine."
+                               FontSize="12"
+                               Foreground="#6B7883"
+                               Margin="0,2,0,0"/>
+                </StackPanel>
             </StackPanel>
+
+            <TextBlock Grid.Column="1"
+                       Text="Version catalog"
+                       FontSize="11"
+                       Foreground="#60727D"
+                       Margin="0,0,20,0"
+                       VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="20,18,20,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="#F4F8FB"
+                    BorderBrush="#D9E8EF"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="13,10"
+                    Margin="0,0,0,14">
+                <DockPanel LastChildFill="True">
+                    <Border Width="24" Height="24" Background="#2E86AB" CornerRadius="12" DockPanel.Dock="Left" Margin="0,0,9,0">
+                        <TextBlock Text="i"
+                                   FontWeight="Bold"
+                                   FontSize="14"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock x:Name="TxtStatus"
+                               Foreground="#536772"
+                               FontSize="12.5"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap">
+                        <Run Text="Select a version, then click "/>
+                        <Run Text="Load or Remove" FontWeight="SemiBold"/>
+                        <Run Text="."/>
+                    </TextBlock>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Row="1"
+                    Background="White"
+                    BorderBrush="#D6E0E7"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    MinHeight="210">
+                <DataGrid x:Name="GridReleases"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          SelectionMode="Single"
+                          SelectionUnit="FullRow"
+                          CanUserAddRows="False"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="None"
+                          Background="Transparent"
+                          RowBackground="White"
+                          AlternatingRowBackground="#FBFCFD"
+                          BorderThickness="0"
+                          SelectionChanged="GridReleases_SelectionChanged"
+                          ToolTip="Every GLSense version adopted on this machine."
+                          VerticalScrollBarVisibility="Auto">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Setter Property="MinHeight" Value="38"/>
+                            <Setter Property="Foreground" Value="#263942"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
+                                    <Setter Property="Background" Value="#EAF5FA"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="STATUS" Width="97" MinWidth="97">
+                            <DataGridTemplateColumn.HeaderStyle>
+                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                    <Setter Property="ToolTip" Value="Status - identifies the version currently running in this Excel session."/>
+                                </Style>
+                            </DataGridTemplateColumn.HeaderStyle>
+                            <DataGridTemplateColumn.CellStyle>
+                                <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
+                                    <Setter Property="Padding" Value="3,0"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
+                                            <Setter Property="ToolTip" Value="Running in the active GLSense AppDomain."/>
+                                            <Setter Property="ToolTipService.IsEnabled" Value="True"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTemplateColumn.CellStyle>
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border x:Name="StatusPill"
+                                            Width="86"
+                                            Height="24"
+                                            Background="#EAF5FA"
+                                            BorderBrush="#8FC3D9"
+                                            BorderThickness="1"
+                                            CornerRadius="12"
+                                            HorizontalAlignment="Center">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Grid HorizontalAlignment="Center">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse Width="6"
+                                                     Height="6"
+                                                     Fill="#2E86AB"
+                                                     Margin="0,0,5,0"
+                                                     VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="RUNNING"
+                                                       FontSize="9"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#236B89"
+                                                       VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTextColumn Header="VERSION" Binding="{Binding Version}" Width="90" MinWidth="90" ElementStyle="{StaticResource TrimmedCellTextStyle}">
+                            <DataGridTextColumn.HeaderStyle>
+                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                    <Setter Property="ToolTip" Value="Version - the version number."/>
+                                </Style>
+                            </DataGridTextColumn.HeaderStyle>
+                            <DataGridTextColumn.CellStyle>
+                                <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
+                                    <Setter Property="ToolTip" Value="{Binding Version}"/>
+                                </Style>
+                            </DataGridTextColumn.CellStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDate}" Width="160" MinWidth="160" ElementStyle="{StaticResource TrimmedCellTextStyle}">
+                            <DataGridTextColumn.HeaderStyle>
+                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                    <Setter Property="ToolTip" Value="Version Date - when this version was built."/>
+                                </Style>
+                            </DataGridTextColumn.HeaderStyle>
+                            <DataGridTextColumn.CellStyle>
+                                <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
+                                    <Setter Property="ToolTip" Value="{Binding ReleaseDate}"/>
+                                </Style>
+                            </DataGridTextColumn.CellStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="SOURCE" Binding="{Binding Source}" Width="80" MinWidth="80" ElementStyle="{StaticResource TrimmedCellTextStyle}">
+                            <DataGridTextColumn.HeaderStyle>
+                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                    <Setter Property="ToolTip" Value="Source - how this version was obtained."/>
+                                </Style>
+                            </DataGridTextColumn.HeaderStyle>
+                            <DataGridTextColumn.CellStyle>
+                                <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
+                                    <Setter Property="ToolTip" Value="{Binding Source}"/>
+                                </Style>
+                            </DataGridTextColumn.CellStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="NOTES" Binding="{Binding Notes}" Width="*" MinWidth="250" ElementStyle="{StaticResource TrimmedCellTextStyle}">
+                            <DataGridTextColumn.HeaderStyle>
+                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                    <Setter Property="ToolTip" Value="Notes - the recorded note for this version."/>
+                                </Style>
+                            </DataGridTextColumn.HeaderStyle>
+                            <DataGridTextColumn.CellStyle>
+                                <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
+                                    <Setter Property="ToolTip">
+                                        <Setter.Value>
+                                            <ToolTip>
+                                                <TextBlock Text="{Binding Notes}" TextWrapping="Wrap" MaxWidth="320"/>
+                                            </ToolTip>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </DataGridTextColumn.CellStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+
+            <DockPanel Grid.Row="2"
+                       Margin="4,9,4,0"
+                       LastChildFill="True"
+                       ToolTip="The GLSense version currently running in this Excel session.">
+                <Border Width="18"
+                        Height="18"
+                        Background="#2E86AB"
+                        CornerRadius="9"
+                        DockPanel.Dock="Left"
+                        Margin="0,0,7,0">
+                    <TextBlock Text="i"
+                               FontWeight="Bold"
+                               FontSize="11"
+                               Foreground="White"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock x:Name="TxtLoadedStatus"
+                           FontSize="11"
+                           Foreground="#6B7883"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"/>
+            </DockPanel>
         </Grid>
+
+        <Border Grid.Row="2" Background="#F7F9FB" BorderBrush="#DBE4EA" BorderThickness="0,1,0,0" Padding="20,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Loading a version safely restarts the GLSense addin without restarting Excel."
+                           FontSize="11.5"
+                           Foreground="#6B7883"
+                           VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="BtnLoad"
+                            Content="Load"
+                            Style="{StaticResource BrowserButton}"
+                            IsEnabled="False"
+                            Click="BtnLoad_Click"
+                            ToolTip="Load the selected version without restarting Excel. Older versions can be loaded intentionally."/>
+                    <Button x:Name="BtnRemove"
+                            Content="Remove"
+                            Style="{StaticResource BrowserButton}"
+                            IsEnabled="False"
+                            Click="BtnRemove_Click"
+                            ToolTip="Permanently remove the selected non-active version from this machine."/>
+                    <Button x:Name="BtnCancel"
+                            Content="Close"
+                            Style="{StaticResource BrowserButton}"
+                            Click="BtnCancel_Click"
+                            ToolTip="Close this window without changing the loaded version."/>
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

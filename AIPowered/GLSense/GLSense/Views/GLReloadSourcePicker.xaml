@@ -3,21 +3,18 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Reload GLSense Add-in"
         Icon="/GLSense;component/Resources/OrbitGLSense.ico"
-        Width="660" Height="760"
-        MinWidth="600" MinHeight="680"
+        Width="760" Height="760"
+        MinWidth="680" MinHeight="680"
         MaxWidth="900" MaxHeight="1000"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanResize"
-        Background="White">
+        Background="#EEF2F6"
+        FontFamily="Segoe UI">
     <Window.Resources>
-        <!-- Recreated from GLSense.Addin.Core\Themes\GlobalStyles.xaml's "SimpleBrowserToolTip"
-             (same colors/padding/drop-shadow) - this host project can't reference Addin.Core's
-             resources directly (separate assembly/AppDomain by design), so the look is
-             duplicated here rather than shared. Deliberately UNKEYED (no x:Key) so it applies
-             automatically to every ToolTip in this window, including the many plain
-             ToolTip="..." string attributes already below - no need to convert each one into
-             an explicit <ToolTip> element. -->
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#82B6CD"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="White"/>
+
         <Style TargetType="ToolTip">
             <Setter Property="Background" Value="#FFF9DB"/>
             <Setter Property="Foreground" Value="#3C3C3C"/>
@@ -25,40 +22,70 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="HasDropShadow" Value="True"/>
         </Style>
-        <!-- #2E86AB matches GLSense.Addin.Core\Themes\GlobalStyles.xaml's "PrimaryBrush"
-             (PrimaryColor) exactly - kept in sync with GLReleaseHistoryBrowser.xaml's own
-             title TextBlock, which uses the same color for the same reason (this host
-             project can't reference Addin.Core's resources directly). -->
-        <Style x:Key="SectionHeader" TargetType="TextBlock">
+
+        <Style x:Key="BrowserButton" TargetType="Button">
+            <Setter Property="Padding" Value="16,7"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#263942"/>
+            <Setter Property="BorderBrush" Value="#CBD8DF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Foreground" Value="#2E86AB"/>
-            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#2E86AB"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#2E86AB"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#1B6B93"/>
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1B6B93"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.48"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
-        <!-- Custom-drawn (ring + dot) rather than relying on WPF's default RadioButton
-             chrome, whose checked-indicator color follows the Windows accent color, not
-             this app's own primary brush - same reasoning as BlueCircleExpanderStyle's own
-             hand-drawn Ellipse/Path indicator in GLBalanceConfigurator.xaml. Mirrors Addin.
-             Core's own "ModernRadioButton" typography (FontSize 13, Cursor Hand) - that
-             style doesn't touch the dot's color either, so this isn't a divergence from it,
-             just adding the color layer it was never given. -->
+
         <Style x:Key="ModernRadioButton" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#FF212121"/>
+            <Setter Property="Foreground" Value="#263942"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Padding" Value="6,0,0,0"/>
+            <Setter Property="Padding" Value="7,0,0,0"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <Grid Width="16" Height="16" VerticalAlignment="Center">
                                 <Ellipse Stroke="#2E86AB" StrokeThickness="1.5" Fill="White"/>
-                                <Ellipse x:Name="Dot" Width="8" Height="8" Fill="#2E86AB"
-                                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                                <Ellipse x:Name="Dot"
+                                         Width="8"
+                                         Height="8"
+                                         Fill="#2E86AB"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
                                          Visibility="Collapsed"/>
                             </Grid>
                             <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
@@ -75,205 +102,349 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- ActionButton/SecondaryButton are kept byte-for-byte identical to the copies in
-             GLReleaseHistoryBrowser.xaml on purpose, so the two dialogs' buttons always look
-             and behave the same - see that file's own copy of this comment. Explicit
-             ControlTemplates are used (rather than just Background/Foreground Setters) so
-             hover/disabled states are deliberate instead of relying on the default WPF Button
-             chrome, which layers its own theme overlay on top of a custom Background and can
-             wash the color out on hover (see CLAUDE.md section 4, "Button hover chrome"). -->
-        <!-- ActionButton (Reload) shares SecondaryButton's (Cancel) exact rest-state
-             Background/Foreground/BorderBrush/BorderThickness, so the two buttons look
-             identical until hovered - only the hover state differentiates them, both
-             converging on the same #2E86AB primary brush + white text. Kept in sync with
-             GLReleaseHistoryBrowser.xaml's own copies of these two styles. -->
-        <Style x:Key="ActionButton" TargetType="Button">
-            <Setter Property="Padding" Value="16,6"/>
-            <Setter Property="Margin" Value="6,0,0,0"/>
-            <Setter Property="Background" Value="#FFF8F9FA"/>
-            <Setter Property="Foreground" Value="#FF212121"/>
-            <Setter Property="BorderBrush" Value="#FFDDDDDD"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2E86AB"/>
-                                <Setter Property="Foreground" Value="White"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#2E86AB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="BorderBrush" Value="#1B6B93"/>
+            <Setter Property="BorderThickness" Value="0,0,1,0"/>
         </Style>
-        <Style x:Key="SecondaryButton" TargetType="Button">
-            <Setter Property="Padding" Value="16,6"/>
-            <Setter Property="Margin" Value="6,0,0,0"/>
-            <Setter Property="Background" Value="#FFF8F9FA"/>
-            <Setter Property="Foreground" Value="#FF212121"/>
-            <Setter Property="BorderBrush" Value="#FFDDDDDD"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2E86AB"/>
-                                <Setter Property="Foreground" Value="White"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+
+        <Style x:Key="PickerCellStyle" TargetType="DataGridCell">
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="BorderBrush" Value="#E5EBEF"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        </Style>
+
+        <Style x:Key="TrimmedCellTextStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+
+        <Style x:Key="DetailLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#6B7883"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Margin" Value="0,2,8,2"/>
         </Style>
     </Window.Resources>
-    <Grid Margin="16">
+
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="76"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="66"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Style="{StaticResource SectionHeader}" Text="Reload GLSense"/>
-        <TextBlock Grid.Row="1" TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#FF555555"
-                   Text="This reloads GLSense from disk without restarting Excel. Any drilldown/refresh/snapshot currently in progress will be interrupted."/>
-
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
-            <RadioButton x:Name="RbOnline" Style="{StaticResource ModernRadioButton}" Content="Online" GroupName="Mode" Margin="0,0,20,0" Checked="Mode_Checked"
-                         ToolTip="Check the currently logged-in GLSense server for every release not yet on this machine. Only available after a successful login this Excel session."/>
-            <RadioButton x:Name="RbOffline" Style="{StaticResource ModernRadioButton}" Content="Offline" GroupName="Mode" Checked="Mode_Checked"
-                         ToolTip="Load a GLSense release from a manifest.json + zip pair already sitting in a local folder (e.g. one you built or were given)."/>
-        </StackPanel>
-
-        <Grid Grid.Row="3">
-            <StackPanel x:Name="OnlinePanel" Visibility="Collapsed">
-                <Button x:Name="BtnCheckOnline" Style="{StaticResource SecondaryButton}" Content="Check for Updates" HorizontalAlignment="Left"
-                        Padding="10,4" Click="BtnCheckOnline_Click"
-                        ToolTip="Query the logged-in GLSense server for every release not yet on this machine."/>
-
-                <DataGrid x:Name="GridOnlineReleases" AutoGenerateColumns="False" IsReadOnly="True"
-                          SelectionMode="Single" SelectionUnit="FullRow" CanUserAddRows="False"
-                          Margin="0,8,0,0" MaxHeight="160"
-                          Background="White" RowBackground="White" AlternatingRowBackground="White"
-                          BorderBrush="#FFDDDDDD" BorderThickness="1"
-                          SelectionChanged="GridOnlineReleases_SelectionChanged"
-                          ToolTip="Every release the server knows about. Rows already on this machine (grey) or currently loaded (blue) can't be re-selected here - use Release History for those.">
-                    <DataGrid.RowStyle>
-                        <Style TargetType="DataGridRow">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
-                                    <Setter Property="Background" Value="#FFE3F2FD"/>
-                                    <Setter Property="FontWeight" Value="SemiBold"/>
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding IsAlreadyDownloaded}" Value="True">
-                                    <Setter Property="Background" Value="#FFF4F4F4"/>
-                                    <Setter Property="Foreground" Value="#FF8A8A8A"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGrid.RowStyle>
-                    <DataGrid.Columns>
-                        <DataGridTemplateColumn Header="" Width="34">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              IsEnabled="{Binding IsSelectable}" HorizontalAlignment="Center"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="70"/>
-                        <DataGridTextColumn Header="Released" Binding="{Binding ReleaseDate}" Width="140"/>
-                        <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="*"/>
-                        <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="110"/>
-                    </DataGrid.Columns>
-                </DataGrid>
-
-                <Border x:Name="DetailsPanel" Background="White" BorderBrush="#FFDDDDDD" BorderThickness="1" Padding="10" Margin="0,8,0,0" Visibility="Collapsed">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="100"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Version:" Foreground="#FF777777"/>
-                        <TextBlock x:Name="TxtDetailVersion" Grid.Row="0" Grid.Column="1"/>
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Released:" Foreground="#FF777777"/>
-                        <TextBlock x:Name="TxtDetailReleased" Grid.Row="1" Grid.Column="1"/>
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Status:" Foreground="#FF777777"/>
-                        <TextBlock x:Name="TxtDetailStatus" Grid.Row="2" Grid.Column="1"/>
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Notes:" Foreground="#FF777777"/>
-                        <TextBlock x:Name="TxtDetailNotes" Grid.Row="3" Grid.Column="1" TextWrapping="Wrap"/>
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Mandatory:" Foreground="#FF777777"/>
-                        <TextBlock x:Name="TxtDetailMandatory" Grid.Row="4" Grid.Column="1"/>
-                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Folder Name:" Foreground="#FF777777"/>
-                        <TextBlock x:Name="TxtDetailFolderName" Grid.Row="5" Grid.Column="1" TextWrapping="Wrap"/>
-                        <TextBlock Grid.Row="6" Grid.Column="0" Text="File Name:" Foreground="#FF777777"/>
-                        <TextBlock x:Name="TxtDetailFileName" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap"/>
-                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Checksum:" Foreground="#FF777777"/>
-                        <TextBlock x:Name="TxtDetailChecksum" Grid.Row="7" Grid.Column="1" TextWrapping="Wrap"/>
-                    </Grid>
-                </Border>
-            </StackPanel>
-
-            <StackPanel x:Name="OfflinePanel" Visibility="Collapsed">
-                <TextBlock Text="Folder:" Margin="0,0,0,4"/>
-                <DockPanel>
-                    <Button x:Name="BtnBrowse" Style="{StaticResource SecondaryButton}" Content="Browse..." DockPanel.Dock="Right" Padding="10,4" Click="BtnBrowse_Click"
-                            ToolTip="Choose a different folder to scan for a manifest.json + zip pair."/>
-                    <TextBox x:Name="TxtFolder" IsReadOnly="True" Margin="0,0,8,0" Padding="4"
-                             ToolTip="Full path to the folder currently being scanned for a manifest.json + zip pair. Read-only - use Browse... to change it."/>
-                </DockPanel>
-            </StackPanel>
-        </Grid>
-
-        <Border Grid.Row="4" Background="White" BorderBrush="#FFDDDDDD" BorderThickness="1" Padding="10" Margin="0,12,0,0"
-                ToolTip="Live progress while a check/validation is running, and the full step-by-step result once it finishes.">
-            <!-- DockPanel (not StackPanel) so TxtStatus actually stretches to fill this
-                 Border's available height (Row 4 is the "*" row) - a StackPanel never
-                 grows a child past its own DesiredSize even when the StackPanel itself is
-                 stretched, so the log box would otherwise sit at MinHeight regardless of
-                 how much room Row 4 actually has. -->
-            <DockPanel LastChildFill="True">
-                <ProgressBar x:Name="BusyProgress" DockPanel.Dock="Top" Height="4" Margin="0,0,0,8" IsIndeterminate="True" Visibility="Collapsed"
-                             ToolTip="A check or validation is currently running..."/>
-                <TextBox x:Name="TxtStatus" IsReadOnly="True" BorderThickness="0" Background="Transparent" Padding="0"
-                         TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="60"
-                         Text="Select Online or Offline to begin."/>
-            </DockPanel>
+        <Border Grid.Row="0"
+                Background="White"
+                BorderBrush="#DBE4EA"
+                BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="24,0" VerticalAlignment="Center">
+                    <Border Width="32" Height="32" Background="#2E86AB" CornerRadius="16" Margin="0,0,12,0">
+                        <Path Data="M7,16 L13,22 L25,9"
+                              Stroke="White"
+                              StrokeThickness="2.5"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              StrokeLineJoin="Round"/>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Reload GLSense"
+                                   FontSize="17"
+                                   FontWeight="SemiBold"
+                                   Foreground="#1F2D38"/>
+                        <TextBlock Text="Choose a source to safely load an available version."
+                                   FontSize="12"
+                                   Foreground="#6B7883"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+                <TextBlock Grid.Column="1"
+                           Text="Version source"
+                           FontSize="11"
+                           Foreground="#60727D"
+                           Margin="0,0,20,0"
+                           VerticalAlignment="Center"/>
+            </Grid>
         </Border>
 
-        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button x:Name="BtnFetchAndReload" Content="Fetch Selected &amp; Reload" Style="{StaticResource ActionButton}" IsEnabled="False" Visibility="Collapsed" Click="BtnFetchAndReload_Click"
-                    ToolTip="Download every checked release, catalog it, then reload GLSense onto whichever release is now newest - without restarting Excel. Any drilldown/refresh/snapshot in progress will be interrupted."/>
-            <Button x:Name="BtnReload" Content="Reload" Style="{StaticResource ActionButton}" IsEnabled="False" Click="BtnReload_Click"
-                    ToolTip="Stage the validated release into the Manifest folder and reload GLSense immediately, without restarting Excel. Any drilldown/refresh/snapshot in progress will be interrupted."/>
-            <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource SecondaryButton}" Click="BtnCancel_Click"
-                    ToolTip="Close this window without reloading anything."/>
-        </StackPanel>
+        <Grid Grid.Row="1" Margin="20,18,20,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="#F4F8FB"
+                    BorderBrush="#D9E8EF"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="13,10"
+                    Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Width="24"
+                            Height="24"
+                            Background="#2E86AB"
+                            CornerRadius="12"
+                            Margin="0,0,9,0"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="i"
+                                   FontWeight="Bold"
+                                   FontSize="14"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Grid.Column="1"
+                               Text="Select a source"
+                               FontSize="12.5"
+                               FontWeight="SemiBold"
+                               Foreground="#536772"
+                               VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Margin="36,0,0,0"
+                                VerticalAlignment="Center">
+                        <RadioButton x:Name="RbOnline"
+                                     Style="{StaticResource ModernRadioButton}"
+                                     Content="Online"
+                                     GroupName="Mode"
+                                     Margin="0,0,24,0"
+                                     Checked="Mode_Checked"
+                                     ToolTip="Check the currently logged-in GLSense server for every version not yet on this machine. Only available after a successful login this Excel session."/>
+                        <RadioButton x:Name="RbOffline"
+                                     Style="{StaticResource ModernRadioButton}"
+                                     Content="Offline"
+                                     GroupName="Mode"
+                                     Checked="Mode_Checked"
+                                     ToolTip="Load a GLSense version from a manifest.json and zip pair in a local folder."/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="0,0,0,12">
+                <StackPanel x:Name="OnlinePanel" Visibility="Collapsed">
+                    <Button x:Name="BtnCheckOnline"
+                            Style="{StaticResource BrowserButton}"
+                            Content="Check for Updates"
+                            HorizontalAlignment="Left"
+                            Margin="0,0,0,8"
+                            Padding="10,5"
+                            Click="BtnCheckOnline_Click"
+                            ToolTip="Query the logged-in GLSense server for every version not yet on this machine."/>
+
+                    <Border Background="White"
+                            BorderBrush="#D6E0E7"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                        <DataGrid x:Name="GridOnlineReleases"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  SelectionMode="Single"
+                                  SelectionUnit="FullRow"
+                                  CanUserAddRows="False"
+                                  HeadersVisibility="Column"
+                                  GridLinesVisibility="None"
+                                  MaxHeight="160"
+                                  Background="Transparent"
+                                  RowBackground="White"
+                                  AlternatingRowBackground="#FBFCFD"
+                                  BorderThickness="0"
+                                  SelectionChanged="GridOnlineReleases_SelectionChanged"
+                                  ToolTip="Every version the server knows about. Versions already on this machine or currently running cannot be selected here.">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="MinHeight" Value="34"/>
+                                    <Setter Property="Foreground" Value="#263942"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
+                                            <Setter Property="Background" Value="#EAF5FA"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsAlreadyDownloaded}" Value="True">
+                                            <Setter Property="Background" Value="#F4F4F4"/>
+                                            <Setter Property="Foreground" Value="#8A8A8A"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Header="" Width="34" MinWidth="34">
+                                    <DataGridTemplateColumn.CellStyle>
+                                        <Style TargetType="DataGridCell" BasedOn="{StaticResource PickerCellStyle}">
+                                            <Setter Property="Padding" Value="0"/>
+                                        </Style>
+                                    </DataGridTemplateColumn.CellStyle>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      IsEnabled="{Binding IsSelectable}"
+                                                      HorizontalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="VERSION" Binding="{Binding Version}" Width="80" MinWidth="80" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
+                                <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDate}" Width="150" MinWidth="150" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
+                                <DataGridTextColumn Header="NOTES" Binding="{Binding Notes}" Width="*" MinWidth="180" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
+                                <DataGridTextColumn Header="STATUS" Binding="{Binding StatusText}" Width="110" MinWidth="110" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+
+                    <Border x:Name="DetailsPanel"
+                            Background="White"
+                            BorderBrush="#D6E0E7"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="12"
+                            Margin="0,8,0,0"
+                            Visibility="Collapsed">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Version:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailVersion" Grid.Row="0" Grid.Column="1" Margin="0,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Version Date:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailReleased" Grid.Row="1" Grid.Column="1" Margin="0,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Status:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailStatus" Grid.Row="2" Grid.Column="1" Margin="0,2"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Notes:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailNotes" Grid.Row="3" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Mandatory:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailMandatory" Grid.Row="4" Grid.Column="1" Margin="0,2"/>
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Folder Name:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailFolderName" Grid.Row="5" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="File Name:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailFileName" Grid.Row="6" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
+                            <TextBlock Grid.Row="7" Grid.Column="0" Text="Checksum:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailChecksum" Grid.Row="7" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <Border x:Name="OfflinePanel"
+                        Background="White"
+                        BorderBrush="#D6E0E7"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="13,12"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Local version folder"
+                                   FontSize="12.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#536772"
+                                   Margin="0,0,0,7"/>
+                        <DockPanel>
+                            <Button x:Name="BtnBrowse"
+                                    Style="{StaticResource BrowserButton}"
+                                    Content="Browse..."
+                                    DockPanel.Dock="Right"
+                                    Padding="10,5"
+                                    Margin="8,0,0,0"
+                                    Click="BtnBrowse_Click"
+                                    ToolTip="Choose a folder to scan for a manifest.json and zip pair."/>
+                            <TextBox x:Name="TxtFolder"
+                                     IsReadOnly="True"
+                                     Padding="8,5"
+                                     VerticalContentAlignment="Center"
+                                     Background="#F8FAFC"
+                                     BorderBrush="#CBD8DF"
+                                     BorderThickness="1"
+                                     ToolTip="The local folder currently being scanned. Use Browse... to select a different folder."/>
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="2"
+                    Background="White"
+                    BorderBrush="#D6E0E7"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12"
+                    ToolTip="Live progress while a check or validation is running, and the full result when it finishes.">
+                <DockPanel LastChildFill="True">
+                    <ProgressBar x:Name="BusyProgress"
+                                 DockPanel.Dock="Top"
+                                 Height="4"
+                                 Margin="0,0,0,8"
+                                 IsIndeterminate="True"
+                                 Foreground="#2E86AB"
+                                 Visibility="Collapsed"
+                                 ToolTip="A check or validation is currently running."/>
+                    <TextBox x:Name="TxtStatus"
+                             IsReadOnly="True"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Padding="0"
+                             Foreground="#536772"
+                             FontSize="11.5"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             MinHeight="60"
+                             Text="Select Online or Offline to begin."/>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2"
+                Background="#F7F9FB"
+                BorderBrush="#DBE4EA"
+                BorderThickness="0,1,0,0"
+                Padding="20,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Reloading safely restarts the GLSense addin without restarting Excel."
+                           FontSize="11.5"
+                           Foreground="#6B7883"
+                           VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="BtnFetchAndReload"
+                            Content="Fetch Selected &amp; Reload"
+                            Style="{StaticResource BrowserButton}"
+                            IsEnabled="False"
+                            Visibility="Collapsed"
+                            Click="BtnFetchAndReload_Click"
+                            ToolTip="Download every checked version, catalog it, then reload GLSense onto the newest available version without restarting Excel."/>
+                    <Button x:Name="BtnReload"
+                            Content="Reload"
+                            Style="{StaticResource BrowserButton}"
+                            IsEnabled="False"
+                            Click="BtnReload_Click"
+                            ToolTip="Stage the validated version and reload GLSense without restarting Excel."/>
+                    <Button x:Name="BtnCancel"
+                            Content="Cancel"
+                            Style="{StaticResource BrowserButton}"
+                            Click="BtnCancel_Click"
+                            ToolTip="Close this window without reloading anything."/>
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

@@ -42,6 +42,8 @@ namespace GLSense
         {
             var paths = GlobalsEx.Context.Paths;
             string activeFolderName = GlobalsEx.Context.ActiveFolderName;
+            string activeVersion = GlobalsEx.Context.Version;
+            string activeVersionDate = GlobalsEx.Context.ReleaseDate;
 
             // Reconcile first (spec section 6) so a stale entry - whose Versions\
             // folder was deleted by disk cleanup, an AppData purge, etc., with no
@@ -53,8 +55,7 @@ namespace GLSense
                 .Select(e => new ReleaseRow
                 {
                     Entry = e,
-                    IsCurrentlyLoaded = !string.IsNullOrEmpty(activeFolderName) &&
-                        string.Equals(e.FolderName, activeFolderName, System.StringComparison.OrdinalIgnoreCase)
+                    IsCurrentlyLoaded = IsActiveVersion(e, activeFolderName, activeVersion, activeVersionDate)
                 })
                 .ToList();
 
@@ -68,7 +69,7 @@ namespace GLSense
             {
                 TxtStatus.Inlines.Clear();
                 TxtStatus.Inlines.Add(new System.Windows.Documents.Run("Select a version, then click "));
-                TxtStatus.Inlines.Add(new System.Windows.Documents.Run("Load This Version")
+                TxtStatus.Inlines.Add(new System.Windows.Documents.Run("Load or Remove")
                 {
                     FontWeight = FontWeights.SemiBold
                 });
@@ -78,7 +79,7 @@ namespace GLSense
             var loadedRow = rows.FirstOrDefault(r => r.IsCurrentlyLoaded);
             if (loadedRow != null)
             {
-                TxtLoadedStatus.Text = $"Currently loaded: version {loadedRow.Version}, released on {loadedRow.ReleaseDate}.";
+                TxtLoadedStatus.Text = $"Currently loaded: version {loadedRow.Version}, version date {loadedRow.ReleaseDate}.";
                 GridReleases.SelectedItem = loadedRow;
                 GridReleases.ScrollIntoView(loadedRow);
             }
@@ -86,8 +87,32 @@ namespace GLSense
             {
                 // Not necessarily an error - e.g. the running release's folder was
                 // reconciled away, or ActiveFolderName isn't populated in this context.
-                TxtLoadedStatus.Text = $"Currently loaded: version {GlobalsEx.Context.Version} (not found in the history list).";
+                TxtLoadedStatus.Text = $"Currently loaded: version {GlobalsEx.Context.Version} (not found in the version history).";
             }
+        }
+
+        private static bool IsActiveVersion(
+            ReleaseEntry entry,
+            string activeFolderName,
+            string activeVersion,
+            string activeVersionDate)
+        {
+            if (!string.IsNullOrWhiteSpace(activeFolderName) &&
+                ValuesMatch(entry.FolderName, activeFolderName))
+            {
+                return true;
+            }
+
+            return ValuesMatch(entry.Version, activeVersion) &&
+                   ValuesMatch(entry.ReleaseDate, activeVersionDate);
+        }
+
+        private static bool ValuesMatch(string left, string right)
+        {
+            return string.Equals(
+                left?.Trim(),
+                right?.Trim(),
+                StringComparison.OrdinalIgnoreCase);
         }
 
         private void GridReleases_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -100,6 +125,17 @@ namespace GLSense
         private void BtnLoad_Click(object sender, RoutedEventArgs e)
         {
             if (!(GridReleases.SelectedItem is ReleaseRow row)) return;
+
+            if (row.IsCurrentlyLoaded)
+            {
+                MessageBox.Show(
+                    $"Version {row.Version} is already running in this Excel session.",
+                    "Version Already Running",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
             var picked = row.Entry;
 
             // Deliberately no version-gate here (unlike RibReload's Online/Offline
@@ -131,9 +167,9 @@ namespace GLSense
             }
 
             var confirmation = MessageBox.Show(
-                $"Remove version {row.Version} released on {row.ReleaseDate} from this machine?\n\n" +
+                $"Remove version {row.Version} dated {row.ReleaseDate} from this machine?\n\n" +
                 "This permanently deletes its local files and history entry. " +
-                "The release can be downloaded again later if it is still available.",
+                "The version can be downloaded again later if it is still available.",
                 "Remove Version",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
