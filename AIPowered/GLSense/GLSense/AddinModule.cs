@@ -180,6 +180,7 @@ namespace GLSense
             GlobalsEx.Context.ReleaseDate = resolved.ReleaseDate;
             GlobalsEx.Context.ActiveFolderName = resolved.FolderName;
             GlobalsEx.Context.Logger?.LogDebug($"AddinModule_OnRibbonLoaded: version={resolved.Version}, releaseDate={resolved.ReleaseDate}, folderName={resolved.FolderName}");
+            GlobalsEx.Context.Logger?.BeginReleaseSession(resolved.Version, resolved.ReleaseDate);
 
             // Load Addin.Core
 
@@ -206,7 +207,7 @@ namespace GLSense
                         location = "<dynamic>";
                     }
 
-                    GlobalsEx.Context.Logger.LogInfo(
+                    GlobalsEx.Context.Logger.LogDebug(
                         $"RibbonLoad assemblies: {assembly.GetName().Name}, version={assembly.GetName().Version}, location='{location}'");
                 }
             }
@@ -404,7 +405,10 @@ namespace GLSense
             GLReloadProgressWindow progressWindow = null;
             try
             {
-                progressWindow = new GLReloadProgressWindow("Reloading GLSense Add-in...\nPlease wait, this may take a few seconds.");
+                progressWindow = new GLReloadProgressWindow(
+                    "Preparing the GLSense reload...",
+                    GlobalsEx.Context?.Version,
+                    GlobalsEx.Context?.ReleaseDate);
                 new System.Windows.Interop.WindowInteropHelper(progressWindow).Owner = GlobalsEx.Context.ExcelHandle;
                 progressWindow.ShowAndRender();
             }
@@ -426,7 +430,11 @@ namespace GLSense
 
                 var oldAddin = GlobalsEx.Addin;
                 var loader = GlobalsEx.Loader;
+                string outgoingVersion = GlobalsEx.Context?.Version;
+                string outgoingReleaseDate = GlobalsEx.Context?.ReleaseDate;
 
+                progressWindow?.ShowStage("Closing the current GLSense session...", 1, 180);
+                GlobalsEx.Context?.Logger?.EndReleaseSession(outgoingVersion, outgoingReleaseDate);
                 try
                 {
                     oldAddin?.Shutdown();
@@ -439,6 +447,7 @@ namespace GLSense
                 GlobalsEx.Addin = null;
                 loader?.Unload(GlobalsEx.Context);
 
+                progressWindow?.ShowStage("Finding the selected GLSense version...", 2, 160);
                 ResolvedRelease resolved = resolveRelease();
                 if (resolved == null)
                 {
@@ -450,15 +459,20 @@ namespace GLSense
                 }
                 else
                 {
+                    progressWindow?.SetRelease(resolved.Version, resolved.ReleaseDate);
+                    progressWindow?.ShowStage("Preparing the selected version for loading...", 3, 180);
                     GlobalsEx.Context.Version = resolved.Version;
                     GlobalsEx.Context.ReleaseDate = resolved.ReleaseDate;
                     GlobalsEx.Context.ActiveFolderName = resolved.FolderName;
                     GlobalsEx.Context?.Logger?.LogDebug($"ReloadAddinCore: version={resolved.Version}, releaseDate={resolved.ReleaseDate}, folderName={resolved.FolderName}");
+                    GlobalsEx.Context?.Logger?.BeginReleaseSession(resolved.Version, resolved.ReleaseDate);
 
+                    progressWindow?.ShowStage("Loading the selected GLSense version...", 3, 160);
                     GlobalsEx.Addin = loader?.Load(GlobalsEx.Context);
 
                     if (GlobalsEx.Addin != null)
                     {
+                        progressWindow?.ShowStage("GLSense reload complete.", 4, 280);
                         GlobalsEx.Context?.Logger?.LogDebug("Reload complete - GlobalsEx.Addin re-pointed to a fresh instance.");
                     }
                     else

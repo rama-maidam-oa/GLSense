@@ -1,4 +1,4 @@
-﻿// GLSense.Addin.Core/AddinEntry.cs
+// GLSense.Addin.Core/AddinEntry.cs
 using GLSense.Addin.Core.Caching;
 using GLSense.Addin.Core.Common;
 using GLSense.Addin.Core.Controls;
@@ -214,7 +214,7 @@ namespace GLSense.Addin.Core
                         location = "<dynamic>";
                     }
 
-                    ServiceLocator.Logger?.LogInfo(
+                    ServiceLocator.Logger?.LogDebug(
                         $"AddinCore assemblies: {assembly.GetName().Name}, version={assembly.GetName().Version}, location='{location}'");
                 }
             }

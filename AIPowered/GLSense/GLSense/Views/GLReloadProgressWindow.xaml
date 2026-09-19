@@ -1,25 +1,196 @@
 <Window x:Class="GLSense.GLReloadProgressWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="GLSense"
+        Title="Reload GLSense Add-in"
         Icon="/GLSense;component/Resources/OrbitGLSense.ico"
-        Width="380" Height="150"
+        Width="510"
+        Height="380"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         Topmost="True"
-        Background="White">
-    <Grid Margin="20,24,20,20">
+        Background="#EEF2F6"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#FFF9DB"/>
+            <Setter Property="Foreground" Value="#3C3C3C"/>
+            <Setter Property="BorderBrush" Value="#FBB41A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="HasDropShadow" Value="True"/>
+        </Style>
+
+        <Style x:Key="StepText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Foreground" Value="#6B7883"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="76"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="48"/>
         </Grid.RowDefinitions>
 
-        <TextBlock x:Name="TxtMessage" Grid.Row="0" FontSize="13" Foreground="#FF212121"
-                   TextWrapping="Wrap" TextAlignment="Center"
-                   Text="Reloading GLSense Add-in..." Margin="0,0,0,16"/>
+        <Border Grid.Row="0"
+                Background="White"
+                BorderBrush="#DBE4EA"
+                BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" Margin="24,0" VerticalAlignment="Center">
+                <Border Width="32" Height="32" Background="#2E86AB" CornerRadius="16" Margin="0,0,12,0">
+                    <Path Data="M7,16 L13,22 L25,9"
+                          Stroke="White"
+                          StrokeThickness="2.5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round"/>
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Reloading GLSense"
+                               FontSize="17"
+                               FontWeight="SemiBold"
+                               Foreground="#1F2D38"/>
+                    <TextBlock Text="Please keep Excel open while the new version is loaded."
+                               FontSize="12"
+                               Foreground="#6B7883"
+                               Margin="0,2,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
 
-        <ProgressBar Grid.Row="1" IsIndeterminate="True" Height="6"/>
+        <Grid Grid.Row="1" Margin="24,20,24,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="#F4F8FB"
+                    BorderBrush="#D9E8EF"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="13,10">
+                <DockPanel LastChildFill="True">
+                    <Border Width="24" Height="24" Background="#2E86AB" CornerRadius="12" DockPanel.Dock="Left" Margin="0,0,9,0">
+                        <TextBlock Text="i"
+                                   FontWeight="Bold"
+                                   FontSize="14"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock x:Name="TxtMessage"
+                               FontSize="12.5"
+                               Foreground="#536772"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center"
+                               Text="Preparing to reload GLSense Add-in..."/>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Row="1"
+                    Background="White"
+                    BorderBrush="#D9E8EF"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="13,10"
+                    Margin="0,12,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="42"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="CURRENTLY RUNNING"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="#788792"/>
+                        <TextBlock x:Name="TxtCurrentVersion"
+                                   Text="Not available"
+                                   FontSize="12.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#263942"
+                                   Margin="0,2,0,0"/>
+                        <TextBlock x:Name="TxtCurrentReleaseDate"
+                                   Text="Release date not available"
+                                   FontSize="11"
+                                   Foreground="#6B7883"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+
+                    <Path Grid.Column="1"
+                          Data="M5,12 L29,12 M22,5 L29,12 L22,19"
+                          Stroke="#8CA3AF"
+                          StrokeThickness="1.5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"/>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="RELOADING TO"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="#788792"/>
+                        <TextBlock x:Name="TxtTargetVersion"
+                                   Text="Resolving..."
+                                   FontSize="12.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#263942"
+                                   Margin="0,2,0,0"/>
+                        <TextBlock x:Name="TxtTargetReleaseDate"
+                                   Text="Release date will appear after resolution"
+                                   FontSize="11"
+                                   Foreground="#6B7883"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <ProgressBar x:Name="ReloadProgress"
+                         Grid.Row="2"
+                         Height="6"
+                         Margin="0,16,0,12"
+                         Minimum="0"
+                         Maximum="4"
+                         Value="0"
+                         Background="#DCE6EB"
+                         Foreground="#2E86AB"
+                         ToolTip="Reload progress"/>
+
+            <Grid Grid.Row="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="TxtStep1" Grid.Column="0" Text="Preparing" Style="{StaticResource StepText}"/>
+                <TextBlock x:Name="TxtStep2" Grid.Column="1" Text="Closing current" Style="{StaticResource StepText}" TextAlignment="Center"/>
+                <TextBlock x:Name="TxtStep3" Grid.Column="2" Text="Finding version" Style="{StaticResource StepText}" TextAlignment="Center"/>
+                <TextBlock x:Name="TxtStep4" Grid.Column="3" Text="Loading" Style="{StaticResource StepText}" TextAlignment="Right"/>
+            </Grid>
+        </Grid>
+
+        <Border Grid.Row="2"
+                Background="White"
+                BorderBrush="#DBE4EA"
+                BorderThickness="0,1,0,0">
+            <TextBlock Text="This window closes automatically when reload is complete."
+                       Margin="24,0"
+                       FontSize="11"
+                       Foreground="#788792"
+                       VerticalAlignment="Center"/>
+        </Border>
     </Grid>
 </Window>

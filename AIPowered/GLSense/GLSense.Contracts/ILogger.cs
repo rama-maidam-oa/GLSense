@@ -1,4 +1,4 @@
-﻿// ILogger.cs in GLSense.Contracts
+// ILogger.cs in GLSense.Contracts
 using System;
 
 namespace GLSense.Contracts
@@ -12,6 +12,8 @@ namespace GLSense.Contracts
         void LogException(Exception ex, string context = "");
         void LogRawJson(string context, string rawJson);
         void FlushDebugLogs(string section = "Buffered Logs");
+        void BeginReleaseSession(string version, string releaseDate);
+        void EndReleaseSession(string version, string releaseDate);
         void LogMethodEntry([System.Runtime.CompilerServices.CallerMemberName] string methodName = "");
         void LogMethodExit([System.Runtime.CompilerServices.CallerMemberName] string methodName = "");
 

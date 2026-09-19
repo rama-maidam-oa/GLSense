@@ -18,6 +18,8 @@
 using System;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace GLSense
@@ -26,10 +28,11 @@ namespace GLSense
     {
         private bool _allowClose;
 
-        public GLReloadProgressWindow(string message)
+        public GLReloadProgressWindow(string message, string currentVersion, string currentReleaseDate)
         {
             InitializeComponent();
-            if (!string.IsNullOrWhiteSpace(message)) TxtMessage.Text = message;
+            SetStatus(message, 0);
+            SetCurrentRelease(currentVersion, currentReleaseDate);
 
             SourceInitialized += (s, e) => WindowChromeHelper.RemoveMinimizeMaximizeButtons(this);
             Closing += GLReloadProgressWindow_Closing;
@@ -57,10 +60,102 @@ namespace GLSense
             Dispatcher.Invoke(DispatcherPriority.Background, new Action(() => { }));
         }
 
+        public void SetStatus(string message, int completedSteps)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => SetStatus(message, completedSteps));
+                return;
+            }
+
+            TxtMessage.Text = string.IsNullOrWhiteSpace(message)
+                ? "Reloading GLSense Add-in..."
+                : message;
+
+            int clampedSteps = Math.Max(0, Math.Min(4, completedSteps));
+            ReloadProgress.Value = clampedSteps;
+
+            SetStepState(TxtStep1, clampedSteps >= 1);
+            SetStepState(TxtStep2, clampedSteps >= 2);
+            SetStepState(TxtStep3, clampedSteps >= 3);
+            SetStepState(TxtStep4, clampedSteps >= 4);
+
+            if (IsVisible)
+            {
+                Dispatcher.Invoke(DispatcherPriority.Render, new Action(() => { }));
+            }
+        }
+
+        public void ShowStage(string message, int completedSteps, int minimumDisplayMilliseconds)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => ShowStage(message, completedSteps, minimumDisplayMilliseconds));
+                return;
+            }
+
+            SetStatus(message, completedSteps);
+            if (!IsVisible || minimumDisplayMilliseconds <= 0) return;
+
+            var frame = new DispatcherFrame();
+            var timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(minimumDisplayMilliseconds)
+            };
+
+            timer.Tick += (sender, args) =>
+            {
+                timer.Stop();
+                frame.Continue = false;
+            };
+            timer.Start();
+            Dispatcher.PushFrame(frame);
+        }
+
+        public void SetRelease(string version, string releaseDate)
+        {
+            SetReleaseDetails(TxtTargetVersion, TxtTargetReleaseDate, version, releaseDate);
+        }
+
+        private void SetCurrentRelease(string version, string releaseDate)
+        {
+            SetReleaseDetails(TxtCurrentVersion, TxtCurrentReleaseDate, version, releaseDate);
+        }
+
+        private void SetReleaseDetails(TextBlock versionText, TextBlock releaseDateText, string version, string releaseDate)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => SetReleaseDetails(versionText, releaseDateText, version, releaseDate));
+                return;
+            }
+
+            versionText.Text = string.IsNullOrWhiteSpace(version) ? "Not available" : version;
+            releaseDateText.Text = FormatReleaseDate(releaseDate);
+        }
+
         public void AllowCloseAndClose()
         {
             _allowClose = true;
             Close();
+        }
+
+        private static void SetStepState(TextBlock step, bool completed)
+        {
+            step.Foreground = completed
+                ? new SolidColorBrush(Color.FromRgb(46, 134, 171))
+                : new SolidColorBrush(Color.FromRgb(107, 120, 131));
+            step.FontWeight = completed ? FontWeights.SemiBold : FontWeights.Normal;
+        }
+
+        private static string FormatReleaseDate(string releaseDate)
+        {
+            if (DateTime.TryParse(releaseDate, out DateTime parsedReleaseDate))
+            {
+                return parsedReleaseDate.ToString("dd MMM yyyy, hh:mm tt");
+            }
+
+            return string.IsNullOrWhiteSpace(releaseDate) ? "Not available" : releaseDate;
         }
     }
 }

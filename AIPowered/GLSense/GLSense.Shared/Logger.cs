@@ -165,15 +165,13 @@ namespace GLSense.Shared
 
         private string BuildLogHeader()
         {
-            string defaultVersion = PathProvider.Instance.LatestVersion;
-            string defaultCommitDate = PathProvider.Instance.LatestReleaseDate;
             var sb = new StringBuilder();
 
             string header = $"Orbit GLSense Logs As On {DateTime.Now:dddd, dd MMMM yyyy}. Time Zone: {TimeZoneInfo.Local.DisplayName}";
             sb.AppendLine(header);
             sb.AppendLine(new string('-', header.Length));
 
-            AppendEnvironmentSnapshot(sb, defaultVersion, defaultCommitDate);
+            AppendEnvironmentSnapshot(sb);
 
             return sb.ToString();
         }
@@ -196,7 +194,7 @@ namespace GLSense.Shared
         // static Excel.Application cast) since GLSense.Shared deliberately has no reference
         // to the Excel interop assembly (ExcelApp is typed `object` on IGLSenseContext for
         // exactly this reason).
-        private void AppendEnvironmentSnapshot(StringBuilder sb, string version, string releaseDate)
+        private void AppendEnvironmentSnapshot(StringBuilder sb)
         {
             string excelVersion = "unknown";
             try
@@ -228,7 +226,6 @@ namespace GLSense.Shared
             }
 
             sb.AppendLine("===== Environment Snapshot =====");
-            sb.AppendLine($"GLSense version: {version} (released {releaseDate})");
             sb.AppendLine($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
             sb.AppendLine($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
             sb.AppendLine($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
@@ -236,6 +233,38 @@ namespace GLSense.Shared
             sb.AppendLine($"Culture: {CultureInfo.CurrentCulture.Name} (UI: {CultureInfo.CurrentUICulture.Name})");
             sb.AppendLine($"Machine: {Environment.MachineName}, User: {Environment.UserName}");
             sb.AppendLine("=================================");
+        }
+
+        /// <summary>
+        /// Starts a distinct release section within the current daily log file. Environment
+        /// details remain in the file header because they describe the Excel process and do
+        /// not change when Addin.Core is hot-reloaded.
+        /// </summary>
+        public void BeginReleaseSession(string version, string releaseDate)
+        {
+            WriteImmediate($"===== Start of GLSense version {FormatRelease(version, releaseDate)} logs =====");
+        }
+
+        /// <summary>
+        /// Closes the outgoing release section before the host unloads its Addin.Core
+        /// AppDomain. Buffered debug output is flushed first so it remains attributed to
+        /// the release that produced it.
+        /// </summary>
+        public void EndReleaseSession(string version, string releaseDate)
+        {
+            FlushDebugLogs("release session ending");
+
+            string message =
+                $"===== End of GLSense version {FormatRelease(version, releaseDate)} logs =====" +
+                Environment.NewLine;
+            WriteImmediate(message);
+        }
+
+        private static string FormatRelease(string version, string releaseDate)
+        {
+            string displayedVersion = string.IsNullOrWhiteSpace(version) ? "unknown" : version;
+            string displayedReleaseDate = string.IsNullOrWhiteSpace(releaseDate) ? "unknown release date" : releaseDate;
+            return $"{displayedVersion} (released {displayedReleaseDate})";
         }
 
         private static void EnsureSafetyNetTimerStarted()
