@@ -839,3 +839,178 @@ there.**
     class at all: spins up its own throwaway `Excel.Application` instance, always
     `Quit()`/released in `finally`, never touches the shared `AppState.Instance.ExcelApp`.
   Read-only audit - no code changed as a result (nothing else to fix).
+
+## `AddinModule.cs` (`RowProcessor`/`HideRowProcessor`/`UnhideRowProcessor`)
+
+- **"Hide 0's" / "Unhide Rows" silently only ever affected the first matching cell in a
+  large selection**: reported directly against a real workbook - selecting `E6:E393` (a
+  sheet with ~387 `GLSense_GetBalance` formula cells, several evaluating to 0) and
+  clicking "Hide 0's" did not hide the zero-balance rows across that selection. Diagnosed
+  by extracting the actual `.xlsx` and reading the sheet's raw XML directly, which
+  confirmed the formulas/cached values were exactly what the feature is supposed to act
+  on - pointing the investigation at the code path instead of the data.
+  Root cause: `CommonFunctions.GetBalanceTotalRange` builds its result by unioning
+  matching formula cells **one at a time in a loop** (`totalRange = totalRange == null ?
+  cell : app.Union(totalRange, cell);`). `Application.Union` never coalesces cells into a
+  single contiguous block - even physically adjacent single-cell unions remain separate
+  `Areas`. Unioning ~387 individual cells this way produces a `Range` with ~387 `Areas`,
+  even though the source selection is one unbroken column. `HideRowProcessor`/
+  `UnhideRowProcessor`'s `GetFormulaAndValueArraysAsync` then did a **bulk read** -
+  `selection.Formula`/`selection.Value2` - on that multi-Area range: a well-known Excel
+  COM gotcha where `.Formula`/`.Value2` on a multi-Area `Range` silently returns only the
+  **first Area's** data, no error. So the old array-based `FindHideRows` only ever
+  evaluated one single cell - whichever formula cell happened to be unioned first - not
+  the hundreds of rows actually selected. Every other consumer of `GetBalanceTotalRange`
+  (`DD_BL.cs`'s `Balance_Drilldown`, etc.) avoids this because they iterate `.Cells` one
+  at a time instead of doing a bulk `.Formula`/`.Value2` read - this `RowProcessor` region
+  was the one place that took the fast/bulk path, and it's exactly the one that silently
+  breaks on a multi-Area result.
+  Fixed by replacing `GetFormulaAndValueArraysAsync`/`CoerceTo2D`/the array-based
+  `FindHideRows(object[,], object[,], int)`/`ShouldHideRow` chain with a single
+  `FindHideRows(Excel.Range balanceRange)` that iterates `balanceRange.Cells` directly -
+  per-cell `.Formula`/`.Value2` reads have no multi-Area restriction, and each cell
+  already knows its own `.Row`, so there's no need to reconstruct row numbers from an
+  array offset (the old `startRow + (r - rLo)` arithmetic, which was also subtly wrong
+  for any selection with gaps between matching cells). `IsGetBalanceFormula`/`IsZero`/
+  `ProcessHideRowsAsync`/`ProcessUnhideRowsByBatchesAsync` (the contiguous-run batching +
+  `RowHeight` toggle logic) are all unchanged.
+  **Status: fixed in both FinalWorkingCode and AIPowered.** See AIPowered's `CLAUDE.md`
+  section 48 for the identical port. Not independently build-verified in this pass - no
+  MSBuild/Visual Studio toolchain was available in this environment - verified instead by
+  manual review and a grep confirming no remaining references to the removed helpers.
+  Not yet rebuilt/tested by the user against the real repro.
+
+  **Follow-up, before the user even rebuilt**: asked directly what happens for a
+  multi-column selection like `E7:L393` - the intended behavior is per-row AND across
+  every balance-formula column in that row (hide row 7 only if E7 through L7 are ALL
+  zero; leave it visible if even one column's balance formula is non-zero). The
+  `FindHideRows` above (and, it turns out, the ORIGINAL pre-bug `ShouldHideRow` it
+  replaced - this was never correct, even before the multi-Area bug) added a row the
+  moment it found ANY matching zero cell (`return true` on first match) - "any column
+  zero", not "every column zero". Invisible for a single-column selection (only one
+  balance-formula column per row), which is why it hadn't surfaced yet. Also confirmed,
+  per the user's separate safety question, that a whole-column selection (e.g. `E:L`,
+  1,048,576 rows) is not dangerous: `balanceRange` is already pre-filtered through
+  Excel's native `SpecialCells(xlCellTypeFormulas)` + the `GLSense_GetBalance` substring
+  match before this code ever sees it, so it only ever contains actual formula cells,
+  never the full blank-row span. Fixed by rewriting `FindHideRows` to group matching
+  cells by row first (`Dictionary<int, bool> rowHasNonZero`, sticky-true once any
+  balance-formula cell in that row is non-zero), then only adding a row to the hide list
+  if its group's flag is still `false`. A column with no `GLSense_GetBalance` formula at
+  all in a given row simply never contributes an entry - it doesn't force the row into
+  either bucket. `IsGetBalanceFormula`/`IsZero` themselves are unchanged; only the
+  aggregation logic changed. Implemented in both codebases, still not rebuilt/tested by
+  the user (this correction landed before the user's first live test).
+
+  **Second follow-up: "brief freeze before the animation starts"** - user reported the
+  wait window looked hung for a few seconds before its progress messages started
+  animating. Root cause: `CommonFunctions.GetBalanceTotalRange` (still in use at this
+  point) builds its result by calling `Application.Union()` **once per matching cell**,
+  which for a selection like `E7:L393` (~3,000+ matching cells) means thousands of
+  sequential, un-yielded COM `Union` calls plus a `.Formula` read per cell - all running
+  synchronously on Excel's own UI/STA thread, entirely before the row-scanning logic or
+  `ProcessHideRowsAsync` ever got a chance to yield back to the message pump. The wait
+  window itself lives on its own dedicated WPF dispatcher thread
+  (`WpfAppManager.InvokeOnWpfThread` equivalent), but Excel's main thread being pegged
+  for that long made the whole thing look frozen regardless.
+  Fixed by dropping `CommonFunctions.GetBalanceTotalRange`/`Application.Union`/
+  `ExcelExternalRef.BuildExternalAddress`/`BalancesRangeAsync` entirely for this feature.
+  New `ScanZeroBalanceRowsAsync` scans the user's `selection.Areas` directly - a local
+  copy of `CommonFunctions.GetFormulaCellsWithinArea`'s logic
+  (`SpecialCells(xlCellTypeFormulas)` + `Application.Intersect`, per this file's own
+  established per-file-duplication convention) finds each Area's formula cells without
+  ever building a Union chain. Each matching cell now costs one COM round trip instead of
+  two-plus-a-Union, and the scan loop calls `MessageWaitWindowAsync` + `await
+  Task.Yield()` every 200 cells scanned so the wait window shows real, continuously-
+  updating progress ("Scanning balance formulas… (N checked)") instead of staying static
+  - `token.ThrowIfCancellationRequested()` is checked every cell too, so the scan is now
+  cancellable mid-flight, which it never was before. `RowProcessor.ExecuteAsync` now
+  calls this once (returning a `BalanceScanResult { AnyBalanceFormulaFound, ZeroRows }`
+  struct) and passes the already-computed `ZeroRows` list straight into
+  `ProcessRowsCoreAsync` - `HideRowProcessor`/`UnhideRowProcessor` no longer each run
+  their own separate scan. `GetBalanceTotalRange` itself is untouched and still used by
+  every other drilldown that needs an actual merged `Range` object back (e.g. `DD_BL.cs`)
+  - only this `RowProcessor` region stopped calling it.
+  **Status: fixed in both FinalWorkingCode and AIPowered.** **User-confirmed after
+  rebuild: "Hide 0's" now works correctly** - no freeze, correct all-columns-zero-in-row
+  semantics, all verified together in one live test. See the follow-up immediately below
+  for an issue the same test found in "Unhide Rows".
+
+  **Follow-up: Unhide Rows re-checking zero-ness against whatever columns happen to be
+  reselected - wrong criterion entirely.** Found in the same live-test pass that
+  confirmed the Hide fix above. Repro: select `J10:K10` (2 cells, row 10), click "Hide
+  0's" - row 10 hides correctly (both zero). Then select `I9:J11` (a *different*, wider
+  column range that still covers row 10) and click "Unhide Rows" - row 10 does NOT
+  unhide. Selecting `J9:K11` (matching the original J:K columns exactly) does unhide it.
+  Root cause: `UnhideRowProcessor` reused the Hide-style "every `GLSense_GetBalance` cell
+  in this row, within the CURRENTLY selected columns, must be zero" criterion for Unhide
+  too. Column `I` apparently has its own `GLSense_GetBalance` formula for row 10 that's
+  non-zero (unrelated to the original hide, which only ever looked at J and K) - so
+  re-running the all-zero check against the wider `I9:J11` selection dragged column I's
+  non-zero cell into the test and failed it, even though row 10 was never hidden based on
+  column I in the first place. This was the wrong criterion for Unhide from the start -
+  its job isn't "are the currently-selected columns' balances still all zero," it's "was
+  this row hidden by Hide 0's, and is it in my selection." Requiring an exact
+  column-selection match to successfully unhide a row is not something any user could
+  reasonably be expected to get right.
+  Fixed by changing `ScanZeroBalanceRowsAsync`'s return shape from a flattened `ZeroRows`
+  list to the raw per-row aggregation (`BalanceScanResult { AnyBalanceFormulaFound,
+  Dictionary<int,bool> RowHasNonZero }`, method renamed `ScanBalanceRowsAsync`) - one
+  shared scan, two different downstream filters. `HideRowProcessor` filters
+  `RowHasNonZero` for rows where the flag is `false` (unchanged criterion, just moved out
+  of the scan method itself). `UnhideRowProcessor` no longer looks at the zero flag at
+  all - it takes every row key present in `RowHasNonZero` (any row with a
+  `GLSense_GetBalance` formula anywhere in the current selection, regardless of columns
+  or current value) as a candidate, then does one more per-row check:
+  `sheet.Rows[row].RowHeight < 1.0` (the height `ProcessHideRowsAsync` set when it hid
+  the row). Only rows that are BOTH a balance-formula candidate AND currently collapsed
+  get restored - independent of which columns are selected or today's live balance
+  value. This extra per-candidate-row `RowHeight` read is bounded by the number of
+  distinct rows with a matching formula (typically at most a few hundred), not by raw
+  selection size - same "stays cheap even for a whole-column selection" guarantee as the
+  rest of this feature.
+  **Status: fixed in both FinalWorkingCode and AIPowered.**
+
+  **Correction - real build caught what manual review missed**: the user's actual build
+  of this project failed with `CS0051: Inconsistent accessibility` on all three
+  `ProcessRowsCoreAsync` declarations (`RowProcessor`/`HideRowProcessor`/
+  `UnhideRowProcessor`) - `BalanceScanResult` was declared `private`, but it's used as a
+  parameter type on `protected abstract`/`protected override` methods belonging to
+  `public` nested classes. Since `RowProcessor` is `public` and not `sealed`, the
+  compiler must assume it could be subclassed from outside this file/assembly, and an
+  external override of `ProcessRowsCoreAsync` would have no way to reference a `private`
+  type in its own signature - hence "less accessible than the method it belongs to."
+  This exact same defect existed in AIPowered's `RowVisibilityProcessor.cs` too
+  (identical structure), fixed proactively there as well even though it hadn't yet been
+  independently compile-checked - this is exactly the class of mistake "verified by
+  manual review only" cannot reliably catch; a real compiler run is genuinely load-
+  bearing here, not a formality.
+  Fixed by changing `BalanceScanResult` from `private readonly struct` to `public
+  readonly struct` in both files - matching the effective visibility already implied by
+  `RowProcessor` et al. being `public`. No other accessibility issues found by this
+  build.
+
+  **Second compile error, same root cause (manual review missing what only a real build
+  catches)**: `CS0019: Operator '<' cannot be applied to operands of type 'object' and
+  'double'` on `rowRange.RowHeight < 1.0`. `Excel.Range.RowHeight` (classic Interop PIA)
+  is typed `object`, not `double` - it can return a special mixed-value sentinel when a
+  Range spans multiple rows with different heights, so the interop layer never types it
+  as a plain `double`. Since `sheet.Rows[row]` here always indexes exactly one whole row,
+  a direct cast is safe. Fixed by casting: `(double)rowRange.RowHeight < 1.0`. The
+  existing `RowHeight = 0.1`/`RowHeight = standardHeight` assignments elsewhere in this
+  same region never needed a cast (assigning a `double` into an `object`-typed property
+  is implicit), which is why only the new comparison tripped this.
+  Not yet rebuilt/retested end-to-end for the actual Unhide behavior fix itself (this
+  section's logic change) - only the compile errors are resolved so far.
+
+  **Build succeeded but warned**: making `BalanceScanResult` `public` (to fix the first
+  compile error above) made this project's COM type library exporter (`RegisterForComInterop
+  =true`) try to export it, warning about its private auto-property backing fields and
+  its `Dictionary<int,bool>` property (generic types aren't COM-exportable). Fixed with
+  `[ComVisible(false)]` on the struct, matching the identical pattern already used
+  elsewhere in this codebase for internal public types that shouldn't be part of the COM
+  surface (`Models/AllModels.cs`, `Helpers/JsonHelper.cs`'s `FlexibleStringConverter`,
+  several ViewModels) - opts the type out of TLB export with no functional effect. Ported
+  the identical attribute to AIPowered's copy too, even though `GLSense.Addin.Core.csproj`
+  doesn't set `RegisterForComInterop` today (so the warning wouldn't currently reproduce
+  there) - for consistency between the two files.
