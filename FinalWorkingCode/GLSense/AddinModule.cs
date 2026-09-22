@@ -3250,14 +3250,14 @@ namespace GLSense
                     await Task.Yield();
                     Excel.Range selection = GetSelection();
                     Excel.Worksheet sheet = selection.Worksheet;
-                    Excel.Range balanceRange = await BalancesRangeAsync(selection);
-                    if (balanceRange == null)
+                    BalanceScanResult scan = await ScanBalanceRowsAsync(selection, win, token);
+                    if (!scan.AnyBalanceFormulaFound)
                     {
                         await SafelyCloseWaitWindowAsync(win);
                         CommonFunctions.GLSenseMessage("No balance formula's in the selection!", MessageBoxIcon.Exclamation, MessageBoxButtons.OK);
                         return;
                     }
-                    await ProcessRowsCoreAsync(sheet, balanceRange, win, token);
+                    await ProcessRowsCoreAsync(sheet, scan, win, token);
                 }
                 catch (OperationCanceledException) { LogUtility.LogError("Operation cancelled by user."); }
                 catch (Exception ex) { LogUtility.LogException(ex); }
@@ -3267,57 +3267,165 @@ namespace GLSense
                     CommonMethods.TryEnableExcelSettings($"RowProcessor.ExecuteAsync ({operationName})");
                 }
             }
-            protected abstract Task ProcessRowsCoreAsync(Excel.Worksheet sheet, Excel.Range selection, GLWaitWindow win, CancellationToken token);
+            protected abstract Task ProcessRowsCoreAsync(Excel.Worksheet sheet, BalanceScanResult scan, GLWaitWindow win, CancellationToken token);
         }
 
         public sealed class HideRowProcessor : RowProcessor
         {
-            protected override async Task ProcessRowsCoreAsync(Excel.Worksheet sheet, Excel.Range selection, GLWaitWindow win, CancellationToken token)
+            protected override async Task ProcessRowsCoreAsync(Excel.Worksheet sheet, BalanceScanResult scan, GLWaitWindow win, CancellationToken token)
             {
                 token.ThrowIfCancellationRequested();
-                var (formulas, values) = await GetFormulaAndValueArraysAsync(selection);
-                if (formulas == null || values == null) return;
-                token.ThrowIfCancellationRequested();
-                var hideRows = FindHideRows(formulas, values, selection.Row);
+                // Hide criterion: EVERY GLSense_GetBalance cell found in that row (within
+                // the selected columns) must be zero - a row is left alone if even one
+                // balance formula cell in it is non-zero.
+                var hideRows = new List<int>();
+                foreach (var kvp in scan.RowHasNonZero)
+                {
+                    if (!kvp.Value) hideRows.Add(kvp.Key);
+                }
+                hideRows.Sort();
                 await ProcessHideRowsAsync(sheet, hideRows, win, token);
             }
         }
 
         public sealed class UnhideRowProcessor : RowProcessor
         {
-            protected override async Task ProcessRowsCoreAsync(Excel.Worksheet sheet, Excel.Range selection, GLWaitWindow win, CancellationToken token)
+            protected override async Task ProcessRowsCoreAsync(Excel.Worksheet sheet, BalanceScanResult scan, GLWaitWindow win, CancellationToken token)
             {
                 token.ThrowIfCancellationRequested();
-                var (formulas, values) = await GetFormulaAndValueArraysAsync(selection);
-                if (formulas == null || values == null) return;
-                token.ThrowIfCancellationRequested();
-                var rowsToUnhide = FindHideRows(formulas, values, selection.Row);
+                // Unhide criterion is deliberately NOT "every balance cell in the row is
+                // still zero" (that's Hide's job, already done when the row was
+                // collapsed). Re-checking zero-ness here means the result depends on
+                // exactly which columns happen to be selected THIS time - e.g. hiding via
+                // J10:K10 then trying to unhide via a wider I9:J11 would drag in column
+                // I's own (possibly non-zero) balance cell for row 10 and wrongly refuse
+                // to unhide it, even though row 10 was never hidden based on column I at
+                // all. Instead: any row that has a GLSense_GetBalance formula anywhere in
+                // the selection AND is currently collapsed (RowHeight ~0.1, the height
+                // ProcessHideRowsAsync sets) gets restored - independent of which columns
+                // are selected or what today's live balance value is.
+                var candidateRows = new List<int>(scan.RowHasNonZero.Keys);
+                candidateRows.Sort();
+                var rowsToUnhide = new List<int>();
+                foreach (int row in candidateRows)
+                {
+                    token.ThrowIfCancellationRequested();
+                    var rowRange = sheet.Rows[row] as Excel.Range;
+                    if (rowRange != null && (double)rowRange.RowHeight < 1.0) rowsToUnhide.Add(row);
+                }
                 if (rowsToUnhide.Count == 0) { await MessageWaitWindowAsync(win, "Nothing to unhide in the current selection."); return; }
                 double standardHeight = sheet.StandardHeight;
                 await ProcessUnhideRowsByBatchesAsync(sheet, rowsToUnhide, standardHeight, win, token);
             }
         }
 
-        private static List<int> FindHideRows(object[,] formulas, object[,] values, int startRow)
+        // ComVisible(false): this assembly is [assembly: ComVisible(true)] overall (needed
+        // for the Add-in Express ribbon/ExcelFunctions COM surface), but this struct is an
+        // internal RowProcessor implementation detail, never touched via COM - it only had
+        // to become `public` to satisfy C#'s "parameter type must be at least as accessible
+        // as the method" rule on ProcessRowsCoreAsync. Its Dictionary<int,bool> property
+        // can't be represented in a COM type library anyway (generic types aren't
+        // COM-exportable), so opting it out (matching the same pattern already used on
+        // Models/ViewModels/JsonHelper.cs in this codebase) removes the exporter warnings
+        // with no functional effect.
+        [ComVisible(false)]
+        public readonly struct BalanceScanResult
         {
-            var hideRows = new List<int>();
-            int rLo = formulas.GetLowerBound(0), rHi = formulas.GetUpperBound(0), cLo = formulas.GetLowerBound(1), cHi = formulas.GetUpperBound(1);
-            if (values.GetLength(0) != formulas.GetLength(0) || values.GetLength(1) != formulas.GetLength(1))
-                throw new InvalidOperationException("Formulas and values arrays have different shapes.");
-            for (int r = rLo; r <= rHi; r++)
+            public BalanceScanResult(bool anyBalanceFormulaFound, Dictionary<int, bool> rowHasNonZero)
             {
-                if (ShouldHideRow(formulas, values, r, cLo, cHi)) hideRows.Add(startRow + (r - rLo));
+                AnyBalanceFormulaFound = anyBalanceFormulaFound;
+                RowHasNonZero = rowHasNonZero;
             }
-            return hideRows;
+            public bool AnyBalanceFormulaFound { get; }
+            /// <summary>Every distinct row (within the selection) that has at least one
+            /// GLSense_GetBalance formula cell, mapped to whether ANY such cell in that row
+            /// is non-zero (true) or every one of them is currently zero (false).</summary>
+            public Dictionary<int, bool> RowHasNonZero { get; }
         }
 
-        private static bool ShouldHideRow(object[,] formulas, object[,] values, int r, int cLo, int cHi)
+        /// <summary>
+        /// Scans <paramref name="selection"/>'s own Areas directly (via SpecialCells, same
+        /// as CommonFunctions.GetFormulaCellsWithinArea) for GLSense_GetBalance formula
+        /// cells and groups them by row - shared by both Hide (needs "is every cell in
+        /// this row zero") and Unhide (needs "which rows have a balance formula at all",
+        /// then separately checks each candidate row's current height - see
+        /// UnhideRowProcessor's own comment for why it doesn't reuse the zero flag).
+        ///
+        /// Deliberately does NOT go through CommonFunctions.GetBalanceTotalRange: that
+        /// helper reconstructs its result by calling Application.Union() once per matching
+        /// cell, which for a large selection (e.g. E7:L393, ~3,000+ matching cells) means
+        /// thousands of sequential, un-yielded COM calls before this method would even get
+        /// to look at a single value - this is what caused the reported "Excel freezes for
+        /// a few seconds before the wait window starts animating" symptom (all of that
+        /// Union-building ran synchronously before ProcessHideRowsAsync's own per-batch
+        /// yields ever got a chance to run). Scanning the selection's Areas/SpecialCells
+        /// directly needs exactly one COM round trip per matching cell (Formula + Value2 +
+        /// Row), not two-plus-a-Union, and periodically yields + updates the wait window
+        /// with real progress so the UI never looks stuck. Still stays cheap and bounded
+        /// even if the user selects a whole column (e.g. E:L): SpecialCells only returns
+        /// cells that actually contain a formula, never the millions of blank rows between
+        /// them.
+        /// </summary>
+        private static async Task<BalanceScanResult> ScanBalanceRowsAsync(Excel.Range selection, GLWaitWindow win, CancellationToken token)
         {
-            for (int c = cLo; c <= cHi; c++)
+            bool anyBalanceFormulaFound = false;
+            var rowHasNonZero = new Dictionary<int, bool>();
+            Excel.Application app = selection.Application;
+            int scanned = 0;
+
+            foreach (Excel.Range area in selection.Areas)
             {
-                if (IsGetBalanceFormula(formulas[r, c]) && IsZero(values[r, c])) return true;
+                Excel.Range formulaCells = GetFormulaCellsWithinArea(area, app);
+                if (formulaCells == null) continue;
+
+                foreach (Excel.Range cell in formulaCells.Cells)
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    if (IsGetBalanceFormula(cell.Formula))
+                    {
+                        anyBalanceFormulaFound = true;
+                        int row = cell.Row;
+                        bool alreadyNonZero = rowHasNonZero.TryGetValue(row, out bool prior) && prior;
+                        rowHasNonZero[row] = alreadyNonZero || !IsZero(cell.Value2);
+                    }
+
+                    scanned++;
+                    if (scanned % 200 == 0)
+                    {
+                        await MessageWaitWindowAsync(win, $"Scanning balance formulas… ({scanned} checked)");
+                        await Task.Yield();
+                    }
+                }
             }
-            return false;
+
+            return new BalanceScanResult(anyBalanceFormulaFound, rowHasNonZero);
+        }
+
+        /// <summary>Local copy of CommonFunctions.GetFormulaCellsWithinArea (private there) -
+        /// per this file's established per-file-duplication convention.</summary>
+        private static Excel.Range GetFormulaCellsWithinArea(Excel.Range area, Excel.Application app)
+        {
+            if (area.Rows.Count == 1 && area.Columns.Count == 1)
+            {
+                try { return (bool)area.HasFormula ? area : null; }
+                catch (System.Runtime.InteropServices.COMException ex)
+                {
+                    LogUtility.LogWarn($"GetFormulaCellsWithinArea: HasFormula threw for a single-cell area, treating as not-a-formula-cell: {ex.Message}");
+                    return null;
+                }
+            }
+
+            try
+            {
+                var cand = area.SpecialCells(Excel.XlCellType.xlCellTypeFormulas);
+                return app.Intersect(cand, area);
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // Thrown if no formula cells exist in this area.
+                return null;
+            }
         }
 
         private static bool IsGetBalanceFormula(object f)
@@ -3341,28 +3449,6 @@ namespace GLSense
         private static bool GuardLoginAndExcel() => AppState.Instance.IsLoginCompleted && AppState.Instance.ExcelApp != null;
 
         private static Excel.Range GetSelection() => AppState.Instance.ExcelApp.Selection as Excel.Range ?? throw new InvalidOperationException("No selection available");
-
-        private static async Task<(object[,] formulas, object[,] values)> GetFormulaAndValueArraysAsync(Excel.Range selection)
-        {
-            await Task.Yield();
-            return (CoerceTo2D(selection.Formula), CoerceTo2D(selection.Value2));
-        }
-
-        private static object[,] CoerceTo2D(object value) => value switch
-        {
-            object[,] array2d => array2d,
-            null => new object[1, 1] { { null! } },
-            _ => new object[1, 1] { { value } }
-        };
-
-        private static async Task<Excel.Range> BalancesRangeAsync(Excel.Range selection)
-        {
-            string rngAddress = ExcelExternalRef.BuildExternalAddress(selection);
-            Excel.Range totalRange = CommonFunctions.GetBalanceTotalRange(rngAddress);
-            if (totalRange != null) return totalRange;
-            await Task.Yield();
-            return null;
-        }
 
         private static async Task ProcessHideRowsAsync(Excel.Worksheet sheet, List<int> hideRows, GLWaitWindow win, CancellationToken token)
         {
