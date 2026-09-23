@@ -18,6 +18,9 @@ namespace GLSense.Utilities
         [DllImport("user32.dll")]
         private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
 
+        [DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
+
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOSIZE = 0x0001;
         private const uint SWP_NOZORDER = 0x0004;
@@ -1052,6 +1055,21 @@ namespace GLSense.Utilities
         {
             try
             {
+                // A WebView2-hosted window (GLLogin / WebView2PopupWindow /
+                // GLDrilldownCustomization) can still have its Chromium renderer holding
+                // Win32 mouse capture at the exact moment this window closes (e.g. a
+                // hover/drag state over the login page or an SSO popup right as it tears
+                // down) - nothing here ever released that, the same gap that used to leave
+                // keyboard focus stranded before Owner.Activate()/SetForegroundWindow below
+                // were added. Left stuck, mouse messages keep routing to this now-destroyed
+                // window's capture instead of whatever is really under the pointer, which
+                // matches customer reports of the mouse pointer becoming invisible over
+                // Excel right after GLSense login (same mechanism identified in the older
+                // GLSense 10.5.1 VB.NET build's FormLogin.vb). ReleaseCapture() is a no-op
+                // when nothing has capture, so this is safe to call unconditionally on every
+                // window close, not just the three that host WebView2.
+                ReleaseCapture();
+
                 if (Owner != null)
                 {
                     // Owned by another WPF window (e.g. a popup owned by GLLogin) -
