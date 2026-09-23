@@ -746,9 +746,13 @@ namespace GLSense
                 {
                     segmentValue = segmentValue.Substring(2);
                 }
-                if (segmentValue.Contains("~"))
+                // A trailing "~" is GLSense's own "modified" marker - never a leading or
+                // embedded one. Real segment codes can legitimately start with or
+                // contain "~" (e.g. "~GTS"), so only a trailing occurrence is stripped
+                // here, not any "~" found anywhere in the value.
+                if (segmentValue.EndsWith("~"))
                 {
-                    segmentValue = segmentValue.Replace("~", "").Trim();
+                    segmentValue = segmentValue.TrimEnd('~').Trim();
                 }
 
                 return segmentValue.Trim();

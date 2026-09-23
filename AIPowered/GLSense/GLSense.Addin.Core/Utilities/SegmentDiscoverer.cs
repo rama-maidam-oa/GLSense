@@ -888,6 +888,21 @@ namespace GLSense.Addin.Core.Utilities
                 throw new InvalidOperationException(response);
         }
 
+        // "--" (exclude) is always a leading prefix, and "~" (GLSense's own "modified"
+        // marker, appended in SegmentSelectorViewModel.GetEffectiveValue) is always a
+        // trailing suffix - never embedded/leading. Real segment codes can legitimately
+        // start with or contain "~" (e.g. "~GTS"), so both are stripped positionally
+        // here rather than via a blanket Replace, which would corrupt such values.
+        private static string CleanSegmentToken(string value)
+        {
+            var v = value.Trim();
+            if (v.StartsWith("--"))
+                v = v.Substring(2);
+            if (v.EndsWith("~"))
+                v = v.TrimEnd('~');
+            return v.Trim();
+        }
+
         private static bool SegmentValueExists(string sValue)
         {
             try
@@ -895,7 +910,7 @@ namespace GLSense.Addin.Core.Utilities
                 if (sValue == null || string.IsNullOrWhiteSpace(sValue.Trim()))
                     return false;
 
-                sValue = sValue.Trim().Replace("--", "").Replace("~", "");
+                sValue = CleanSegmentToken(sValue);
 
                 var match = SegmentValues.FirstOrDefault(sv =>
                     sv.SegmentName.Equals(AppState.Instance.DefaultSegment, StringComparison.OrdinalIgnoreCase) &&
@@ -925,7 +940,7 @@ namespace GLSense.Addin.Core.Utilities
                 if (sValue == null || string.IsNullOrWhiteSpace(sValue.Trim()))
                     return false;
 
-                sValue = sValue.Trim().Replace("--", "").Replace("~", "");
+                sValue = CleanSegmentToken(sValue);
 
                 var match = SegmentValues.FirstOrDefault(sv =>
                     sv.SegmentName.Equals(AppState.Instance.DefaultSegment, StringComparison.OrdinalIgnoreCase) &&
@@ -999,7 +1014,7 @@ namespace GLSense.Addin.Core.Utilities
         private static string GetAndNormalizeSegmentValue(Excel.Range activeRange)
         {
             string segmentValue = activeRange.Value2?.ToString() ?? string.Empty;
-            return segmentValue.Replace("--", "").Replace("~", "").Trim();
+            return CleanSegmentToken(segmentValue);
         }
 
         private static async Task<bool> ValidateSummaryAccountAsync(string segmentValue)
@@ -1163,7 +1178,7 @@ namespace GLSense.Addin.Core.Utilities
             if (sValue == null || string.IsNullOrWhiteSpace(sValue.Trim()))
                 return new SegmentValueModel();
 
-            sValue = sValue.Trim().Replace("--", "").Replace("~", "");
+            sValue = CleanSegmentToken(sValue);
 
             return SegmentValues.FirstOrDefault(sv =>
                 sv.SegmentName.Equals(AppState.Instance.DefaultSegment, StringComparison.OrdinalIgnoreCase) &&

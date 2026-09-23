@@ -553,26 +553,52 @@ namespace GLSense.Models
         }
         private static SegmentValue CreateSingleSegmentValue(string item, ObservableCollection<SegmentValueModel> segValues, string segName)
         {
-            var cleanValue = NormalizeStrings(item.Replace("~", "").Trim());
+            var raw = NormalizeStrings(item);
+            if (string.IsNullOrEmpty(raw))
+                return null;
+
+            if (raw.Contains("%"))
+            {
+                return CreateLikeSegmentValue(StripTrailingMarker(raw));
+            }
+
+            // "|" (BETWEEN/NOTBETWEEN) is checked on the un-marker-stripped value - each
+            // side of the pipe is its own independently-markable/prefixable value (see
+            // SegmentSelectorViewModel.GetEffectiveValue, invoked separately per bound
+            // when a range is built), so CreateRangeSegmentValue strips "--" and each
+            // bound's own trailing "~" itself. Stripping a marker from the combined
+            // "X|Y" string here first would only ever catch one on the right-hand bound
+            // (whichever character happens to be last overall) and silently miss one on
+            // the left-hand bound, since that sits in the middle of the whole string.
+            if (raw.Contains("|"))
+            {
+                return CreateRangeSegmentValue(raw);
+            }
+
+            // A trailing "~" is GLSense's own "this value was modified" marker
+            // (appended in SegmentSelectorViewModel.GetEffectiveValue) - never a
+            // leading or embedded one. Real segment codes can legitimately start with
+            // or contain "~" (e.g. "~GTS"), so only a trailing occurrence is ever
+            // stripped here, unlike the old Replace("~", "") which silently corrupted
+            // "~GTS" into "GTS" (and "~GTS~" - marked - into "GTS" instead of "~GTS").
+            var cleanValue = StripTrailingMarker(raw);
             if (string.IsNullOrEmpty(cleanValue))
                 return null;
 
-            if (cleanValue.Contains("%"))
-            {
-                return CreateLikeSegmentValue(cleanValue);
-            }
-
-            if (cleanValue.Contains("|"))
-            {
-                return CreateRangeSegmentValue(cleanValue);
-            }
-
-            if (cleanValue.Contains("--"))
+            if (cleanValue.StartsWith("--"))
             {
                 return CreateNotInSegmentValue(cleanValue, segValues, segName);
             }
 
             return CreateInSegmentValue(cleanValue, segValues, segName);
+        }
+
+        private static string StripTrailingMarker(string normalizedValue)
+        {
+            if (string.IsNullOrEmpty(normalizedValue))
+                return normalizedValue;
+
+            return normalizedValue.EndsWith("~") ? normalizedValue.TrimEnd('~') : normalizedValue;
         }
 
         private static SegmentValue CreateLikeSegmentValue(string cleanValue)
@@ -584,23 +610,40 @@ namespace GLSense.Models
                 summaryEnabled = false
             };
         }
-        private static SegmentValue CreateRangeSegmentValue(string originalItem)
+        private static SegmentValue CreateRangeSegmentValue(string normalizedItem)
         {
-            var rangeValues = originalItem.Replace("--", "").Split('|');
+            // "--" (NOTBETWEEN) is always a prefix on the whole range expression (e.g.
+            // "--1000|2000"), same convention as the plain NOTIN case below - stripped
+            // positionally instead of via a blanket Replace, which could otherwise
+            // corrupt a bound value that happens to contain "--" itself.
+            bool isNotBetween = normalizedItem.StartsWith("--");
+            var withoutPrefix = isNotBetween ? normalizedItem.Substring(2) : normalizedItem;
+
+            var rangeValues = withoutPrefix.Split('|');
             if (rangeValues.Length != 2)
                 return null;
 
+            // Each bound gets its own trailing-marker strip - see StripTrailingMarker's
+            // comment on CreateSingleSegmentValue for why a single strip on the
+            // combined string (before this split) would miss the left-hand bound.
+            var cleanedBounds = rangeValues
+                .Select(v => StripTrailingMarker(NormalizeStrings(v)))
+                .ToArray();
+
             return new SegmentValue
             {
-                @operator = originalItem.Contains("--") ? "NOTBETWEEN" : "BETWEEN",
-                values = rangeValues,
+                @operator = isNotBetween ? "NOTBETWEEN" : "BETWEEN",
+                values = cleanedBounds,
                 summaryEnabled = false
             };
         }
-        private static SegmentValue CreateNotInSegmentValue(string originalItem, ObservableCollection<SegmentValueModel> segValues, string segName)
+        private static SegmentValue CreateNotInSegmentValue(string cleanValue, ObservableCollection<SegmentValueModel> segValues, string segName)
         {
-            originalItem = originalItem.Replace("--", "");
-            return CreateComparisonSegmentValue("NOTIN", originalItem, segValues, segName);
+            // "--" is confirmed prefix-only by convention - stripped positionally (2
+            // chars) rather than via Replace("--", ""), which would also strip "--"
+            // occurring anywhere else within the value.
+            var withoutPrefix = cleanValue.Substring(2);
+            return CreateComparisonSegmentValue("NOTIN", withoutPrefix, segValues, segName);
         }
 
         private static SegmentValue CreateInSegmentValue(string cleanValue, ObservableCollection<SegmentValueModel> segValues, string segName)
