@@ -7399,6 +7399,47 @@ elsewhere in this same region never needed a cast (assigning a `double` into an
 Not yet rebuilt/retested end-to-end by the user for the actual Unhide behavior fix itself
 (48.3's logic change) - only the compile errors are resolved so far.
 
+## 77. `Views\BaseWindow.cs` (mouse pointer disappearing after GLSense login)
+
+- **Reported: mouse pointer becomes invisible over Excel after logging into GLSense,
+  clicks still register** (customer report, originally against an older GLSense 10.5.1
+  VB.NET build, then separately reported against FinalWorkingCode's `11.1.1` branch).
+  Traced the 10.5.1 VB.NET source (`FormLogin.vb`) first: it hides its WebView2-hosted
+  login control (`WebCtrl.Visible = False`) immediately on login success, then closes the
+  whole login `Form` shortly after via `Me.Close()`, with no explicit release of Win32
+  mouse capture anywhere in that teardown - if the Chromium renderer still held capture at
+  that instant (e.g. the mouse hovering over the login page at the moment of the
+  redirect), Windows can be left routing mouse messages to that now-destroyed window
+  instead of whatever is really under the pointer, which reads exactly as "the pointer
+  vanished but clicks still land."
+  This codebase's `Views\GLLogin.xaml.cs`/`WebView2PopupWindow.xaml.cs`/
+  `GLDrilldownCustomization.xaml.cs` have the identical shape - a WebView2 control hidden
+  then the host window closed shortly after - and, like FinalWorkingCode's
+  `Utilities\DpiAwareWindow.cs`, this codebase's `Views\BaseWindow.cs` already has a
+  `RestoreOwnerFocusOnClosed` hooked to every window's `Closed` event that restores
+  *keyboard* focus (`Owner.Activate()` / `ExcelWindowHelper.ActivateExcelMainWindow()`) -
+  but nothing anywhere in this codebase ever releases *mouse capture* (confirmed via a
+  full grep for `ReleaseCapture`/`GetCapture`/`ShowCursor`/`SetCursor` - zero hits outside
+  vendored WebView2/MahApps/ControlzEx DLLs). Same gap, same fix as FinalWorkingCode - see
+  that codebase's `CLAUDE.md` entry under `Utilities\DpiAwareWindow.cs` for the full
+  write-up; this is the identical fix ported here.
+  Fixed by adding `ReleaseCapture()` (P/Invoke, `user32.dll`) to the top of
+  `RestoreOwnerFocusOnClosed` in `BaseWindow.cs`, right alongside the existing
+  focus-restoration logic - every `BaseWindow`-derived window gets this for free on any
+  close, not just the three that host WebView2. `ReleaseCapture()` is a documented no-op
+  when nothing currently has capture, so this can't regress any window that isn't already
+  hitting this bug.
+  **Status: applied as a defensive fix on `11.1.2` only (per request) - not yet ported to
+  AIPowered's `11.1.0`/`11.1.1`.** Not yet confirmed against a live repro on this codebase
+  specifically, or against the affected customer's own diagnostic data (a VBA macro
+  reading `GetCursorInfo`/`GetCapture` was provided separately to gather that evidence on
+  the 10.5.1 build) - this closes the identical gap already found and fixed once for
+  keyboard focus, applied to mouse capture by the same reasoning, but should be verified
+  against a real repro once one is available. No build verification possible in this
+  environment (see the FinalWorkingCode `DpiAwareWindow.cs` entry's note on the same
+  pre-existing `AddinExpress.XL.2005`/`dotnet`-SDK toolchain limitation, which applies
+  equally here).
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
