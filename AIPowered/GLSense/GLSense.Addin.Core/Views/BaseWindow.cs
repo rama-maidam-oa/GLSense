@@ -891,6 +891,27 @@ namespace GLSense.Addin.Core.Views
                 // WebView2.
                 ReleaseCapture();
 
+                // Separate from mouse capture above: Windows' "Hide pointer while
+                // typing" feature hides the cursor via its own visibility counter
+                // (ShowCursor), unrelated to input routing. A known, Microsoft-
+                // acknowledged WebView2 Runtime regression (152.0.4191.x+, see
+                // https://github.com/MicrosoftEdge/WebView2Feedback/issues/5687)
+                // never restores that counter when a WebView2 control/window
+                // disappears while the cursor is in the hidden state, particularly
+                // when more than one WebView2 control is active in the process
+                // (true here - GLLogin's webView plus WebView2PopupWindow /
+                // GLDrilldownCustomization's own instances). ShowCursor(true)
+                // increments the counter; looping guards against it having been
+                // decremented more than once, bounded so an already-visible cursor
+                // doesn't spin.
+                int cursorShowCount = ShowCursor(true);
+                int cursorShowGuard = 0;
+                while (cursorShowCount < 0 && cursorShowGuard < 25)
+                {
+                    cursorShowCount = ShowCursor(true);
+                    cursorShowGuard++;
+                }
+
                 if (Owner != null)
                 {
                     Owner.Activate();
@@ -979,6 +1000,9 @@ namespace GLSense.Addin.Core.Views
 
         [DllImport("user32.dll")]
         private static extern bool ReleaseCapture();
+
+        [DllImport("user32.dll")]
+        private static extern int ShowCursor(bool bShow);
 
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOSIZE = 0x0001;
