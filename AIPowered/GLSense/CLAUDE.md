@@ -7440,6 +7440,31 @@ Not yet rebuilt/retested end-to-end by the user for the actual Unhide behavior f
   pre-existing `AddinExpress.XL.2005`/`dotnet`-SDK toolchain limitation, which applies
   equally here).
 
+## 78. `GLSense.Addin.Core\Models\BalanceDtoModel.cs` (segment-marker follow-ups to `8398ec3`)
+
+- **Regression from `8398ec3` (tilde/hyphen positional-marker fix), identical in both
+  codebases.** The Segment Values window writes NOT BETWEEN with `--` on **both** bounds
+  (`SegmentSelectorViewModel.AddNotBetweenSelection`, joined as `--1000|--2000`). After
+  `8398ec3`, `CreateRangeSegmentValue` stripped only the whole-expression prefix, so the
+  right-hand bound went out as `"--2000"`. Fixed by also stripping a leading `--` from the
+  right-hand bound, **only** when the range is NOTBETWEEN. See FinalWorkingCode's
+  `CLAUDE.md` entry under `Models\BalanceDtoModel.cs` for the full write-up; this is the
+  identical fix ported here.
+  **Status: applied on `11.1.2` only (per request). Build-verified (`GLSense.sln` under
+  `AIPowered\GLSense`, full solution, Debug,
+  `/p:SignAssembly=false` for this local verification build only).** Behavior verified on
+  FinalWorkingCode's compiled copy (byte-identical method body). Not yet verified against
+  a live server drilldown.
+
+- **Trailing `~` now forces `summaryEnabled = false` (IN / NOTIN).** User-confirmed
+  meaning: a trailing `~` is a summary account converted to non-summary. C# previously
+  ignored it and used the DB summary flag. Identical fix to FinalWorkingCode's (see its
+  `CLAUDE.md` entry under `Models\BalanceDtoModel.cs`): `convertedToNonSummary` captured in
+  `CreateSingleSegmentValue` and passed to `CreateComparisonSegmentValue`.
+  **Status: build-verified (`/p:SignAssembly=false` local build) and behavior-verified via
+  reflection on `GLSense.Build\bin\Debug\GLSense.Addin.Core.dll` (same results as
+  FinalWorkingCode). Not yet verified against a live server drilldown.**
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

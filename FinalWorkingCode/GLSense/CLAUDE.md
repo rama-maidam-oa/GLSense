@@ -1072,3 +1072,46 @@ there.**
   (missing `AddinExpress.XL.2005` reference + a pre-existing `dotnet`-SDK/old-style-csproj
   resource-generation incompatibility, unrelated to this change - confirmed by
   reproducing the identical build failure with this change stashed out).
+
+## `Models\BalanceDtoModel.cs` (segment-marker follow-ups to `8398ec3`)
+
+- **Regression from `8398ec3` (tilde/hyphen positional-marker fix).** The Segment Values
+  window writes NOT BETWEEN with `--` on **both** bounds
+  (`SegmentSelectorViewModel.AddNotBetweenSelection`: `val1 = "--" + ...`,
+  `val2 = "--" + ...`, joined as `--1000|--2000`). `8398ec3` replaced the old blanket
+  `Replace("--", "")` in `CreateRangeSegmentValue` with a positional strip of the
+  whole-expression prefix only, so the right-hand bound went out as `"--2000"`
+  (`values: ["1000", "--2000"]`), a value that doesn't exist. Found during the
+  GLSenseFinanceTemplate (VBA) parity audit, 2026-10-05.
+  Fixed by also stripping a leading `--` from the right-hand bound, **only** when the
+  range is NOTBETWEEN, so a BETWEEN bound is never altered. Embedded `--` inside a value
+  is still preserved, which was the point of `8398ec3`.
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1` and `11.1.2`; ported to AIPowered
+  on `11.1.2` only (section 78), per request.**
+  Build-verified (`GLSense.sln`, Debug config, full solution). Behavior verified by
+  invoking the compiled private `BalanceDto.CreateRangeSegmentValue` via reflection on the
+  fresh `bin\Debug\GLSense.dll`: `--1000|--2000` and `--1000~|--2000~` → `NOTBETWEEN
+  [1000] [2000]`; `--1000|2000` → `NOTBETWEEN [1000] [2000]`; `1000|2000` / `1000~|2000~`
+  → `BETWEEN [1000] [2000]`; `1000|--2000` → `BETWEEN [1000] [--2000]` (unchanged);
+  `~118|~200` → `BETWEEN [~118] [~200]`. Not yet verified against a live server drilldown.
+
+- **Trailing `~` now forces `summaryEnabled = false` (IN / NOTIN).** Confirmed by the user
+  (2026-10-05): a trailing `~` on a segment value means a summary account the user
+  converted to non-summary (unticked the Summary checkbox; `SegmentValueModel.IsModified`,
+  checkbox only enabled for summary accounts). C# had never honored this since the initial
+  import: it stripped the marker and took `summaryEnabled` from the DB summary flag
+  anyway, so `1000~` went out as `summaryEnabled: true`. The GLSenseFinanceTemplate VBA
+  port (`JSONBuilder.ParseSegmentToken`) already did this correctly.
+  Fixed in `CreateSingleSegmentValue`: `convertedToNonSummary = raw.EndsWith("~")` is
+  captured before the marker is stripped and passed through `CreateInSegmentValue`/
+  `CreateNotInSegmentValue` to `CreateComparisonSegmentValue`
+  (`summaryEnabled = !convertedToNonSummary && GetSummaryEnabledStatus(...)`). BETWEEN/
+  NOTBETWEEN/LIKE already always send `false`. This is the single path for both the
+  `GLSense_GetBalance` UDF and balance drilldowns (`CreateFromXllParameters`).
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1` and `11.1.2`; ported to AIPowered
+  on `11.1.2` only (section 78), per request.**
+  Build-verified (both `GLSense.sln`, Debug). Verified via reflection on both compiled
+  DLLs with summary accounts `~118`/`1000` and non-summary `2000`: `~118` → `IN true
+  [~118]`, `~118~` → `IN false [~118]`, `1000~` → `IN false`, `--1000~` → `NOTIN false`,
+  `1000`/`--1000` → `true`, `2000`/`2000~` → `false`. Not yet verified against a live
+  server drilldown.

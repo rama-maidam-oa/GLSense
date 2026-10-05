@@ -644,16 +644,21 @@ namespace GLSense.Addin.Core.Models
             // or contain "~" (e.g. "~GTS"), so only a trailing occurrence is ever
             // stripped here, unlike the old Replace("~", "") which silently corrupted
             // "~GTS" into "GTS" (and "~GTS~" - marked - into "GTS" instead of "~GTS").
+            // The marker means the user unticked the Summary checkbox on a summary
+            // account (SegmentValueModel.IsModified - the checkbox is only enabled for
+            // summary accounts), i.e. "treat this summary account as non-summary", so a
+            // marked value must send summaryEnabled = false regardless of the DB flag.
+            bool convertedToNonSummary = raw.EndsWith("~");
             var cleanValue = StripTrailingMarker(raw);
             if (string.IsNullOrEmpty(cleanValue))
                 return null;
 
             if (cleanValue.StartsWith("--"))
             {
-                return CreateNotInSegmentValue(cleanValue, segValues, segName);
+                return CreateNotInSegmentValue(cleanValue, segValues, segName, convertedToNonSummary);
             }
 
-            return CreateInSegmentValue(cleanValue, segValues, segName);
+            return CreateInSegmentValue(cleanValue, segValues, segName, convertedToNonSummary);
         }
 
         private static string StripTrailingMarker(string normalizedValue)
@@ -676,10 +681,12 @@ namespace GLSense.Addin.Core.Models
 
         private static SegmentValue CreateRangeSegmentValue(string normalizedItem)
         {
-            // "--" (NOTBETWEEN) is always a prefix on the whole range expression (e.g.
-            // "--1000|2000"), same convention as the plain NOTIN case below - stripped
-            // positionally instead of via a blanket Replace, which could otherwise
-            // corrupt a bound value that happens to contain "--" itself.
+            // "--" (NOTBETWEEN) is always a prefix on the whole range expression, same
+            // convention as the plain NOTIN case below - stripped positionally instead of
+            // via a blanket Replace, which could otherwise corrupt a bound value that
+            // happens to contain "--" itself. The Segment Values window
+            // (SegmentSelectorViewModel.AddNotBetweenSelection) prefixes BOTH bounds
+            // ("--1000|--2000"), so the right-hand bound's own "--" is stripped below too.
             bool isNotBetween = normalizedItem.StartsWith("--");
             var withoutPrefix = isNotBetween ? normalizedItem.Substring(2) : normalizedItem;
 
@@ -694,6 +701,12 @@ namespace GLSense.Addin.Core.Models
                 .Select(v => StripTrailingMarker(NormalizeStrings(v)))
                 .ToArray();
 
+            // The left-hand bound's "--" went with the whole-expression prefix above; the
+            // right-hand bound of "--X|--Y" still carries its own. Only stripped for
+            // NOTBETWEEN, and only as a leading prefix, so a BETWEEN bound is never altered.
+            if (isNotBetween && cleanedBounds[1].StartsWith("--"))
+                cleanedBounds[1] = cleanedBounds[1].Substring(2).Trim();
+
             return new SegmentValue
             {
                 @operator = isNotBetween ? "NOTBETWEEN" : "BETWEEN",
@@ -702,27 +715,29 @@ namespace GLSense.Addin.Core.Models
             };
         }
 
-        private static SegmentValue CreateNotInSegmentValue(string cleanValue, ObservableCollection<SegmentValueModel> segValues, string segName)
+        private static SegmentValue CreateNotInSegmentValue(string cleanValue, ObservableCollection<SegmentValueModel> segValues, string segName, bool convertedToNonSummary)
         {
             // "--" is confirmed prefix-only by convention - stripped positionally (2
             // chars) rather than via Replace("--", ""), which would also strip "--"
             // occurring anywhere else within the value.
             var withoutPrefix = cleanValue.Substring(2);
-            return CreateComparisonSegmentValue("NOTIN", withoutPrefix, segValues, segName);
+            return CreateComparisonSegmentValue("NOTIN", withoutPrefix, segValues, segName, convertedToNonSummary);
         }
 
-        private static SegmentValue CreateInSegmentValue(string cleanValue, ObservableCollection<SegmentValueModel> segValues, string segName)
+        private static SegmentValue CreateInSegmentValue(string cleanValue, ObservableCollection<SegmentValueModel> segValues, string segName, bool convertedToNonSummary)
         {
-            return CreateComparisonSegmentValue("IN", cleanValue, segValues, segName);
+            return CreateComparisonSegmentValue("IN", cleanValue, segValues, segName, convertedToNonSummary);
         }
 
-        private static SegmentValue CreateComparisonSegmentValue(string operatorName, string cleanValue, ObservableCollection<SegmentValueModel> segValues, string segName)
+        private static SegmentValue CreateComparisonSegmentValue(string operatorName, string cleanValue, ObservableCollection<SegmentValueModel> segValues, string segName, bool convertedToNonSummary)
         {
             var segmentValue = new SegmentValue
             {
                 @operator = operatorName,
                 values = new[] { cleanValue },
-                summaryEnabled = GetSummaryEnabledStatus(cleanValue, segValues, segName)
+                // A trailing-"~"-marked value is a summary account the user converted to
+                // non-summary - see CreateSingleSegmentValue.
+                summaryEnabled = !convertedToNonSummary && GetSummaryEnabledStatus(cleanValue, segValues, segName)
             };
             return segmentValue;
         }
