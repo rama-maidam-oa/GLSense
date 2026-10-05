@@ -251,12 +251,61 @@ namespace GLSense.Helpers
                 : response.StatusCode.ToString();
         }
 
+        // Removes JSON null literals, but only OUTSIDE string values. The old blanket
+        // Replace("null", "") also ran inside strings, so real data containing "null"
+        // was silently corrupted (e.g. "annulled" -> "aned"). Outside a string, "null"
+        // can only be the JSON literal, so removing it there keeps the previous
+        // behavior exactly ("x":null -> "x": -> "x":"" via the colon pass below,
+        // [null] -> []).
+        private static string RemoveNullLiterals(string json)
+        {
+            var sb = new StringBuilder(json.Length);
+            bool inString = false;
+            bool escape = false;
+
+            for (int i = 0; i < json.Length; i++)
+            {
+                char c = json[i];
+
+                if (inString)
+                {
+                    sb.Append(c);
+
+                    if (escape)
+                        escape = false;
+                    else if (c == '\\')
+                        escape = true;
+                    else if (c == '"')
+                        inString = false;
+
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    inString = true;
+                    sb.Append(c);
+                    continue;
+                }
+
+                if (c == 'n' && string.CompareOrdinal(json, i, "null", 0, 4) == 0)
+                {
+                    i += 3;
+                    continue;
+                }
+
+                sb.Append(c);
+            }
+
+            return sb.ToString();
+        }
+
         private static string CleanResponse(string response)
         {
             if (string.IsNullOrEmpty(response))
                 return response;
 
-            var cleaned = response.Replace("null", string.Empty);
+            var cleaned = RemoveNullLiterals(response);
 
             var sb = new StringBuilder(cleaned.Length + 8);
             bool inString = false;
