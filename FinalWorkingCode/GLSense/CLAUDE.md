@@ -1115,3 +1115,21 @@ there.**
   [~118]`, `~118~` → `IN false [~118]`, `1000~` → `IN false`, `--1000~` → `NOTIN false`,
   `1000`/`--1000` → `true`, `2000`/`2000~` → `false`. Not yet verified against a live
   server drilldown.
+
+## `Helpers\APIHelper.cs` (`CleanResponse` corrupted string data containing "null")
+
+- **`CleanResponse` ran `response.Replace("null", "")` over the whole response body**,
+  including inside JSON string values, so real data containing lowercase "null" was
+  silently changed (e.g. `"annulled"` -> `"aned"`, `"nullable"` -> `"able"`). Found during the
+  GLSenseFinanceTemplate (VBA) request-parity audit, 2026-10-05. The VBA port has the same
+  bug in a worse, case-insensitive form, and it's being fixed there separately.
+  Fixed by replacing the blanket `Replace` with `RemoveNullLiterals`, a string-aware pass
+  that removes `null` only **outside** string values (outside a string, `null` can only be
+  the JSON literal). The existing colon pass is unchanged, so behavior for real nulls is
+  identical to before: `"x":null` -> `"x":""`, `[null]` -> `[]`.
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1` and `11.1.2`; ported to AIPowered
+  on `11.1.2` only (section 79), per request.** Build-verified (`GLSense.sln`, Debug).
+  Verified via reflection on the compiled `GLSense.dll` (8/8): `"annulled"`, `"NULL x"`,
+  `"null"` and an escaped `\"null\"` inside strings are untouched; `"a": null` -> `"a":""`;
+  `{"x":[null]}` -> `{"x":[]}`; `[null,1]` -> `[,1]` (unchanged from before); a trailing
+  partial `nul` is left alone. Not yet verified against a live server response.

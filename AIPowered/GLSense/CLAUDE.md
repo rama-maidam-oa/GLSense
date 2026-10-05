@@ -7465,6 +7465,19 @@ Not yet rebuilt/retested end-to-end by the user for the actual Unhide behavior f
   reflection on `GLSense.Build\bin\Debug\GLSense.Addin.Core.dll` (same results as
   FinalWorkingCode). Not yet verified against a live server drilldown.**
 
+## 79. `GLSense.Addin.Core\Helpers\ApiHelper.cs` (`CleanResponse` corrupted string data containing "null")
+
+- **Identical bug and identical fix to FinalWorkingCode's** (see its `CLAUDE.md` entry under
+  `Helpers\APIHelper.cs`): the blanket `response.Replace("null", "")` also ran inside JSON
+  string values, so `"annulled"` became `"aned"`. Replaced with `RemoveNullLiterals`, which
+  removes `null` only outside string values. Behavior for real JSON nulls is unchanged.
+  **Status: applied on `11.1.2` only (per request). Build-verified (`GLSense.sln` under
+  `AIPowered\GLSense`, full solution, Debug, `/p:SignAssembly=false` for this local
+  verification build only).** Reflection on the compiled DLL isn't possible outside Excel
+  (`ApiHelper`'s static constructor needs `ServiceLocator.Initialize`), so the exact
+  `RemoveNullLiterals` + `CleanResponse` source text was compiled standalone and run against
+  the same 8 cases as FinalWorkingCode: 8/8 pass. Not yet verified against a live server response.
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
