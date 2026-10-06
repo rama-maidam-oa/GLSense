@@ -27,6 +27,12 @@ namespace GLSense.Drilldowns
         private CancellationToken Dd_token { get; }
         private string DD_TableObjname;
         private GLWaitWindow DD_win { get; }
+
+        // Display/column names of locally saved metadata entries whose enabledFlag is not "Y"
+        // (see FilterDisabledLocalColumns). IncludeMissingRecordKeys skips these so a disabled
+        // column isn't re-added from the records' own keys. Empty unless local metadata is used.
+        private readonly HashSet<string> _disabledLocalColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         public DDDatatoWorksheet(Excel.Application xlapp, object drillValues, string dDType, string drilldownParts, CancellationToken token = default, GLWaitWindow win = null)
         {
             DD_ExcelApp = xlapp;
@@ -1657,6 +1663,7 @@ namespace GLSense.Drilldowns
                     _ = DD_win.Dispatcher.InvokeAsync(() =>
                        DD_win.SetProcessMessage("Extracting meta data..."));
 
+                _disabledLocalColumns.Clear();
                 var metadataSource = ResolveMetadataSource(drillsData);
 
                 // Root cause of "data comes back but nothing writes to Excel" (no error,
@@ -1710,13 +1717,76 @@ namespace GLSense.Drilldowns
                 if (localMetadata != null && localMetadata.Length > 0)
                 {
                     LogUtility.LogDebug($"DDDatatoWorksheet.ExtractMetadata: using locally saved drilldown metadata (DD_Type={DD_Type}).");
-                    return localMetadata;
+                    return FilterDisabledLocalColumns(localMetadata);
                 }
 
                 LogUtility.LogWarn($"DDDatatoWorksheet.ExtractMetadata: 'Overwrite drilldown metadata with locally saved' is enabled, but no local drilldown metadata exists for the selected cube/drilldown type (DD_Type={DD_Type}). Falling back to server-provided metadata.");
             }
 
             return drillsData?.metadata;
+        }
+
+        // Locally saved metadata only: drops entries whose enabledFlag is present and not "Y"
+        // (case-insensitive), so those columns aren't written to the drilldown table. An entry
+        // with no/empty enabledFlag is kept. Names of dropped entries go into
+        // _disabledLocalColumns, unless an enabled entry uses the same name.
+        private Dictionary<string, object>[] FilterDisabledLocalColumns(Dictionary<string, object>[] localMetadata)
+        {
+            var enabled = new List<Dictionary<string, object>>(localMetadata.Length);
+            var disabledNames = new List<string>();
+            var enabledNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var metaItem in localMetadata)
+            {
+                if (metaItem == null)
+                    continue;
+
+                if (IsExplicitlyDisabled(metaItem))
+                {
+                    AddMetaName(metaItem, "displayName", disabledNames);
+                    AddMetaName(metaItem, "columnName", disabledNames);
+                    continue;
+                }
+
+                enabled.Add(metaItem);
+                AddMetaName(metaItem, "displayName", enabledNames);
+                AddMetaName(metaItem, "columnName", enabledNames);
+            }
+
+            foreach (var name in disabledNames)
+            {
+                if (!enabledNames.Contains(name))
+                    _disabledLocalColumns.Add(name);
+            }
+
+            if (enabled.Count != localMetadata.Length)
+            {
+                LogUtility.LogDebug($"DDDatatoWorksheet.FilterDisabledLocalColumns: excluded {localMetadata.Length - enabled.Count} disabled column(s) from locally saved metadata (DD_Type={DD_Type}): {string.Join(", ", _disabledLocalColumns)}");
+            }
+
+            return enabled.ToArray();
+        }
+
+        private static bool IsExplicitlyDisabled(Dictionary<string, object> metaItem)
+        {
+            if (!metaItem.TryGetValue("enabledFlag", out var flag) || flag == null)
+                return false;
+
+            var text = flag.ToString()?.Trim();
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return !string.Equals(text, "Y", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void AddMetaName(Dictionary<string, object> metaItem, string key, ICollection<string> target)
+        {
+            if (metaItem.TryGetValue(key, out var value) && value != null)
+            {
+                var text = value.ToString();
+                if (!string.IsNullOrEmpty(text))
+                    target.Add(text);
+            }
         }
 
         // Reads the CubeId-keyed CustomXMLPart saved via the "Save Locally" button and pulls out
@@ -1855,6 +1925,10 @@ namespace GLSense.Drilldowns
                     Dd_token.ThrowIfCancellationRequested();
 
                     if (displayColumnName.Contains(key))
+                        continue;
+
+                    // Column disabled in the locally saved metadata - don't bring it back.
+                    if (_disabledLocalColumns.Contains(key))
                         continue;
 
                     displayColumnName.Add(key);
