@@ -177,9 +177,10 @@ namespace GLSense.Addin.Core.Views
                 // Optional: turn on DevTools during development
                 webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-                // 6) Diagnostics: log WebView2 runtime and SSO setting
+                // 6) Diagnostics: log WebView2 runtime and SSO setting. Version is LogInfo (not
+                // Debug-gated) - see the same line in GLLogin (WebView2 152.x cursor-hidden regression).
                 var version = webView.CoreWebView2.Environment.BrowserVersionString;
-                ServiceLocator.Logger?.LogDebug($"WebView2 BrowserVersion={version}");
+                ServiceLocator.Logger?.LogInfo($"WebView2 BrowserVersion={version}");
                 ServiceLocator.Logger?.LogDebug($"AllowSingleSignOnUsingOSPrimaryAccount={envOptions.AllowSingleSignOnUsingOSPrimaryAccount}");
 
                 if (AppState.Instance.SelectedCube != null)

@@ -889,6 +889,15 @@ namespace GLSense.Addin.Core.Views
                 // ReleaseCapture() is a no-op when nothing has capture, so this is safe to
                 // call unconditionally on every window close, not just the three that host
                 // WebView2.
+                //
+                // Diagnostic logged with LogInfo (not Debug-gated): it's the evidence that
+                // confirms or rules out the mouse-capture mechanism in a customer's log.
+                // Only logs when something actually holds capture, so normal closes stay quiet.
+                IntPtr capturingHwnd = GetCapture();
+                if (capturingHwnd != IntPtr.Zero)
+                {
+                    ServiceLocator.Logger?.LogInfo($"BaseWindow.RestoreOwnerFocusOnClosed ({_windowName}): mouse capture WAS held by hWnd=0x{capturingHwnd.ToInt64():X} (IsWindow={IsWindow(capturingHwnd)}) - releasing now");
+                }
                 ReleaseCapture();
 
                 // Separate from mouse capture above: Windows' "Hide pointer while
@@ -905,11 +914,18 @@ namespace GLSense.Addin.Core.Views
                 // decremented more than once, bounded so an already-visible cursor
                 // doesn't spin.
                 int cursorShowCount = ShowCursor(true);
+                bool cursorWasStuckHidden = cursorShowCount < 0;
                 int cursorShowGuard = 0;
                 while (cursorShowCount < 0 && cursorShowGuard < 25)
                 {
                     cursorShowCount = ShowCursor(true);
                     cursorShowGuard++;
+                }
+                if (cursorWasStuckHidden)
+                {
+                    // Same reasoning as the capture log above: confirms the WebView2
+                    // cursor-visibility-counter regression specifically.
+                    ServiceLocator.Logger?.LogInfo($"BaseWindow.RestoreOwnerFocusOnClosed ({_windowName}): cursor visibility counter WAS negative at close time (took {cursorShowGuard + 1} ShowCursor(true) call(s) to restore) - matches the known WebView2 Runtime 152.0.4191.x+ cursor-hidden regression");
                 }
 
                 if (Owner != null)
@@ -1003,6 +1019,12 @@ namespace GLSense.Addin.Core.Views
 
         [DllImport("user32.dll")]
         private static extern int ShowCursor(bool bShow);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetCapture();
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindow(IntPtr hWnd);
 
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOSIZE = 0x0001;

@@ -7505,6 +7505,24 @@ Not yet rebuilt/retested end-to-end by the user for the actual Unhide behavior f
   - Every case keeps display/actual lockstep, and every cell sits under its own header.
   Not yet verified in a live Excel drilldown.
 
+## 81. Mouse-pointer-missing-after-login: diagnostic logging (follow-up to section 77)
+
+- Ported the VB.NET build's diagnostic commit (`69ca2ab`, `FormLogin.vb`) so a customer's
+  log shows **which** of section 77's two mechanisms they hit, without Debug mode on.
+  All lines below use `LogInfo`, which isn't gated by the ribbon Debug toggle:
+  - `BaseWindow.RestoreOwnerFocusOnClosed`: logs only when something is wrong, so normal
+    closes stay quiet:
+    - `GetCapture()` before `ReleaseCapture()`, logging the capturing hWnd and `IsWindow`
+      if anything held capture.
+    - Whether the `ShowCursor(true)` loop had to restore a negative counter (the WebView2
+      152.x regression).
+  - `GLLogin`: the WebView2 `BrowserVersion` (was `LogDebug`). Also "login window opened"
+    (`GLLogin_Loaded`), "login success detected, hiding WebView2 control"
+    (`WebView_NavigationCompleted`) and "closing login window" (`SuccessCube`).
+  - `GLDrilldownCustomization`: the WebView2 `BrowserVersion` (was `LogDebug`).
+  **Status: AIPowered `11.1.2`; FinalWorkingCode `11.1.0`, `11.1.1` and `11.1.2`.**
+  Build-verified. Logging only, so there's no behavior change.
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
