@@ -1116,3 +1116,28 @@ there.**
   `"null"` and an escaped `\"null\"` inside strings are untouched; `"a": null` -> `"a":""`;
   `{"x":[null]}` -> `{"x":[]}`; `[null,1]` -> `[,1]` (unchanged from before); a trailing
   partial `nul` is left alone. Not yet verified against a live server response.
+
+## `Drilldowns\DDDatatoWorksheet.cs` (honor `enabledFlag` in locally saved drilldown metadata)
+
+- **Columns disabled in the drilldown customization were still written to the drilldown
+  table.** With "Overwrite drilldown metadata with locally saved" on, `ResolveMetadataSource`
+  uses the metadata saved via `GLDrilldownCustomization`'s "Save Locally", but nothing read
+  its `enabledFlag`. And since records are keyed by `displayName`, `IncludeMissingRecordKeys`
+  would have re-added a column even if its metadata entry were dropped.
+  Fixed: new `FilterDisabledLocalColumns` drops entries whose `enabledFlag` is present and not
+  `Y` (case-insensitive). A missing or empty flag still shows the column. The dropped entries'
+  `displayName`/`columnName` go into `_disabledLocalColumns` (cleared at the start of each
+  `ExtractMetadata`), which `IncludeMissingRecordKeys` skips. A name that an enabled entry
+  also uses is never added to that set. Scope, user-confirmed: **local metadata only**;
+  server metadata is unchanged. Non-metadata record keys (`DRILL_DOWN1-3`) and keys that
+  appear only in some records still come through exactly as before.
+  **Status: fixed in FinalWorkingCode on `11.1.0`, `11.1.1` and `11.1.2`; in AIPowered on
+  `11.1.2` only (its section 80).** Build-verified (`GLSense.csproj`, Debug). Behavior verified
+  by a reflection harness on the compiled DLL, using a real BALANCE response (15 metadata
+  columns, 110 records; same `CleanResponse` the add-in applies):
+  - All `Y`: same 18 columns as the old path.
+  - `N`/`n` flags dropped, while empty, missing and `y` are kept (16 columns).
+  - Records with uneven keys, plus a disabled column: the union still works.
+  - All `N`: only the hidden `DRILL_DOWN1-3` columns are written.
+  - Every case keeps display/actual lockstep, and every cell sits under its own header.
+  Not yet verified in a live Excel drilldown.
