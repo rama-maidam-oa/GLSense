@@ -1141,3 +1141,21 @@ there.**
   - All `N`: only the hidden `DRILL_DOWN1-3` columns are written.
   - Every case keeps display/actual lockstep, and every cell sits under its own header.
   Not yet verified in a live Excel drilldown.
+
+## Mouse-pointer-missing-after-login: diagnostic logging (follow-up to the `Utilities\DpiAwareWindow.cs` fix above)
+
+- Ported the VB.NET build's diagnostic commit (`69ca2ab`, `FormLogin.vb`) so a customer's
+  log shows **which** of the two mechanisms (stuck mouse capture vs. the WebView2 152.x
+  cursor-counter regression) they hit, without Debug mode on. All lines below use
+  `LogInfo`, which isn't gated by the ribbon Debug toggle:
+  - `DpiAwareWindow.RestoreOwnerFocusOnClosed`: logs only when something is wrong, so
+    normal closes stay quiet:
+    - `GetCapture()` before `ReleaseCapture()`, logging the capturing hWnd and `IsWindow`
+      if anything held capture.
+    - Whether the `ShowCursor(true)` loop had to restore a negative counter.
+  - `GLLogin`: the WebView2 `BrowserVersion` (was `LogDebug`). Also "login window opened"
+    (`GLLogin_Loaded`), "login success detected, hiding WebView2 control"
+    (`WebView_NavigationCompleted`) and "closing login window" (`SuccessCube`).
+  - `GLDrilldownCustomization`: the WebView2 `BrowserVersion` (was `LogDebug`).
+  **Status: FinalWorkingCode `11.1.0`, `11.1.1` and `11.1.2`; AIPowered `11.1.2` (its section
+  81).** Build-verified. Logging only, so there's no behavior change.

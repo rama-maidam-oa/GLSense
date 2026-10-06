@@ -133,6 +133,11 @@ namespace GLSense.Views
         }
         private void GLLogin_Loaded(object sender, RoutedEventArgs e)
         {
+            // Mouse-pointer-missing-after-login diagnostics (with the "login success" and
+            // "closing" lines below, and DpiAwareWindow.RestoreOwnerFocusOnClosed): LogInfo,
+            // not LogDebug, so these reach a customer's log even with Debug mode off.
+            LogUtility.LogInfo("GLLogin.GLLogin_Loaded: login window opened");
+
             if (!File.Exists(AppPaths.TempUrlsPath))
             {
                 Dispatcher.InvokeAsync(() =>
@@ -208,9 +213,12 @@ namespace GLSense.Views
                     // Optional: turn on DevTools during development
                     webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-                    // Diagnostics: log WebView2 runtime and SSO setting
+                    // Diagnostics: log WebView2 runtime and SSO setting. The version is LogInfo
+                    // (not Debug-gated) because it confirms or rules out the WebView2 Runtime
+                    // 152.0.4191.x+ cursor-hidden regression
+                    // (https://github.com/MicrosoftEdge/WebView2Feedback/issues/5687).
                     var version = webView.CoreWebView2.Environment.BrowserVersionString;
-                    LogUtility.LogDebug($"WebView2 BrowserVersion={version}");
+                    LogUtility.LogInfo($"WebView2 BrowserVersion={version}");
                     LogUtility.LogDebug("AllowSingleSignOnUsingOSPrimaryAccount=True");
 
                 }
@@ -434,6 +442,10 @@ namespace GLSense.Views
             if (!IsLoginSuccessView(src))
                 return;
 
+            // Timestamp to correlate with whether the user was still typing/hovering on the
+            // login page when the WebView2 control is hidden (ShowBusyOverlayAsync below).
+            LogUtility.LogInfo("GLLogin: login success detected, hiding WebView2 control");
+
             using (new LogUtility.LogScope("WebView_NavigationCompleted"))
             {
                 LogUtility.LogDebug("Document Title: " + webView.CoreWebView2?.DocumentTitle ?? "");
@@ -642,6 +654,7 @@ namespace GLSense.Views
                 if (broadcastMsg != null && !string.IsNullOrWhiteSpace(broadcastMsg))
                     await AppOverlayControl.ShowInfoAsync(broadcastMsg);
             }
+            LogUtility.LogInfo("GLLogin.SuccessCube: closing login window");
             Close();
         }
         private async Task ShowErrorAndCloseAsync(string message)
