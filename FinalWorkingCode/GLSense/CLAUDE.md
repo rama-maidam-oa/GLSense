@@ -1058,7 +1058,7 @@ there.**
 ## `Models\BalanceDtoModel.cs` (segment-marker follow-ups to `8398ec3`)
 
 - **Regression from `8398ec3` (tilde/hyphen positional-marker fix).** The Segment Values
-  window writes NOT BETWEEN with `--` on **both** bounds
+  window writes NOTBETWEEN with `--` on **both** bounds
   (`SegmentSelectorViewModel.AddNotBetweenSelection`: `val1 = "--" + ...`,
   `val2 = "--" + ...`, joined as `--1000|--2000`). `8398ec3` replaced the old blanket
   `Replace("--", "")` in `CreateRangeSegmentValue` with a positional strip of the
