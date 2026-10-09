@@ -1713,7 +1713,7 @@ namespace GLSense.Drilldowns
 
             if (UserConfig.OverwriteDrilldownMetadata)
             {
-                var localMetadata = TryGetLocalMetadata();
+                var localMetadata = TryGetLocalMetadata(drillsData?.metadata);
                 if (localMetadata != null && localMetadata.Length > 0)
                 {
                     LogUtility.LogDebug($"DDDatatoWorksheet.ExtractMetadata: using locally saved drilldown metadata (DD_Type={DD_Type}).");
@@ -1793,8 +1793,9 @@ namespace GLSense.Drilldowns
         // just the array for this drilldown's type (DD_Type, e.g. "BL"/"JL"/"SL"/...). Returns
         // null if the preference is off, no cube is selected, no workbook is active, no local
         // metadata was ever saved for this cube, or the saved payload has no entry for this
-        // drilldown type (e.g. UNIFIED/CM on a non-fusion cube).
-        private Dictionary<string, object>[] TryGetLocalMetadata()
+        // drilldown type (e.g. UNIFIED/CM on a non-fusion cube). Entries for views the server
+        // didn't use for this drilldown are dropped (see FilterToServerViews).
+        private Dictionary<string, object>[] TryGetLocalMetadata(Dictionary<string, object>[] serverMetadata)
         {
             try
             {
@@ -1820,13 +1821,70 @@ namespace GLSense.Drilldowns
                     return null;
                 }
 
-                return DrilldownMetadataXmlStore.ExtractDrilldownTypeMetadata(rawJson, recordsKey);
+                var localMetadata = DrilldownMetadataXmlStore.ExtractDrilldownTypeMetadata(rawJson, recordsKey);
+                return FilterToServerViews(localMetadata, serverMetadata);
             }
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "DDDatatoWorksheet.TryGetLocalMetadata");
                 return null;
             }
+        }
+
+        // A saved records-key list holds the columns of every view for that type (e.g. BALANCE
+        // holds both viewName=BALANCE and viewName=JOURNAL; SUBLEDGER holds one set per
+        // RX_GLFLEX_*_V view), and every entry carries the same drilldownType - viewName is the
+        // only field that tells them apart. Keeps only the saved entries whose viewName is one
+        // the server used for this drilldown (taken from the server's own metadata). If the
+        // server sent no viewName at all, there's nothing to match on, so the whole list is
+        // kept. A saved entry with no/empty viewName is kept.
+        private Dictionary<string, object>[] FilterToServerViews(
+            Dictionary<string, object>[] localMetadata,
+            Dictionary<string, object>[] serverMetadata)
+        {
+            if (localMetadata == null || localMetadata.Length == 0)
+                return localMetadata;
+
+            var serverViews = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (serverMetadata != null)
+            {
+                foreach (var metaItem in serverMetadata)
+                {
+                    var view = GetMetaText(metaItem, "viewName");
+                    if (!string.IsNullOrEmpty(view))
+                        serverViews.Add(view);
+                }
+            }
+
+            if (serverViews.Count == 0)
+            {
+                LogUtility.LogDebug($"DDDatatoWorksheet.FilterToServerViews: server metadata has no viewName, using all {localMetadata.Length} locally saved column(s) (DD_Type={DD_Type}).");
+                return localMetadata;
+            }
+
+            var matching = new List<Dictionary<string, object>>(localMetadata.Length);
+
+            foreach (var metaItem in localMetadata)
+            {
+                if (metaItem == null)
+                    continue;
+
+                var view = GetMetaText(metaItem, "viewName");
+                if (string.IsNullOrEmpty(view) || serverViews.Contains(view))
+                    matching.Add(metaItem);
+            }
+
+            LogUtility.LogDebug($"DDDatatoWorksheet.FilterToServerViews: kept {matching.Count} of {localMetadata.Length} locally saved column(s) for view(s) {string.Join(", ", serverViews)} (DD_Type={DD_Type}).");
+
+            return matching.ToArray();
+        }
+
+        private static string GetMetaText(Dictionary<string, object> metaItem, string key)
+        {
+            if (metaItem == null || !metaItem.TryGetValue(key, out var value) || value == null)
+                return null;
+
+            return value.ToString()?.Trim();
         }
 
         // Maps a DrilldownType to the top-level key used under the drilldown-metadata API
