@@ -238,6 +238,8 @@ namespace GLSense.Addin.Core.Views
                 else
                 {
                     ServiceLocator.Logger?.LogWarn($"GLLOVs.CmdSubmit_Click: named range '{cleanedName}' could not be created/found, skipping validation setup");
+                    await AppOverlayControl.HideBusyAsync();
+                    await AppOverlayControl.ShowWarningAsync($"Unable to insert the {SelLov.Name} LOV.");
                 }
             }
             catch (OperationCanceledException)
@@ -336,11 +338,11 @@ namespace GLSense.Addin.Core.Views
 
                 //Currency Types
                 List<string> currencyTypes = new List<string> { "Total", "E", "T", "C" };
-                ItemsDict["CurrencyTypes"] = currencyTypes;
+                ItemsDict["CurrencyType"] = currencyTypes;
 
                 //Actual Flags
                 List<string> actualFlags = new List<string> { "A", "B", "E", "A+E" };
-                ItemsDict["ActualFlags"] = actualFlags;
+                ItemsDict["ActualFlag"] = actualFlags;
 
                 //Budgets
                 var budgets = repository.GetBudgets(CubeId, LedgerIdlng);

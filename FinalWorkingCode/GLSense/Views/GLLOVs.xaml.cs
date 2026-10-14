@@ -231,6 +231,8 @@ namespace GLSense.Views
                 else
                 {
                     LogUtility.LogDebug("GLLOVs.CmdSubmit_Click: named range not created or does not exist, skipping validation setup");
+                    await AppOverlayControl.HideBusyAsync();
+                    await AppOverlayControl.ShowWarningAsync($"Unable to insert the {SelLov.Name} LOV.");
                 }
             }
             catch (OperationCanceledException)
@@ -332,11 +334,11 @@ namespace GLSense.Views
 
                 //Currency Types
                 List<string> currencyTypes = new List<string> { "Total", "E", "T", "C" };
-                ItemsDict["CurrencyTypes"] = currencyTypes;
+                ItemsDict["CurrencyType"] = currencyTypes;
 
                 //Actual Flags
                 List<string> actualFlags = new List<string> { "A", "B", "E", "A+E" };
-                ItemsDict["ActualFlags"] = actualFlags;
+                ItemsDict["ActualFlag"] = actualFlags;
 
                 //Budgets
                 var budgets = repository.GetBudgets(CubeId, LedgerIdlng);
