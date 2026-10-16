@@ -138,6 +138,18 @@ namespace GLSense.Views
             else if (funcValues != null && funcValues.Count >= 3)
             {
                 ledgerName = funcValues[2].Replace("\"", "");
+
+                // Multi-ledger FSG template: open with the ledger that has the formula's period,
+                // matching what GLSense_GetPeriod itself resolves to. ApplyFormulaParams reads
+                // the ledger back from funcValues[2], so update it there too.
+                string periodName = funcValues[0].Replace("\"", "");
+                string resolved = CommonFunctions.ResolveMultiLedger(ledgerName, p => p.PeriodName == periodName);
+                if (resolved != ledgerName)
+                {
+                    LogUtility.LogDebug($"GLGetPeriod.ValidateLedgerFromFormula: multi-ledger '{ledgerName}' resolved to '{resolved}' for period '{periodName}'");
+                    ledgerName = resolved;
+                    funcValues[2] = resolved;
+                }
             }
 
             var ledgerRecord = AppState.Instance.SelectedCube.Ledgers
