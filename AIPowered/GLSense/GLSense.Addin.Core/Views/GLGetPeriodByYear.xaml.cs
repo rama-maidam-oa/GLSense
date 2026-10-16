@@ -144,6 +144,20 @@ namespace GLSense.Addin.Core.Views
             else if (funcValues != null && funcValues.Count >= 3)
             {
                 ledgerName = funcValues[2].Replace("\"", "");
+
+                // Multi-ledger FSG template: open with the ledger that has the formula's year/period
+                // number, matching what GLSense_GetPeriodByYear itself resolves to. ApplyFormulaParams
+                // reads the ledger back from funcValues[2], so update it there too.
+                bool hasYear = int.TryParse(funcValues[0].Replace("\"", "").Trim(), out int periodYear);
+                bool hasNum = int.TryParse(funcValues[1].Replace("\"", "").Trim(), out int periodNum);
+                string resolved = CommonFunctions.ResolveMultiLedger(ledgerName,
+                    p => hasYear && hasNum && p.PeriodYear == periodYear && p.PeriodNum == periodNum);
+                if (resolved != ledgerName)
+                {
+                    ServiceLocator.Logger?.LogDebug($"GLGetPeriodByYear.ValidateLedgerFromFormula: multi-ledger '{ledgerName}' resolved to '{resolved}' for year={funcValues[0]}, num={funcValues[1]}");
+                    ledgerName = resolved;
+                    funcValues[2] = resolved;
+                }
             }
 
             var ledgerRecord = AppState.Instance.SelectedCube.Ledgers

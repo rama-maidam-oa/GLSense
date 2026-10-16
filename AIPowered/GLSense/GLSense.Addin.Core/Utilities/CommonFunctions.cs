@@ -494,6 +494,58 @@ namespace GLSense.Addin.Core.Utilities
             }
         }
 
+        // FSG reports scheduled in the Orbit application can use several ledgers, and their templates
+        // carry them as one ';'-joined Ledger value (e.g. "Vision Operations (USA);Vision Brazil SL (USD)").
+        // Picks the single ledger the period windows should open with, using the same rule as the period
+        // UDFs: the first ledger, in the order given, whose cached periods satisfy periodMatch. If none
+        // does, falls back to the first ledger with any period data, then the first ledger that exists in
+        // the cube (its data can still be fetched). A value without ';' is returned unchanged.
+        public static string ResolveMultiLedger(string ledgerValue, Func<GLSense.Addin.Core.Models.PeriodModel, bool> periodMatch)
+        {
+            if (string.IsNullOrEmpty(ledgerValue) || !ledgerValue.Contains(";"))
+                return ledgerValue;
+
+            var ledgerNames = ledgerValue
+                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim().Trim('"'))
+                .Where(l => l.Length > 0)
+                .ToList();
+
+            string? firstWithData = null;
+            foreach (string ledgerName in ledgerNames)
+            {
+                List<GLSense.Addin.Core.Models.PeriodModel> periods;
+                try
+                {
+                    periods = GLSense.Addin.Core.Services.DataServiceLocator.PeriodDataService
+                        .GetPeriodsForLedger(ledgerName, allowRemoteFetch: false)
+                        .ToList();
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogDebug($"CommonFunctions.ResolveMultiLedger: no period data for ledger \"{ledgerName}\" ({ex.Message}), trying next ledger");
+                    continue;
+                }
+
+                if (!periods.Any())
+                    continue;
+
+                if (periods.Any(periodMatch))
+                {
+                    ServiceLocator.Logger?.LogDebug($"CommonFunctions.ResolveMultiLedger: using ledger \"{ledgerName}\" from \"{ledgerValue}\"");
+                    return ledgerName;
+                }
+
+                firstWithData ??= ledgerName;
+            }
+
+            string resolved = firstWithData
+                ?? ledgerNames.FirstOrDefault(l => AppState.Instance.SelectedCube?.GetLedgerIdByName(l) != null)
+                ?? ledgerValue;
+            ServiceLocator.Logger?.LogDebug($"CommonFunctions.ResolveMultiLedger: requested period not found in any ledger of \"{ledgerValue}\", using \"{resolved}\"");
+            return resolved;
+        }
+
         /// <summary>
         /// Used when a single cell contains more than one GLSense_GetBalance(...) call:
         /// returnType selects which slice of a specific call to extract
