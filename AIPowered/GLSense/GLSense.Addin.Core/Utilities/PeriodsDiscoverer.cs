@@ -82,7 +82,7 @@ namespace GLSense.Addin.Core.Utilities
                     return;
                 }
 
-                Periods = PModel(LedgerString);
+                Periods = PModel(LedgerString, p => p.PeriodName == rngValue);
 
                 Token.ThrowIfCancellationRequested();
 
@@ -599,6 +599,50 @@ namespace GLSense.Addin.Core.Utilities
                 ServiceLocator.Logger?.LogException(ex, $"PeriodsDiscoverer.PModel(lName='{lName}'): failed");
                 return new List<PeriodModel>();
             }
+        }
+        // FSG reports scheduled in the Orbit application can use several ledgers, and their
+        // templates carry them as one ';'-joined Ledger value (e.g. "Vision Operations (USA);Vision Brazil SL (USD)").
+        // Period data is stored per ledger, so try each ledger in the order given and use the first
+        // one whose periods satisfy periodMatch; later ledgers are only checked when an earlier one
+        // has no period data or lacks the requested period. A single ledger behaves exactly as PModel.
+        // Mirrors UdfDispatcher.PModel(string, Func<PeriodModel, bool>).
+        private static List<PeriodModel> PModel(string lName, Func<PeriodModel, bool> periodMatch)
+        {
+            if (string.IsNullOrEmpty(lName))
+                return PModel(lName);
+
+            string[] ledgerNames = lName
+                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim().Trim('"'))
+                .Where(l => l.Length > 0)
+                .ToArray();
+
+            if (ledgerNames.Length <= 1)
+                return PModel(lName);
+
+            List<PeriodModel> firstLoaded = null;
+            foreach (string ledgerName in ledgerNames)
+            {
+                var periods = PModel(ledgerName);
+                if (!periods.Any())
+                {
+                    ServiceLocator.Logger?.LogDebug($"PeriodsDiscoverer.PModel: no period data for ledger \"{ledgerName}\", trying next ledger");
+                    continue;
+                }
+
+                if (periods.Any(periodMatch))
+                {
+                    ServiceLocator.Logger?.LogDebug($"PeriodsDiscoverer.PModel: using ledger \"{ledgerName}\" from \"{lName}\"");
+                    return periods;
+                }
+
+                ServiceLocator.Logger?.LogDebug($"PeriodsDiscoverer.PModel: requested period not found for ledger \"{ledgerName}\", trying next ledger");
+                firstLoaded ??= periods;
+            }
+
+            // No ledger had the period: hand back the first ledger that had data so FillPeriods'
+            // own "does not exist in the periods list" message shows, as for a single ledger.
+            return firstLoaded ?? new List<PeriodModel>();
         }
         private static List<PeriodModel> LoadPeriodsForLedger(string ledgerName)
         {
