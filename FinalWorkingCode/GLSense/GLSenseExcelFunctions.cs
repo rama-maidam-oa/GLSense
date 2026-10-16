@@ -297,6 +297,49 @@ namespace GLSense
                     return new List<PeriodModel>();
                 }
             }
+            // FSG reports scheduled in the Orbit application can use several ledgers, and their
+            // templates carry them as one ';'-joined Ledger value (e.g. "Vision Operations (USA);Vision Brazil SL (USD)").
+            // Period data is stored per ledger, so try each ledger in the order given and use the first
+            // one whose cached periods satisfy periodMatch; later ledgers are only checked when an earlier
+            // one has no period data or lacks the requested period. A single ledger behaves exactly as PModel.
+            private static List<PeriodModel> PModel(string lName, Func<PeriodModel, bool> periodMatch)
+            {
+                if (string.IsNullOrEmpty(lName))
+                    return PModel(lName);
+
+                string[] ledgerNames = lName
+                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(l => l.Trim().Trim('"'))
+                    .Where(l => l.Length > 0)
+                    .ToArray();
+
+                if (ledgerNames.Length <= 1)
+                    return PModel(lName);
+
+                List<PeriodModel>? firstLoaded = null;
+                foreach (string ledgerName in ledgerNames)
+                {
+                    var periods = PModel(ledgerName);
+                    if (!periods.Any())
+                    {
+                        LogUtility.LogDebug($"PModel: no period data for ledger \"{ledgerName}\", trying next ledger");
+                        continue;
+                    }
+
+                    if (periods.Any(periodMatch))
+                    {
+                        LogUtility.LogDebug($"PModel: using ledger \"{ledgerName}\" from \"{lName}\"");
+                        return periods;
+                    }
+
+                    LogUtility.LogDebug($"PModel: requested period not found for ledger \"{ledgerName}\", trying next ledger");
+                    firstLoaded ??= periods;
+                }
+
+                // No ledger had the period: hand back the first ledger that had data so the caller's
+                // own "period not found" handling runs as it does for a single ledger.
+                return firstLoaded ?? new List<PeriodModel>();
+            }
             private static List<PeriodModel> LoadPeriodsForLedger(string ledgerName)
             {
                 try
@@ -967,11 +1010,6 @@ namespace GLSense
                 }
             }
 
-            private static List<PeriodModel> GetPeriods(string ledgerName)
-            {
-                return PModel(ledgerName) ?? new List<PeriodModel>();
-            }
-
             internal static DateTime ParsePeriodDate(object dateObj)
             {
                 try
@@ -1075,12 +1113,12 @@ namespace GLSense
                         return GetCachedFormulaResultOrError(formulaCompressed);
                     }
 
-                    var periods = GetPeriods(ledgerValue);
-                    if (periods == null || !periods.Any())
-                        return ADXExcelError.xlErrorGettingData;
-
                     DateTime periodDate = ParsePeriodDate(parameters[0]);
                     if (periodDate == default)  // Invalid date parsing returns default(DateTime)
+                        return ADXExcelError.xlErrorGettingData;
+
+                    var periods = PModel(ledgerValue, p => p.StartDate.Date <= periodDate.Date && p.EndDate.Date >= periodDate.Date);
+                    if (periods == null || !periods.Any())
                         return ADXExcelError.xlErrorGettingData;
 
                     string selectedPeriod = FindPeriodName(periods, periodDate);
@@ -1121,13 +1159,13 @@ namespace GLSense
                     }
                         
                     // Get periods using the new service
-                    var periods = PModel(ledgerValue);
+                    string periodName = parameters[0].ToString();
+                    var periods = PModel(ledgerValue, p => p.PeriodName == periodName);
                     if (periods == null || !periods.Any())
                     {
                         return GetCachedFormulaResultOrError(formulaCompressed);
                     }
 
-                    string periodName = parameters[0].ToString();
                     string output = string.Empty;
                     int selectedOffset = Convert.ToInt32(parameters[1]);
 
@@ -1195,14 +1233,14 @@ namespace GLSense
                     }
 
                     // Get periods using the new service
-                    var periods = PModel(ledgerValue);
+                    int periodYear = Convert.ToInt32(parameters[0]);
+                    int periodNum = Convert.ToInt32(parameters[1]);
+
+                    var periods = PModel(ledgerValue, p => p.PeriodYear == periodYear && p.PeriodNum == periodNum);
                     if (periods == null || !periods.Any())
                     {
                         return GetCachedFormulaResultOrError(formulaCompressed);
                     }
-
-                    int periodYear = Convert.ToInt32(parameters[0]);
-                    int periodNum = Convert.ToInt32(parameters[1]);
 
                     // Find period by year and number
                     var period = periods.FirstOrDefault(p => p.PeriodYear == periodYear && p.PeriodNum == periodNum);
@@ -1243,13 +1281,12 @@ namespace GLSense
                         return GetCachedFormulaResultOrError(formulaCompressed);
 
                     // Get periods using the new service
-                    var periods = PModel(ledgerValue);
+                    string periodName = parameters[0].ToString();
+                    var periods = PModel(ledgerValue, p => p.PeriodName == periodName);
                     if (periods == null || !periods.Any())
                     {
                         return GetCachedFormulaResultOrError(formulaCompressed);
                     }
-
-                    string periodName = parameters[0].ToString();
                     string output = string.Empty;
 
                     // Find the base period to get the year
@@ -1310,13 +1347,12 @@ namespace GLSense
                         return GetCachedFormulaResultOrError(formulaCompressed);
 
                     // Get periods using the new service
-                    var periods = PModel(ledgerValue);
+                    string periodName = parameters[0].ToString();
+                    var periods = PModel(ledgerValue, p => p.PeriodName == periodName);
                     if (periods == null || !periods.Any())
                     {
                         return GetCachedFormulaResultOrError(formulaCompressed);
                     }
-
-                    string periodName = parameters[0].ToString();
                     string output = string.Empty;
 
                     // Find the base period to get the year
@@ -1376,13 +1412,12 @@ namespace GLSense
                         return GetCachedFormulaResultOrError(formulaCompressed);
 
                     // Get periods using the new service
-                    var periods = PModel(ledgerValue);
+                    string periodName = parameters[0].ToString();
+                    var periods = PModel(ledgerValue, p => p.PeriodName == periodName);
                     if (periods == null || !periods.Any())
                     {
                         return GetCachedFormulaResultOrError(formulaCompressed);
                     }
-
-                    string periodName = parameters[0].ToString();
 
                     // Find the period and return its number
                     var period = periods.FirstOrDefault(p => p.PeriodName == periodName);
@@ -1424,13 +1459,12 @@ namespace GLSense
                         return GetCachedFormulaResultOrError(formulaCompressed);
 
                     // Get periods using the new service
-                    var periods = PModel(ledgerValue);
+                    string periodName = parameters[0].ToString();
+                    var periods = PModel(ledgerValue, p => p.PeriodName == periodName);
                     if (periods == null || !periods.Any())
                     {
                         return GetCachedFormulaResultOrError(formulaCompressed);
                     }
-
-                    string periodName = parameters[0].ToString();
 
                     // Find the period and return its quarter
                     var period = periods.FirstOrDefault(p => p.PeriodName == periodName);
@@ -1472,13 +1506,12 @@ namespace GLSense
                         return GetCachedFormulaResultOrError(formulaCompressed);
 
                     // Get periods using the new service
-                    var periods = PModel(ledgerValue);
+                    string periodName = parameters[0].ToString();
+                    var periods = PModel(ledgerValue, p => p.PeriodName == periodName);
                     if (periods == null || !periods.Any())
                     {
                         return GetCachedFormulaResultOrError(formulaCompressed);
                     }
-
-                    string periodName = parameters[0].ToString();
 
                     // Find the period and return its year
                     var period = periods.FirstOrDefault(p => p.PeriodName == periodName);
