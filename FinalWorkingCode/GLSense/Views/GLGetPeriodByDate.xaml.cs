@@ -122,6 +122,19 @@ namespace GLSense.Views
             return rng.Formula.ToString().IndexOf("GLSense_GetPeriodByDate", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        private static bool TryFromOADate(double oaDate, out DateTime date)
+        {
+            try
+            {
+                date = DateTime.FromOADate(oaDate);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                date = default;
+                return false;
+            }
+        }
         private LedgerInfo ValidateLedgerFromFormula(Excel.Range rng)
         {
             LogUtility.LogDebug("GLGetPeriodByDate.ValidateLedgerFromFormula invoked");
@@ -141,6 +154,25 @@ namespace GLSense.Views
             else if (funcValues != null && funcValues.Count >= 3)
             {
                 ledgerName = funcValues[1].Replace("\"", "");
+
+                // Multi-ledger FSG template: open with the ledger whose periods contain the formula's
+                // date, matching what GLSense_GetPeriodByDate itself resolves to. ApplyFormulaParams
+                // reads the ledger back from index 1; the arg is replaced too so a cell reference
+                // holding the ';'-joined value isn't re-read and rejected as an unknown ledger.
+                string dateText = funcValues[0].Replace("\"", "").Trim();
+                bool hasDate = double.TryParse(dateText, out double oaDate)
+                    ? TryFromOADate(oaDate, out DateTime periodDate)
+                    : DateTime.TryParse(dateText, out periodDate);
+                string resolved = CommonFunctions.ResolveMultiLedger(ledgerName,
+                    p => hasDate && p.StartDate.Date <= periodDate.Date && p.EndDate.Date >= periodDate.Date);
+                if (resolved != ledgerName)
+                {
+                    LogUtility.LogDebug($"GLGetPeriodByDate.ValidateLedgerFromFormula: multi-ledger '{ledgerName}' resolved to '{resolved}' for date '{dateText}'");
+                    ledgerName = resolved;
+                    funcValues[1] = resolved;
+                    if (funcArgs != null && funcArgs.Count > 1)
+                        funcArgs[1] = resolved;
+                }
             }
 
             var ledgerRecord = AppState.Instance.SelectedCube.Ledgers
