@@ -3353,7 +3353,7 @@ namespace GLSense.Addin.Core.ViewModels
 
         private void AddConditionalBudgetEncumbrance(Dictionary<string, string> values)
         {
-            var afType = ActualFlagField?.ComboValue?.ToString();
+            var afType = GetActualFlagType();
             if (string.IsNullOrWhiteSpace(afType)) return;
 
             switch (afType)
@@ -3920,24 +3920,41 @@ namespace GLSense.Addin.Core.ViewModels
         // otherwise the formula is written with an empty "" argument in that slot.
         private void ValidateActualFlagSpecificFields()
         {
-            var afType = GetFieldValue(ActualFlagField)?.Trim() ?? string.Empty;
+            var afType = GetActualFlagType();
             ServiceLocator.Logger?.LogDebug($"GLConfiguratorViewModel.ValidateActualFlagSpecificFields: afType={afType}");
 
-            if (afType.Equals(Budget, StringComparison.OrdinalIgnoreCase) ||
-                afType.Equals("B", StringComparison.OrdinalIgnoreCase))
+            switch (afType)
             {
-                ValidateRequired(BudgetField, "Budget is required when Actual Flag is Budget.");
+                case Budget:
+                    ValidateRequired(BudgetField, "Budget is required when Actual Flag is Budget.");
+                    break;
+                case Encumbrance:
+                    ValidateRequired(EncumbranceField, "Encumbrance is required when Actual Flag is Encumbrance.");
+                    break;
+                case AE:
+                    ValidateRequired(EncumbranceField, "Encumbrance is required when Actual Flag is Actual+Encumbrance.");
+                    break;
             }
-            else if (afType.Equals(Encumbrance, StringComparison.OrdinalIgnoreCase) ||
-                     afType.Equals("E", StringComparison.OrdinalIgnoreCase))
-            {
-                ValidateRequired(EncumbranceField, "Encumbrance is required when Actual Flag is Encumbrance.");
-            }
-            else if (afType.Equals(AE, StringComparison.OrdinalIgnoreCase) ||
-                     afType.Equals("A+E", StringComparison.OrdinalIgnoreCase))
-            {
-                ValidateRequired(EncumbranceField, "Encumbrance is required when Actual Flag is Actual+Encumbrance.");
-            }
+        }
+
+        // Actual Flag as Budget / Encumbrance / Actual+Encumbrance (or the raw value otherwise).
+        // Read through GetFieldValue so a flag supplied by cell reference counts too - reading
+        // only ComboValue left the Budget/Encumbrance argument empty for a referenced flag.
+        private string GetActualFlagType()
+        {
+            var af = GetFieldValue(ActualFlagField)?.Trim() ?? string.Empty;
+
+            if (af.Equals(Budget, StringComparison.OrdinalIgnoreCase) ||
+                af.Equals("B", StringComparison.OrdinalIgnoreCase))
+                return Budget;
+            if (af.Equals(Encumbrance, StringComparison.OrdinalIgnoreCase) ||
+                af.Equals("E", StringComparison.OrdinalIgnoreCase))
+                return Encumbrance;
+            if (af.Equals(AE, StringComparison.OrdinalIgnoreCase) ||
+                af.Equals("A+E", StringComparison.OrdinalIgnoreCase))
+                return AE;
+
+            return af;
         }
 
         private void ValidateBalanceTypeSpecificFields()
@@ -4024,7 +4041,7 @@ namespace GLSense.Addin.Core.ViewModels
 
         private string GetBudgetEncumbranceValue()
         {
-            var afType = ActualFlagField?.ComboValue?.ToString();
+            var afType = GetActualFlagType();
             if (string.IsNullOrWhiteSpace(afType)) return "";
 
             return afType switch
