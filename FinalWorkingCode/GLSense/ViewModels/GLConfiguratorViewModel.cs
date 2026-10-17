@@ -3296,10 +3296,36 @@ namespace GLSense.ViewModels
                 (CurrencyTypeField, "Currency Type"),
                 (ActualFlagField, "Actual Flag"));
 
+            ValidateActualFlagSpecificFields();
+
             ValidateBalanceTypeSpecificFields();
 
             if (!HasValidAccountAssignment())
                 throw new InvalidOperationException("Account Assignments not selected.");
+        }
+
+        // Budget / Encumbrance / Actual+Encumbrance need their Budget or Encumbrance value,
+        // otherwise the formula is written with an empty "" argument in that slot.
+        private void ValidateActualFlagSpecificFields()
+        {
+            var afType = GetFieldValue(ActualFlagField)?.Trim() ?? string.Empty;
+            LogUtility.LogDebug($"GLConfiguratorViewModel.ValidateActualFlagSpecificFields: afType={afType}");
+
+            if (afType.Equals(Budget, StringComparison.OrdinalIgnoreCase) ||
+                afType.Equals("B", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequired(BudgetField, "Budget is required when Actual Flag is Budget.");
+            }
+            else if (afType.Equals(Encumbrance, StringComparison.OrdinalIgnoreCase) ||
+                     afType.Equals("E", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequired(EncumbranceField, "Encumbrance is required when Actual Flag is Encumbrance.");
+            }
+            else if (afType.Equals(AE, StringComparison.OrdinalIgnoreCase) ||
+                     afType.Equals(AppConstants.ActualEncumbranceShort, StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequired(EncumbranceField, "Encumbrance is required when Actual Flag is Actual+Encumbrance.");
+            }
         }
 
         private void ValidateBalanceTypeSpecificFields()
