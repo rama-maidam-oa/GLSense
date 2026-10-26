@@ -10,7 +10,7 @@ assumes the client-side work is done; nothing here should require touching
 - Implementation plan (7 tasks + fix history): `docs/superpowers/plans/2026-09-18-online-reload-multiversion.md`
 - CLAUDE.md sections 75-76 (schema rework + this feature's own fix-log entry)
 
-**Current state:** code-complete, build-verified via real MSBuild rebuilds and
+**Current state (2026-10-26):** endpoints now point at the real server (CLAUDE.md section 83, orbitbootapp merge `efc81d0`). Still not exercised against a live server or inside Excel.
 PowerShell fixture scripts against compiled DLLs. **Never exercised against a real
 server or inside a live Excel session.** The three endpoints below don't exist yet.
 
@@ -25,9 +25,9 @@ need to change if the *shapes* below hold:
 
 | Endpoint | Client assumption |
 |---|---|
-| `GET {LoginUrl}/glsense/versions` | Returns a JSON array, one full manifest entry per server release - same schema as the local `manifest.json`: `version`, `releaseDate`, `release`, `folderName`, `fileName`, `checksum`, `notes`, `mandatory`. |
-| `GET {LoginUrl}/glsense/manifest?folderName={folderName}` | Returns a single-entry array in the exact same shape, for exactly the requested `folderName`. |
-| `GET {LoginUrl}/glsense/download?file={fileName}` | Returns the zip binary for that release. |
+| `GET {LoginUrl}/rest/secure/glsense-addin/manifests` (was `/glsense/versions`) | Returns a JSON array, one full manifest entry per server release - same schema as the local `manifest.json`: `version`, `releaseDate`, `release`, `folderName`, `fileName`, `checksum`, `notes`, `mandatory`. |
+| `GET {LoginUrl}/rest/secure/glsense-addin/versions/{folderName}/manifest` | Returns a single-entry array in the exact same shape, for exactly the requested `folderName`. |
+| `GET {LoginUrl}/rest/secure/glsense-addin/versions/{folderName}/zip` | Returns the zip binary for that release. |
 
 **Three assumptions are load-bearing and were only ever informally noted in code
 comments - get these confirmed as real contract terms with the backend team, not just

@@ -39,9 +39,31 @@ namespace GLSense
         private bool _fetchInProgress;
 
         private readonly ObservableCollection<OnlineReleaseRow> _onlineRows = new ObservableCollection<OnlineReleaseRow>();
-        private const string VersionsListPath = "/glsense/versions";
-        private const string ManifestByFolderPath = "/glsense/manifest";
-        private const string DownloadPath = "/glsense/download";
+        // ORBIT server endpoints (OISR-22759, GLSenseAddinController), relative to LoginUrl
+        // (which already ends at .../reporting, same as the /rest/secure/finance calls).
+        // The server reads ORBIT_HOME\download-artifacts\addons\glsense\updates\:
+        // glsenseManifests.json (release index) and {folderName}\manifest.json + {fileName}.
+        private const string AddinApiPath = "/rest/secure/glsense-addin";
+        private const string ReleaseIndexPath = AddinApiPath + "/manifests";
+
+        private static string BuildVersionUrl(string loginUrl, string folderName, string resource) =>
+            loginUrl.TrimEnd('/') + AddinApiPath + "/versions/" + Uri.EscapeDataString(folderName) + "/" + resource;
+
+        // 401 = token missing/expired, 404 = release not listed in glsenseManifests.json or
+        // its file is missing on the server. Turned into readable messages for the step log.
+        private static async Task<HttpResponseMessage> GetCheckedAsync(HttpClient client, string url)
+        {
+            var response = await client.GetAsync(url);
+            if (response.IsSuccessStatusCode) return response;
+
+            int status = (int)response.StatusCode;
+            response.Dispose();
+            if (status == 401)
+                throw new HttpRequestException("ORBIT session expired or not authorized (401) - log in again.");
+            if (status == 404)
+                throw new HttpRequestException("Not available on the server (404) - not listed in glsenseManifests.json or the file is missing.");
+            throw new HttpRequestException($"Server returned HTTP {status} for {url}.");
+        }
 
         // Small, deliberate pacing between Offline validation steps (which are
         // otherwise near-instant local file checks) so the step log is actually
@@ -406,14 +428,15 @@ namespace GLSense
                     return;
                 }
 
-                string url = loginInfo.LoginUrl.TrimEnd('/') + VersionsListPath;
+                string url = loginInfo.LoginUrl.TrimEnd('/') + ReleaseIndexPath;
                 LogStep($"Fetching release list from {url}...");
 
                 string listJson;
                 using (var client = new HttpClient())
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginInfo.LoginToken);
-                    listJson = await client.GetStringAsync(url);
+                    using (var response = await GetCheckedAsync(client, url))
+                        listJson = await response.Content.ReadAsStringAsync();
                 }
 
                 LogStep("Parsing release list...");
@@ -549,7 +572,8 @@ namespace GLSense
                     return;
                 }
 
-                using (var client = new HttpClient())
+                // Release zips can be several MB; HttpClient's default 100s timeout is too tight on a slow link.
+                using (var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginInfo.LoginToken);
 
@@ -558,12 +582,22 @@ namespace GLSense
                         try
                         {
                             LogStep($"Fetching manifest for {row.Version} ({row.ReleaseDate})...");
-                            string manifestUrl = loginInfo.LoginUrl.TrimEnd('/') + ManifestByFolderPath + "?folderName=" + Uri.EscapeDataString(row.FolderName);
-                            string manifestJson = await client.GetStringAsync(manifestUrl);
+                            if (string.IsNullOrWhiteSpace(row.FolderName))
+                            {
+                                LogFailure($"Skipping {row.Version} ({row.ReleaseDate}) - its glsenseManifests.json entry has no folderName.");
+                                continue;
+                            }
+
+                            string manifestUrl = BuildVersionUrl(loginInfo.LoginUrl, row.FolderName, "manifest");
+                            string manifestJson;
+                            using (var response = await GetCheckedAsync(client, manifestUrl))
+                                manifestJson = await response.Content.ReadAsStringAsync();
 
                             LogStep($"Downloading {row.FileName}...");
-                            string zipUrl = loginInfo.LoginUrl.TrimEnd('/') + DownloadPath + "?file=" + Uri.EscapeDataString(row.FileName);
-                            byte[] zipBytes = await client.GetByteArrayAsync(zipUrl);
+                            string zipUrl = BuildVersionUrl(loginInfo.LoginUrl, row.FolderName, "zip");
+                            byte[] zipBytes;
+                            using (var response = await GetCheckedAsync(client, zipUrl))
+                                zipBytes = await response.Content.ReadAsByteArrayAsync();
 
                             // Extraction (checksum verify + ZipFile.ExtractToDirectory of
                             // a potentially multi-MB archive) is pure file I/O with no UI
