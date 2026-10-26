@@ -95,14 +95,11 @@ namespace GLSense.Addin.Core
                 // session here - see that method's header comment for why.
                 //
                 // NLog's FileTarget only creates the physical file (and writes Header) on
-                // its first actual log write - the Logger instance behind ServiceLocator.Logger
-                // was already constructed (inside GLSenseContext's constructor, before this
-                // Initialize call) but never itself writes anything. This line guarantees that
-                // first write happens on every Excel open, so the file (and, once per day, the
-                // header) always gets created even if nothing else logs during the session
-                // (e.g. DebugMode off and the SQLite check below takes the "IsInitialized"
-                // branch, whose LogDebug is a no-op without it).
-                ServiceLocator.Logger?.LogInfo("GLSense session started.");
+                // its first actual log write. That first write is the host's
+                // Logger.BeginReleaseSession ("===== Start of GLSense version ... ====="),
+                // which AddinModule.OnRibbonLoaded/ReloadAddinCore call before loading this
+                // AppDomain, regardless of DebugMode - so no separate "session started"
+                // line is needed here.
                 LogLoadedAssemblies();
 
                 //Initializing SQLite database
@@ -882,6 +879,8 @@ namespace GLSense.Addin.Core
                         win.ShowDialog();
 
                         ServiceLocator.Logger?.LogDebug("ShowCubeDetails: Dialog closed.");
+
+                        PrimeLedgerComboIfNeeded();
                     }
                     catch (Exception ex)
                     {
@@ -892,6 +891,40 @@ namespace GLSense.Addin.Core
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "ShowCubeDetails: Error");
+            }
+        }
+
+        /// <summary>
+        /// Office regression workaround (docs\office-ribbon-combobox-display-bug.md): the
+        /// ribbon Ledger box doesn't draw the ledger set from code until its dropdown has
+        /// been opened once in that Excel window. Once per window, open and close it
+        /// through UI Automation (Helpers\RibbonComboPrimer), then re-apply the selected
+        /// ledger so Excel redraws it. Must run on Excel's main thread (it reads
+        /// ExcelApp.Hwnd); the user is on the GLSense tab here, having just clicked Cube.
+        /// Only the Ledger is primed - it's the only ribbon combo GLSense sets a default in.
+        /// </summary>
+        private static void PrimeLedgerComboIfNeeded()
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(AppState.Instance.SelectedLedger?.LedgerName))
+                    return;
+
+                var excelHwnd = new IntPtr(ServiceLocator.ExcelApp?.Hwnd ?? 0);
+                Helpers.RibbonComboPrimer.PrimeOnce(excelHwnd, "Ledger", System.Windows.Threading.Dispatcher.CurrentDispatcher, () =>
+                {
+                    string ledgerName = AppState.Instance.SelectedLedger?.LedgerName;
+                    if (string.IsNullOrWhiteSpace(ledgerName)) return;
+
+                    // Change the value so Add-in Express notifies Excel, then refresh.
+                    ServiceLocator.RibbonController?.SetComboText("Ribledger", string.Empty);
+                    ServiceLocator.RibbonController?.SetComboText("Ribledger", ledgerName);
+                    ServiceLocator.RibbonController?.Invalidate("Ribledger");
+                });
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogWarn($"PrimeLedgerComboIfNeeded: {ex.GetType().Name}: {ex.Message}");
             }
         }
 

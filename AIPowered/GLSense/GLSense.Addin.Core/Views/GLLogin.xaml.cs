@@ -182,7 +182,7 @@ namespace GLSense.Addin.Core.Views
             // Mouse-pointer-missing-after-login diagnostics (with the "login success" and
             // "closing" lines below, and BaseWindow.RestoreOwnerFocusOnClosed): LogInfo,
             // not LogDebug, so these reach a customer's log even with Debug mode off.
-            ServiceLocator.Logger?.LogInfo("GLLogin.GLLogin_Loaded: login window opened");
+            ServiceLocator.Logger?.LogDebug("GLLogin.GLLogin_Loaded: login window opened");
 
             if (!File.Exists(ServiceLocator.Paths.UrlsDirectory))
             {
@@ -274,7 +274,7 @@ namespace GLSense.Addin.Core.Views
                 // 152.0.4191.x+ cursor-hidden regression
                 // (https://github.com/MicrosoftEdge/WebView2Feedback/issues/5687).
                 var version = webView.CoreWebView2.Environment.BrowserVersionString;
-                ServiceLocator.Logger?.LogInfo($"WebView2 BrowserVersion={version}");
+                ServiceLocator.Logger?.LogDebug($"WebView2 BrowserVersion={version}");
                 ServiceLocator.Logger?.LogDebug($"AllowSingleSignOnUsingOSPrimaryAccount={envOptions.AllowSingleSignOnUsingOSPrimaryAccount}");
             }
             catch (Exception ex)
@@ -511,7 +511,7 @@ namespace GLSense.Addin.Core.Views
 
             // Timestamp to correlate with whether the user was still typing/hovering on the
             // login page when the WebView2 control is hidden (ShowBusyOverlayAsync below).
-            ServiceLocator.Logger?.LogInfo("GLLogin: login success detected, hiding WebView2 control");
+            ServiceLocator.Logger?.LogDebug("GLLogin: login success detected, hiding WebView2 control");
 
             ServiceLocator.Logger?.LogDebug("Document Title: " + (webView.CoreWebView2?.DocumentTitle ?? ""));
             ServiceLocator.Logger?.LogDebug("URL: " + (webView.Source?.ToString() ?? ""));
@@ -716,7 +716,7 @@ namespace GLSense.Addin.Core.Views
             if (broadcastMsg != null && !string.IsNullOrWhiteSpace(broadcastMsg))
                 await AppOverlayControl.ShowInfoAsync(broadcastMsg);
 
-            ServiceLocator.Logger?.LogInfo("GLLogin.SuccessCube: closing login window");
+            ServiceLocator.Logger?.LogDebug("GLLogin.SuccessCube: closing login window");
             Close();
         }
 

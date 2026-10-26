@@ -109,6 +109,8 @@
       <RequiredTargetFramework>4.0</RequiredTargetFramework>
     </Reference>
     <Reference Include="WindowsBase" />
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
   </ItemGroup>
@@ -155,6 +157,7 @@
     <Compile Include="Helpers\EdgeAddinHelper.cs" />
     <Compile Include="Helpers\ExcelComHelper.cs" />
     <Compile Include="Helpers\ExcelWindowHelper.cs" />
+    <Compile Include="Helpers\RibbonComboPrimer.cs" />
     <Compile Include="Helpers\ExcelExternalRef.cs" />
     <Compile Include="Helpers\ExcelRangeHelper.cs" />
     <Compile Include="Helpers\ExceptionHelper.cs" />

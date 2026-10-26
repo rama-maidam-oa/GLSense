@@ -165,12 +165,10 @@ namespace GLSense.Shared
 
         private string BuildLogHeader()
         {
+            // The file header is just the environment snapshot: the product name and time
+            // zone live inside it, and the date is on each release section's
+            // "===== Start of GLSense version ... logs as on <date> =====" line.
             var sb = new StringBuilder();
-
-            string header = $"Orbit GLSense Logs As On {DateTime.Now:dddd, dd MMMM yyyy}. Time Zone: {TimeZoneInfo.Local.DisplayName}";
-            sb.AppendLine(header);
-            sb.AppendLine(new string('-', header.Length));
-
             AppendEnvironmentSnapshot(sb);
 
             return sb.ToString();
@@ -226,6 +224,8 @@ namespace GLSense.Shared
             }
 
             sb.AppendLine("===== Environment Snapshot =====");
+            sb.AppendLine("Product: Orbit GLSense");
+            sb.AppendLine($"Time zone: {TimeZoneInfo.Local.DisplayName}");
             sb.AppendLine($"Excel version: {excelVersion}, process bitness: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
             sb.AppendLine($"OS: {Environment.OSVersion.VersionString}, {(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")} OS");
             sb.AppendLine($".NET runtime: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
@@ -242,7 +242,17 @@ namespace GLSense.Shared
         /// </summary>
         public void BeginReleaseSession(string version, string releaseDate)
         {
-            WriteImmediate($"===== Start of GLSense version {FormatRelease(version, releaseDate)} logs =====");
+            string marker = $"===== Start of GLSense version {FormatRelease(version, releaseDate)} logs";
+
+            // One "Start of" line per release per daily file: reopening Excel on the same
+            // release continues the section that's already open, even if lines were logged
+            // since. A new line is written only when the latest section marker in today's
+            // log is something else - another release's start, or an "End of" line from a
+            // hot reload.
+            if (LatestSectionMarkerStartsWith(marker))
+                return;
+
+            WriteImmediate($"{marker} as on {DateTime.Now:dddd, dd MMMM yyyy} =====");
         }
 
         /// <summary>
@@ -258,6 +268,84 @@ namespace GLSense.Shared
                 $"===== End of GLSense version {FormatRelease(version, releaseDate)} logs =====" +
                 Environment.NewLine;
             WriteImmediate(message);
+        }
+
+        private const string SectionStartPrefix = "===== Start of GLSense version ";
+        private const string SectionEndPrefix = "===== End of GLSense version ";
+
+        /// <summary>
+        /// Whether the latest section marker ("Start of ..." or "End of ...") in today's
+        /// newest log file (the plain daily file, or its latest "(n)" part after a 20MB
+        /// rollover) starts with <paramref name="startMarker"/>. Scans backwards from the end
+        /// in 64KB chunks and stops at the first marker found, sharing the file with NLog's
+        /// open handle. Any failure, or no marker at all, returns false, so the caller
+        /// writes the line as usual.
+        /// </summary>
+        private static bool LatestSectionMarkerStartsWith(string startMarker)
+        {
+            try
+            {
+                var logsDir = new DirectoryInfo(PathProvider.Instance.Logs);
+                if (!logsDir.Exists) return false;
+
+                FileInfo newest = null;
+                foreach (var file in logsDir.GetFiles($"GLSense_Logs_{DateTime.Now:dd-MMM-yyyy}*.log"))
+                {
+                    if (newest == null || file.LastWriteTimeUtc > newest.LastWriteTimeUtc)
+                        newest = file;
+                }
+                if (newest == null || newest.Length == 0) return false;
+
+                const int chunkSize = 64 * 1024;
+                using (var stream = new FileStream(newest.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    long end = stream.Length;
+                    string carry = string.Empty; // partial first line of the previous (later) chunk
+
+                    while (end > 0)
+                    {
+                        long start = Math.Max(0, end - chunkSize);
+                        var buffer = new byte[end - start];
+                        stream.Seek(start, SeekOrigin.Begin);
+                        int read = 0;
+                        while (read < buffer.Length)
+                        {
+                            int n = stream.Read(buffer, read, buffer.Length - read);
+                            if (n == 0) break;
+                            read += n;
+                        }
+
+                        string text = Encoding.UTF8.GetString(buffer, 0, read) + carry;
+                        string[] lines = text.Split('\n');
+
+                        // lines[0] may be cut off mid-line unless this chunk starts the file;
+                        // carry it into the next (earlier) chunk instead of checking it now.
+                        int firstComplete = start == 0 ? 0 : 1;
+                        for (int i = lines.Length - 1; i >= firstComplete; i--)
+                        {
+                            // Lines are "<longdate>|<message>" (see the FileTarget Layout).
+                            string line = lines[i].TrimEnd('\r');
+                            int separator = line.IndexOf('|');
+                            string message = separator >= 0 ? line.Substring(separator + 1) : line;
+
+                            if (message.StartsWith(SectionStartPrefix, StringComparison.Ordinal) ||
+                                message.StartsWith(SectionEndPrefix, StringComparison.Ordinal))
+                            {
+                                return message.StartsWith(startMarker, StringComparison.Ordinal);
+                            }
+                        }
+
+                        carry = start == 0 ? string.Empty : lines[0];
+                        end = start;
+                    }
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static string FormatRelease(string version, string releaseDate)

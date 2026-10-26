@@ -1180,57 +1180,6 @@ namespace GLSense
             // OnRibbonAction (same pattern as RibLiveCalc/RibSnapWorksheet).
             GlobalsEx.Addin?.OnRibbonAction("DebugLogsToggled", pressed);
             GlobalsEx.Context?.Logger?.LogDebug($"RibDebug_OnClick fired (pressed={pressed})");
-
-            // Diagnostic requested directly: dump the REAL Ribledger/RibSegS controls'
-            // live state right now, using direct field access on this host-side class (no
-            // reflection, no AppDomain crossing - this IS the actual object Excel's Ribbon
-            // renders). Click Debug again right after reproducing "dropdown won't open" to
-            // get an instant answer: does the live control still hold the items we set at
-            // that exact moment, or has something cleared it by then?
-            DumpRibbonComboState();
-        }
-
-        private void DumpRibbonComboState()
-        {
-            try
-            {
-                string ledgerCaptions = "";
-                foreach (var item in Ribledger.Items)
-                {
-                    var captionProp = item.GetType().GetProperty("Caption");
-                    string caption = captionProp?.GetValue(item)?.ToString() ?? "?";
-                    ledgerCaptions += (ledgerCaptions.Length > 0 ? ", " : "") + caption;
-                }
-                // LogWarn, not LogDebug: LogDebug is a no-op the instant DebugMode is
-                // false (Logger.LogDebug checks "if (!DebugMode) return;" before writing
-                // anything), and RibDebug_OnClick's OnRibbonAction("DebugLogsToggled", ...)
-                // call right before this flips that flag - so on a "turn debug OFF" click
-                // this dump would silently vanish (exactly what happened in the previous
-                // repro: the dump ran, but produced nothing, because logging had just been
-                // switched off a few lines earlier). LogWarn/LogError don't check DebugMode
-                // at all, so this always gets written regardless of the toggle's direction.
-                GlobalsEx.Context?.Logger?.LogWarn($"[RibbonDiagnostic] Ribledger: Enabled={Ribledger.Enabled}, Visible={Ribledger.Visible}, Text='{Ribledger.Text}', Items.Count={Ribledger.Items.Count}, Items=[{ledgerCaptions}]");
-            }
-            catch (Exception ex)
-            {
-                GlobalsEx.Context?.Logger?.LogException(ex, "[RibbonDiagnostic] Ribledger dump failed");
-            }
-
-            try
-            {
-                string segCaptions = "";
-                foreach (var item in RibSegS.Items)
-                {
-                    var captionProp = item.GetType().GetProperty("Caption");
-                    string caption = captionProp?.GetValue(item)?.ToString() ?? "?";
-                    segCaptions += (segCaptions.Length > 0 ? ", " : "") + caption;
-                }
-                GlobalsEx.Context?.Logger?.LogWarn($"[RibbonDiagnostic] RibSegS: Enabled={RibSegS.Enabled}, Visible={RibSegS.Visible}, Text='{RibSegS.Text}', Items.Count={RibSegS.Items.Count}, Items=[{segCaptions}]");
-            }
-            catch (Exception ex)
-            {
-                GlobalsEx.Context?.Logger?.LogException(ex, "[RibbonDiagnostic] RibSegS dump failed");
-            }
         }
 
         private void RibVersionCheck_OnClick(object sender, IRibbonControl control, bool pressed)

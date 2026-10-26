@@ -1142,6 +1142,13 @@ namespace GLSense.Addin.Core.Views
                 ServiceLocator.Logger?.LogDebug($"LoadCubeLedgers: cubeId={cube.CubeId}, ledgerNames.Count={ledgerNames.Count}, selectedLedgerName={selectedLedgerName}");
                 ServiceLocator.RibbonController?.SetComboItems("Ribledger", ledgerNames);
 
+                // Office regression workaround: since Excel 16.0.20527.20088 (Oct-2026) a
+                // ribbon combo box doesn't draw text set from code until its dropdown has
+                // been opened once in that Excel window, so on the first cube selection
+                // the ledger set below stays blank. AddinEntry.PrimeLedgerComboIfNeeded()
+                // (Helpers\RibbonComboPrimer.cs) opens and closes the Ledger dropdown once
+                // per window after the Cube dialog closes, then re-applies this text.
+                // See docs\office-ribbon-combobox-display-bug.md.
                 if (!string.IsNullOrWhiteSpace(selectedLedgerName) &&
                     ledgerNames.Contains(selectedLedgerName, StringComparer.OrdinalIgnoreCase))
                 {
