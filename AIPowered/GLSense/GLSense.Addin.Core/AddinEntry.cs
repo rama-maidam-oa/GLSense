@@ -1564,12 +1564,21 @@ namespace GLSense.Addin.Core
                 // cube/ledger was selected before logout. Matches FinalWorkingCode's
                 // GLSenseLogout(): Ribledger.Items.Clear(); Ribledger.Text = "";
                 // RibGetCube.Caption = "Cube: Select Cube";
-                ServiceLocator.RibbonController?.SetControlLabel("RibGetCube", "Cube : Select Cube");
-                ServiceLocator.RibbonController?.ClearComboItems("Ribledger");
-                ServiceLocator.RibbonController?.SetComboText("Ribledger", string.Empty);
-                ServiceLocator.RibbonController?.ClearComboItems("RibSegS");
+                //
+                // The await on the logout API call above resumes on a ThreadPool (MTA)
+                // thread in this host, and Add-in Express ribbon controls must only be
+                // touched from Excel's main thread. WpfAppManager's dispatcher lives on
+                // that thread, so run the ribbon updates through it synchronously.
+                Utilities.WpfAppManager.InvokeOnWpfThread(() =>
+                {
+                    ServiceLocator.RibbonController?.SetControlLabel("RibGetCube", "Cube : Select Cube");
+                    ServiceLocator.RibbonController?.ClearComboItems("Ribledger");
+                    ServiceLocator.RibbonController?.SetComboText("Ribledger", string.Empty);
+                    ServiceLocator.RibbonController?.Invalidate("Ribledger");
+                    ServiceLocator.RibbonController?.ClearComboItems("RibSegS");
 
-                ServiceLocator.RibbonController?.SetState("LoggedOut");
+                    ServiceLocator.RibbonController?.SetState("LoggedOut");
+                });
 
                 CommonFunctions.GLSenseMessage(message, MessageBoxImage.Information);
 

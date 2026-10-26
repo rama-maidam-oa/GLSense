@@ -600,7 +600,18 @@ namespace GLSense
                 // InvalidateAll() calls .Invalidate() on) has a real, documented
                 // InvalidateControl(string) member for exactly this - invalidate one
                 // control's Ribbon-side cache without touching the rest of the ribbon.
-                _ribbon?.InvalidateControl(controlId);
+                //
+                // InvalidateControl takes the control's RibbonX id (e.g.
+                // "adxRibbonComboBox_61c1..."), not the AddinModule field name every caller
+                // passes ("Ribledger"). Excel silently ignores an unknown id, so resolve the
+                // name to the control's real Id first - before this, every Invalidate(name)
+                // call was a no-op.
+                string ribbonXId = controlId;
+                object ctrl = GetRibbonControl(controlId);
+                if (ctrl?.GetType().GetProperty("Id")?.GetValue(ctrl, null) is string id && !string.IsNullOrWhiteSpace(id))
+                    ribbonXId = id;
+
+                _ribbon?.InvalidateControl(ribbonXId);
             }
             catch (Exception ex)
             {
