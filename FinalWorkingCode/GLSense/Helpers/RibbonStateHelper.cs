@@ -113,6 +113,23 @@ namespace GLSense.Helpers
                 SetControlEnabled(kvp.Key, kvp.Value);
         }
 
+        /// <summary>
+        /// Asks Excel to re-query one control's callbacks. <paramref name="ribbonXId"/> is
+        /// the control's RibbonX Id (e.g. Ribledger.Id), not its field name.
+        /// </summary>
+        public void InvalidateControl(string ribbonXId)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(ribbonXId))
+                    _ribbon?.InvalidateControl(ribbonXId);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogError("[RibbonStateHelper] InvalidateControl: " + ex.Message);
+            }
+        }
+
         // ---------- Predefined logical states ----------
         private void RefreshRibbon()
         {
