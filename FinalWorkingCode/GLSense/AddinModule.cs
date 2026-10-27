@@ -2954,7 +2954,39 @@ namespace GLSense
             {
                 var win = new GLCubeDetails();
                 win.ShowDialogWithOwner((IntPtr)AppState.Instance.ExcelApp.Hwnd);
+                LogUtility.LogDebug("RibGetCube_OnClick: Cube dialog closed.");
+                PrimeLedgerComboIfNeeded();
             });
+        }
+
+        /// <summary>
+        /// Workaround for the Office 16.0.20527.20088 regression where the ribbon Ledger box
+        /// stays blank until its dropdown has been opened once in that Excel window (see
+        /// Helpers\RibbonComboPrimer.cs). Runs right after the Cube dialog closes, while the
+        /// GLSense tab is showing, then re-applies the selected ledger so Excel redraws it.
+        /// Only Ledger needs this - it's the only ribbon combo GLSense defaults from code.
+        /// </summary>
+        private void PrimeLedgerComboIfNeeded()
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(AppState.Instance.SelectedLedger?.LedgerName)) return;
+
+                var excelHwnd = new IntPtr(AppState.Instance.ExcelApp?.Hwnd ?? 0);
+                RibbonComboPrimer.PrimeOnce(excelHwnd, "Ledger", Dispatcher.CurrentDispatcher, () =>
+                {
+                    string ledgerName = AppState.Instance.SelectedLedger?.LedgerName;
+                    if (string.IsNullOrWhiteSpace(ledgerName)) return;
+
+                    Ribledger.Text = string.Empty;
+                    Ribledger.Text = ledgerName;
+                    RibbonHelper?.InvalidateControl(Ribledger.Id);
+                });
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"PrimeLedgerComboIfNeeded: {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         private void RibDBL1_OnAction(object sender, IRibbonControl control, bool pressed)

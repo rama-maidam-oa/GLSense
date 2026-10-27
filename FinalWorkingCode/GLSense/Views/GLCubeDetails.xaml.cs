@@ -1150,6 +1150,11 @@ namespace GLSense.Views
                     ribbon.Items.Add(new ADXRibbonItem { Caption = name });
                 }
 
+                // On Office 16.0.20527.20088 Excel receives this text but doesn't draw it
+                // until the Ledger dropdown has been opened once in this window. The
+                // workaround (open/close it via UI Automation, then re-apply the ledger)
+                // runs after the dialog closes: AddinModule.PrimeLedgerComboIfNeeded and
+                // Helpers\RibbonComboPrimer.cs.
                 if (!string.IsNullOrWhiteSpace(selectedLedgerName) &&
                     ledgerNames.Contains(selectedLedgerName, StringComparer.OrdinalIgnoreCase))
                 {
