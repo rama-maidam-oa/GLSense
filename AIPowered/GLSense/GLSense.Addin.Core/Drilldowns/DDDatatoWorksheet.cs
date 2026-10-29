@@ -888,6 +888,8 @@ namespace GLSense.Addin.Core.Drilldowns
                    headerText == "DRILLDOWN2" ||
                    headerText == "DRILL_DOWN3" ||
                    headerText == "DRILLDOWN3" ||
+                   headerText == "DRILL_DOWN4" ||
+                   headerText == "DRILLDOWN4" ||
                    headerText == "SUBLEDGER_VIEW";
         }
 
