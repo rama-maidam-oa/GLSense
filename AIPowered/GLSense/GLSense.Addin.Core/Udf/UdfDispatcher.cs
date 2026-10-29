@@ -726,7 +726,9 @@ namespace GLSense.Addin.Core.Udf
 
             string output = ExtractStringValue(recordsElem);
 
-            return string.IsNullOrWhiteSpace(output) ? "#Empty Response" : output;
+            // No value for this segment (e.g. no account type or DFF set): show a blank
+            // cell rather than an error-like "#Empty Response" text (OISR-22785).
+            return string.IsNullOrWhiteSpace(output) ? string.Empty : output;
         }
 
         private static string ExtractStringValue(JsonElement element)
