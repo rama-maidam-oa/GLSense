@@ -1049,10 +1049,9 @@ namespace GLSense.Addin.Core
         /// SetComboItems/ClearComboItems; LogUtility.* -> ServiceLocator.Logger.*;
         /// WinForms MessageBoxIcon/MessageBoxButtons -> WPF MessageBoxImage/MessageBoxButton
         /// (CommonFunctions.GLSenseMessage's actual signature in this project).
-        /// AppState.Instance.DefaultSegment/SegmentPickedIndex (segment-picker session
-        /// state) are deliberately NOT touched here - they're independent of which ledger
-        /// is selected and are owned by RibSegS_OnChange/AddinEntry.SegmentChanged
-        /// (Group D) instead.
+        /// AppState.Instance.DefaultSegment/SegmentPickedIndex and the RibSegS text are
+        /// cleared by UpdateRibbonAndSelectionForLedger, matching the old UpdateRibbonUI:
+        /// segments belong to the ledger's chart of accounts (OISR-22789).
         /// Balance Configurator pane relaunch (Group H, resolved) happens at the end of
         /// the Task.Run body below via RelaunchConfiguratorPaneIfVisible(), same mechanism
         /// as GLCubeDetails.ConfiguratorRelaunch().
@@ -1174,12 +1173,17 @@ namespace GLSense.Addin.Core
 
         /// <summary>
         /// Repopulates the RibSegS ribbon combo for the newly selected ledger and updates
-        /// AppState.Instance.SelectedLedger - the two things the old UpdateRibbonUI did,
-        /// minus the DefaultSegment/SegmentPickedIndex fields (see LedgerChanged's summary).
+        /// AppState.Instance.SelectedLedger, like the old UpdateRibbonUI. Also clears the
+        /// picked segment and the Segment box's text: a segment picked for the previous
+        /// ledger may not exist in the new ledger's chart of accounts (OISR-22789).
         /// </summary>
         private static void UpdateRibbonAndSelectionForLedger(LedgerRecord ledger)
         {
             ServiceLocator.RibbonController?.ClearComboItems("RibSegS");
+            ServiceLocator.RibbonController?.SetComboText("RibSegS", string.Empty);
+
+            AppState.Instance.DefaultSegment = string.Empty;
+            AppState.Instance.SegmentPickedIndex = -1;
 
             var repository = new DataRepository();
             var segs = repository.GetSegments(AppState.Instance.SelectedCube.CubeId, ledger.LedgerId);
