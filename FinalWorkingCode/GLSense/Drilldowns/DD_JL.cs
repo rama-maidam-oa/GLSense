@@ -255,13 +255,6 @@ namespace GLSense.Drilldowns
                 normalizedKey.Equals("QTD_NET", StringComparison.OrdinalIgnoreCase))
                 return "QTD";
 
-            // PJTD (OISR-22795): the header may come with or without underscores/spaces
-            // ("PROJECT_TO_DATE_NET", "PROJECTTODATENET", "PJTD NET"), in any case.
-            string compactKey = normalizedKey.Replace("_", string.Empty);
-            if (compactKey.Equals("PROJECTTODATENET", StringComparison.OrdinalIgnoreCase) ||
-                compactKey.Equals("PJTDNET", StringComparison.OrdinalIgnoreCase))
-                return "PJTD";
-
             var jlTypes = new[] { "ENTERED_DR", "ENTERED_CR", "ENTERED_NET", "ACCOUNTED_DR", "ACCOUNTED_CR", "ACCOUNTED_NET" };
 
             if (jlTypes.Any(valid => valid.Equals(normalizedKey, StringComparison.OrdinalIgnoreCase)))
@@ -295,7 +288,7 @@ namespace GLSense.Drilldowns
 
             Win?.Dispatcher.InvokeAsync(() => Win.RequestClose());
             CommonFunctions.GLSenseMessage(
-                $"Invalid selection. Please select values of either PTD_NET or YTD_NET or QUARTER_TO_DATE_NET or PROJECT_TO_DATE_NET or " +
+                $"Invalid selection. Please select values of either PTD_NET or YTD_NET or QUARTER_TO_DATE_NET or " +
                 $"ENTERED_DR or ENTERED_CR or ENTERED_NET or ACCOUNTED_DR or ACCOUNTED_CR or ACCOUNTED_NET for {errorType}",
                 MessageBoxIcon.Error,
                 MessageBoxButtons.OK);
@@ -730,7 +723,6 @@ namespace GLSense.Drilldowns
                 "PTD"  => new[] { "DRILL_DOWN2", "DRILLDOWN2" },
                 "JED" => new[] { "DRILL_DOWN2", "DRILLDOWN2" },
                 "QTD" => new[] { "DRILL_DOWN3", "DRILLDOWN3" },
-                "PJTD" => new[] { "DRILL_DOWN4", "DRILLDOWN4" },
                 _ => Array.Empty<string>()
             };
         }

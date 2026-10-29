@@ -813,7 +813,7 @@ namespace GLSense.Drilldowns
             StringComparer.OrdinalIgnoreCase)
             {
                 "DRILL_DOWN1", "DRILLDOWN1", "DRILL_DOWN2", "DRILLDOWN2",
-                "DRILL_DOWN3", "DRILLDOWN3", "DRILL_DOWN4", "DRILLDOWN4", "SUBLEDGER_VIEW"
+                "DRILL_DOWN3", "DRILLDOWN3", "SUBLEDGER_VIEW"
             };
 
         private static bool IsInternalHeader(string headerText)
