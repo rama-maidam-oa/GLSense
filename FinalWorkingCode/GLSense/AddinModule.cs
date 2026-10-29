@@ -2879,6 +2879,7 @@ namespace GLSense
         {
             var rib = AddinModule.CurrentInstance;
             rib.RibSegS.Items.Clear();
+            rib.RibSegS.Text = string.Empty;
 
             AppState.Instance.DefaultSegment = string.Empty;
             AppState.Instance.SegmentPickedIndex = -1;
