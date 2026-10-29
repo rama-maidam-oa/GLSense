@@ -27,7 +27,7 @@ namespace GLSense
         public const string DrilldownSheetMarkerCellAddress = "XEZ5";
 
         // Default version info (can be overridden at runtime if needed)
-        public const string DefaultVersion = "11.1.2";
+        public const string DefaultVersion = "11.1.3";
         public const string DefaultCommitDate = "29-Oct-2026";
 
         // Default values
