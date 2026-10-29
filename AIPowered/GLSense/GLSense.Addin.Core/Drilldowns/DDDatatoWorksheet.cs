@@ -1898,13 +1898,39 @@ namespace GLSense.Addin.Core.Drilldowns
                 }
 
                 var localMetadata = DrilldownMetadataXmlStore.ExtractDrilldownTypeMetadata(rawJson, recordsKey);
-                return FilterToServerViews(localMetadata, serverMetadata);
+                return SortByDisplaySequence(FilterToServerViews(localMetadata, serverMetadata));
             }
             catch (Exception ex)
             {
                 ServiceLocator.Logger.LogException(ex, "DDDatatoWorksheet.TryGetLocalMetadata");
                 return null;
             }
+        }
+
+        // The saved drilldown-metadata response is not in display order: the server appends
+        // personalized calculation columns after every other column, whatever their
+        // displaySequence (OISR-22802). Column order on the sheet follows the metadata order, so
+        // sort by displaySequence here. OrderBy is stable, so entries with equal sequences keep
+        // their saved order; entries with a missing or non-numeric sequence go last.
+        private static Dictionary<string, object>[] SortByDisplaySequence(Dictionary<string, object>[] metadata)
+        {
+            if (metadata == null || metadata.Length < 2)
+                return metadata;
+
+            return metadata
+                .OrderBy(m => GetDisplaySequence(m) ?? decimal.MaxValue)
+                .ToArray();
+        }
+
+        private static decimal? GetDisplaySequence(Dictionary<string, object> metaItem)
+        {
+            if (metaItem == null || !metaItem.TryGetValue("displaySequence", out var value) || value == null)
+                return null;
+
+            return decimal.TryParse(value.ToString(), System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out var sequence)
+                ? sequence
+                : (decimal?)null;
         }
 
         // A saved records-key list holds the columns of every view for that type (e.g. BALANCE
