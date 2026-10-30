@@ -1158,3 +1158,20 @@ there.**
   - `GLDrilldownCustomization`: the WebView2 `BrowserVersion` (was `LogDebug`).
   **Status: FinalWorkingCode `11.1.0`, `11.1.1` and `11.1.2`; AIPowered `11.1.2` (its section
   81).** Build-verified. Logging only, so there's no behavior change.
+
+## `Views\GLDrilldownCustomization.xaml.cs` (OISR-22815, Issue 2: confirm before overwriting local customization)
+
+- **Save silently replaced the workbook's existing local customization.** `BtnSaveLocally_ClickCore`
+  fetches the cube's current drilldown metadata and stores it via `DrilldownMetadataXmlStore.Save`,
+  which replaces every saved drilldown-type part for that cube. A habitual click on Save therefore
+  overwrote a previously saved workbook customization with no warning.
+  Fixed by checking `DrilldownMetadataXmlStore.GetSavedTypeSummaries` before the save (same
+  "at least one column saved" rule as `RibDDDeleteConfiguration_OnClick`) and, if anything is
+  already saved for the cube, asking via `AppOverlayControl.ShowConfirmAsync`. Anything other than
+  Yes returns without calling the API or touching the store. `webView` is hidden while the confirm
+  is shown (WebView2 airspace, see `HideBusyAndShowErrorAsync`'s comment). A first save on a
+  workbook with nothing saved is unchanged.
+  Issue 1 of the ticket (customize the workbook without changing the cube) and OISR-22650
+  (column-wise view/delete) share one root cause - the workbook copy is a read-only snapshot of
+  the cube - and are proposed as a separate enhancement (GLSense-native editor for the saved copy).
+  **Status: FinalWorkingCode `11.1.2`.** Still needs `11.1.1`/`11.1.3`, and AIPowered on `11.1.3`.
