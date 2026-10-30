@@ -47,6 +47,7 @@ using Microsoft.Web.WebView2.Core;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -385,6 +386,27 @@ namespace GLSense.Addin.Core.Views
             }
 
             long cubeId = AppState.Instance.SelectedCube.CubeId;
+
+            // Save replaces the workbook's whole saved copy for this cube, so confirm first if one
+            // already exists - a habitual click on Save would otherwise silently overwrite it
+            // (OISR-22815). Same "at least one column saved" rule as the delete-customization picker.
+            // webView is hidden while the confirm is up for the airspace reason described above.
+            bool hasExistingCustomization = DrilldownMetadataXmlStore
+                .GetSavedTypeSummaries(ServiceLocator.ExcelApp?.ActiveWorkbook, cubeId)
+                .Any(t => t.RecordCount >= 1);
+            if (hasExistingCustomization)
+            {
+                webView.Visibility = Visibility.Hidden;
+                var userAction = await AppOverlayControl.ShowConfirmAsync(
+                    "This workbook already has saved customizations for this cube. Saving will overwrite them with the current customizations. Do you want to continue?");
+                webView.Visibility = Visibility.Visible;
+                if (userAction != true)
+                {
+                    ServiceLocator.Logger?.LogDebug("GLDrilldownCustomization.BtnSaveLocally_Click: overwrite of existing local customization cancelled by user.");
+                    return;
+                }
+            }
+
             using var cancellationHelper = new CancellationHelper();
             string response = string.Empty;
 
