@@ -816,6 +816,7 @@ namespace GLSense
                     return -1;
                 }
             }
+#if ENABLE_ACCOUNT_TYPE // OISR-22812: GLSense_GetAccountType disabled; define ENABLE_ACCOUNT_TYPE to re-enable
             // GLSense_GetAccountType now receives the segment's 1-based dropdown position
             // directly from the formula (e.g. GLSense_GetAccountType("1000", 3, "Vision Ops")),
             // so the ApplicationColumnName-regex lookup this used to require
@@ -839,6 +840,7 @@ namespace GLSense
                         return int.TryParse(value.ToString().Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out index);
                 }
             }
+#endif
             private static string? ParseSegmentsApiResponse(string apiResponse)
             {
                 if (string.IsNullOrWhiteSpace(apiResponse))
@@ -1724,6 +1726,7 @@ namespace GLSense
             {
                 return GetSegmentByDirection(SegmentValue, SegmentName, NextParent, NextChild, Direction.Previous, Ledger);
             }
+#if ENABLE_ACCOUNT_TYPE // OISR-22812: not registered with Excel while disabled, so a typed formula shows #NAME?
             public static void GLSense_GetAccountType(
                 [ExcelParam(true)] object SegmentValue,
                 [ExcelParam(true)] object SegmentIndex,
@@ -1857,6 +1860,7 @@ namespace GLSense
                     asyncCallObject.ReturnResult(ADXExcelError.xlErrorGettingData);
                 }
             }
+#endif
             public static void GLSense_GetSegmentDFF(
                 [ExcelParam(true)] object SegmentValue,
                 [ExcelParam(true)] object SegmentName,

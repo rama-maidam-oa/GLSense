@@ -65,6 +65,10 @@ namespace GLSense
             System.Windows.Forms.Application.EnableVisualStyles();
 
             InitializeComponent();
+#if !ENABLE_ACCOUNT_TYPE
+            // OISR-22812: Account Type function disabled; hide its Functions-menu button.
+            RibSegmentAccountType.Visible = false;
+#endif
 
             // Hook into assembly binding events for diagnostics (before any other initialization)
             if (EnableAssemblyDiagnostics)
