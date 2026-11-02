@@ -4948,6 +4948,38 @@ elsewhere in this same region never needed a cast (assigning a `double` into an
 Not yet rebuilt/retested end-to-end by the user for the actual Unhide behavior fix itself
 (48.3's logic change) - only the compile errors are resolved so far.
 
+## 49. `AddinModule.cs` / `AddinEntry.cs`: XLEdge -> GLSense login/logout sync failed silently (GetGLCubeInformation / LogoutSession missing - ported from FinalWorkingCode)
+
+XLEdge (11.1.2, and the XLEdge AIPowered twin) tells GLSense about its own logins and logouts by calling, late-bound
+through `COMAddIns("GLSense.AddinModule").Object`, `GetGLCubeInformation(token, url, userName)` and `LogoutSession()`.
+FinalWorkingCode has both on its `AddinModule`; this codebase had neither, so `InvokeMember` failed with
+DISP_E_UNKNOWNNAME, XLEdge logged it and carried on, and GLSense never followed an XLEdge login or logout. (The other
+direction - GLSense calling XLEdge's `InvokedFromGLSense` / `LogoffFromAddin` - was already in place.)
+
+**Fix**: the shell's `AddinModule` gets the two public methods; each only forwards to the core through the existing
+`OnRibbonAction` dispatch (no contract change, so an older core loaded from Release History just logs an unknown action):
+- `GetGLCubeInformation` -> `OnRibbonAction("LoginFromXLEdge", new object[] { token, url, userName })`. The arguments go
+  as one `object[]` so `OnRibbonAction`'s entry log (`parameter='...'`) prints `System.Object[]`, never the token.
+- `LogoutSession` -> `OnRibbonAction("LogoutFromXLEdge", null)`.
+
+In `AddinEntry`:
+- `LoginFromXLEdge` is FinalWorkingCode's `GetGLCubeInformation` on this codebase's types: blank token/URL -> ignored;
+  `LoginToken` / `LoginUrl` set; POST `{LoginUrl}/rest/secure/finance/finance-cubes`; cubes into `CubeCache.AllCubes`
+  (sorted by name) and `CubeDataRepository.InsertCubeDataAsync()`; `LoginUserName`; ribbon `PartialLoggedIn` (the user
+  picks a cube next, as after GLSense's own login). Two deliberate differences from FinalWorkingCode:
+  - it is fire-and-forget like `Logout` (awaited inside, not `Task.Wait`ed with a 30-minute limit inside XLEdge's COM
+    call - Excel stays responsive and XLEdge's call returns at once);
+  - no cubes / an empty or unparseable response leaves GLSense `LoggedOut` (FinalWorkingCode applied `NoCubes`, a state
+    this codebase does not have, which disabled even Login).
+- `LogoutFromXLEdge` is FinalWorkingCode's `LogoutSession` -> `LoggOff()`: the reset part of `Logout()` only, now
+  shared as `ResetLoginState()` (`AppState.Reset()`, RibGetCube label, Ribledger/RibSegS combos, `LoggedOut`). No call
+  back to XLEdge, no `applogout` (XLEdge already ended the server session), no message box.
+
+Logout ping-pong is expected to be harmless (to confirm in Excel): GLSense's own `Logout()` calls XLEdge's `LogoffFromAddin`, XLEdge's logout then calls
+`LogoutSession` back, which only resets the (already reset) state - one message box, from GLSense's own `Logout()`.
+
+Not yet tested in Excel with XLEdge loaded (compile-verified only: Debug + Release, no new warnings).
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

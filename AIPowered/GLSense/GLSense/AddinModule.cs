@@ -613,6 +613,40 @@ namespace GLSense
             }
         }
 
+        /// <summary>
+        /// Called by the XLEdge add-in (COMAddIns("GLSense.AddinModule").Object, late-bound InvokeMember) when the user logs in
+        /// to XLEdge by itself: GLSense takes the session and loads its cubes (FinalWorkingCode's GetGLCubeInformation). The
+        /// arguments go to the core as one object[] so the token is never written by OnRibbonAction's entry log.
+        /// </summary>
+        public void GetGLCubeInformation(string token, string url, string userName)
+        {
+            try
+            {
+                GlobalsEx.Context?.Logger?.LogDebug("GetGLCubeInformation called from XLEdge.");
+                GlobalsEx.Addin?.OnRibbonAction("LoginFromXLEdge", new object[] { token, url, userName });
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "GetGLCubeInformation (from XLEdge)");
+            }
+        }
+
+        /// <summary>
+        /// Called by the XLEdge add-in when the user logs out of XLEdge: GLSense logs out too (FinalWorkingCode's LogoutSession).
+        /// </summary>
+        public void LogoutSession()
+        {
+            try
+            {
+                GlobalsEx.Context?.Logger?.LogDebug("LogoutSession called from XLEdge.");
+                GlobalsEx.Addin?.OnRibbonAction("LogoutFromXLEdge", null);
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "LogoutSession (from XLEdge)");
+            }
+        }
+
         private void RibLiveCalc_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             GlobalsEx.Context?.Logger?.LogDebug($"RibLiveCalc_OnClick fired (pressed={pressed})");
