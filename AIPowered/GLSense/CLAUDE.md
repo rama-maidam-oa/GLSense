@@ -4978,8 +4978,17 @@ In `AddinEntry`:
   shared as `ResetLoginState()` (`AppState.Reset()`, RibGetCube label, Ribledger/RibSegS combos, `LoggedOut`). No call
   back to XLEdge, no `applogout` (XLEdge already ended the server session), no message box.
 
-Logout ping-pong is expected to be harmless (to confirm in Excel): GLSense's own `Logout()` calls XLEdge's `LogoffFromAddin`, XLEdge's logout then calls
-`LogoutSession` back, which only resets the (already reset) state - one message box, from GLSense's own `Logout()`.
+Two races the sync opens, both guarded:
+- **Logout ping-pong.** GLSense's own `Logout()` calls XLEdge's `LogoffFromAddin`; XLEdge's logoff then calls
+  `LogoutSession` back - possibly re-entrantly, before `Logout()` has built its `applogout` URL (XLEdge has no pane, its
+  wait window failed to show). A reset there would clear `LoginUrl`/`LoginToken` under `Logout()` (a bare
+  `/web/secure/applogout`, or a retry with an empty bearer - `ApiHelper` re-reads the token per attempt). So
+  `_ownLogoutRunning` (set for the whole of `Logout()`) makes `LogoutFromXLEdge` leave the state alone; `Logout()` resets
+  at its end as before - one message box, from `Logout()`. (FinalWorkingCode captured `loginUrlAtLogout` for the same
+  reason.)
+- **Logout during the cube call.** XLEdge logs in, then out while `finance-cubes` is still running: the reset happens
+  first, then the late answer would set `PartialLoggedIn` with no session. `LoginFromXLEdge` drops an answer whose
+  `LoginToken` is no longer the one it was given.
 
 Not yet tested in Excel with XLEdge loaded (compile-verified only: Debug + Release, no new warnings).
 
