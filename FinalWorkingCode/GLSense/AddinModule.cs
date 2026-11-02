@@ -3035,6 +3035,25 @@ namespace GLSense
             GLSenseLogout(loginUrlAtLogout);
         }
 
+        private async void RibBroadcast_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            LogUtility.LogDebug("RibBroadcast_OnClick clicked.");
+            try
+            {
+                using var ctsHelper = new CancellationHelper();
+                string broadcastMsg = await GLLogin.BroadcastMessageFromApi(ctsHelper.GetToken());
+
+                if (string.IsNullOrWhiteSpace(broadcastMsg))
+                    CommonFunctions.GLSenseMessage("No broadcast messages available.", MessageBoxIcon.Information);
+                else
+                    CommonFunctions.GLSenseMessage(broadcastMsg, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "Error showing broadcast messages.");
+            }
+        }
+
         private void GLSenseLogout(string loginUrlAtLogout)
         {
             using var ctsHelper = new CancellationHelper();
