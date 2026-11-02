@@ -185,7 +185,7 @@ namespace GLSense.Helpers
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
                    "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                    "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",
-                   "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibUserConfig","RibHelp"
+                   "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibUserConfig","RibHelp","RibBroadcast"
                  ]);
 
                 EnableControls(["RibLogin", "Riburl", "RibDebug", "RibAbout"]);
@@ -211,7 +211,7 @@ namespace GLSense.Helpers
             {
                 DisableControls(
                 [
-                   "RibLogin", "RibLogout", "Riburl", "RibDebug", "RibAbout",
+                   "RibLogin", "RibLogout", "RibBroadcast", "Riburl", "RibDebug", "RibAbout",
                    "RibDBL1","RibGetCube","Ribledger","RibAccount","RibRollerGroup","RibLOVs","RibFSG","RibHideRows","RibUnHideRows",
                    "RibLiveCalc","RibSegS","RibSegmentDiscover","RigSegDiscover","RibSegProperty","RibSegmentExpand",
                    "RibSegmentExplode","RibExpodeAll","RibbonExplode1Level","RibDiscoverPeriod","RibDiscoverPeriodByDate","RibAsFormula","RibRefreshRange","RibRefreshAll","RibRefreshBook",
@@ -243,7 +243,7 @@ namespace GLSense.Helpers
                    "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibUserConfig"
                  ]);
 
-                EnableControls(["RibLogout", "RibDBL1", "RibGetCube", "Riburl", "RibDebug", "RibAbout", "RibHelp"]);
+                EnableControls(["RibLogout", "RibBroadcast", "RibDBL1", "RibGetCube", "Riburl", "RibDebug", "RibAbout", "RibHelp"]);
 
                 SetControlVisible("RibLogin", false);
                 SetControlVisible("RibLogout", true);
@@ -271,7 +271,7 @@ namespace GLSense.Helpers
                    "RibDrilldownMenu","RibBalanceDD","RibBalanceJournalDD","RibBalanceSubLedgerDD","RibJournalDD","RibSubledgerDD","RibTotaDD","RibBalancesDDToSubLedger","RibBalancesDDToUnified",
                    "RibDDConfiguration","RibDDDeleteConfiguration","RibDrillJobs","RibFunctionsMenu","RibSegmentEnabledFlag","RibSummaryFlag","RibSegment","RibNextSegment","RibSegmentAccountType",
                    "RibPreviousSegment","RibSegmentDFF","RibPeriod","RibPeriodbyDate","RibPeriodbyYear","RibPeriodNum","RibPeriodQtr","RibPeriodYear",
-                   "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibHelp","RibUserConfig"
+                   "RibPeriodStart","RibPeriodEnd","RibDailyRate","RibVersionCheck","RibHelp","RibUserConfig","RibBroadcast"
                  ]);
 
                 SetControlVisible("RibLogin", false);

@@ -854,7 +854,7 @@ namespace GLSense.Views
             SafeDisableLoginRibbon();
         }
 
-        private static async Task<string> BroadcastMessageFromApi(CancellationToken ct)
+        internal static async Task<string> BroadcastMessageFromApi(CancellationToken ct)
         {
             try
             {

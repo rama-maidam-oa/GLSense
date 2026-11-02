@@ -73,6 +73,7 @@ namespace GLSense
 
         public const string RibLogin = "RibLogin";
         public const string RibLogout = "RibLogout";
+        public const string RibBroadcast = "RibBroadcast";
         public const string RibUrl = "Riburl";
         public const string RibDebug = "RibDebug";
         public const string RibAbout = "RibAbout";
@@ -91,7 +92,7 @@ namespace GLSense
                 RibTotaDD, RibDDConfiguration, RibDDDeleteConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag,
                 RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF, RibSegmentAccountType,
                 RibPeriod, RibPeriodbyDate, RibPeriodbyYear, RibPeriodNum, RibPeriodQtr, RibPeriodYear,
-                RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibUserConfig, RibHelp
+                RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibUserConfig, RibHelp, RibBroadcast
             });
 
         public static readonly ReadOnlyCollection<string> DefaultEnabledControls =
@@ -126,7 +127,7 @@ namespace GLSense
         public static readonly ReadOnlyCollection<string> PartialLoginEnabledControls =
             Array.AsReadOnly(new[]
             {
-                RibLogout, RibDBL1, RibGetCube, RibUrl, RibDebug, RibAbout, RibHelp
+                RibLogout, RibBroadcast, RibDBL1, RibGetCube, RibUrl, RibDebug, RibAbout, RibHelp
             });
 
         public static readonly ReadOnlyCollection<string> LoggedInEnabledControls =
@@ -153,7 +154,7 @@ namespace GLSense
                 RibDDConfiguration, RibDDDeleteConfiguration, RibDrillJobs, RibFunctionsMenu, RibSegmentEnabledFlag,
                 RibSummaryFlag, RibSegment, RibNextSegment, RibPreviousSegment, RibSegmentDFF, RibSegmentAccountType,
                 RibPeriod, RibPeriodbyDate, RibPeriodbyYear, RibPeriodNum, RibPeriodQtr, RibPeriodYear,
-                RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibHelp, RibUserConfig
+                RibPeriodStart, RibPeriodEnd, RibDailyRate, RibVersionCheck, RibHelp, RibUserConfig, RibBroadcast
             });
     }
 }

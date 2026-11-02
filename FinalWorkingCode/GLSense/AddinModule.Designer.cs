@@ -38,7 +38,8 @@ namespace GLSense
             this.adxRibbonGroup1 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.RibLogin = new AddinExpress.MSO.ADXRibbonButton(this.components);
             this.RibLogout = new AddinExpress.MSO.ADXRibbonButton(this.components);
-            this.RibDBL1 = new AddinExpress.MSO.ADXRibbonDialogBoxLauncher(this.components);
+            this.RibBroadcast = new AddinExpress.MSO.ADXRibbonButton(this.components);
+            this.RibDBL1 =new AddinExpress.MSO.ADXRibbonDialogBoxLauncher(this.components);
             this.adxRibbonGroup2 = new AddinExpress.MSO.ADXRibbonGroup(this.components);
             this.adxRibbonBox1 = new AddinExpress.MSO.ADXRibbonBox(this.components);
             this.RibGetCube = new AddinExpress.MSO.ADXRibbonButton(this.components);
@@ -214,6 +215,7 @@ namespace GLSense
             this.ImageList_32X32.Images.SetKeyName(31, "PeriodStart_32.png");
             this.ImageList_32X32.Images.SetKeyName(32, "SegmentDescriptiveField_32.png");
             this.ImageList_32X32.Images.SetKeyName(33, "deleteDrilldowns.png");
+            this.ImageList_32X32.Images.SetKeyName(34, "broadcastmessage.png");
             // 
             // orbittab
             // 
@@ -238,6 +240,7 @@ namespace GLSense
             this.adxRibbonGroup1.Caption = "Logon";
             this.adxRibbonGroup1.Controls.Add(this.RibLogin);
             this.adxRibbonGroup1.Controls.Add(this.RibLogout);
+            this.adxRibbonGroup1.Controls.Add(this.RibBroadcast);
             this.adxRibbonGroup1.Controls.Add(this.RibDBL1);
             this.adxRibbonGroup1.Id = "adxRibbonGroup_d9d91c94eb9b4ae3a6418450348d0ced";
             this.adxRibbonGroup1.ImageTransparentColor = System.Drawing.Color.Transparent;
@@ -268,6 +271,20 @@ namespace GLSense
             this.RibLogout.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
             this.RibLogout.SuperTip = "Click to logout";
             this.RibLogout.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibLogout_OnClick);
+            //
+            // RibBroadcast
+            //
+            this.RibBroadcast.Caption = "Broadcast";
+            this.RibBroadcast.Enabled = false;
+            this.RibBroadcast.Id = "adxRibbonButton_ee5d771238424f6fa5e2bc612327b9ab";
+            this.RibBroadcast.Image = 34;
+            this.RibBroadcast.ImageList = this.ImageList_32X32;
+            this.RibBroadcast.ImageTransparentColor = System.Drawing.Color.Transparent;
+            this.RibBroadcast.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
+            this.RibBroadcast.ScreenTip = "Broadcast Messages";
+            this.RibBroadcast.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
+            this.RibBroadcast.SuperTip = "Click to view the latest broadcast messages";
+            this.RibBroadcast.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibBroadcast_OnClick);
             // 
             // RibDBL1
             // 
@@ -1335,6 +1352,7 @@ namespace GLSense
         private AddinExpress.MSO.ADXExcelAppEvents adxExcelAppEvents1;
         public AddinExpress.MSO.ADXRibbonButton RibLogin;
         public AddinExpress.MSO.ADXRibbonButton RibLogout;
+        public AddinExpress.MSO.ADXRibbonButton RibBroadcast;
         public AddinExpress.MSO.ADXRibbonDialogBoxLauncher RibDBL1;
         public AddinExpress.MSO.ADXRibbonButton RibGetCube;
         public AddinExpress.MSO.ADXRibbonComboBox Ribledger;

@@ -293,6 +293,11 @@ namespace GLSense.Addin.Core
                     // makes an async API call (applogout). Exceptions are caught internally.
                     _ = Logout();
                     break;
+                case "ShowBroadcast":
+                    // RibBroadcast_OnClick - fire-and-forget for the same reason as Logout
+                    // (async get-broadcast-msg call). Exceptions are caught internally.
+                    _ = ShowBroadcastMessages();
+                    break;
                 case "ShowCubeDetails":
                     // RibGetCube_OnClick - opens GLCubeDetails (Group B). Modal, so no
                     // fire-and-forget needed; mirrors Login()'s dispatch pattern.
@@ -728,6 +733,24 @@ namespace GLSense.Addin.Core
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, $"RunDrilldownByExternalAddress({ddType}): Error");
+            }
+        }
+
+        private static async Task ShowBroadcastMessages()
+        {
+            try
+            {
+                using var ctsHelper = new Helpers.CancellationHelper();
+                string broadcastMsg = await GLLogin.BroadcastMessageFromApi(ctsHelper.GetToken());
+
+                if (string.IsNullOrWhiteSpace(broadcastMsg))
+                    CommonFunctions.GLSenseMessage("No broadcast messages available.", MessageBoxImage.Information);
+                else
+                    CommonFunctions.GLSenseMessage(broadcastMsg, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "ShowBroadcastMessages");
             }
         }
 

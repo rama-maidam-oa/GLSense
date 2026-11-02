@@ -627,6 +627,14 @@ namespace GLSense
             _ribbonController?.ExecuteAction("Logout");
         }
 
+        private void RibBroadcast_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            GlobalsEx.Context?.Logger?.LogDebug($"RibBroadcast_OnClick fired (pressed={pressed})");
+            // Broadcast fetch + message window live in Addin.Core - see AddinEntry's
+            // "ShowBroadcast" case.
+            _ribbonController?.ExecuteAction("ShowBroadcast");
+        }
+
         private void RibDBL1_OnAction(object sender, IRibbonControl control, bool pressed)
         {
             GlobalsEx.Context?.Logger?.LogDebug($"RibDBL1_OnAction fired (pressed={pressed})");
