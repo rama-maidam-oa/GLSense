@@ -293,6 +293,16 @@ namespace GLSense.Addin.Core
                     // makes an async API call (applogout). Exceptions are caught internally.
                     _ = Logout();
                     break;
+                case "LoginFromXLEdge":
+                    // AddinModule.GetGLCubeInformation - XLEdge logged in by itself and hands its
+                    // session over ({ token, url, userName }). Fire-and-forget like Logout: the
+                    // cube call is async and XLEdge's COM call must not wait for it.
+                    _ = LoginFromXLEdge(parameter as object[]);
+                    break;
+                case "LogoutFromXLEdge":
+                    // AddinModule.LogoutSession - XLEdge logged out.
+                    LogoutFromXLEdge();
+                    break;
                 case "ShowBroadcast":
                     // RibBroadcast_OnClick - fire-and-forget for the same reason as Logout
                     // (async get-broadcast-msg call). Exceptions are caught internally.
@@ -1616,29 +1626,7 @@ namespace GLSense.Addin.Core
                     message = "An unexpected error occurred during logout.";
                 }
 
-                AppState.Instance.Reset();
-
-                // AppState.Reset() only clears the in-memory SelectedCube/SelectedLedger
-                // model state - it doesn't touch the ribbon UI (by design, AppState is
-                // pure data). Without these, RibGetCube/Ribledger kept showing whatever
-                // cube/ledger was selected before logout. Matches FinalWorkingCode's
-                // GLSenseLogout(): Ribledger.Items.Clear(); Ribledger.Text = "";
-                // RibGetCube.Caption = "Cube: Select Cube";
-                //
-                // The await on the logout API call above resumes on a ThreadPool (MTA)
-                // thread in this host, and Add-in Express ribbon controls must only be
-                // touched from Excel's main thread. WpfAppManager's dispatcher lives on
-                // that thread, so run the ribbon updates through it synchronously.
-                Utilities.WpfAppManager.InvokeOnWpfThread(() =>
-                {
-                    ServiceLocator.RibbonController?.SetControlLabel("RibGetCube", "Cube : Select Cube");
-                    ServiceLocator.RibbonController?.ClearComboItems("Ribledger");
-                    ServiceLocator.RibbonController?.SetComboText("Ribledger", string.Empty);
-                    ServiceLocator.RibbonController?.Invalidate("Ribledger");
-                    ServiceLocator.RibbonController?.ClearComboItems("RibSegS");
-
-                    ServiceLocator.RibbonController?.SetState("LoggedOut");
-                });
+                ResetLoginState();
 
                 CommonFunctions.GLSenseMessage(message, MessageBoxImage.Information);
 
@@ -1647,6 +1635,109 @@ namespace GLSense.Addin.Core
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "Logout: Error");
+            }
+        }
+
+        /// <summary>
+        /// The logged-out state, shared by Logout and LogoutFromXLEdge: AppState reset, the cube/ledger/segment ribbon
+        /// controls cleared, ribbon "LoggedOut".
+        /// </summary>
+        private static void ResetLoginState()
+        {
+            AppState.Instance.Reset();
+
+            // AppState.Reset() only clears the in-memory SelectedCube/SelectedLedger
+            // model state - it doesn't touch the ribbon UI (by design, AppState is
+            // pure data). Without these, RibGetCube/Ribledger kept showing whatever
+            // cube/ledger was selected before logout. Matches FinalWorkingCode's
+            // GLSenseLogout(): Ribledger.Items.Clear(); Ribledger.Text = "";
+            // RibGetCube.Caption = "Cube: Select Cube";
+            //
+            // Logout's await on the logout API call resumes on a ThreadPool (MTA)
+            // thread in this host, and Add-in Express ribbon controls must only be
+            // touched from Excel's main thread. WpfAppManager's dispatcher lives on
+            // that thread, so run the ribbon updates through it synchronously.
+            Utilities.WpfAppManager.InvokeOnWpfThread(() =>
+            {
+                ServiceLocator.RibbonController?.SetControlLabel("RibGetCube", "Cube : Select Cube");
+                ServiceLocator.RibbonController?.ClearComboItems("Ribledger");
+                ServiceLocator.RibbonController?.SetComboText("Ribledger", string.Empty);
+                ServiceLocator.RibbonController?.Invalidate("Ribledger");
+                ServiceLocator.RibbonController?.ClearComboItems("RibSegS");
+
+                ServiceLocator.RibbonController?.SetState("LoggedOut");
+            });
+        }
+
+        /// <summary>
+        /// XLEdge logged in by itself and handed its session over (AddinModule.GetGLCubeInformation; FinalWorkingCode's
+        /// GetGLCubeInformation): take the token and instance, load the user's cubes, and go "PartialLoggedIn" (the user picks
+        /// a cube next, as after GLSense's own login). No cubes, or the cube call failing, leaves GLSense "LoggedOut" - this
+        /// codebase has no "NoCubes" state. Awaited, not waited on: XLEdge's call has already returned.
+        /// </summary>
+        private async System.Threading.Tasks.Task LoginFromXLEdge(object[] args)
+        {
+            try
+            {
+                string token = args != null && args.Length > 0 ? args[0] as string : null;
+                string url = args != null && args.Length > 1 ? args[1] as string : null;
+                string userName = args != null && args.Length > 2 ? args[2] as string : null;
+                if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(url))
+                {
+                    ServiceLocator.Logger?.LogWarn("LoginFromXLEdge: no token or instance URL from XLEdge - ignored.");
+                    return;
+                }
+
+                AppState.Instance.LoginToken = token;
+                AppState.Instance.LoginUrl = url;
+
+                string apiUrl = $"{AppState.Instance.LoginUrl}{AppConstants.RestSecure}finance-cubes";
+                string apiResponse = await Helpers.ApiHelper.ServerAPI(apiUrl, "Form", "", "POST", CancellationToken.None);
+                if (string.IsNullOrWhiteSpace(apiResponse))
+                {
+                    ServiceLocator.Logger?.LogWarn("LoginFromXLEdge: received an empty response when extracting cubes.");
+                    Utilities.WpfAppManager.InvokeOnWpfThread(ResetLoginState);
+                    return;
+                }
+
+                var result = Helpers.ApiResponseHelper.Parse<System.Collections.Generic.List<CubeRecord>>(apiResponse, Helpers.JsonGlobals.Options);
+                if (!result.IsSuccess || result.Value == null || result.Value.Count == 0)
+                {
+                    ServiceLocator.Logger?.LogWarn(result.IsSuccess
+                        ? $"LoginFromXLEdge: no cubes found for the user \"{userName}\" logged in from XLEdge."
+                        : $"LoginFromXLEdge: cube response not usable: {result.ErrorMessage}");
+                    Utilities.WpfAppManager.InvokeOnWpfThread(ResetLoginState);
+                    return;
+                }
+
+                CubeCache.AllCubes = result.Value.OrderBy(c => c.CubeName).ToList();
+                await CubeDataRepository.InsertCubeDataAsync();
+                AppState.Instance.LoginUserName = userName;
+                // After the awaits above this runs on a ThreadPool thread; Add-in Express ribbon controls must only be
+                // touched from Excel's main thread, where WpfAppManager's dispatcher lives (as Logout, OISR-22460).
+                Utilities.WpfAppManager.InvokeOnWpfThread(() => ServiceLocator.RibbonController?.SetState("PartialLoggedIn"));
+                ServiceLocator.Logger?.LogDebug($"LoginFromXLEdge: {CubeCache.AllCubes.Count} cubes loaded, ribbon PartialLoggedIn.");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "LoginFromXLEdge");
+            }
+        }
+
+        /// <summary>
+        /// XLEdge logged out (AddinModule.LogoutSession; FinalWorkingCode's LogoutSession -> LoggOff): GLSense's logged-out
+        /// state only - no call back to XLEdge, no applogout (XLEdge already ended the server session), no message.
+        /// </summary>
+        private void LogoutFromXLEdge()
+        {
+            try
+            {
+                ResetLoginState();
+                ServiceLocator.Logger?.LogDebug("LogoutFromXLEdge: logged out with XLEdge.");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "LogoutFromXLEdge");
             }
         }
         /// <summary>
