@@ -1581,6 +1581,9 @@ namespace GLSense.Addin.Core
             try
             {
                 ServiceLocator.Logger?.LogDebug("Logout: Starting logout process...");
+                // XLEdge's logoff (called below) tells GLSense back through LogoutSession; until this logout is done,
+                // LogoutFromXLEdge leaves LoginUrl/LoginToken alone - applogout below still needs them.
+                _ownLogoutRunning = true;
 
                 try
                 {
@@ -1636,7 +1639,14 @@ namespace GLSense.Addin.Core
             {
                 ServiceLocator.Logger?.LogException(ex, "Logout: Error");
             }
+            finally
+            {
+                _ownLogoutRunning = false;
+            }
         }
+
+        /// <summary>True while Logout runs (it calls XLEdge, which calls LogoutSession back - see LogoutFromXLEdge).</summary>
+        private static volatile bool _ownLogoutRunning;
 
         /// <summary>
         /// The logged-out state, shared by Logout and LogoutFromXLEdge: AppState reset, the cube/ledger/segment ribbon
@@ -1693,6 +1703,12 @@ namespace GLSense.Addin.Core
 
                 string apiUrl = $"{AppState.Instance.LoginUrl}{AppConstants.RestSecure}finance-cubes";
                 string apiResponse = await Helpers.ApiHelper.ServerAPI(apiUrl, "Form", "", "POST", CancellationToken.None);
+                if (AppState.Instance.LoginToken != token)
+                {
+                    // XLEdge logged out (LogoutFromXLEdge reset the state) or handed over another login meanwhile.
+                    ServiceLocator.Logger?.LogDebug("LoginFromXLEdge: the login changed while the cubes were loading - this answer is dropped.");
+                    return;
+                }
                 if (string.IsNullOrWhiteSpace(apiResponse))
                 {
                     ServiceLocator.Logger?.LogWarn("LoginFromXLEdge: received an empty response when extracting cubes.");
@@ -1732,6 +1748,12 @@ namespace GLSense.Addin.Core
         {
             try
             {
+                if (_ownLogoutRunning)
+                {
+                    // GLSense's own Logout started this (via XLEdge's LogoffFromAddin) and resets at its end, after applogout.
+                    ServiceLocator.Logger?.LogDebug("LogoutFromXLEdge: GLSense's own logout is running - it resets the state.");
+                    return;
+                }
                 ResetLoginState();
                 ServiceLocator.Logger?.LogDebug("LogoutFromXLEdge: logged out with XLEdge.");
             }
