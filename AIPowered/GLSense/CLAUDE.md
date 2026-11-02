@@ -4971,6 +4971,9 @@ In `AddinEntry`:
     call - Excel stays responsive and XLEdge's call returns at once);
   - no cubes / an empty or unparseable response leaves GLSense `LoggedOut` (FinalWorkingCode applied `NoCubes`, a state
     this codebase does not have, which disabled even Login).
+  - its ribbon calls after the awaits (`PartialLoggedIn`, or the logged-out reset) go through
+    `WpfAppManager.InvokeOnWpfThread`: an await resumes on a ThreadPool thread in this host, and Add-in Express ribbon
+    controls may only be touched on Excel's main thread (the problem 11.1.3 fixed in `Logout`, OISR-22460).
 - `LogoutFromXLEdge` is FinalWorkingCode's `LogoutSession` -> `LoggOff()`: the reset part of `Logout()` only, now
   shared as `ResetLoginState()` (`AppState.Reset()`, RibGetCube label, Ribledger/RibSegS combos, `LoggedOut`). No call
   back to XLEdge, no `applogout` (XLEdge already ended the server session), no message box.

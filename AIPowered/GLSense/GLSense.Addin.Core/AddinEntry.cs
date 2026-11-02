@@ -1603,7 +1603,7 @@ namespace GLSense.Addin.Core
                 if (string.IsNullOrWhiteSpace(apiResponse))
                 {
                     ServiceLocator.Logger?.LogWarn("LoginFromXLEdge: received an empty response when extracting cubes.");
-                    ResetLoginState();
+                    Utilities.WpfAppManager.InvokeOnWpfThread(ResetLoginState);
                     return;
                 }
 
@@ -1613,14 +1613,16 @@ namespace GLSense.Addin.Core
                     ServiceLocator.Logger?.LogWarn(result.IsSuccess
                         ? $"LoginFromXLEdge: no cubes found for the user \"{userName}\" logged in from XLEdge."
                         : $"LoginFromXLEdge: cube response not usable: {result.ErrorMessage}");
-                    ResetLoginState();
+                    Utilities.WpfAppManager.InvokeOnWpfThread(ResetLoginState);
                     return;
                 }
 
                 CubeCache.AllCubes = result.Value.OrderBy(c => c.CubeName).ToList();
                 await CubeDataRepository.InsertCubeDataAsync();
                 AppState.Instance.LoginUserName = userName;
-                ServiceLocator.RibbonController?.SetState("PartialLoggedIn");
+                // After the awaits above this runs on a ThreadPool thread; Add-in Express ribbon controls must only be
+                // touched from Excel's main thread, where WpfAppManager's dispatcher lives (as Logout, OISR-22460).
+                Utilities.WpfAppManager.InvokeOnWpfThread(() => ServiceLocator.RibbonController?.SetState("PartialLoggedIn"));
                 ServiceLocator.Logger?.LogDebug($"LoginFromXLEdge: {CubeCache.AllCubes.Count} cubes loaded, ribbon PartialLoggedIn.");
             }
             catch (Exception ex)
