@@ -252,14 +252,19 @@ namespace GLSense.Addin.Core.ViewModels
                 await HideBusyAsync();
             }
         }
+        // OISR-22830: job names are read through Application.Names (the active workbook's names)
+        // instead of ActiveWorkbook.Names. Right after a drilldown, Addin.Core already holds a
+        // generic COM wrapper for the active workbook, and getting ActiveWorkbook across the
+        // AppDomain boundary then fails (InvalidCastException: __ComObject to WorkbookClass) until
+        // that wrapper is garbage-collected. Names is an interface type, so it can't hit that.
         private bool DrillDownJobsExists()
         {
             try
             {
-                if (_excelApp?.ActiveWorkbook?.Names == null)
+                if (_excelApp?.Names == null)
                     return false;
 
-                foreach (Excel.Name name in _excelApp.ActiveWorkbook.Names)
+                foreach (Excel.Name name in _excelApp.Names)
                 {
                     if (name.Name.Contains("GLSense_DD"))
                         return true;
@@ -278,7 +283,7 @@ namespace GLSense.Addin.Core.ViewModels
             var drillJobsList = new System.Collections.ArrayList();
             try
             {
-                foreach (Excel.Name name in _excelApp.ActiveWorkbook.Names)
+                foreach (Excel.Name name in _excelApp.Names)
                 {
                     if (name.Name.Contains("GLSense_DD"))
                     {
@@ -1147,7 +1152,7 @@ namespace GLSense.Addin.Core.ViewModels
             try
             {
                 var rangeName = $"GLSense_DD_{processId}";
-                foreach (Excel.Name name in _excelApp.ActiveWorkbook.Names)
+                foreach (Excel.Name name in _excelApp.Names)
                 {
                     if (name.Name == rangeName)
                     {
@@ -1166,11 +1171,11 @@ namespace GLSense.Addin.Core.ViewModels
         {
             try
             {
-                for (int i = _excelApp.ActiveWorkbook.Names.Count; i >= 1; i--)
+                for (int i = _excelApp.Names.Count; i >= 1; i--)
                 {
                     try
                     {
-                        var name = _excelApp.ActiveWorkbook.Names.Item(i);
+                        var name = _excelApp.Names.Item(i);
                         if (name.Name.Contains("GLSense_DD_"))
                         {
                             name.Delete();
