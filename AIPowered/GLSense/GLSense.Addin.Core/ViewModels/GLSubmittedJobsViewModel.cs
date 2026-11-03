@@ -227,6 +227,7 @@ namespace GLSense.Addin.Core.ViewModels
 
                 // Get processed jobs from API (from your VB.NET GetProcessRecords())
                 var processedJobs = await GetProcessRecordsAsync();
+                BusyToken.ThrowIfCancellationRequested();
                 ServiceLocator.Logger?.LogDebug($"GLSubmittedJobsViewModel.LoadJobsAsync: GetProcessRecordsAsync returned {(string.IsNullOrWhiteSpace(processedJobs) ? "empty" : $"{processedJobs.Length} char(s)")} response.");
 
                 if (!string.IsNullOrWhiteSpace(processedJobs))
@@ -234,6 +235,10 @@ namespace GLSense.Addin.Core.ViewModels
                     await ParseAndDisplayJobs(processedJobs);
                 }
 
+            }
+            catch (OperationCanceledException) when (UserCancelled)
+            {
+                await ShowCancelledMessageAsync("Loading jobs");
             }
             catch (Exception ex)
             {
@@ -286,7 +291,7 @@ namespace GLSense.Addin.Core.ViewModels
             return drillJobsList;
         }
 
-        private static async Task<string> GetProcessRecordsAsync()
+        private async Task<string> GetProcessRecordsAsync()
         {
             string apiUrl =
                 $"{AppState.Instance.LoginUrl}/rest/secure/finance/drilldown-processes?limit=100&page=1";
@@ -294,8 +299,8 @@ namespace GLSense.Addin.Core.ViewModels
 
             try
             {
-                using var cts =
-                    new CancellationTokenSource(TimeSpan.FromSeconds(300));
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(BusyToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(300));
 
                 string response =
                     await ApiHelper.ServerAPI(apiUrl, "Form", "", "GET", cts.Token);
@@ -318,7 +323,11 @@ namespace GLSense.Addin.Core.ViewModels
 
                 return response;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (UserCancelled)
+            {
+                throw;
+            }
+            catch (OperationCanceledException) when (!UserCancelled)
             {
                 ServiceLocator.Logger?.LogWarn(
                     "GetProcessRecordsAsync cancelled/timeout after 30s");
@@ -577,6 +586,7 @@ namespace GLSense.Addin.Core.ViewModels
                 var failedJobs = new List<string>();
                 foreach (var job in selectedJobs)
                 {
+                    BusyToken.ThrowIfCancellationRequested();
                     try
                     {
                         var fileName = await DownloadJobLogsAsync(job.ProcessId);
@@ -592,12 +602,18 @@ namespace GLSense.Addin.Core.ViewModels
                             failedJobs.Add(job.ProcessId);
                         }
                     }
+                    catch (OperationCanceledException) when (UserCancelled)
+                    {
+                        throw;
+                    }
                     catch (Exception ex)
                     {
                         ServiceLocator.Logger?.LogException(ex, $"GLSubmittedJobsViewModel.DownloadLogsAsync: job {job.ProcessId}");
                         failedJobs.Add(job.ProcessId);
                     }
                 }
+
+                BusyToken.ThrowIfCancellationRequested();
 
                 // Hide busy overlay before showing toast to avoid race condition
                 await HideBusyAsync();
@@ -615,6 +631,10 @@ namespace GLSense.Addin.Core.ViewModels
                 {
                     await ShowWarningMessageAsync("Unable to download logs for the selected jobs.");
                 }
+            }
+            catch (OperationCanceledException) when (UserCancelled)
+            {
+                await ShowCancelledMessageAsync("Download logs");
             }
             catch (Exception ex)
             {
@@ -645,6 +665,8 @@ namespace GLSense.Addin.Core.ViewModels
 
                 var downloadedFiles = await DownloadOutputsForJobsAsync(selectedJobs);
 
+                BusyToken.ThrowIfCancellationRequested();
+
                 // Hide busy overlay before showing toast to avoid race condition
                 await HideBusyAsync();
 
@@ -653,6 +675,10 @@ namespace GLSense.Addin.Core.ViewModels
                     string strDestDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
                     await ShowInfoMessageAsync($"Output(s) downloaded to folder {strDestDir}: {downloadedFiles}");
                 }
+            }
+            catch (OperationCanceledException) when (UserCancelled)
+            {
+                await ShowCancelledMessageAsync("Download outputs");
             }
             catch (Exception ex)
             {
@@ -666,6 +692,7 @@ namespace GLSense.Addin.Core.ViewModels
 
             foreach (var job in jobs)
             {
+                BusyToken.ThrowIfCancellationRequested();
                 await DownloadSingleJobOutputAsync(job, downloadedFiles);
             }
 
@@ -902,7 +929,7 @@ namespace GLSense.Addin.Core.ViewModels
                 client.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
 
-                var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, BusyToken);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -929,10 +956,19 @@ namespace GLSense.Addin.Core.ViewModels
                         fname);
 
                     // Read the response stream and save the file
-                    using (Stream responseStream = await response.Content.ReadAsStreamAsync())
-                    using (var fs = new FileStream(strDestDir, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
+                    try
                     {
-                        await responseStream.CopyToAsync(fs);
+                        using (Stream responseStream = await response.Content.ReadAsStreamAsync())
+                        using (var fs = new FileStream(strDestDir, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
+                        {
+                            await responseStream.CopyToAsync(fs, 81920, BusyToken);
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Don't leave a half-written file in Downloads.
+                        try { File.Delete(strDestDir); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                        throw;
                     }
 
                     return fname;
@@ -947,6 +983,10 @@ namespace GLSense.Addin.Core.ViewModels
                 }
 
             }
+            catch (OperationCanceledException) when (UserCancelled)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 LogError(ex);
@@ -958,8 +998,10 @@ namespace GLSense.Addin.Core.ViewModels
             try
             {
                 string apiUrl = $"{AppState.Instance.LoginUrl}/rest/secure/finance/drilldown-data?processId={job.ProcessId}";
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3600));
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(BusyToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(3600));
                 string response = await ApiHelper.ServerAPI(apiUrl, "Form", "", "GET", cts.Token);
+                BusyToken.ThrowIfCancellationRequested();
 
                 ValidateTransportResponse(response);
 
@@ -977,8 +1019,14 @@ namespace GLSense.Addin.Core.ViewModels
 
                 var dataToSheet = new DDDatatoWorksheet(_excelApp, response, job.DrillType.Replace("_TL_", "_UF_"), job.JobDescription, cts.Token, null);
                 await dataToSheet.DD_DatetoWorksheet();
+                if (dataToSheet.WasCancelled)
+                    throw new OperationCanceledException(cts.Token);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (UserCancelled)
+            {
+                throw;
+            }
+            catch (OperationCanceledException) when (!UserCancelled)
             {
                 await ShowErrorMessage("Drilldown data download was canceled.");
                 ServiceLocator.Logger?.LogWarn("Drilldown data download cancelled/timeout for 30s.");
@@ -1040,12 +1088,28 @@ namespace GLSense.Addin.Core.ViewModels
         {
             if (ShowBusyAction != null)
             {
-                await ShowBusyAction.Invoke(message, async () =>
+                // OISR-22828: Cancel used to be a no-op here - it hid the overlay while the
+                // request (and, for Download outputs, the sheet write) carried on. It now
+                // cancels BusyToken, which every long call below is given.
+                var cts = new CancellationTokenSource();
+                _busyCts = cts;
+                await ShowBusyAction.Invoke(message, () =>
                 {
-                    // Cancel action
-                    await Task.CompletedTask;
+                    if (!cts.IsCancellationRequested)
+                        cts.Cancel();
+                    return Task.CompletedTask;
                 });
             }
+        }
+
+        private CancellationTokenSource _busyCts;
+        private CancellationToken BusyToken => _busyCts?.Token ?? CancellationToken.None;
+        private bool UserCancelled => _busyCts?.IsCancellationRequested == true;
+
+        private async Task ShowCancelledMessageAsync(string task)
+        {
+            await HideBusyAsync();
+            await ShowInfoMessageAsync($"{task} task cancelled.");
         }
 
         private async Task HideBusyAsync()

@@ -76,6 +76,13 @@ namespace GLSense.Addin.Core.Drilldowns
         private Excel.Application DD_ExcelApp { get; }
         private readonly string DD_Type;
         private readonly string DD_Parts;
+
+        // OISR-22828: the sheet this run added (null when it reused an existing drilldown
+        // sheet). Deleted again if the write is cancelled, so a cancel no longer leaves a
+        // half-built drilldown sheet behind. WasCancelled tells the caller it happened,
+        // since each stage swallows the OperationCanceledException.
+        private Excel.Worksheet _createdSheet;
+        public bool WasCancelled { get; private set; }
         private static readonly string DD_DummyCol = "DUMMYCOL";
         private readonly object DD_DrillValues;
         private CancellationToken Dd_token { get; }
@@ -240,6 +247,9 @@ namespace GLSense.Addin.Core.Drilldowns
             }
             finally
             {
+                // Before restoring DisplayAlerts, so the delete doesn't prompt.
+                DiscardSheetIfCancelled();
+
                 if (snapshotTaken && DD_ExcelApp != null)
                 {
                     try
@@ -260,6 +270,34 @@ namespace GLSense.Addin.Core.Drilldowns
             await Task.CompletedTask;
             }
         }
+        private void DiscardSheetIfCancelled()
+        {
+            if (!Dd_token.IsCancellationRequested)
+                return;
+
+            WasCancelled = true;
+            if (_createdSheet == null)
+            {
+                ServiceLocator.Logger.LogWarn("DDDatatoWorksheet: drilldown write cancelled; an existing sheet was being reused, so it was left as is.");
+                return;
+            }
+
+            try
+            {
+                string name = _createdSheet.Name;
+                _createdSheet.Delete();
+                ServiceLocator.Logger.LogWarn($"DDDatatoWorksheet: drilldown write cancelled; removed the partially built sheet '{name}'.");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger.LogException(ex, "DDDatatoWorksheet: failed to remove the partially built sheet after cancel.");
+            }
+            finally
+            {
+                _createdSheet = null;
+            }
+        }
+
         private void FinalizeSheet(Excel.Worksheet ws, int lastColumn, string ddType, object objStr)
         {
             ServiceLocator.Logger.LogDebug("Applying final formats to drilldown worksheet.");
@@ -1473,6 +1511,7 @@ namespace GLSense.Addin.Core.Drilldowns
                 if (ws == null)
                 {
                     ws = actWb.Worksheets.Add() as Excel.Worksheet;
+                    _createdSheet = ws;
                     ws.Name = shtName;
 
                     ServiceLocator.Logger.LogDebug($"Created worksheet {ws.Name} for drilldown data.");

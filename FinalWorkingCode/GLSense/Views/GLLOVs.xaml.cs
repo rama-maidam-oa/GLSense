@@ -174,6 +174,11 @@ namespace GLSense.Views
                 LogUtility.LogDebug("GLLOVs.CmdSubmit_Click: calling CreateLOVSheetAsync");
                 await CreateLOVSheetAsync();
 
+                // OISR-22828: Cancel used to be ignored here, so the validation list and
+                // comment were still applied and "LOV copied successfully" shown. Stop before
+                // touching the target range (the catch below shows the cancelled message).
+                ctsHelper.GetToken().ThrowIfCancellationRequested();
+
                 var comments = TxtComments.Text.Trim();
 
                 if (string.IsNullOrEmpty(comments))
@@ -194,6 +199,7 @@ namespace GLSense.Views
                 var dvTitle = $"{SelLov.Name}_{vm.LOV_SelectedLedger.LedgerId}";
 
                 string cleanedName = await CleanUpNamedRangeAsync(dvTitle.Trim());
+                ctsHelper.GetToken().ThrowIfCancellationRequested();
 
                 bool nameExists = NameRangeExists(cleanedName);
 

@@ -128,7 +128,16 @@ namespace GLSense.Views
                 // PumpDispatcherFrame() forces that overlay to actually paint before the
                 // write loop blocks this thread - Excel Interop calls have to run on this
                 // same (STA) thread, so the work itself can't be moved to a background Task.
-                AppOverlayControl.ShowBusyasyn($"Writing {ValueArray.Length} value(s) to Excel...");
+                // OISR-22828: the overlay's Cancel button used to only hide the overlay while
+                // the write loop carried on. It now stops the loop at its next dispatcher pump.
+                _writeCancelRequested = false;
+                _valuesWritten = 0;
+                AppOverlayControl.ShowBusyasyn($"Writing {ValueArray.Length} value(s) to Excel...", () =>
+                {
+                    _writeCancelRequested = true;
+                    LogUtility.LogWarn("GLSegmentDiscovery.BtnSubmit_Click: insert cancelled by user");
+                    return System.Threading.Tasks.Task.CompletedTask;
+                });
                 busyShown = true;
                 btnSubmit.IsEnabled = false;
                 PumpDispatcherFrame();
@@ -156,8 +165,16 @@ namespace GLSense.Views
                 {
                     await AppOverlayControl.HideBusyAsync();
                 }
+                if (busyShown && _writeCancelRequested)
+                {
+                    AppOverlayControl.ShowWarning($"Insert cancelled. {_valuesWritten} of {ValueArray?.Length ?? 0} value(s) were written.");
+                }
             }
         }
+
+        // OISR-22828: set by the busy overlay's Cancel button; checked by the write loops.
+        private bool _writeCancelRequested;
+        private int _valuesWritten;
 
         // WPF's classic "DoEvents" equivalent: pushes a nested dispatcher frame that
         // processes every pending operation at Background priority and above until the
@@ -338,7 +355,9 @@ namespace GLSense.Views
             {
                 var targetCell = GetVerticalCell(i);
                 WriteCellValue(targetCell.Offset[1, 0], config, ValueArray[i], targetCell, DirectionType.Down);
+                _valuesWritten++;
                 PumpEveryNWrites(i);
+                if (_writeCancelRequested) break;
             }
         }
 
@@ -348,7 +367,9 @@ namespace GLSense.Views
             {
                 var targetCell = GetHorizontalCell(i);
                 WriteCellValue(targetCell.Offset[0, 1], config, ValueArray[i], targetCell, DirectionType.Right);
+                _valuesWritten++;
                 PumpEveryNWrites(i);
+                if (_writeCancelRequested) break;
             }
         }
 
@@ -359,7 +380,9 @@ namespace GLSense.Views
                 var targetCell = GetVerticalCell(-(i + 1));
                 var formulaRef = targetCell.Offset[1, 0];
                 WriteCellValue(targetCell, config, ValueArray[i], formulaRef, DirectionType.Up);
+                _valuesWritten++;
                 PumpEveryNWrites(i);
+                if (_writeCancelRequested) break;
             }
         }
 
@@ -370,7 +393,9 @@ namespace GLSense.Views
                 var targetCell = GetHorizontalCell(-(i + 1));
                 var formulaRef = targetCell.Offset[0, 1];
                 WriteCellValue(targetCell, config, ValueArray[i], formulaRef, DirectionType.Left);
+                _valuesWritten++;
                 PumpEveryNWrites(i);
+                if (_writeCancelRequested) break;
             }
         }
         private Excel.Range GetVerticalCell(int rowOffset) => OrbActCell.Offset[rowOffset, 0];

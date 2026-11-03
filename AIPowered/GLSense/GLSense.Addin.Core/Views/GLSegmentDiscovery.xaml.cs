@@ -166,7 +166,16 @@ namespace GLSense.Addin.Core.Views
                 // (below) now also yields every YieldBatchSize cells inside its write
                 // loops (see that method's own comment) so the animation keeps rendering
                 // throughout, not just before the first cell is written.
-                AppOverlayControl.ShowBusyasyn("Writing segment values...");
+                // OISR-22828: the overlay's Cancel button used to only hide the overlay while
+                // the write loop carried on. It now stops the loop at its next yield.
+                _writeCancelRequested = false;
+                _valuesWritten = 0;
+                AppOverlayControl.ShowBusyasyn("Writing segment values...", () =>
+                {
+                    _writeCancelRequested = true;
+                    ServiceLocator.Logger?.LogWarn("GLSegmentDiscovery.BtnSubmit_Click: insert cancelled by user");
+                    return Task.CompletedTask;
+                });
                 busyShown = true;
                 btnSubmit.IsEnabled = false;
                 await Dispatcher.Yield(DispatcherPriority.Render);
@@ -191,8 +200,14 @@ namespace GLSense.Addin.Core.Views
                 CommonMethods.TryEnableExcelSettings("GLSegmentDiscovery.BtnSubmit_Click");
                 if (busyShown)
                     await AppOverlayControl.HideBusyAsync();
+                if (busyShown && _writeCancelRequested)
+                    AppOverlayControl.ShowWarning($"Insert cancelled. {_valuesWritten} of {ValueArray?.Length ?? 0} value(s) were written.");
             }
         }
+
+        // OISR-22828: set by the busy overlay's Cancel button; checked by the write loops.
+        private bool _writeCancelRequested;
+        private int _valuesWritten;
         private bool ValidatePrerequisites()
         {
             if (AppState.Instance.SelectedCube == null || AppState.Instance.SelectedLedger == null)
@@ -367,7 +382,9 @@ namespace GLSense.Addin.Core.Views
             {
                 var targetCell = GetVerticalCell(i);
                 WriteCellValue(targetCell.Offset[1, 0], config, ValueArray[i], targetCell, DirectionType.Down);
+                _valuesWritten++;
                 await YieldEveryBatch(i);
+                if (_writeCancelRequested) break;
             }
         }
 
@@ -377,7 +394,9 @@ namespace GLSense.Addin.Core.Views
             {
                 var targetCell = GetHorizontalCell(i);
                 WriteCellValue(targetCell.Offset[0, 1], config, ValueArray[i], targetCell, DirectionType.Right);
+                _valuesWritten++;
                 await YieldEveryBatch(i);
+                if (_writeCancelRequested) break;
             }
         }
 
@@ -388,7 +407,9 @@ namespace GLSense.Addin.Core.Views
                 var targetCell = GetVerticalCell(-(i + 1));
                 var formulaRef = targetCell.Offset[1, 0];
                 WriteCellValue(targetCell, config, ValueArray[i], formulaRef, DirectionType.Up);
+                _valuesWritten++;
                 await YieldEveryBatch(i);
+                if (_writeCancelRequested) break;
             }
         }
 
@@ -399,7 +420,9 @@ namespace GLSense.Addin.Core.Views
                 var targetCell = GetHorizontalCell(-(i + 1));
                 var formulaRef = targetCell.Offset[0, 1];
                 WriteCellValue(targetCell, config, ValueArray[i], formulaRef, DirectionType.Left);
+                _valuesWritten++;
                 await YieldEveryBatch(i);
+                if (_writeCancelRequested) break;
             }
         }
         private Excel.Range GetVerticalCell(int rowOffset) => OrbActCell.Offset[rowOffset, 0];
