@@ -1761,6 +1761,10 @@ namespace GLSense
                 {
                     DispatchCustomDrilldownHyperlink(sht, hyprLink);
                 }
+                else if (IsFullJournalEntryHyperlink(hyprLink) && hyprLink.Parent is Excel.Range fjeRange)
+                {
+                    DispatchFullJournalEntryHyperlink(fjeRange);
+                }
                 else if (hyprLink.Parent is Excel.Range hyperlinkRange)
                 {
                     DispatchJournalAttachmentHyperlink(hyperlinkRange);
@@ -1808,6 +1812,32 @@ namespace GLSense
             catch (Exception ex)
             {
                 GlobalsEx.Context?.Logger?.LogException(ex, "DispatchCustomDrilldownHyperlink: Unable to get the header label.");
+            }
+        }
+
+        // OISR-22823: VIEW_FULL_JOURNAL_ENTRY links on a journal sheet. The ScreenTip text mirrors
+        // GLSense.Addin.Core DDDatatoWorksheet.FullJournalEntryScreenTip (duplicated host-side,
+        // the host never references Addin.Core). Must be checked before the attachment fallback,
+        // which treats any other hyperlink as a journal header id.
+        private const string FullJournalEntryScreenTip = "View Full Journal Entry";
+
+        private static bool IsFullJournalEntryHyperlink(Excel.Hyperlink hyprLink)
+        {
+            return string.Equals(hyprLink?.ScreenTip, FullJournalEntryScreenTip, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void DispatchFullJournalEntryHyperlink(Excel.Range hyperlinkRange)
+        {
+            try
+            {
+                string external = BuildExternalAddress(hyperlinkRange);
+                if (string.IsNullOrEmpty(external)) return;
+
+                GlobalsEx.Addin?.OnRibbonAction("RunFullJournalEntry", external);
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "DispatchFullJournalEntryHyperlink");
             }
         }
 

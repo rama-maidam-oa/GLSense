@@ -450,6 +450,13 @@ namespace GLSense.Addin.Core.Drilldowns
                     actualColName,
                     tableObjName);
 
+                ApplyFullJournalEntryHyperlinks(
+                    ws,
+                    ddType,
+                    aliasColName,
+                    actualColName,
+                    tableObjName);
+
                 customDrilldownExists |= ApplyCustomDrilldownAndFormula(
                     ws,
                     metadataDict,
@@ -637,6 +644,77 @@ namespace GLSense.Addin.Core.Drilldowns
                     ex,
                     $"Error adding attachment hyperlink to '{cell.Worksheet.Name}'!" +
                     $"{cell.Address[Type.Missing, Type.Missing, Excel.XlReferenceStyle.xlA1, Type.Missing, Type.Missing]}");
+            }
+        }
+
+        // OISR-22823: on a journal sheet, every non-empty VIEW_FULL_JOURNAL_ENTRY cell becomes a
+        // hyperlink. The host's SheetFollowHyperlink handler recognises it by its ScreenTip
+        // (FullJournalEntryScreenTip) and runs DrilldownFje, which reads the row's hidden
+        // FJE_DD_PARAMETERS value.
+        internal const string FullJournalEntryColumn = "VIEW_FULL_JOURNAL_ENTRY";
+        internal const string FullJournalEntryParamsColumn = "FJE_DD_PARAMETERS";
+        internal const string FullJournalEntryScreenTip = "View Full Journal Entry";
+
+        private void ApplyFullJournalEntryHyperlinks(
+            Excel.Worksheet ws,
+            string ddType,
+            string aliasColName,
+            string actualColName,
+            string tableObjName)
+        {
+            if (!IsJournalOrSubledger(ddType))
+            {
+                return;
+            }
+
+            if (!StringEquals(aliasColName, FullJournalEntryColumn) &&
+                !StringEquals(actualColName, FullJournalEntryColumn))
+            {
+                return;
+            }
+
+            if (DD_win != null)
+                _ = DD_win.Dispatcher.InvokeAsync(() => DD_win.SetProcessMessage("Adding full journal entry hyperlinks..."));
+
+            var range = GetColumnDataBodyRange(ws, tableObjName, aliasColName, "full journal entry links");
+            if (range == null)
+            {
+                return;
+            }
+
+            foreach (Excel.Range cell in range)
+            {
+                Dd_token.ThrowIfCancellationRequested();
+
+                var displayText = (cell.Value2 ?? cell.Value)?.ToString();
+                if (string.IsNullOrWhiteSpace(displayText))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var subAddress = cell.get_Address(
+                                    Type.Missing,
+                                    Type.Missing,
+                                    Excel.XlReferenceStyle.xlA1,
+                                    false,
+                                    Type.Missing);
+
+                    cell.Hyperlinks.Add(
+                        Anchor: cell,
+                        Address: string.Empty,
+                        SubAddress: subAddress,
+                        ScreenTip: FullJournalEntryScreenTip,
+                        TextToDisplay: displayText);
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger.LogException(
+                        ex,
+                        $"Error adding full journal entry hyperlink to '{cell.Worksheet.Name}'!" +
+                        $"{cell.Address[Type.Missing, Type.Missing, Excel.XlReferenceStyle.xlA1, Type.Missing, Type.Missing]}");
+                }
             }
         }
 
@@ -890,7 +968,8 @@ namespace GLSense.Addin.Core.Drilldowns
                    headerText == "DRILLDOWN3" ||
                    headerText == "DRILL_DOWN4" ||
                    headerText == "DRILLDOWN4" ||
-                   headerText == "SUBLEDGER_VIEW";
+                   headerText == "SUBLEDGER_VIEW" ||
+                   headerText == FullJournalEntryParamsColumn;
         }
 
 

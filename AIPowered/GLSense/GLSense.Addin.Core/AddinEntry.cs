@@ -684,6 +684,15 @@ namespace GLSense.Addin.Core
                         _ = Drilldowns.JournalAttachments.RunJournalAttachmentFlow(journalHeaderIdText);
                     }
                     break;
+
+                case "RunFullJournalEntry":
+                    // OISR-22823 - payload: the clicked VIEW_FULL_JOURNAL_ENTRY cell's external
+                    // address (built host-side from the hyperlink's own cell).
+                    if (parameter is string fjeExternal && !string.IsNullOrWhiteSpace(fjeExternal))
+                    {
+                        _ = RunFullJournalEntryDrilldown(fjeExternal);
+                    }
+                    break;
             }
             }
             catch (Exception ex)
@@ -717,6 +726,18 @@ namespace GLSense.Addin.Core
         /// walks precedent cells looking for balance formulas instead of drilling a
         /// balance cell itself).
         /// </summary>
+        private static async Task RunFullJournalEntryDrilldown(string external)
+        {
+            try
+            {
+                await new DrilldownFje(ServiceLocator.ExcelApp, external).ProcessFullJournalEntryDrilldown();
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "RunFullJournalEntryDrilldown: Error");
+            }
+        }
+
         private static async Task RunDrilldownByExternalAddress(string ddType, string external)
         {
             try

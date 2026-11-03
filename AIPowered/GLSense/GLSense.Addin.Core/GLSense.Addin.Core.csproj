@@ -129,6 +129,7 @@
     <Compile Include="Converters\RichTextBoxHelper.cs" />
     <Compile Include="Drilldowns\DrillCellHighlighter.cs" />
     <Compile Include="Drilldowns\DD_BL.cs" />
+    <Compile Include="Drilldowns\DD_FJE.cs" />
     <Compile Include="Drilldowns\DD_JL.cs" />
     <Compile Include="Drilldowns\DD_SL.cs" />
     <Compile Include="Drilldowns\DD_EP.cs" />
