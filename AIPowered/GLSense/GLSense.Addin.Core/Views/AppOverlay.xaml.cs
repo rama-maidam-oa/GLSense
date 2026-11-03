@@ -277,10 +277,29 @@ namespace GLSense.Addin.Core.Views
             await Task.CompletedTask;
         }
 
+        // OISR-22830: shows a step line under the busy message, so a long operation can say what
+        // it is doing ("Downloading 120 of 614 MB", "Writing rows 40,000 of 273,117"). Safe to call
+        // from any thread; null or empty hides the line. Each ShowBusyasyn starts with it hidden, so
+        // windows that never call this look exactly as before.
+        public void SetBusyStep(string step)
+        {
+            if (Dispatcher.CheckAccess())
+                SetBusyStepText(step);
+            else
+                _ = Dispatcher.BeginInvoke(new Action(() => SetBusyStepText(step)));
+        }
+
+        private void SetBusyStepText(string step)
+        {
+            BusyStep.Text = step ?? string.Empty;
+            BusyStep.Visibility = string.IsNullOrWhiteSpace(step) ? Visibility.Collapsed : Visibility.Visible;
+        }
+
         public void ShowBusyasyn(string message = "Please wait...", Func<Task> cancelAction = null)
         {
             ServiceLocator.Logger?.LogDebug($"AppOverlay.ShowBusyasyn invoked: message={message}, hasCancelAction={cancelAction != null}");
             BusyMessage.Text = message ?? "Please wait...";
+            SetBusyStepText(null);
             this.Visibility = Visibility.Visible;
             this.Opacity = 1.0;
             Panel.SetZIndex(this, 9999);

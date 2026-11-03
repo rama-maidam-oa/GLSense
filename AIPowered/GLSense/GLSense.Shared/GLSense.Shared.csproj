@@ -84,6 +84,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="LargeLogText.cs" />
     <Compile Include="Logger.cs" />
     <Compile Include="PathProvider.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

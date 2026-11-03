@@ -80,6 +80,10 @@ namespace GLSense.Addin.Core
                 // FinalWorkingCode's identical fix).
                 ComMessageFilter.Register();
 
+                // OISR-22830: create GLSense_Logs\Temp if missing and remove large-log files
+                // older than 7 days from it.
+                GLSense.Shared.LargeLogText.CleanUp(ServiceLocator.Paths?.Temp);
+
                 // No handler anywhere previously caught a truly unhandled exception in
                 // THIS AppDomain (only WPF-dispatcher-thread exceptions are covered
                 // elsewhere) - a background Task or COM callback thread throwing

@@ -228,11 +228,16 @@ namespace GLSense.Helpers
 
             if (!string.IsNullOrWhiteSpace(responseBody))
             {
-                // Always log the full body, even when huge: a partial/truncated response
-                // mixed in with other log lines is worse than a long one - it hides
-                // exactly the data (often malformed/unexpected JSON) that debugging a
-                // real issue needs to see in full.
-                LogUtility.LogDebug($"│ Response ({responseBody.Length} chars): {responseBody}");
+                // OISR-22830: a body over 100 KB is saved in full to the Temp folder and the
+                // main log gets a preview plus that file's path, so the debug log stays readable
+                // (a 644 MB drilldown output used to be written into a single log line). Only done
+                // with Debug on - the log line is not written otherwise.
+                if (LogUtility.DebugMode)
+                {
+                    var segments = response.RequestMessage?.RequestUri?.Segments;
+                    string name = segments != null && segments.Length > 0 ? segments[segments.Length - 1].Trim('/') : "response";
+                    LogUtility.LogDebug($"│ Response ({responseBody.Length} chars): {GLSense.Utilities.LargeLogText.ToLogText(responseBody, AppPaths.TempFilesPath, name)}");
+                }
             }
             else
             {

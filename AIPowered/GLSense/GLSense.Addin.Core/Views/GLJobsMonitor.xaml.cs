@@ -68,6 +68,7 @@ namespace GLSense.Addin.Core.Views
                 ShowStatusAsyncAction = (msg) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowStatusAsync(msg)).Task.Unwrap(),
                 ShowConfirmAction = (msg) => Dispatcher.Invoke(() => AppOverlayControl.ShowConfirmAsync(msg)),
                 ShowBusyAction = (txt, cancel) => Dispatcher.InvokeAsync(() => AppOverlayControl.ShowBusyasynTask(txt, cancel)).Task.Unwrap(),
+                BusyStepAction = step => AppOverlayControl.SetBusyStep(step),
                 HideBusyAsyncAction = () => Dispatcher.InvokeAsync(() => AppOverlayControl.HideBusyAsync()).Task.Unwrap()
             };
 
@@ -204,6 +205,37 @@ namespace GLSense.Addin.Core.Views
             {
                 _actionInProgress = false;
                 SetActionButtonsEnabled(true);
+                BringToFront();
+            }
+        }
+
+        // OISR-22830: during a long download/write Excel can briefly be busy and Windows may move
+        // this modal window behind Excel. Excel then stays disabled under a window the user can't
+        // see (busy cursor) until they click it. Bring the window back when the action ends.
+        private void BringToFront()
+        {
+            try
+            {
+                if (!Dispatcher.CheckAccess())
+                {
+                    Dispatcher.Invoke(BringToFront);
+                    return;
+                }
+
+                if (!IsLoaded || !IsVisible)
+                    return;
+
+                if (WindowState == WindowState.Minimized)
+                    WindowState = WindowState.Normal;
+
+                Activate();
+                Topmost = true;
+                Topmost = false;
+                Focus();
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogWarn($"GLJobsMonitor.BringToFront: {ex.Message}");
             }
         }
 

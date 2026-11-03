@@ -36,7 +36,9 @@ namespace GLSense
 
         private static readonly Lazy<string> _tempFilesPath = new(() =>
         {
-            string path = Path.Combine(GLSenseLogsFolder, "TempFiles");
+            // OISR-22830: one temp folder, "Temp" (same name as AIPowered's PathProvider.Temp).
+            // Was "TempFiles"; an old TempFiles folder from earlier builds is no longer used.
+            string path = Path.Combine(GLSenseLogsFolder, "Temp");
             EnsureDirectoryExists(path);
             return path;
         });

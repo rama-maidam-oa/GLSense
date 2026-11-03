@@ -7,10 +7,14 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Reflection;
+using System.Buffers;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Threading;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -28,6 +32,15 @@ namespace GLSense.Drilldowns
         // half-built drilldown sheet behind. WasCancelled tells the caller it happened,
         // since each stage swallows the OperationCanceledException.
         private Excel.Worksheet _createdSheet;
+
+        // OISR-22830: optional step reporting (the Process screen shows it above its busy timer).
+        public Action<string> StatusCallback { get; set; }
+
+        private void ReportStep(string step)
+        {
+            try { StatusCallback?.Invoke(step); }
+            catch (Exception ex) { LogUtility.LogWarn($"DDDatatoWorksheet.ReportStep: {ex.Message}"); }
+        }
         public bool WasCancelled { get; private set; }
         private static readonly string DD_DummyCol = "DUMMYCOL";
         private readonly object DD_DrillValues;
@@ -154,14 +167,30 @@ namespace GLSense.Drilldowns
                     return;
                 }
 
-                object[,] sampleobj = PrepareDataArray(drillsData, DisplayColumnName, ActualColumnName, DataTypeDict);
+                // OISR-22830: for a large output, build the cell array on a worker thread while
+                // this thread keeps pumping messages, so Excel and the wait window stay responsive
+                // (273,117 rows x 95 columns took 56 s here, all of it "Not Responding").
+                bool largeOutput = drillsData.records.Length > LargeOutputRowThreshold;
+                ReportStep($"Preparing {drillsData.records.Length:N0} rows for Excel...");
+                object[,] sampleobj = largeOutput
+                    ? RunOnWorkerWhilePumping(() => PrepareDataArray(drillsData, DisplayColumnName, ActualColumnName, DataTypeDict))
+                    : PrepareDataArray(drillsData, DisplayColumnName, ActualColumnName, DataTypeDict);
+
+                if (largeOutput)
+                {
+                    // The cell array now holds everything that is written; let the parsed records go.
+                    drillsData.records = null;
+                }
 
                 if (sampleobj == null)
                 {
+                    if (Dd_token.IsCancellationRequested)
+                        return;
                     HandleNoRecords(DD_Type, "Error in copying data to array. Refer excel logs for more information.");
                     return;
                 }
 
+                ReportStep("Creating the drilldown sheet...");
                 Excel.Worksheet ws = PrepareWorksheet(DD_Parts, ActWrkBook);
 
                 if (ws == null)
@@ -170,10 +199,14 @@ namespace GLSense.Drilldowns
                     return;
                 }
 
+                ReportStep("Applying column formats...");
                 ApplyDataFormats(ws, lastRow, DisplayColumnName, ActualColumnName, DataTypeDict, FormatDict, SubTotalsDict);
+                ReportStep("Writing rows to the sheet...");
                 PopulateSheet(ws, sampleobj, lastRow, lastColumn, ActualColumnName);
+                ReportStep("Applying links, table and formats...");
                 ApplyFormatting(ws, lastRow, lastColumn, DD_TableObjname, metadataDict, DD_Type);
                 
+                ReportStep("Finishing the sheet...");
                 FinalizeSheet(ws, lastColumn, DD_Type, DD_Parts);
             }
             catch (Exception ex)
@@ -992,6 +1025,62 @@ namespace GLSense.Drilldowns
         }
 
 
+        // OISR-22830: outputs above this many rows use the worker-thread array build and the
+        // block-wise write. Smaller (everyday) drilldowns keep the original single-pass path.
+        internal const int LargeOutputRowThreshold = 50000;
+        private const int WriteBlockRows = 20000;
+
+        // Runs pure .NET work (no Excel or WPF objects) on a worker thread and keeps this thread's
+        // message loop running until it is done, so the caller resumes on the same thread - no
+        // await, so no risk of continuing on a different thread before the Excel writes.
+        private static T RunOnWorkerWhilePumping<T>(Func<T> work)
+        {
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            var frame = new DispatcherFrame();
+            var task = Task.Run(work);
+            task.ContinueWith(_ => dispatcher.BeginInvoke(new System.Action(() => frame.Continue = false)), TaskScheduler.Default);
+            Dispatcher.PushFrame(frame);
+            return task.GetAwaiter().GetResult();
+        }
+
+        // Lets pending messages (Excel UI, wait window, Cancel button) run between write blocks.
+        private static void PumpMessages()
+        {
+            var frame = new DispatcherFrame();
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, new System.Action(() => frame.Continue = false));
+            Dispatcher.PushFrame(frame);
+        }
+
+        // Writes the cell array (row 0 = header row 5) in blocks of WriteBlockRows rows. Writes go
+        // to the captured worksheet, never ActiveSheet, so a user switching sheets mid-write
+        // doesn't redirect them. Cancel takes effect between blocks.
+        private void WriteInBlocks(Excel.Worksheet ws, object[,] sampleobj, int lastColumn)
+        {
+            int totalRows = sampleobj.GetLength(0);
+            int cols = sampleobj.GetLength(1);
+
+            for (int start = 0; start < totalRows; start += WriteBlockRows)
+            {
+                Dd_token.ThrowIfCancellationRequested();
+
+                int rows = Math.Min(WriteBlockRows, totalRows - start);
+                var block = new object[rows, cols];
+                Array.Copy(sampleobj, (long)start * cols, block, 0, (long)rows * cols);
+
+                Excel.Range target = ws.Range[ws.Cells[5 + start, 1], ws.Cells[5 + start + rows - 1, lastColumn]];
+                target.Value2 = block;
+
+                int written = start + rows;
+                LogUtility.LogDebug($"DDDatatoWorksheet.WriteInBlocks: wrote rows {start + 1}-{written} of {totalRows}.");
+                string rowsStep = $"Writing rows {Math.Max(written - 1, 0):N0} of {totalRows - 1:N0}...";
+                if (DD_win != null)
+                    _ = DD_win.Dispatcher.InvokeAsync(() => DD_win.SetProcessMessage(rowsStep));
+                ReportStep(rowsStep);
+
+                PumpMessages();
+            }
+        }
+
         private void PopulateSheet(
             Excel.Worksheet ws,
             object[,] sampleobj,
@@ -1016,7 +1105,18 @@ namespace GLSense.Drilldowns
 
                 // Data population range (starts at row 5, col 1)
                 Excel.Range fr = ws.Range[ws.Cells[5, 1], ws.Cells[lastRow, lastColumn]];
-                fr.Value2 = sampleobj ?? throw new ArgumentNullException(nameof(sampleobj)); // Use Value2 for COM interop
+                if (sampleobj == null) throw new ArgumentNullException(nameof(sampleobj));
+
+                if (sampleobj.GetLength(0) - 1 > LargeOutputRowThreshold)
+                {
+                    // OISR-22830: write a large output in blocks, pumping messages and checking
+                    // for Cancel between blocks, instead of one long Range.Value2 call.
+                    WriteInBlocks(ws, sampleobj, lastColumn);
+                }
+                else
+                {
+                    fr.Value2 = sampleobj; // Use Value2 for COM interop
+                }
 
                 LogUtility.LogDebug($"Data population range {fr.Address}");
 
@@ -2111,6 +2211,11 @@ namespace GLSense.Drilldowns
 
                 Dd_token.ThrowIfCancellationRequested();
 
+                // Case 0 (OISR-22830): already deserialized by the caller (the Process screen
+                // parses large outputs from a file on a worker thread) → use as is.
+                if (drillvalues is DrillDownQueryData ready)
+                    return ready;
+
                 // Case 1: Already a string → use directly
                 if (drillvalues is string s)
                 {
@@ -2152,6 +2257,79 @@ namespace GLSense.Drilldowns
             }
         }
 
+    }
+
+    // OISR-22830: low-memory form of the drilldown JSON, used for Process-screen downloads.
+    // Each record keeps only the text of each value - exactly what JsonElement.ToString() gives,
+    // which is all DDDatatoWorksheet uses (FillDataRows: rawValue?.ToString()) - instead of a
+    // boxed JsonElement per value. Column names are interned, since every record repeats them.
+    // For process 2348724 (273,117 records x 95 columns) the per-value JsonElements were most of
+    // the ~8.6 GB peak.
+    [JsonConverter(typeof(TextRecordConverter))]
+    public sealed class TextRecord : Dictionary<string, object>
+    {
+    }
+
+    public sealed class TextRecordConverter : JsonConverter<TextRecord>
+    {
+        public override TextRecord Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+                return null;
+            if (reader.TokenType != JsonTokenType.StartObject)
+                throw new JsonException("Expected a drilldown record object.");
+
+            var record = new TextRecord();
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndObject)
+                    return record;
+
+                string key = string.Intern(reader.GetString() ?? string.Empty);
+                reader.Read();
+                record[key] = ReadValueText(ref reader);
+            }
+
+            throw new JsonException("Unexpected end of a drilldown record.");
+        }
+
+        // Same text as JsonElement.ToString() for each kind of value. A JSON null becomes "",
+        // which is what FillDataRows already wrote for a null value (rawValue?.ToString() ?? "").
+        internal static string ReadValueText(ref Utf8JsonReader reader)
+        {
+            switch (reader.TokenType)
+            {
+                case JsonTokenType.String:
+                    return reader.GetString();
+                case JsonTokenType.Number:
+                    return Encoding.UTF8.GetString(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray());
+                case JsonTokenType.True:
+                    return bool.TrueString;
+                case JsonTokenType.False:
+                    return bool.FalseString;
+                case JsonTokenType.Null:
+                    return string.Empty;
+                default:
+                    using (var doc = JsonDocument.ParseValue(ref reader))
+                        return doc.RootElement.GetRawText();
+            }
+        }
+
+        public override void Write(Utf8JsonWriter writer, TextRecord value, JsonSerializerOptions options)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    public sealed class StreamedDrillDownData
+    {
+        public TextRecord[] records { get; set; }
+        public Dictionary<string, object>[] metadata { get; set; }
+        public string status { get; set; }
+        public string msg { get; set; }
+
+        public DrillDownQueryData ToQueryData() =>
+            new DrillDownQueryData { records = records, metadata = metadata, status = status, msg = msg };
     }
 
     public class DrillDownQueryData

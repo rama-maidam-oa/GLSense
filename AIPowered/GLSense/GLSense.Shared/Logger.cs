@@ -559,7 +559,8 @@ namespace GLSense.Shared
         {
             var sb = new StringBuilder();
             sb.AppendLine($"{Indent()}----- Raw JSON {(string.IsNullOrWhiteSpace(context) ? string.Empty : "(" + context + ")")} -----");
-            sb.AppendLine(string.IsNullOrEmpty(rawJson) ? "<empty>" : rawJson);
+            // OISR-22830: large raw JSON goes to the Temp folder; the log gets a preview + path.
+            sb.AppendLine(string.IsNullOrEmpty(rawJson) ? "<empty>" : LargeLogText.ToLogText(rawJson, PathProvider.Instance.Temp, "raw-json_" + context));
             sb.AppendLine($"{Indent()}----- End Raw JSON -----");
             WriteImmediate(sb.ToString());
         }
