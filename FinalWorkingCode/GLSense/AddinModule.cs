@@ -712,6 +712,10 @@ namespace GLSense
                 // throw immediately - see the row hide/unhide hang fix in CommonMethods.cs.
                 GLSense.Utilities.ComMessageFilter.Register();
 
+                // OISR-22830: create GLSense_Logs\Temp if missing and remove large-log files
+                // older than 7 days from it.
+                GLSense.Utilities.LargeLogText.CleanUp(AppPaths.TempFilesPath);
+
                 // 1. Ensure DB file + tables exist
                 SQLiteHelper.InitializeDatabase();
                 // 2. Only wipe session data when the database has no cached content yet

@@ -35,6 +35,8 @@ namespace GLSense.ViewModels
         // (e.g. no drilldown jobs exist yet) - see ShowStatusMessageAsync below (OISR-21811).
         public Func<string, Task> ShowStatusAsyncAction { get; set; }
         public Func<string, Func<Task>, Task> ShowBusyAction { get; set; }
+        // OISR-22830: step line shown above the busy timer (AppOverlay.SetBusyStep).
+        public Action<string> BusyStepAction { get; set; }
         public Func<string, Task<bool?>> ShowConfirmAction { get; set; }
         public Func<Task> HideBusyAsyncAction { get; set; }
 
@@ -1017,32 +1019,56 @@ namespace GLSense.ViewModels
         private async Task DownloadDrilldownAsync(GLJobModel job)
         {
             LogUtility.LogDebug($"GLSubmittedJobsViewModel.DownloadDrilldownAsync: entry, ProcessId={job?.ProcessId}, JobDescription={job?.JobDescription}, DrillType={job?.DrillType}");
+            string outputFile = null;
             try
             {
                 string apiUrl = $"{AppState.Instance.LoginUrl}{AppConstants.RestSecure}drilldown-data?processId={job.ProcessId}";
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(BusyToken);
                 cts.CancelAfter(TimeSpan.FromSeconds(3600));
-                string response = await ApiHelper.ServerAPI(apiUrl, "Form", "", "GET", cts.Token);
+
+                // OISR-22830: a Process-screen output can be hundreds of MB (process 2348724:
+                // 647 MB). Reading it into one string, logging it and parsing it twice on the UI
+                // thread froze Excel. Stream it to a file in the Temp folder instead, deserialize
+                // it from the file on a worker thread, and hand the writer the parsed data. The
+                // file is deleted afterwards unless Debug is on (then it is kept for diagnosis and
+                // removed by the 7-day clean-up of the Temp folder).
+                outputFile = GLSense.Utilities.LargeLogText.NewFilePath(AppPaths.TempFilesPath, $"drilldown-data_{job.ProcessId}");
+                BusyStepAction?.Invoke($"Process {job.ProcessId}: waiting for the server...");
+                long bytes = await DownloadToFileAsync(apiUrl, outputFile, cts.Token, BusyStepAction);
+                BusyToken.ThrowIfCancellationRequested();
+                if (bytes < 0)
+                {
+                    await ShowErrorMessage($"Unable to download the output of process {job.ProcessId}.");
+                    return;
+                }
+                LogUtility.LogDebug($"GLSubmittedJobsViewModel.DownloadDrilldownAsync: ProcessId={job.ProcessId} downloaded {bytes:N0} bytes to '{outputFile}'");
+
+                BusyStepAction?.Invoke($"Reading the downloaded data ({bytes / (1024L * 1024L):N0} MB)...");
+                string fileToRead = outputFile;
+                DrillDownQueryData data = await Task.Run(async () =>
+                {
+                    using var fs = new FileStream(fileToRead, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                    // Low-memory form: each value kept as its text only (see StreamedDrillDownData).
+                    var streamed = await JsonSerializer.DeserializeAsync<StreamedDrillDownData>(fs, JsonGlobals.Options, cts.Token);
+                    return streamed?.ToQueryData();
+                }, cts.Token);
                 BusyToken.ThrowIfCancellationRequested();
 
-                LogUtility.LogDebug(response);
-
-                ValidateTransportResponse(response);
-
-                var result = ApiResponseHelper.Parse<JsonElement>(response, JsonGlobals.Options);
-
-                if (!result.IsSuccess)
+                if (data == null ||
+                    (!string.IsNullOrWhiteSpace(data.status) &&
+                     !string.Equals(data.status, AppConstants.Success, StringComparison.OrdinalIgnoreCase)))
                 {
-                    LogUtility.LogWarn(
-                        $"{nameof(GetProcessRecordsAsync)}|API: {apiUrl}");
-                    LogUtility.LogWarn(
-                        $"{nameof(GetProcessRecordsAsync)}|Response: {response}");
-
-                    return ;
+                    LogUtility.LogWarn($"GLSubmittedJobsViewModel.DownloadDrilldownAsync: ProcessId={job.ProcessId} returned status='{data?.status}', msg='{data?.msg}'");
+                    await ShowErrorMessage(string.IsNullOrWhiteSpace(data?.msg) ? "Server returned failure status." : data.msg);
+                    return;
                 }
 
-                LogUtility.LogDebug($"GLSubmittedJobsViewModel.DownloadDrilldownAsync: writing drilldown data to worksheet for ProcessId={job.ProcessId}");
-                var dataToSheet = new DDDatatoWorksheet(_excelApp, response, job.DrillType.Replace("_TL_", "_UF_"), job.JobDescription, cts.Token, null);
+                LogUtility.LogDebug($"GLSubmittedJobsViewModel.DownloadDrilldownAsync: writing {data.records?.Length ?? 0:N0} record(s) to worksheet for ProcessId={job.ProcessId}");
+                BusyStepAction?.Invoke($"Writing {data.records?.Length ?? 0:N0} record(s) to Excel...");
+                var dataToSheet = new DDDatatoWorksheet(_excelApp, data, job.DrillType.Replace("_TL_", "_UF_"), job.JobDescription, cts.Token, null)
+                {
+                    StatusCallback = BusyStepAction
+                };
                 await dataToSheet.DD_DatetoWorksheet();
                 if (dataToSheet.WasCancelled)
                     throw new OperationCanceledException(cts.Token);
@@ -1061,6 +1087,80 @@ namespace GLSense.ViewModels
             {
                 LogUtility.LogException(ex, $"GLSubmittedJobsViewModel.DownloadDrilldownAsync - failed downloading drilldown data for ProcessId={job?.ProcessId}");
                 await ShowErrorMessage($"Error downloading drilldown data: {ex.Message}");
+            }
+            finally
+            {
+                DeleteOutputFile(outputFile);
+            }
+        }
+
+        // OISR-22830: streams an HTTP GET body straight to a file. Returns the byte count, or -1
+        // when the server answers with an error status. Same client setup as DownloadFileAsync.
+        private static async Task<long> DownloadToFileAsync(string url, string filePath, CancellationToken token, Action<string> step = null)
+        {
+            var handler = new HttpClientHandler()
+            {
+                SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate
+            };
+
+            using var client = new HttpClient(handler);
+            client.Timeout = Timeout.InfiniteTimeSpan;
+            client.DefaultRequestHeaders.ExpectContinue = false;
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
+
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
+            if (!response.IsSuccessStatusCode)
+            {
+                LogUtility.LogWarn($"GLSubmittedJobsViewModel.DownloadToFileAsync: HTTP {(int)response.StatusCode} {response.ReasonPhrase} for {url}");
+                return -1;
+            }
+
+            using (Stream body = await response.Content.ReadAsStreamAsync())
+            using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, true))
+            {
+                // Copy in chunks so the step line can show the progress (every ~5 MB).
+                long total = response.Content.Headers.ContentLength ?? 0;
+                long done = 0, nextReport = 0;
+                var buffer = new byte[1 << 16];
+                int read;
+                while ((read = await body.ReadAsync(buffer, 0, buffer.Length, token)) > 0)
+                {
+                    await fs.WriteAsync(buffer, 0, read, token);
+                    done += read;
+                    if (step != null && done >= nextReport)
+                    {
+                        nextReport = done + 5L * 1024 * 1024;
+                        long doneMb = done / (1024L * 1024L);
+                        step(total > 0
+                            ? $"Downloading: {doneMb:N0} of {total / (1024L * 1024L):N0} MB"
+                            : $"Downloading: {doneMb:N0} MB");
+                    }
+                }
+                return fs.Length;
+            }
+        }
+
+        private static void DeleteOutputFile(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath))
+                return;
+
+            if (LogUtility.DebugMode && File.Exists(filePath))
+            {
+                LogUtility.LogDebug($"GLSubmittedJobsViewModel.DeleteOutputFile: Debug is on - full output kept at '{filePath}'");
+                return;
+            }
+
+            try
+            {
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogWarn($"GLSubmittedJobsViewModel.DeleteOutputFile: could not delete '{filePath}': {ex.Message}");
             }
         }
         private void DeleteExcelNamedRange(string processId)
