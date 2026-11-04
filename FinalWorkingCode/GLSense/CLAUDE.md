@@ -1175,3 +1175,27 @@ there.**
   (column-wise view/delete) share one root cause - the workbook copy is a read-only snapshot of
   the cube - and are proposed as a separate enhancement (GLSense-native editor for the saved copy).
   **Status: FinalWorkingCode `11.1.2`.** Still needs `11.1.1`/`11.1.3`, and AIPowered on `11.1.3`.
+
+## `AddinModule.cs` / `AddinModule.Designer.cs` / `Helpers\RibbonStateHelper.cs` (OISR-22777, Broadcast button)
+
+- **Broadcast messages could only be seen once, at login.** `GLLogin.SuccessCube` fetched
+  `get-broadcast-msg` and showed it in the login window's overlay just before that window closed,
+  so there was no way to look at the messages again during the session.
+  Added a `RibBroadcast` ribbon button ("Broadcast", ScreenTip "Broadcast Messages", SuperTip
+  "Click to view the latest broadcast messages") to the Logon group after Logout, using the new
+  `broadcastmessage.png` at `ImageList_32X32` index 34. The image was appended to the
+  `ImageList_32X32.ImageStream` blob in `AddinModule.resx` with a deserialize/add/serialize
+  round-trip (the existing 34 images verified pixel-identical). `RibBroadcast_OnClick` reuses
+  `GLLogin.BroadcastMessageFromApi` (now `internal`) and shows the result through
+  `CommonFunctions.GLSenseMessage` (Information), or "No broadcast messages available." when the
+  list is empty. Enabled/disabled with the login state: disabled in `ApplyLoggedOutState` /
+  `ApplyNoCubesState` (and `Enabled = false` in the designer), enabled in
+  `ApplyPartialLoginState` / `ApplyLoggedInState`. The login-time popup is unchanged.
+  **Status: FinalWorkingCode `11.1.2` and `11.1.3`; AIPowered `11.1.3`.**
+- **QA follow-up (04-Nov): messages ran together in the popup.** `GLLogin.BuildMessageString`
+  joined the `get-broadcast-msg` entries with a single line break, so a multi-line message made the
+  next "N.) TYPE" line look like part of it. Entries are now separated by a blank line and each
+  message's trailing whitespace is trimmed; the text inside a message is shown as configured.
+  `BroadcastMessageFromApi` logs the raw JSON at DEBUG (large responses to a file in
+  `GLSense_Logs\Temp`). Same change in AIPowered `GLLogin` and XLEdge `ADXExcelTaskPane1`.
+  **Status: FinalWorkingCode `11.1.2` (`afc1ee8`) and `11.1.3` (`ba9d6aa`).**
