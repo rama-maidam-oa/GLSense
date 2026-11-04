@@ -299,7 +299,9 @@ namespace GLSense.Addin.Core
                 case "Logout":
                     // Fire-and-forget for the same reason as RibCellHighlight above - Logout
                     // makes an async API call (applogout). Exceptions are caught internally.
-                    _ = Logout();
+                    // Parameter "Reload": the host logs out before a hot reload (ReloadAddinCore) -
+                    // the same logout, without the closing message box (it would block the reload).
+                    _ = Logout(showMessage: !string.Equals(parameter as string, "Reload", StringComparison.Ordinal));
                     break;
                 case "LoginFromXLEdge":
                     // AddinModule.GetGLCubeInformation - XLEdge logged in by itself and hands its
@@ -1605,7 +1607,7 @@ namespace GLSense.Addin.Core
         /// fire-and-forget (see the "Logout" case above) since the IGLSenseAddin
         /// contract method itself must stay synchronous.
         /// </summary>
-        private async System.Threading.Tasks.Task Logout()
+        private async System.Threading.Tasks.Task Logout(bool showMessage = true)
         {
             try
             {
@@ -1660,7 +1662,10 @@ namespace GLSense.Addin.Core
 
                 ResetLoginState();
 
-                CommonFunctions.GLSenseMessage(message, MessageBoxImage.Information);
+                if (showMessage)
+                    CommonFunctions.GLSenseMessage(message, MessageBoxImage.Information);
+                else
+                    ServiceLocator.Logger?.LogDebug($"Logout: before a reload - message not shown: {message}");
 
                 ServiceLocator.Logger?.LogDebug("Logout: Logout completed, state reset.");
             }

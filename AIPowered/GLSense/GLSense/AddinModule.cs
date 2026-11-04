@@ -370,6 +370,83 @@ namespace GLSense
             return result == DialogResult.Yes;
         }
 
+        /// <summary>How long a reload waits for the core's logout (its applogout call has its own timeout).</summary>
+        private static readonly TimeSpan ReloadLogoutTimeout = TimeSpan.FromSeconds(60);
+
+        /// <summary>
+        /// A hot reload logs GLSense out, and XLEdge with it - the same as XLEdge's own reload does the other way round, so the
+        /// two add-ins stay in sync. The outgoing core runs its Logout button's sequence (XLEdge's LogoffFromAddin, the
+        /// server's applogout, the login state cleared, the logged-out ribbon) without the closing message box; this method
+        /// keeps Excel's messages flowing until the core reports no login, at most 60 s, then the reload goes on. Nothing
+        /// happens when GLSense has no login (no token, not logged in).
+        /// </summary>
+        private void LogOutBeforeReload()
+        {
+            if (!CoreHasLogin()) return;
+            try
+            {
+                GlobalsEx.Context?.Logger?.LogInfo("ReloadAddinCore: logging out of GLSense (and XLEdge) before the reload.");
+                GlobalsEx.Addin?.OnRibbonAction("Logout", "Reload");
+
+                DateTime until = DateTime.UtcNow + ReloadLogoutTimeout;
+                while (CoreHasLogin() && DateTime.UtcNow < until)
+                    PumpFor(150);
+
+                if (CoreHasLogin())
+                    GlobalsEx.Context?.Logger?.LogWarn($"ReloadAddinCore: the logout did not end within {ReloadLogoutTimeout.TotalSeconds:0} s; reloading anyway.");
+                else
+                    GlobalsEx.Context?.Logger?.LogInfo("ReloadAddinCore: logged out; reloading.");
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "ReloadAddinCore: the logout before the reload failed; reloading anyway");
+            }
+        }
+
+        /// <summary>The core holds a login: logged in, or a session token (a login handed over by XLEdge before a cube is picked).</summary>
+        private static bool CoreHasLogin()
+        {
+            try
+            {
+                LoginInfo login = GlobalsEx.Addin?.GetLoginInfo();
+                return login != null && (login.IsLoggedIn || !string.IsNullOrEmpty(login.LoginToken));
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogDebug("ReloadAddinCore: could not ask the core for its login: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Runs this thread's message loop for <paramref name="milliseconds"/> (a nested dispatcher frame that a timer ends), so
+        /// the core's async logout - and the XLEdge calls it makes - can run. Falls back to DoEvents and a short sleep when a
+        /// nested frame is not allowed here.
+        /// </summary>
+        private static void PumpFor(int milliseconds)
+        {
+            System.Windows.Threading.DispatcherTimer timer = null;
+            try
+            {
+                var frame = new System.Windows.Threading.DispatcherFrame();
+                timer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background,
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher) { Interval = TimeSpan.FromMilliseconds(milliseconds) };
+                timer.Tick += (s, e) =>
+                {
+                    timer.Stop();
+                    frame.Continue = false;
+                };
+                timer.Start();
+                System.Windows.Threading.Dispatcher.PushFrame(frame);
+            }
+            catch (InvalidOperationException)
+            {
+                timer?.Stop();
+                System.Windows.Forms.Application.DoEvents();
+                System.Threading.Thread.Sleep(milliseconds);
+            }
+        }
+
         /// <summary>
         /// Hot-reload orchestration: tear down the current Addin.Core instance/AppDomain
         /// and load a fresh one, re-pointing GlobalsEx.Addin so every ribbon/Excel-event
@@ -396,6 +473,9 @@ namespace GLSense
                 GlobalsEx.Context?.Logger?.LogDebug("ReloadAddinCore: user cancelled reload due to open GLSense window(s).");
                 return;
             }
+
+            // Before the progress window (topmost): a hot reload logs GLSense out, and XLEdge with it.
+            LogOutBeforeReload();
 
             // Busy indicator for the duration of this method's blocking AppDomain
             // unload/resolve/load work - see GLReloadProgressWindow's own header comment.
