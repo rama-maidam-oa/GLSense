@@ -136,7 +136,7 @@ namespace GLSense.Views
             // Mouse-pointer-missing-after-login diagnostics (with the "login success" and
             // "closing" lines below, and DpiAwareWindow.RestoreOwnerFocusOnClosed): LogInfo,
             // not LogDebug, so these reach a customer's log even with Debug mode off.
-            LogUtility.LogInfo("GLLogin.GLLogin_Loaded: login window opened");
+            LogUtility.LogDebug("GLLogin.GLLogin_Loaded: login window opened");
 
             if (!File.Exists(AppPaths.TempUrlsPath))
             {
@@ -444,7 +444,7 @@ namespace GLSense.Views
 
             // Timestamp to correlate with whether the user was still typing/hovering on the
             // login page when the WebView2 control is hidden (ShowBusyOverlayAsync below).
-            LogUtility.LogInfo("GLLogin: login success detected, hiding WebView2 control");
+            LogUtility.LogDebug("GLLogin: login success detected, hiding WebView2 control");
 
             using (new LogUtility.LogScope("WebView_NavigationCompleted"))
             {
@@ -654,7 +654,7 @@ namespace GLSense.Views
                 if (broadcastMsg != null && !string.IsNullOrWhiteSpace(broadcastMsg))
                     await AppOverlayControl.ShowInfoAsync(broadcastMsg);
             }
-            LogUtility.LogInfo("GLLogin.SuccessCube: closing login window");
+            LogUtility.LogDebug("GLLogin.SuccessCube: closing login window");
             Close();
         }
         private async Task ShowErrorAndCloseAsync(string message)
