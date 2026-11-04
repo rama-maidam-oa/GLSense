@@ -596,9 +596,11 @@ namespace GLSense.Addin.Core.Drilldowns
             }
         }
 
+        // "JE" (Full Journal Entry, OISR-22823) is journal data too: it gets the same subledger
+        // and attachment links as a journals sheet.
         private static bool IsJournalOrSubledger(string ddType)
         {
-            return ddType == "JL" || ddType == "BL_JL";
+            return ddType == "JL" || ddType == "BL_JL" || ddType == "JE";
         }
 
         private static bool IsSubledgerColumn(string aliasColName, string actualColName)
@@ -733,7 +735,8 @@ namespace GLSense.Addin.Core.Drilldowns
             string actualColName,
             string tableObjName)
         {
-            if (!IsJournalOrSubledger(ddType))
+            // Not on a Full Journal Entry sheet itself: every row there is the same journal entry.
+            if (!IsJournalOrSubledger(ddType) || ddType == "JE")
             {
                 return;
             }
@@ -2225,6 +2228,7 @@ namespace GLSense.Addin.Core.Drilldowns
                 DrilldownType.BLDD_UF => "UNIFIED",
                 DrilldownType.UF => "UNIFIED",
                 DrilldownType.CM => "UNIFIED",
+                DrilldownType.JE => "JOURNAL",
                 _ => "BALANCE"
             };
         }

@@ -8,11 +8,12 @@
 // reads that row's FJE_DD_PARAMETERS, posts
 //   POST {LoginUrl}/rest/secure/finance/journal-entry-drilldown?cubeId={cubeId}
 //   { "journalEntries": [ { "ledgerId": n, "headerId": n } ], "metadata": [ ... ] }
-// and writes the result like a subledger drilldown from journals (ddType "SL", sheet name
-// "{sheet}_SL_{cell}"). "metadata" is the JOURNAL metadata saved locally for the cube when
-// "Overwrite drilldown metadata with locally saved" is on, otherwise empty. The title
-// "{link text} ({FJE_DD_PARAMETERS})" goes on the progress window and, through the 5th part
-// of the consolidated object, on A3 of the new sheet.
+// and writes the result as its own drilldown type, "JE" (Full Journal Entry): sheet name
+// "{sheet}_JE_{cell}", A1 "Full Journal Entry", A3 the FJE_DD_PARAMETERS value (5th part of
+// the consolidated object). The rows are journal lines, so the sheet gets the journal links and
+// Subledger drilldown is enabled on it (host AddinModule.IsJournalsDrilldown). "metadata" is the
+// JOURNAL metadata saved locally for the cube when "Overwrite drilldown metadata with locally
+// saved" is on, otherwise empty.
 //
 // Progress window, cancellation, background-job and error handling follow DD_SL.cs.
 using GLSense.Addin.Core.Common;
@@ -73,7 +74,6 @@ namespace GLSense.Addin.Core.Drilldowns
                 return;
             }
 
-            string linkText = ((cell.Value2 ?? cell.Value)?.ToString() ?? string.Empty).Trim();
             var paramsCell = (Excel.Range)sheet.Cells[cell.Row, paramsColumn];
             string fjeParams = ((paramsCell.Value2 ?? paramsCell.Value)?.ToString() ?? string.Empty).Trim();
 
@@ -84,7 +84,7 @@ namespace GLSense.Addin.Core.Drilldowns
                 return;
             }
 
-            string title = $"{linkText} ({fjeParams})";
+            string title = DrilldownMetadata.GetDisplay(DrilldownType.JE);
 
             if (!CommonMethods.TryDisableExcelSettings("DrilldownFje.ProcessFullJournalEntryDrilldown"))
                 return;
@@ -103,8 +103,8 @@ namespace GLSense.Addin.Core.Drilldowns
                     ReferenceStyle: Excel.XlReferenceStyle.xlA1,
                     External: true);
 
-                string worksheetName = CommonFunctions.SanitizeSheetName($"{sheet.Name}_SL_{cellStr}");
-                string consolidatedObject = $"{worksheetName}*{external}*{DateTime.Now:dd-MMM-yyyy hh:mm:ss tt}*SL*{title}";
+                string worksheetName = CommonFunctions.SanitizeSheetName($"{sheet.Name}_JE_{cellStr}");
+                string consolidatedObject = $"{worksheetName}*{external}*{DateTime.Now:dd-MMM-yyyy hh:mm:ss tt}*JE*{fjeParams}";
 
                 var payload = new FullJournalEntryRequest
                 {
@@ -282,7 +282,7 @@ namespace GLSense.Addin.Core.Drilldowns
                 return;
             }
 
-            var dataToSheet = new DDDatatoWorksheet(ExcelApp, json, "SL", consolidatedObject, Token, Win);
+            var dataToSheet = new DDDatatoWorksheet(ExcelApp, json, "JE", consolidatedObject, Token, Win);
             await dataToSheet.DD_DatetoWorksheet();
         }
 

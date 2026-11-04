@@ -46,6 +46,12 @@ namespace GLSense.Addin.Core.Common
         UF,
 
         [Description("Custom Drilldown")]
-        CM
+        CM,
+
+        // OISR-22823: Full Journal Entry drilldown from a journal sheet (DD_FJE.cs). The result
+        // is journal data, so it is written like a journal sheet (subledger and attachment
+        // links) and Subledger drilldown is enabled on it.
+        [Description("Full Journal Entry")]
+        JE
     }
 }

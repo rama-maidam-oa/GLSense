@@ -389,7 +389,45 @@ namespace GLSense
             {
                 MoveWindow(_contentHwnd, 0, 0, this.ClientSize.Width, this.ClientSize.Height, true);
             }
+
+            // Parked: re-enable (and the call in ADXBeforeTaskPaneShow) to diagnose the
+            // intermittent "content trimmed on first open" issue.
+            // LogSizeDiagnostics("ResizeContent");
         }
+
+        // Diagnostic (Debug only, currently not called): the pane's own width vs the Add-in
+        // Express container it sits in vs the embedded content window, so a "content trimmed on
+        // first open" repro shows which of the three is out of step.
+        private void LogSizeDiagnostics(string context)
+        {
+            try
+            {
+                int parentWidth = -1;
+                if (this.IsHandleCreated)
+                {
+                    IntPtr parent = GetParentHwnd(this.Handle);
+                    if (parent != IntPtr.Zero && GetWindowRect(parent, out RECT pr))
+                        parentWidth = pr.Right - pr.Left;
+                }
+
+                int contentWidth = -1;
+                if (_contentHwnd != IntPtr.Zero && GetWindowRect(_contentHwnd, out RECT cr))
+                    contentWidth = cr.Right - cr.Left;
+
+                var (minPx, maxPx) = GetWidthBoundsPx();
+                GlobalsEx.Context?.Logger?.LogDebug(
+                    $"GLConfiguratorPane.{context}: dpi={GetEffectiveDpi()}, this.Width={this.Width}, actual={GetActualWidthPx()}, " +
+                    $"client={this.ClientSize.Width}, adxContainer={parentWidth}, content={contentWidth}, " +
+                    $"excelWindow={GetExcelWindowWidthPx()}, minPx={minPx}, maxPx={maxPx}, visible={this.Visible}");
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane.LogSizeDiagnostics failed: {ex.Message}");
+            }
+        }
+
+        [DllImport("user32.dll", EntryPoint = "GetParent")]
+        private static extern IntPtr GetParentHwnd(IntPtr hWnd);
 
         /// <summary>
         /// Old monolith's GLConfiguratorPane.RelaunchPane(). Kept as a Task-returning
@@ -465,6 +503,7 @@ namespace GLSense
                         int defaultWidthPx = (int)Math.Round(_defaultWidthDip * pane.GetEffectiveDpi() / (float)DefaultDpi);
                         pane.Width = Math.Max(defaultWidthPx, pane.MinimumSize.Width);
                     }
+                    // pane.LogSizeDiagnostics("ADXBeforeTaskPaneShow");
                 }
             }
             catch (Exception ex)

@@ -31,6 +31,9 @@ namespace GLSense.Addin.Core.Common
                 DrilldownType.UF => Color.FromArgb(242, 206, 239),
                 DrilldownType.BLDD_UF => Color.FromArgb(242, 206, 239),
                 DrilldownType.CM => Color.FromArgb(228, 158, 221),
+                // Full Journal Entry: a deeper shade of the journals yellow (255, 255, 192),
+                // so it reads as journal data but stands apart from the JL sheet it came from.
+                DrilldownType.JE => Color.FromArgb(255, 230, 128),
                 _ => Color.LightGray,
             };
         }

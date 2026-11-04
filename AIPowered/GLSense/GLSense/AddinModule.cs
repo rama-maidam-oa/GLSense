@@ -1729,7 +1729,25 @@ namespace GLSense
             if (a1Text.Equals("JOURNALS DRILLDOWN", StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            return MatchesJournalsPattern(sheetName) || MatchesJournalsPattern(markerSheetName);
+            // OISR-22823: a Full Journal Entry sheet holds journal lines too, so Subledger
+            // drilldown (ribbon button and double-click) works on it like on a journals sheet.
+            // A1 is the reliable check: the "_JE_" part of the name can be cut off at 29 chars.
+            if (a1Text.Equals(FullJournalEntryTitle, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return MatchesJournalsPattern(sheetName) || MatchesJournalsPattern(markerSheetName) ||
+                   MatchesFullJournalEntryPattern(sheetName) || MatchesFullJournalEntryPattern(markerSheetName);
+        }
+
+        // Mirrors Addin.Core's DrilldownType.JE description (A1 of a Full Journal Entry sheet);
+        // duplicated host-side since the host never references Addin.Core.
+        private const string FullJournalEntryTitle = "FULL JOURNAL ENTRY";
+
+        private static bool MatchesFullJournalEntryPattern(string sheetName)
+        {
+            return !string.IsNullOrWhiteSpace(sheetName) &&
+                   sheetName.IndexOf("_JE_", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                   sheetName.IndexOf("_SL_", StringComparison.OrdinalIgnoreCase) < 0;
         }
 
         private static bool MatchesBalancesPattern(string sheetName)
