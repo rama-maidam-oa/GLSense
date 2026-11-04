@@ -922,6 +922,13 @@ namespace GLSense.Addin.Core.Views
                 string apiUrl = AppState.Instance.LoginUrl + AppConstants.WebSecure + "get-broadcast-msg";
                 string rawResponse = await FetchApiResponseAsync(apiUrl, ct);
 
+                // OISR-22777: the raw get-broadcast-msg JSON as received, to check what the server
+                // actually sent (message text, line breaks, types). Debug mode only; a large
+                // response goes to a file in GLSense_Logs\Temp with a preview here.
+                ServiceLocator.Logger?.LogDebug(string.IsNullOrEmpty(rawResponse)
+                    ? "GLLogin.BroadcastMessageFromApi: get-broadcast-msg returned an empty response."
+                    : $"GLLogin.BroadcastMessageFromApi: get-broadcast-msg response ({rawResponse.Length} chars): {GLSense.Shared.LargeLogText.ToLogText(rawResponse, ServiceLocator.Paths?.Temp, "get-broadcast-msg")}");
+
                 if (string.IsNullOrWhiteSpace(rawResponse))
                     return string.Empty;
 
@@ -996,10 +1003,14 @@ namespace GLSense.Addin.Core.Views
                   .Append(".) ")
                   .Append(msg.MsgType ?? "Info")
                   .Append(" : ")
-                  .Append(msg.Message ?? string.Empty);
+                  .Append((msg.Message ?? string.Empty).TrimEnd());
 
+                // OISR-22777: a message can span several lines, so a single line break made the
+                // next "N.) TYPE" line look like part of the previous message. A blank line between
+                // messages separates them; TrimEnd stops a message that ends with its own line
+                // break from producing a double gap.
                 if (i < messages.Count - 1)
-                    sb.AppendLine();
+                    sb.AppendLine().AppendLine();
             }
 
             return sb.ToString();
