@@ -31,6 +31,44 @@ loop, so they're written down here instead of re-derived per file.
   (e.g. via `Dispatcher.Invoke`) - that's a classic WPF/STA deadlock. Use `await`, or
   fire-and-forget with the exception already caught inside the async method (see below).
 
+## 1b. Never call Excel from a ThreadPool thread - it keeps Excel running after close
+
+Full write-up: `docs/excel-stays-running-after-close.md`; history in CLAUDE.md section 95.
+
+- **Symptom if you get this wrong:** after the user closes Excel, `EXCEL.EXE` stays in Task
+  Manager with no window, indefinitely, and a new Excel started meanwhile may not load the
+  add-in. Our shutdown and AppDomain unload still complete normally, so the log looks fine.
+- **Why:** an Excel call made from a ThreadPool (MTA) thread makes COM create a cross-apartment
+  proxy to Excel in the process MTA. The MTA never shuts down, so those references are never
+  released, and Excel waits for them as an automation server.
+- **How it happened here:** the host calls `OnRibbonAction`/`OnExcelEvent` on Excel's main thread
+  across the AppDomain boundary, where no `SynchronizationContext` exists. So every
+  `_ = SomeAsync()` flow resumed after its first `await` on the ThreadPool and kept using Excel
+  from there.
+- **Rules:**
+  - `AddinEntry.EnsureExcelSynchronizationContext()` runs at the top of `OnRibbonAction` and
+    `OnExcelEvent`. It installs a `DispatcherSynchronizationContext` on Excel's main thread, so
+    `await`s resume there. **Any new host -> Addin.Core entry point that starts async work must
+    call it too.**
+  - Don't use `ConfigureAwait(false)` before code that touches Excel.
+  - Work inside `Task.Run` must be pure .NET: no Excel objects, ranges or workbooks. Pass values in
+    and out, and do the Excel part after the `await`.
+  - If code might still run off Excel's main thread (timers, `Task.Run` bodies, callbacks), hand
+    the Excel part to the main thread with `CommonMethods.RunOnExcelThread(...)` or
+    `WpfAppManager.InvokeOnWpfThread(...)`. Both use a synchronous `Invoke`, never
+    `await InvokeAsync`.
+  - Long CPU work after an `await` now runs on Excel's UI thread. Move it into `Task.Run` (pure
+    .NET only) so Excel stays responsive.
+- **Excel object for Addin.Core:** `ServiceLocator.ExcelApp` is Addin.Core's *own* Excel object,
+  built from the host's IUnknown (`IGLSenseContext.AcquireExcelUnknown()`) and released in
+  `ServiceLocator.Reset()`. Don't use `ServiceLocator.Context.ExcelApp` (the host's object across
+  the boundary): Excel objects returned through it are remoting copies, which caused the
+  `__ComObject` to `WorkbookClass` cast errors (CLAUDE.md 24.2/25/94/95).
+- **How to check:** close Excel after the feature you changed and watch Task Manager; Excel
+  should be gone within a few seconds (allow up to ~75 s on machines with Bitdefender, see
+  CLAUDE.md 71). If it stays, read `docs/excel-stays-running-after-close.md` for the debugger
+  steps.
+
 ## 2. Fire-and-forget across the AppDomain boundary
 
 - `IGLSenseAddin` methods (`OnRibbonAction`, `OnExcelEvent`, ...) are synchronous
@@ -49,7 +87,8 @@ loop, so they're written down here instead of re-derived per file.
 
 - Only pass values that are `[Serializable]` or `MarshalByRefObject` through
   `IGLSenseAddin`/`IGLSenseContext`/`IRibbonController` calls. Excel COM objects
-  (RCWs) are special-cased by the CLR and marshal fine; plain framework/library POCOs
+  (RCWs) do cross, but as remoting copies that can fail to cast (`__ComObject` to
+  `WorkbookClass`) - don't pass them; see 1b. Plain framework/library POCOs
   (including AddinExpress's own event-args classes like `ADXExcelSheetBeforeEventArgs`)
   generally are **not** serializable and will throw `SerializationException` at the
   boundary.

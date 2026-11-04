@@ -175,7 +175,10 @@ namespace GLSense.Addin.Core
                 {
                     if (!LoggedIn())
                     {
-                        ServiceLocator.Context.RibbonController.SetState("LoggedOut");
+                        // After a Reload the previous session's cube/ledger/segment are still shown
+                        // on the ribbon (the ribbon belongs to the host and survives the reload),
+                        // while this fresh AppDomain starts logged out. Clear them as Logout does.
+                        ResetLoginState();
                     }
                     _ctx.Logger.LogDebug("RibbonController already available");
                 }
@@ -271,6 +274,7 @@ namespace GLSense.Addin.Core
 
             try
             {
+            EnsureExcelSynchronizationContext();
             switch (action)
             {
                 case "Login":
@@ -1805,10 +1809,38 @@ namespace GLSense.Addin.Core
         /// adxExcelAppEvents1_WorkbookActivate/WorkbookBeforeSave in AddinModule.cs for what
         /// was actually being ported here).
         /// </summary>
+        // The host calls OnRibbonAction/OnExcelEvent on Excel's main thread across the AppDomain
+        // boundary, where no SynchronizationContext is installed. Every async flow they start
+        // (drilldowns, refresh, reset...) then resumed after its first await on a ThreadPool (MTA)
+        // thread and kept calling Excel from there. Those cross-apartment calls left COM proxies
+        // to Excel in the process MTA, which never shuts down, so Excel stayed in Task Manager
+        // with no window after the user closed it (any drilldown, then close). FinalWorkingCode
+        // runs these flows with a SynchronizationContext on Excel's main thread, so its awaits
+        // resume there. This installs the same: a DispatcherSynchronizationContext for the WPF
+        // Dispatcher that AddinEntry.Initialize creates on Excel's main thread.
+        private static void EnsureExcelSynchronizationContext()
+        {
+            try
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher == null || dispatcher.HasShutdownStarted || !dispatcher.CheckAccess())
+                    return;
+                if (System.Threading.SynchronizationContext.Current is System.Windows.Threading.DispatcherSynchronizationContext)
+                    return;
+                System.Threading.SynchronizationContext.SetSynchronizationContext(
+                    new System.Windows.Threading.DispatcherSynchronizationContext(dispatcher));
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogWarn($"EnsureExcelSynchronizationContext: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
         public bool OnExcelEvent(string eventName, object[] args)
         {
             try
             {
+                EnsureExcelSynchronizationContext();
                 switch (eventName)
                 {
                     case "SheetActivate":

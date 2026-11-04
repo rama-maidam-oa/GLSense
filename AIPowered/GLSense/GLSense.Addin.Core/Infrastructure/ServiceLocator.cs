@@ -2,6 +2,7 @@
 using GLSense.Addin.Core.Helpers;
 using GLSense.Contracts;
 using System;
+using System.Runtime.InteropServices;
 
 namespace GLSense.Addin.Core.Infrastructure
 {
@@ -10,6 +11,13 @@ namespace GLSense.Addin.Core.Infrastructure
         private static IGLSenseContext _context;
         private static bool _isInitialized;
         private static SQLiteHelper _sqliteHelper;
+
+        // Addin.Core's own Excel object (see IGLSenseContext.AcquireExcelUnknown). Created on the
+        // thread that runs Initialize - Excel's main thread - so it belongs to Excel's apartment
+        // like the host's object does. Released in Reset (shutdown and hot reload).
+        private static Microsoft.Office.Interop.Excel.Application _localExcelApp;
+        private static bool _localExcelUnavailable;
+        private static readonly object _excelLock = new object();
 
         /// <summary>
         /// Gets the full context. All services are accessible through this.
@@ -72,7 +80,7 @@ namespace GLSense.Addin.Core.Infrastructure
             {
                 if (!_isInitialized)
                     throw new InvalidOperationException("ServiceLocator has not been initialized. Call ServiceLocator.Initialize(context) first.");
-                return _context.ExcelApp as Microsoft.Office.Interop.Excel.Application;
+                return GetLocalExcelApp() ?? _context.ExcelApp as Microsoft.Office.Interop.Excel.Application;
             }
         }
 
@@ -191,6 +199,48 @@ namespace GLSense.Addin.Core.Infrastructure
         /// <summary>
         /// Initialize the ServiceLocator with context
         /// </summary>
+        // Returns Addin.Core's local Excel object, creating it on first use. If the host can't
+        // provide the pointer (e.g. an older host) it returns null and the caller falls back to the
+        // host's proxied object, as before.
+        private static Microsoft.Office.Interop.Excel.Application GetLocalExcelApp()
+        {
+            if (_localExcelApp != null || _localExcelUnavailable)
+                return _localExcelApp;
+
+            lock (_excelLock)
+            {
+                if (_localExcelApp != null || _localExcelUnavailable)
+                    return _localExcelApp;
+
+                IntPtr unknown = IntPtr.Zero;
+                try
+                {
+                    unknown = _context.AcquireExcelUnknown();
+                    if (unknown == IntPtr.Zero)
+                    {
+                        _localExcelUnavailable = true;
+                        _context?.Logger?.LogWarn("ServiceLocator: host returned no Excel pointer - using the host's Excel object.");
+                        return null;
+                    }
+
+                    _localExcelApp = (Microsoft.Office.Interop.Excel.Application)Marshal.GetObjectForIUnknown(unknown);
+                    _context?.Logger?.LogDebug("ServiceLocator: using Addin.Core's own Excel connection (no cross-AppDomain proxy).");
+                }
+                catch (Exception ex)
+                {
+                    _localExcelUnavailable = true;
+                    _context?.Logger?.LogWarn($"ServiceLocator: could not create a local Excel connection, using the host's Excel object: {ex.GetType().Name}: {ex.Message}");
+                }
+                finally
+                {
+                    if (unknown != IntPtr.Zero)
+                        Marshal.Release(unknown);
+                }
+
+                return _localExcelApp;
+            }
+        }
+
         public static void Initialize(IGLSenseContext context)
         {
             if (context == null)
@@ -198,6 +248,12 @@ namespace GLSense.Addin.Core.Infrastructure
 
             _context = context;
             _isInitialized = true;
+
+            // Create the local Excel object now, on Excel's main thread (the host calls Initialize
+            // from AddinModule_OnRibbonLoaded / ReloadAddinCore on that thread).
+            _localExcelApp = null;
+            _localExcelUnavailable = false;
+            GetLocalExcelApp();
 
             // Context (and therefore Logger) is now set, so it's safe to log from here on.
             // Initialize the database automatically
@@ -239,9 +295,36 @@ namespace GLSense.Addin.Core.Infrastructure
                 // Logging itself must never throw or block shutdown/reset.
             }
 
+            // Release Addin.Core's own Excel object and every Excel object still referenced in
+            // this AppDomain, before it is unloaded (shutdown or hot reload). Same double collect
+            // FinalWorkingCode does at shutdown; here it runs in the domain that holds them.
+            try
+            {
+                if (_localExcelApp != null)
+                    Marshal.FinalReleaseComObject(_localExcelApp);
+            }
+            catch
+            {
+                // Must never block shutdown/reset.
+            }
+            _localExcelApp = null;
+            _localExcelUnavailable = false;
+
             _context = null;
             _isInitialized = false;
             _sqliteHelper = null;
+
+            try
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+            catch
+            {
+                // Must never block shutdown/reset.
+            }
         }
 
         /// <summary>

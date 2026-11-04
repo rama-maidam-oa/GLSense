@@ -324,7 +324,27 @@ namespace GLSense.Addin.Core.Utilities
             return false;
         }
 
-        public static void DisableExcelSettings()
+        // Runs an Excel call on Excel's main thread. After an await, code in this add-in can
+        // resume on a ThreadPool (MTA) thread (no DispatcherSynchronizationContext in this host,
+        // see CLAUDE.md 2.4/2.5). Calling Excel from there makes COM create cross-apartment
+        // proxies to Excel in the process MTA, which never shuts down, and those kept Excel
+        // running with no window after the user closed it (seen after every drilldown, whose
+        // finally block restores these settings after its awaits). The WPF Application created
+        // by WpfAppManager.EnsureApplication (AddinEntry.Initialize) lives on Excel's main
+        // thread, so its Dispatcher is the way back there. Synchronous Invoke, never
+        // await InvokeAsync (see the dispatcher-thread-loss notes).
+        internal static void RunOnExcelThread(Action action)
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess() && !dispatcher.HasShutdownStarted)
+                dispatcher.Invoke(action);
+            else
+                action();
+        }
+
+        public static void DisableExcelSettings() => RunOnExcelThread(DisableExcelSettingsCore);
+
+        private static void DisableExcelSettingsCore()
         {
             ServiceLocator.Logger.LogDebug("Disabling Excel settings for batch operation");
             var app = ServiceLocator.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");
@@ -349,7 +369,9 @@ namespace GLSense.Addin.Core.Utilities
             throw new InvalidOperationException("Failed to fully disable Excel settings after retries; rolled back partial changes.");
         }
 
-        public static void EnableExcelSettings()
+        public static void EnableExcelSettings() => RunOnExcelThread(EnableExcelSettingsCore);
+
+        private static void EnableExcelSettingsCore()
         {
             ServiceLocator.Logger.LogDebug("Re-enabling Excel settings");
             var app = ServiceLocator.ExcelApp ?? throw new InvalidOperationException("Excel unavailable");

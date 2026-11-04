@@ -5,12 +5,20 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 
 namespace GLSense
 {
     public class GLSenseContext : MarshalByRefObject, IGLSenseContext
     {
         public object ExcelApp { get; }
+
+        // See IGLSenseContext.AcquireExcelUnknown. Runs in the host AppDomain, on the caller's
+        // thread; the pointer is a plain number, so it crosses to Addin.Core without any wrapping.
+        public IntPtr AcquireExcelUnknown()
+        {
+            return ExcelApp == null ? IntPtr.Zero : Marshal.GetIUnknownForObject(ExcelApp);
+        }
         public ILogger Logger { get; }
         public IPathProvider Paths { get; }
         public IntPtr ExcelHandle { get; set; }
