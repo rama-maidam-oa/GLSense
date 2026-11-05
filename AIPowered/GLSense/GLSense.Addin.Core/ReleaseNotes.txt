@@ -1,4 +1,4 @@
-OISR-21985: XLEdge Migration - UI Modernization
+OISR-22460: AppDomain-isolated add-in architecture
 --------------------------------------------------------------------------------
 This file feeds the "notes" field of manifest.json, which post_build.cmd writes
 alongside every build's zip. GLReleaseHistoryBrowser (GLSense\Views\

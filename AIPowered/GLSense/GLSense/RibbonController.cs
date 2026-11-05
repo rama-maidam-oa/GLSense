@@ -12,6 +12,9 @@ namespace GLSense
         private const string StateLoggedOut = "LoggedOut";
         private const string StatePartialLoggedIn = "PartialLoggedIn";
         private const string StateLoggedIn = "LoggedIn";
+        private const string CubeControlName = "RibGetCube";
+        private const int MaximumCubeCaptionLength = 40;
+        private const string DefaultCubeSuperTip = "Click to get list of available cubes";
 
         // Not a real login-state transition - re-evaluates the active sheet's
         // drilldown/balance-formula ribbon state without touching IsLoggedIn. Mirrors
@@ -331,7 +334,14 @@ namespace GLSense
                 var prop = ctrl.GetType().GetProperty("Caption");
                 if (prop != null && prop.CanWrite)
                 {
-                    prop.SetValue(ctrl, label, null);
+                    string caption = label;
+                    if (string.Equals(controlName, CubeControlName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        caption = TruncateCubeCaption(label);
+                        SetCubeSuperTip(ctrl, label);
+                    }
+
+                    prop.SetValue(ctrl, caption, null);
                 }
                 else
                 {
@@ -342,6 +352,27 @@ namespace GLSense
             {
                 _logger?.LogError($"SetControlLabel failed for '{controlName}'", ex);
             }
+        }
+
+        private static string TruncateCubeCaption(string label)
+        {
+            if (string.IsNullOrEmpty(label) || label.Length <= MaximumCubeCaptionLength)
+                return label;
+
+            return label.Substring(0, MaximumCubeCaptionLength - 1).TrimEnd() + "\u2026";
+        }
+
+        private void SetCubeSuperTip(object control, string fullCaption)
+        {
+            var superTipProperty = control.GetType().GetProperty("SuperTip");
+            if (superTipProperty == null || !superTipProperty.CanWrite)
+            {
+                _logger?.LogWarn($"SetControlLabel: '{CubeControlName}' has no writable 'SuperTip' property.");
+                return;
+            }
+
+            bool isDefaultCaption = string.Equals(fullCaption, "Cube : Select Cube", StringComparison.OrdinalIgnoreCase);
+            superTipProperty.SetValue(control, isDefaultCaption ? DefaultCubeSuperTip : fullCaption, null);
         }
 
         public void SetCubeViewBased(bool isViewBased)
