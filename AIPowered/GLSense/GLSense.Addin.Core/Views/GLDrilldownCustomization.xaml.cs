@@ -196,6 +196,7 @@ namespace GLSense.Addin.Core.Views
 
                     try
                     {
+                        await ConfigureFreshLauncherLoadAsync(webView.CoreWebView2);
                         var result = await _resilience!.NavigateWithRetryAsync(webView.CoreWebView2, finalUrl, cancellationHelper.GetToken());
                         if (!result.IsSuccess)
                         {
@@ -223,6 +224,27 @@ namespace GLSense.Addin.Core.Views
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "WebView2 initialization failed in GLDrilldownCustomization");
+            }
+        }
+
+        private static async Task ConfigureFreshLauncherLoadAsync(CoreWebView2 core)
+        {
+            try
+            {
+                await core.CallDevToolsProtocolMethodAsync(
+                    "Network.setCacheDisabled",
+                    "{\"cacheDisabled\":true}");
+                await core.CallDevToolsProtocolMethodAsync(
+                    "Network.setBypassServiceWorker",
+                    "{\"bypass\":true}");
+
+                ServiceLocator.Logger?.LogDebug(
+                    "GLDrilldownCustomization: bypassing the WebView2 cache and service worker for the launcher.");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogWarn(
+                    $"GLDrilldownCustomization: could not configure a fresh launcher load; continuing with normal navigation. {ex.Message}");
             }
         }
 
