@@ -449,9 +449,15 @@ namespace GLSense
                     return;
                 }
 
+                // Only releases marked "release": true (or with no flag) are offered.
+                var releasedEntries = OnlineReleaseFilter.ReleasedOnly(listJson, parsedList.AllVersions);
+                int hiddenCount = parsedList.AllVersions.Count - releasedEntries.Count;
+                if (hiddenCount > 0)
+                    LogStep($"{hiddenCount} release(s) on the server are not marked for release and are not shown.");
+
                 var localEntries = ReleaseHistoryStore.ReadAll(GlobalsEx.Context.Paths.ReleaseHistoryFile);
                 var rows = OnlineReleaseClassifier.Classify(
-                    parsedList.AllVersions,
+                    releasedEntries,
                     localEntries,
                     GlobalsEx.Context.Version,
                     GlobalsEx.Context.ReleaseDate);

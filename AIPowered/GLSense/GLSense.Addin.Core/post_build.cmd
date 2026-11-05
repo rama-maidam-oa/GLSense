@@ -271,9 +271,10 @@ REM separate JSON payload fetched live from {LoginUrl}/glsense/projectdlls, not
 REM this file) - the zip is already sitting right next to this manifest, so
 REM there was never anywhere for a local download URL to point.
 REM
-REM "release" (new): always written as false for now - a placeholder for a
-REM future "was this a deliberately cut, non-dev release" flag; no consumer
-REM reads it yet.
+REM "release": written as true. Online Reload lists only server releases whose
+REM "release" is true (any case) or missing (GLSense\Views\OnlineReleaseFilter.cs).
+REM When several fix builds are published before users get one, set the earlier
+REM ones to false in the server's glsenseManifests.json so only the last is offered.
 REM
 REM "folderName"/"fileName" (new): FOLDER_NAME/FILE_NAME are the exact same
 REM values already resolved in STEP 2b - see that step's comments for what
@@ -322,7 +323,7 @@ set MANIFEST_NOTES=%MANIFEST_NOTES:"=%
     echo   {
     echo     "version": "%FILE_VERSION%",
     echo     "releaseDate": "%RELEASE_DATE%",
-    echo     "release": false,
+    echo     "release": true,
     echo     "folderName": "%FOLDER_NAME%",
     echo     "fileName": "%FILE_NAME%",
     echo     "checksum": "%ZIP_CHECKSUM%",

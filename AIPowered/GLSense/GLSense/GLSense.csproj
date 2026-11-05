@@ -171,6 +171,7 @@
     <Compile Include="Views\WindowChromeHelper.cs" />
     <Compile Include="Views\OnlineReleaseRow.cs" />
     <Compile Include="Views\OnlineReleaseClassifier.cs" />
+    <Compile Include="Views\OnlineReleaseFilter.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="AddinModule.resx">
