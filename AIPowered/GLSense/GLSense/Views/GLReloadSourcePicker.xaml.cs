@@ -39,18 +39,19 @@ namespace GLSense
         private bool _fetchInProgress;
 
         private readonly ObservableCollection<OnlineReleaseRow> _onlineRows = new ObservableCollection<OnlineReleaseRow>();
-        // ORBIT server endpoints (OISR-22759, GLSenseAddinController), relative to LoginUrl
+        // ORBIT server endpoints (OISR-22759), relative to LoginUrl
         // (which already ends at .../reporting, same as the /rest/secure/finance calls).
         // The server reads ORBIT_HOME\download-artifacts\addons\glsense\updates\:
         // glsenseManifests.json (release index) and {folderName}\manifest.json + {fileName}.
-        private const string AddinApiPath = "/rest/secure/glsense-addin";
-        private const string ReleaseIndexPath = AddinApiPath + "/manifests";
+        private const string AddinApiPath = "/rest/secure/orbit-addons";
+        private const string AddinType = "glsense";
+        private const string ReleaseIndexPath = AddinApiPath + "/manifests?type=" + AddinType;
 
         private static string BuildVersionUrl(string loginUrl, string folderName, string resource) =>
-            loginUrl.TrimEnd('/') + AddinApiPath + "/versions/" + Uri.EscapeDataString(folderName) + "/" + resource;
+            loginUrl.TrimEnd('/') + AddinApiPath + "/versions/" + Uri.EscapeDataString(folderName) + "/" + resource + "?type=" + AddinType;
 
-        // 401 = token missing/expired, 404 = release not listed in glsenseManifests.json or
-        // its file is missing on the server. Turned into readable messages for the step log.
+        // 401 = token missing/expired, 404 = release not listed in the add-in's release
+        // index or its file is missing on the server. Turned into readable messages for the step log.
         private static async Task<HttpResponseMessage> GetCheckedAsync(HttpClient client, string url)
         {
             var response = await client.GetAsync(url);
@@ -61,7 +62,7 @@ namespace GLSense
             if (status == 401)
                 throw new HttpRequestException("ORBIT session expired or not authorized (401) - log in again.");
             if (status == 404)
-                throw new HttpRequestException("Not available on the server (404) - not listed in glsenseManifests.json or the file is missing.");
+                throw new HttpRequestException("Not available on the server (404) - not listed in the GLSense release index or the file is missing.");
             throw new HttpRequestException($"Server returned HTTP {status} for {url}.");
         }
 
