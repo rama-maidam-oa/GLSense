@@ -180,7 +180,7 @@ namespace GLSense.Views
 
                             string sheetName = ((Excel.Worksheet)rng.Parent).Name;
                             string cellAddress = rng.Address[RowAbsolute, ColumnAbsolute, Excel.XlReferenceStyle.xlA1, false];
-                            string addr = $"'{sheetName}'!{cellAddress}";
+                            string addr = $"'{sheetName.Replace("'", "''")}'!{cellAddress}"; // Excel doubles ' inside a quoted sheet name
                             this.Text = addr;
                             UpdateToolTipText(this.Text);
                             LogUtility.LogDebug($"ExcelRefEditControl.BtnEdit_Click: cell selected - {addr}");

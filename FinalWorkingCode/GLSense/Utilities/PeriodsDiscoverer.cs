@@ -270,7 +270,7 @@ namespace GLSense.Utilities
             Range baseCell = formulaRange;
 
             bool writeAsFormula = AddinModule.CurrentInstance.RibAsFormula.Pressed;
-            string rangeRef = $"'{formulaRange.Worksheet.Name}'!{formulaRange.Address[true, true]}";
+            string rangeRef = $"'{formulaRange.Worksheet.Name.Replace("'", "''")}'!{formulaRange.Address[true, true]}"; // Excel doubles ' in quoted sheet names
 
             try
             {
