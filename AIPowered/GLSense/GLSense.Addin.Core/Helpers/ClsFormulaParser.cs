@@ -47,7 +47,8 @@ namespace GLSense.Addin.Core.Helpers
                 if (startIdx > 0 && endIdx > startIdx)
                 {
                     string argString = functionCall.Substring(startIdx, endIdx - startIdx);
-                    string regexPattern = @"""([^""\)]|(""""))*""(?:&[^,]*)?|[^,]+";
+                    // A quoted literal may contain ) and , (e.g. "R&D (US), Inc") - OISR-22864
+                    string regexPattern = @"""([^""]|(""""))*""(?:&[^,]*)?|[^,]+";
 
                     args = Regex.Matches(argString, regexPattern)
                                 .Cast<Match>()

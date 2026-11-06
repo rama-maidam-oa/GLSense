@@ -634,14 +634,10 @@ namespace GLSense.Addin.Core.ViewModels
                 return "\"\"";
             }
 
-            if (value.Contains("!") || value.Contains("$"))
+            // Real cell/range reference -> do not quote; a literal with & $ ! is quoted (OISR-22864).
+            if (ExcelRangeHelper.IsRealRange(value))
             {
-                return value;
-            }
-
-            if (value.Contains("&"))
-            {
-                return value;
+                return value.Trim();
             }
 
             if (double.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))

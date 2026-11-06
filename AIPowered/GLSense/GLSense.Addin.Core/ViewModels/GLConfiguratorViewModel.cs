@@ -3866,7 +3866,7 @@ namespace GLSense.Addin.Core.ViewModels
                 FormatFormulaArg(signChecked),
                 FormatFormulaArg(GetFormulaFieldValue(LedgerField)),
                 FormatFormulaArg(GetFormulaFieldValue(ActivityField)),
-                FormatFormulaArg(finalPeriodVal),
+                finalPeriodVal, // already formatted (may be a period&"~"&endPeriod concatenation)
                 FormatFormulaArg(GetFormulaFieldValue(BalanceTypeField)),
                 FormatFormulaArg(GetFormulaFieldValue(CurrencyField)),
                 FormatFormulaArg(GetFormulaFieldValue(CurrencyTypeField)),
@@ -4036,7 +4036,8 @@ namespace GLSense.Addin.Core.ViewModels
             }
 
             // Other balance types use single Period
-            return GetFormulaFieldValue(PeriodField);
+            // Returned already formatted (like the CombinePeriod results) so the caller doesn't re-format it.
+            return FormatFormulaArg(GetFormulaFieldValue(PeriodField));
         }
 
         private string GetBudgetEncumbranceValue()
@@ -4085,16 +4086,11 @@ namespace GLSense.Addin.Core.ViewModels
                 return "\"\"";
             }
 
-            // Cell reference (contains ! or $) → do not quote
-            if (value.Contains("!") || value.Contains("$"))
+            // Real cell/range reference -> do not quote. A literal containing & $ ! etc. must
+            // still be quoted, or Excel parses it as an expression (OISR-22864).
+            if (ExcelRangeHelper.IsRealRange(value))
             {
-                return value;
-            }
-
-            // Already a concatenation (e.g., period & "~" & endPeriod)
-            if (value.Contains("&"))
-            {
-                return value;
+                return value.Trim();
             }
 
             // Otherwise, quote everything

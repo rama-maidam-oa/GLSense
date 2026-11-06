@@ -352,8 +352,9 @@ namespace GLSense.Addin.Core.Utilities
 
                     if (writeAsFormula)
                     {
-                        string itm = $"'{inp.SheetName}'!{inp.AddressA1},\"{defaultSegment}\"";
-                        string defaulLedger = $"\"{AppState.Instance.SelectedLedger.LedgerName}\"";
+                        // Escape for formula text: ' doubled in sheet names, " doubled in literals (OISR-22864)
+                        string itm = $"'{inp.SheetName.Replace("'", "''")}'!{inp.AddressA1},\"{defaultSegment?.Replace("\"", "\"\"")}\"";
+                        string defaulLedger = $"\"{AppState.Instance.SelectedLedger.LedgerName?.Replace("\"", "\"\"")}\"";
                         data[i, 0] = $"=GLSense_GetSegmentDesc({itm},FALSE, {defaulLedger})";
                         data[i, 1] = $"=GLSense_GetSegmentEnabledFlag({itm}, {defaulLedger})";
                         data[i, 2] = $"=GLSense_GetSegmentSummaryFlag({itm}, {defaulLedger})";

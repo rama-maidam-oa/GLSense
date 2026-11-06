@@ -1,4 +1,4 @@
-OISR-19533: Add Period by Date to Discover functions; OISR-21243: Add Balance Configurator export; OISR-22460: AppDomain-isolated layered architecture; OISR-22803: Restore Drilldown Customization action buttons; OISR-22854: Display long cube names in ribbon; OISR-22856: Include ledger names in Discover segment-function formulas
+OISR-22864: AVX - 11.1.1 - When a Segment value is entered using the Account Assignment screen it copies improperly to the formula with extra characters and Sheet Refresh for the same shows Click Refresh instead of Balance Value
 --------------------------------------------------------------------------------
 This file feeds the "notes" field of manifest.json, which post_build.cmd writes
 alongside every build's zip. GLReleaseHistoryBrowser (GLSense\Views\

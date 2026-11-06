@@ -207,7 +207,7 @@ namespace GLSense.Addin.Core.Utilities
             Excel.Range baseCell = formulaRange;
 
             bool writeAsFormula = ServiceLocator.RibbonController?.GetControlPressed("RibAsFormula") ?? false;
-            string rangeRef = $"'{formulaRange.Worksheet.Name}'!{formulaRange.Address[true, true]}";
+            string rangeRef = $"'{formulaRange.Worksheet.Name.Replace("'", "''")}'!{formulaRange.Address[true, true]}"; // Excel doubles ' in quoted sheet names
 
             try
             {
