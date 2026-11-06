@@ -86,6 +86,7 @@ namespace GLSense
         [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
         [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hWnd);
         [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+        [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hWnd);
 
         private const int GWL_STYLE = -16;
         private const long WS_CHILD = 0x40000000L;
@@ -310,6 +311,19 @@ namespace GLSense
             _contentHwnd = IntPtr.Zero;
         }
 
+        /// <summary>
+        /// This pane outlives a hot reload, but the outgoing core's Shutdown() closes the
+        /// embedded WPF window, and HandleCreated (the only other EmbedContent caller) does
+        /// not fire again - so without this the pane stays empty after Reload/Release History.
+        /// </summary>
+        private void EnsureContentEmbedded()
+        {
+            if (!this.IsHandleCreated || (_contentHwnd != IntPtr.Zero && IsWindow(_contentHwnd)))
+                return;
+            GlobalsEx.Context?.Logger?.LogDebug("GLConfiguratorPane.EnsureContentEmbedded: content window missing (hot reload?) - re-embedding.");
+            EmbedContent();
+        }
+
         private void EmbedContent()
         {
             try
@@ -442,6 +456,7 @@ namespace GLSense
         {
             try
             {
+                EnsureContentEmbedded();
                 GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane.RelaunchPane: requesting relaunch from Addin.Core (showBusyOverlay={showBusyOverlay}).");
                 GlobalsEx.Addin?.RelaunchConfiguratorPane(showBusyOverlay);
             }
