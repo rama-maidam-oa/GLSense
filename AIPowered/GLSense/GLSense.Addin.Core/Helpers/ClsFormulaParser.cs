@@ -72,7 +72,7 @@ namespace GLSense.Addin.Core.Helpers
 
                 for (int i = 0; i < args.Count; i++)
                 {
-                    if (args[i].Contains("$") || args[i].IndexOf("$") >= 0)
+                    if (!IsQuotedLiteral(args[i]) && args[i].Contains("$"))
                     {
                         args[i] = ValueFromReference(args[i]);
                     }
@@ -176,7 +176,7 @@ namespace GLSense.Addin.Core.Helpers
 
                 for (int i = 0; i < arguments.Count; i++)
                 {
-                    if (arguments[i].Contains("$") || arguments[i].IndexOf("$") >= 0)
+                    if (!IsQuotedLiteral(arguments[i]) && arguments[i].Contains("$"))
                     {
                         arguments[i] = ValueFromReference(arguments[i]);
                     }
@@ -243,7 +243,7 @@ namespace GLSense.Addin.Core.Helpers
                 var cleanArg = CleanQuotes(arg);
                 if (string.IsNullOrEmpty(cleanArg)) continue;
 
-                var splitValues = TrySplitArguments(cleanArg);
+                var splitValues = TrySplitArguments(cleanArg, IsQuotedLiteral(arg));
                 if (splitValues != null && splitValues.Length > 0)
                 {
                     return splitValues;
@@ -258,14 +258,14 @@ namespace GLSense.Addin.Core.Helpers
             return input.Replace("\"", "");
         }
 
-        private static string[] TrySplitArguments(string argument)
+        private static string[] TrySplitArguments(string argument, bool isLiteral)
         {
-            if (argument.Contains(";") && !argument.Contains("$"))
+            if (argument.Contains(";") && (isLiteral || !argument.Contains("$")))
             {
                 return argument.Split(';');
             }
 
-            if (argument.Contains("$"))
+            if (!isLiteral && argument.Contains("$"))
             {
                 var resolvedValue = ValueFromReference(argument);
                 if (!string.IsNullOrEmpty(resolvedValue))
@@ -302,12 +302,17 @@ namespace GLSense.Addin.Core.Helpers
 
         private static string ResolveArgument(string argument)
         {
-            var resolvedArg = argument.Contains("$")
+            var resolvedArg = !IsQuotedLiteral(argument) && argument.Contains("$")
                 ? ValueFromReference(argument)
                 : argument;
 
             return resolvedArg.Replace("&", "\"");
         }
+
+        // A whole-argument Excel text constant ("..." with "" escapes) is a value, never a cell
+        // reference, even if it contains $ (e.g. segment value "11$9") - OISR-22860
+        private static bool IsQuotedLiteral(string arg) =>
+            arg != null && Regex.IsMatch(arg.Trim(), "^\"(?:[^\"]|\"\")*\"$");
 
         private static List<string> FormatArguments(List<string> arguments)
         {
