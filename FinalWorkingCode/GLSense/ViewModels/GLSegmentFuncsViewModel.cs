@@ -1176,16 +1176,11 @@ namespace GLSense.ViewModels
                 return "\"\"";
             }
 
-            // Cell reference (contains ! or $) → do not quote
-            if (value.Contains("!") || value.Contains("$"))
+            // Real cell/range reference -> do not quote. A literal containing & $ ! etc. must
+            // still be quoted, or Excel parses it as an expression (OISR-22864).
+            if (ExcelRangeHelper.IsRealRange(value))
             {
-                return value;
-            }
-
-            // Already a concatenation (e.g., period & "~" & endPeriod)
-            if (value.Contains("&"))
-            {
-                return value;
+                return value.Trim();
             }
 
             // Otherwise, quote everything (removing embedded quotes if any)
