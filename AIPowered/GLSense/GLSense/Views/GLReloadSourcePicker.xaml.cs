@@ -108,6 +108,10 @@ namespace GLSense
             }
 
             RbOnline.IsEnabled = _onlineAvailable;
+            // Same wording as XLEdge's picker.
+            RbOnline.ToolTip = _onlineAvailable
+                ? "Download GLSense versions from the GLSense server you are logged in to."
+                : "Log in to GLSense to check for online updates.";
             if (_onlineAvailable) RbOnline.IsChecked = true;
             else RbOffline.IsChecked = true;
         }

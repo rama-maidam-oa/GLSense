@@ -220,7 +220,7 @@
                                     <Setter Property="ToolTipService.IsEnabled" Value="False"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsCurrentlyLoaded}" Value="True">
-                                            <Setter Property="ToolTip" Value="Running in the active GLSense AppDomain."/>
+                                            <Setter Property="ToolTip" Value="Running in this Excel session."/>
                                             <Setter Property="ToolTipService.IsEnabled" Value="True"/>
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -360,7 +360,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="Loading a version safely restarts the GLSense addin without restarting Excel."
+                <TextBlock Text="Loading a version safely restarts the GLSense add-in without restarting Excel."
                            FontSize="11.5"
                            Foreground="#6B7883"
                            VerticalAlignment="Center"/>

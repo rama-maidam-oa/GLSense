@@ -30,7 +30,7 @@ namespace GLSense
 
         public string StatusText =>
             IsCurrentlyLoaded ? "Currently loaded" :
-            IsAlreadyDownloaded ? "Already Downloaded" :
+            IsAlreadyDownloaded ? "Already downloaded" :
             "New";
 
         public bool IsChecked

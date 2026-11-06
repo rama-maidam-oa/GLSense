@@ -77,7 +77,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Background="Transparent">
                             <Grid Width="16" Height="16" VerticalAlignment="Center">
                                 <Ellipse Stroke="#2E86AB" StrokeThickness="1.5" Fill="White"/>
                                 <Ellipse x:Name="Dot"
@@ -96,6 +96,7 @@
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.5"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -119,10 +120,22 @@
             <Setter Property="BorderBrush" Value="#E5EBEF"/>
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <!-- Each cell shows its own value; empty cells show nothing. -->
+            <Setter Property="ToolTip" Value="{Binding Content.Text, RelativeSource={RelativeSource Self}}"/>
+            <Style.Triggers>
+                <Trigger Property="ToolTip" Value="{x:Null}">
+                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
+                </Trigger>
+                <Trigger Property="ToolTip" Value="">
+                    <Setter Property="ToolTipService.IsEnabled" Value="False"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="TrimmedCellTextStyle" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
+            <!-- DataGridCell's default template ignores Padding, so align text with the 10px header padding here. -->
+            <Setter Property="Margin" Value="10,0"/>
             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
         </Style>
 
@@ -227,7 +240,9 @@
                                      GroupName="Mode"
                                      Margin="0,0,24,0"
                                      Checked="Mode_Checked"
-                                     ToolTip="Check the currently logged-in GLSense server for every version not yet on this machine. Only available after a successful login this Excel session."/>
+                                     IsEnabled="False"
+                                     ToolTipService.ShowOnDisabled="True"
+                                     ToolTip="Log in to GLSense to check for online updates."/>
                         <RadioButton x:Name="RbOffline"
                                      Style="{StaticResource ModernRadioButton}"
                                      Content="Offline"
@@ -239,18 +254,30 @@
             </Border>
 
             <Grid Grid.Row="1" Margin="0,0,0,12">
-                <StackPanel x:Name="OnlinePanel" Visibility="Collapsed">
-                    <Button x:Name="BtnCheckOnline"
-                            Style="{StaticResource BrowserButton}"
-                            Content="Check for Updates"
-                            HorizontalAlignment="Left"
-                            Margin="0,0,0,8"
-                            Padding="10,5"
-                            Click="BtnCheckOnline_Click"
-                            ToolTip="Query the logged-in GLSense server for every version not yet on this machine."/>
+                <Border x:Name="OnlinePanel"
+                        Background="White"
+                        BorderBrush="#D6E0E7"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="13,12"
+                        Visibility="Collapsed">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,7">
+                        <Button x:Name="BtnCheckOnline"
+                                Style="{StaticResource BrowserButton}"
+                                Content="Check for Updates"
+                                DockPanel.Dock="Right"
+                                Padding="10,5"
+                                Click="BtnCheckOnline_Click"
+                                ToolTip="Ask the GLSense server which versions it has."/>
+                        <TextBlock Text="Versions on the server"
+                                   FontSize="12.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#536772"
+                                   VerticalAlignment="Center"/>
+                    </DockPanel>
 
-                    <Border Background="White"
-                            BorderBrush="#D6E0E7"
+                    <Border BorderBrush="#CBD8DF"
                             BorderThickness="1"
                             CornerRadius="8">
                         <DataGrid x:Name="GridOnlineReleases"
@@ -266,8 +293,7 @@
                                   RowBackground="White"
                                   AlternatingRowBackground="#FBFCFD"
                                   BorderThickness="0"
-                                  SelectionChanged="GridOnlineReleases_SelectionChanged"
-                                  ToolTip="Every version the server knows about. Versions already on this machine or currently running cannot be selected here.">
+                                  SelectionChanged="GridOnlineReleases_SelectionChanged">
                             <DataGrid.RowStyle>
                                 <Style TargetType="DataGridRow">
                                     <Setter Property="MinHeight" Value="34"/>
@@ -289,20 +315,22 @@
                                     <DataGridTemplateColumn.CellStyle>
                                         <Style TargetType="DataGridCell" BasedOn="{StaticResource PickerCellStyle}">
                                             <Setter Property="Padding" Value="0"/>
+                                            <Setter Property="ToolTip" Value="Tick to download this version. Versions already on this machine or currently running cannot be selected."/>
                                         </Style>
                                     </DataGridTemplateColumn.CellStyle>
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                       IsEnabled="{Binding IsSelectable}"
-                                                      HorizontalAlignment="Center"/>
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="VERSION" Binding="{Binding Version}" Width="80" MinWidth="80" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                                 <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDate}" Width="150" MinWidth="150" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                                 <DataGridTextColumn Header="NOTES" Binding="{Binding Notes}" Width="*" MinWidth="180" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
-                                <DataGridTextColumn Header="STATUS" Binding="{Binding StatusText}" Width="110" MinWidth="110" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
+                                <DataGridTextColumn Header="STATUS" Binding="{Binding StatusText}" Width="140" MinWidth="140" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Border>
@@ -343,6 +371,7 @@
                         </Grid>
                     </Border>
                 </StackPanel>
+                </Border>
 
                 <Border x:Name="OfflinePanel"
                         Background="White"
@@ -420,7 +449,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="Reloading safely restarts the GLSense addin without restarting Excel."
+                <TextBlock Text="Reloading safely restarts the GLSense add-in without restarting Excel."
                            FontSize="11.5"
                            Foreground="#6B7883"
                            VerticalAlignment="Center"/>
