@@ -34,6 +34,10 @@ namespace GLSense.Addin.Core.Utilities
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
         [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
         private static extern uint GetDpiForWindow(IntPtr hwnd);
 
         [StructLayout(LayoutKind.Sequential)]
@@ -249,8 +253,9 @@ namespace GLSense.Addin.Core.Utilities
             {
                 double centerX, centerY;
 
-                if (excelOwnerHwnd != IntPtr.Zero && GetWindowRect(excelOwnerHwnd, out RECT rect) &&
-                    rect.Right > rect.Left && rect.Bottom > rect.Top)
+                // OISR-22877: skip a minimized Excel window (reported at about -32000,-32000).
+                if (excelOwnerHwnd != IntPtr.Zero && !IsIconic(excelOwnerHwnd) && GetWindowRect(excelOwnerHwnd, out RECT rect) &&
+                    rect.Right > rect.Left && rect.Bottom > rect.Top && rect.Left > -30000 && rect.Top > -30000)
                 {
                     double scale = 1.0;
                     try

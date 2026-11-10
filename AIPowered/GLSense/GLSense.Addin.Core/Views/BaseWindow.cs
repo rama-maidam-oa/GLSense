@@ -712,8 +712,11 @@ namespace GLSense.Addin.Core.Views
 
                 double centerX, centerY;
 
-                if (_excelHandle != IntPtr.Zero && GetWindowRect(_excelHandle, out RECT excelRect) &&
-                    excelRect.Width > 0 && excelRect.Height > 0)
+                // OISR-22877: a minimized Excel window reports about (-32000,-32000), which the
+                // work-area clamp turns into the top-left corner - center on the screen instead.
+                if (_excelHandle != IntPtr.Zero && !IsIconic(_excelHandle) &&
+                    GetWindowRect(_excelHandle, out RECT excelRect) &&
+                    excelRect.Width > 0 && excelRect.Height > 0 && excelRect.Left > -30000 && excelRect.Top > -30000)
                 {
                     double scale = _currentScaleFactor > 0 ? _currentScaleFactor : 1.0;
                     double excelLeft = excelRect.Left / scale;
@@ -1007,6 +1010,9 @@ namespace GLSense.Addin.Core.Views
 
         [DllImport("user32.dll")]
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
 
         [DllImport("user32.dll")]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
