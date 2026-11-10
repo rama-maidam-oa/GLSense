@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="GLSense Version History"
         Icon="/GLSense;component/Resources/OrbitGLSense.ico"
-        Width="810" Height="530"
-        MinWidth="730" MinHeight="450"
+        Width="810" Height="630"
+        MinWidth="730" MinHeight="550"
         MaxWidth="950" MaxHeight="800"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
@@ -142,6 +142,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
@@ -281,7 +282,7 @@
                             </DataGridTextColumn.CellStyle>
                         </DataGridTextColumn>
 
-                        <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDate}" Width="160" MinWidth="160" ElementStyle="{StaticResource TrimmedCellTextStyle}">
+                        <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDateDisplay}" SortMemberPath="ReleaseDate" Width="160" MinWidth="160" ElementStyle="{StaticResource TrimmedCellTextStyle}">
                             <DataGridTextColumn.HeaderStyle>
                                 <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
                                     <Setter Property="ToolTip" Value="Version Date - when this version was built."/>
@@ -289,7 +290,7 @@
                             </DataGridTextColumn.HeaderStyle>
                             <DataGridTextColumn.CellStyle>
                                 <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
-                                    <Setter Property="ToolTip" Value="{Binding ReleaseDate}"/>
+                                    <Setter Property="ToolTip" Value="{Binding ReleaseDateDisplay}"/>
                                 </Style>
                             </DataGridTextColumn.CellStyle>
                         </DataGridTextColumn>
@@ -297,12 +298,21 @@
                         <DataGridTextColumn Header="SOURCE" Binding="{Binding Source}" Width="80" MinWidth="80" ElementStyle="{StaticResource TrimmedCellTextStyle}">
                             <DataGridTextColumn.HeaderStyle>
                                 <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                                    <Setter Property="ToolTip" Value="Source - how this version was obtained."/>
+                                    <Setter Property="ToolTip">
+                                        <Setter.Value>
+                                            <TextBlock TextWrapping="Wrap" MaxWidth="360">
+                                                <Run Text="Source - how this version reached this computer:" FontWeight="SemiBold"/>
+                                                <LineBreak/><Run Text="Install - came with the GLSense installer and was set up automatically when Excel started."/>
+                                                <LineBreak/><Run Text="Online - downloaded from the server with Reload Add-in &gt; Online."/>
+                                                <LineBreak/><Run Text="Offline - loaded from a folder on this computer with Reload Add-in &gt; Offline."/>
+                                            </TextBlock>
+                                        </Setter.Value>
+                                    </Setter>
                                 </Style>
                             </DataGridTextColumn.HeaderStyle>
                             <DataGridTextColumn.CellStyle>
                                 <Style TargetType="DataGridCell" BasedOn="{StaticResource ReleaseCellStyle}">
-                                    <Setter Property="ToolTip" Value="{Binding Source}"/>
+                                    <Setter Property="ToolTip" Value="{Binding SourceDescription}"/>
                                 </Style>
                             </DataGridTextColumn.CellStyle>
                         </DataGridTextColumn>
@@ -329,7 +339,28 @@
                 </DataGrid>
             </Border>
 
-            <DockPanel Grid.Row="2"
+            <!-- OISR-22872: the selected version's full notes, readable without a tooltip. -->
+            <DockPanel Grid.Row="2" Margin="0,10,0,0" LastChildFill="True">
+                <TextBlock DockPanel.Dock="Top"
+                           Text="Notes for the selected version"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="#536772"
+                           Margin="2,0,0,4"/>
+                <TextBox x:Name="TxtSelectedNotes"
+                         IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         Height="64"
+                         Padding="6,4"
+                         FontSize="12"
+                         Foreground="#263942"
+                         Background="White"
+                         BorderBrush="#D6E0E7"
+                         ToolTip="The full notes recorded for the selected version (read-only)."/>
+            </DockPanel>
+
+            <DockPanel Grid.Row="3"
                        Margin="4,9,4,0"
                        LastChildFill="True"
                        ToolTip="The GLSense version currently running in this Excel session.">
@@ -376,7 +407,7 @@
                             Style="{StaticResource BrowserButton}"
                             IsEnabled="False"
                             Click="BtnRemove_Click"
-                            ToolTip="Permanently remove the selected non-active version from this machine."/>
+                            ToolTip="Delete the selected version's files from this computer only. The server is not changed: if it still offers this version, Reload Add-in &gt; Online &gt; Check for Updates lists it again. The running version can't be removed."/>
                     <Button x:Name="BtnCancel"
                             Content="Close"
                             Style="{StaticResource BrowserButton}"

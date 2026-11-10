@@ -52,6 +52,8 @@ namespace GLSense
 
         // 401 = token missing/expired, 404 = release not listed in the add-in's release
         // index or its file is missing on the server. Turned into readable messages for the step log.
+        private const string NotOnServerMessage = "This version is no longer available on the server.";
+
         private static async Task<HttpResponseMessage> GetCheckedAsync(HttpClient client, string url)
         {
             var response = await client.GetAsync(url);
@@ -60,9 +62,9 @@ namespace GLSense
             int status = (int)response.StatusCode;
             response.Dispose();
             if (status == 401)
-                throw new HttpRequestException("ORBIT session expired or not authorized (401) - log in again.");
+                throw new HttpRequestException("Your session has expired or is not authorized (401) - log in again.");
             if (status == 404)
-                throw new HttpRequestException("Not available on the server (404) - not listed in the GLSense release index or the file is missing.");
+                throw new HttpRequestException(NotOnServerMessage);
             throw new HttpRequestException($"Server returned HTTP {status} for {url}.");
         }
 
@@ -273,8 +275,9 @@ namespace GLSense
 
             MessageBox.Show(
                 this,
-                $"No updates available.\n\nYou already have the latest version: {GlobalsEx.Context?.Version} (released {GlobalsEx.Context?.ReleaseDate}).\n\nChecked release: {candidateVersion} ({candidateReleaseDate}).",
-                "No Updates Available",
+                $"No updates found.\n\nYou already have the latest version: {GlobalsEx.Context?.Version} (version date {VersionDateText.Format(GlobalsEx.Context?.ReleaseDate)})." +
+                    (string.IsNullOrEmpty(candidateVersion) ? string.Empty : $"\n\nChecked version: {candidateVersion} ({candidateReleaseDate})."),
+                "No Updates Found",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -370,19 +373,19 @@ namespace GLSense
             }
             LogSuccess("Checksum verified.");
 
-            LogStep($"Checking version - candidate is {result.Version} (released {result.ReleaseDate})...");
+            LogStep($"Checking version - candidate is {result.Version} (version date {VersionDateText.Format(result.ReleaseDate)})...");
             await Task.Delay(OfflineStepDelayMs);
             if (!IsStrictlyNewer(result.ReleaseDate))
             {
                 LogStep("No newer version available.");
-                PromptNoUpdate(result.Version, result.ReleaseDate.ToString());
+                PromptNoUpdate(result.Version, VersionDateText.Format(result.ReleaseDate));
                 return;
             }
 
             _candidateManifestPath = manifestPath;
             _candidateZipPath = zipPath;
             _isValidated = true;
-            LogSuccess($"Ready to reload: version {result.Version}, released {result.ReleaseDate} ({new FileInfo(zipPath).Length / 1024} KB).");
+            LogSuccess($"Ready to reload: version {result.Version}, version date {VersionDateText.Format(result.ReleaseDate)} ({new FileInfo(zipPath).Length / 1024} KB).");
         }
 
         // VersionParseResult.ReleaseDate is already a parsed DateTime (see
@@ -424,7 +427,7 @@ namespace GLSense
                 catch (Exception ex)
                 {
                     loginInfo = null;
-                    LogWarning($"Could not read login info from Addin.Core: {ex.Message}");
+                    LogWarning($"Could not read the GLSense login status: {ex.Message}");
                 }
 
                 if (loginInfo == null || !loginInfo.IsLoggedIn || string.IsNullOrWhiteSpace(loginInfo.LoginUrl))
@@ -434,14 +437,27 @@ namespace GLSense
                 }
 
                 string url = loginInfo.LoginUrl.TrimEnd('/') + ReleaseIndexPath;
-                LogStep($"Fetching release list from {url}...");
+                LogStep("Checking the server for updates...");
+                GlobalsEx.Context?.Logger?.LogDebug($"GLReloadSourcePicker: release list URL {url}");
 
                 string listJson;
                 using (var client = new HttpClient())
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginInfo.LoginToken);
-                    using (var response = await GetCheckedAsync(client, url))
-                        listJson = await response.Content.ReadAsStringAsync();
+                    try
+                    {
+                        using (var response = await GetCheckedAsync(client, url))
+                            listJson = await response.Content.ReadAsStringAsync();
+                    }
+                    catch (HttpRequestException ex) when (ex.Message == NotOnServerMessage)
+                    {
+                        // OISR-22872: no release index on the server (404) just means there are
+                        // no updates to offer - not an error for the user.
+                        GlobalsEx.Context?.Logger?.LogInfo($"GLReloadSourcePicker: {url} returned 404 - no updates published.");
+                        LogStep("No updates found.");
+                        PromptNoUpdate(null, null);
+                        return;
+                    }
                 }
 
                 LogStep("Parsing release list...");
@@ -470,7 +486,10 @@ namespace GLSense
 
                 int newCount = rows.Count(r => r.IsSelectable);
                 if (newCount == 0)
-                    LogStep("No new releases available on the server.");
+                {
+                    LogStep("No updates found.");
+                    PromptNoUpdate(null, null);
+                }
                 else
                     LogSuccess($"Found {newCount} release(s) not yet on this machine.");
 
@@ -537,7 +556,7 @@ namespace GLSense
             }
 
             TxtDetailVersion.Text = row.Version;
-            TxtDetailReleased.Text = row.ReleaseDate;
+            TxtDetailReleased.Text = row.ReleaseDateDisplay;
             TxtDetailStatus.Text = row.StatusText;
             TxtDetailNotes.Text = row.Notes;
             TxtDetailMandatory.Text = row.Mandatory ? "Yes" : "No";
@@ -573,7 +592,7 @@ namespace GLSense
                 try { loginInfo = GlobalsEx.Addin?.GetLoginInfo(); }
                 catch (Exception ex)
                 {
-                    LogFailure($"Could not read login info from Addin.Core: {ex.Message}", ex);
+                    LogFailure($"Could not read the GLSense login status: {ex.Message}", ex);
                     return;
                 }
 
@@ -592,7 +611,7 @@ namespace GLSense
                     {
                         try
                         {
-                            LogStep($"Fetching manifest for {row.Version} ({row.ReleaseDate})...");
+                            LogStep($"Fetching manifest for {row.Version} ({row.ReleaseDateDisplay})...");
                             if (string.IsNullOrWhiteSpace(row.FolderName))
                             {
                                 LogFailure($"Skipping {row.Version} ({row.ReleaseDate}) - its glsenseManifests.json entry has no folderName.");

@@ -1255,8 +1255,8 @@ namespace GLSense
             this.RibReload.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibReload.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibReload.ScreenTip = "Reload Add-in";
-            this.RibReload.SuperTip = "Rebuild GLSense.Addin.Core, then click here to reload it without restarting Excel" +
-    ".";
+            this.RibReload.SuperTip = "Check for a newer GLSense version - online from the server you are logged in to or" +
+    " from a folder on this computer - and load it without restarting Excel. No reinstall is needed.";
             this.RibReload.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReload_OnClick);
             // 
             // adxRibbonSeparator5
@@ -1327,10 +1327,10 @@ namespace GLSense
             this.RibReleaseHistory.ImageList = this.ImageList_32X32;
             this.RibReleaseHistory.ImageTransparentColor = System.Drawing.Color.Transparent;
             this.RibReleaseHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
-            this.RibReleaseHistory.ScreenTip = "Release History";
+            this.RibReleaseHistory.ScreenTip = "GLSense Version History";
             this.RibReleaseHistory.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
-            this.RibReleaseHistory.SuperTip = "Browse every GLSense.Addin.Core versions ever adopted on this machine, and load a" +
-    "ny of them without restarting Excel.";
+            this.RibReleaseHistory.SuperTip = "See every GLSense version installed or downloaded on this computer, with its date" +
+    ", source and notes. Load any of them, or remove one you no longer need, without restarting Excel.";
             this.RibReleaseHistory.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReleaseHistory_OnClick);
             // 
             // adxExcelTaskPanesManager1

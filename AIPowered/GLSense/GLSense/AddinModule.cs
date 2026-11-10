@@ -159,10 +159,8 @@ namespace GLSense
             {
                 GlobalsEx.Context.Logger?.LogError("AddinModule_OnRibbonLoaded: UpdateBootstrapper could not resolve a version to load (no zip/manifest.json in the Manifest folder and no usable local install). Skipping Addin.Core load - the add-in will be unavailable until this is resolved and Excel is restarted.");
                 MessageBox.Show(
-                    "GLSense could not find a usable add-in version. Make sure GLSense.Addin.Core has been " +
-                    "built at least once (its post_build.cmd publishes a zip + manifest.json into the " +
-                    "Manifest folder). The add-in will not load this session - check the logs, then restart " +
-                    "Excel once resolved.",
+                    "GLSense could not find a usable version of the add-in, so it will not load in this " +
+                    "Excel session. Reinstall GLSense, or contact Orbit support with the GLSense log.",
                     "GLSense",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
@@ -291,8 +289,8 @@ namespace GLSense
                 {
                     GlobalsEx.Context?.Logger?.LogException(ex, "RibReleaseHistory_OnClick: failed to show the release history browser");
                     MessageBox.Show(
-                        $"Could not open the release history browser: {ex.Message}",
-                        "GLSense Release History",
+                        $"Could not open the GLSense Version History window: {ex.Message}",
+                        "GLSense Version History",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                     return;
@@ -533,9 +531,8 @@ namespace GLSense
                 {
                     GlobalsEx.Context?.Logger?.LogError("ReloadAddinCore: could not resolve a release to load.");
                     failureMessage =
-                        "Reload failed - no usable add-in version was found. Make sure GLSense.Addin.Core " +
-                        "has been rebuilt (its post_build.cmd publishes a zip + manifest.json into the " +
-                        "Manifest folder), then try again.";
+                        "Reload failed - no usable GLSense version was found. Use Reload Add-in again, " +
+                        "or reinstall GLSense.";
                 }
                 else
                 {

@@ -15,6 +15,7 @@ namespace GLSense
 
         public string Version { get; set; }
         public string ReleaseDate { get; set; }
+        public string ReleaseDateDisplay => VersionDateText.Format(ReleaseDate);
         public bool Mandatory { get; set; }
         public string FolderName { get; set; }
         public string FileName { get; set; }

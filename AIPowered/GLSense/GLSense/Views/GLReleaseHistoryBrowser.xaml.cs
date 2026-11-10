@@ -25,7 +25,9 @@ namespace GLSense
             public ReleaseEntry Entry { get; set; }
             public string Version => Entry.Version;
             public string ReleaseDate => Entry.ReleaseDate;
+            public string ReleaseDateDisplay => VersionDateText.Format(Entry.ReleaseDate);
             public string Source => Entry.Source;
+            public string SourceDescription => DescribeSource(Entry.Source);
             public string Notes => Entry.Notes;
             public bool IsCurrentlyLoaded { get; set; }
             public string LoadedMarker => IsCurrentlyLoaded ? "●" : string.Empty;
@@ -79,7 +81,7 @@ namespace GLSense
             var loadedRow = rows.FirstOrDefault(r => r.IsCurrentlyLoaded);
             if (loadedRow != null)
             {
-                TxtLoadedStatus.Text = $"Currently loaded: version {loadedRow.Version}, version date {loadedRow.ReleaseDate}.";
+                TxtLoadedStatus.Text = $"Currently loaded: version {loadedRow.Version}, version date {loadedRow.ReleaseDateDisplay}.";
                 GridReleases.SelectedItem = loadedRow;
                 GridReleases.ScrollIntoView(loadedRow);
             }
@@ -88,6 +90,18 @@ namespace GLSense
                 // Not necessarily an error - e.g. the running release's folder was
                 // reconciled away, or ActiveFolderName isn't populated in this context.
                 TxtLoadedStatus.Text = $"Currently loaded: version {GlobalsEx.Context.Version} (not found in the version history).";
+            }
+        }
+
+        // OISR-22872: the Source cell tooltip explains where the version came from.
+        internal static string DescribeSource(string source)
+        {
+            switch (source?.Trim().ToLowerInvariant())
+            {
+                case "install": return "Install - came with the GLSense installer and was set up automatically when Excel started.";
+                case "online": return "Online - downloaded from the server with Reload Add-in > Online.";
+                case "offline": return "Offline - loaded from a folder on this computer with Reload Add-in > Offline.";
+                default: return source ?? string.Empty;
             }
         }
 
@@ -118,6 +132,8 @@ namespace GLSense
         private void GridReleases_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             var row = GridReleases.SelectedItem as ReleaseRow;
+            TxtSelectedNotes.Text = row == null ? "Select a version to see its notes."
+                : string.IsNullOrWhiteSpace(row.Notes) ? "No notes recorded for this version." : row.Notes;
             BtnLoad.IsEnabled = row != null;
             BtnRemove.IsEnabled = row != null;
         }
@@ -167,9 +183,10 @@ namespace GLSense
             }
 
             var confirmation = MessageBox.Show(
-                $"Remove version {row.Version} dated {row.ReleaseDate} from this machine?\n\n" +
-                "This permanently deletes its local files and history entry. " +
-                "The version can be downloaded again later if it is still available.",
+                $"Remove version {row.Version} dated {row.ReleaseDateDisplay} from this computer?\n\n" +
+                "Its files and its entry in this list are deleted from this computer only. " +
+                "Nothing is removed from the server: if the server still offers this version, " +
+                "Reload Add-in > Online > Check for Updates lists it again and it can be downloaded again.",
                 "Remove Version",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,

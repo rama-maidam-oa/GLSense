@@ -328,7 +328,7 @@
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="VERSION" Binding="{Binding Version}" Width="80" MinWidth="80" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
-                                <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDate}" Width="150" MinWidth="150" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
+                                <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDateDisplay}" SortMemberPath="ReleaseDate" Width="150" MinWidth="150" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                                 <DataGridTextColumn Header="NOTES" Binding="{Binding Notes}" Width="*" MinWidth="180" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                                 <DataGridTextColumn Header="STATUS" Binding="{Binding StatusText}" Width="140" MinWidth="140" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                             </DataGrid.Columns>

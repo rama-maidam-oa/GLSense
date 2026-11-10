@@ -61,8 +61,8 @@ orbitbootapp `development` = `D:\projects\deveelopmet\orbitbootapp`.
 
 ### A. Prepare (GLSense and XLEdge repos)
 
-1. List the OISR tickets in this release for each add-in, and get each ticket's Jira title.
-2. **Release text:** put the tickets on line 1 of each `ReleaseNotes.txt`, as `OISR-NNNNN: <title>`, separated by `; `. This becomes the manifest's `notes`, which Release History and the Online list show.
+1. List the OISR tickets in this release for each add-in.
+2. **Release text:** put the tickets on line 1 of each `ReleaseNotes.txt`, as `OISR-NNNNN: <short summary>`, separated by `; `. This becomes the manifest's `notes`, which every customer sees in Version History and the Online list (OISR-22872). So **don't paste the Jira title**: write a short, plain summary of what changed for the user, with no customer names or codes (e.g. "AVX"), no version prefixes ("11.1.1 -") and no internal terms (AppDomain, Addin.Core).
 3. Version and commit date:
    - Check the version: `GLSenseSharedVersion.cs` / `XLEdgeSharedVersion.cs`.
    - XLEdge: set `XLEdgeAppConstants.DefaultCommitDate` to the release day.
