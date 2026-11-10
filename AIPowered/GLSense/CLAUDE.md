@@ -8299,4 +8299,13 @@ double `'` in sheet names. DLL-only release to `development`. Build-verified.
 - Same in XLEdge (AIPoweredXLEdge.md, OISR-22872), which also drops "core version" from its host messages.
 - **Same-issue sweep (pattern: internal names / raw ISO dates in user-facing text):** host `AddinModule.cs` messages and
   both windows covered; `GLReloadProgressWindow` has neither. Core windows already format dates (About). Nothing left open.
-- **Status:** host changes - need an MSI. Build-verified; date/source helpers checked on the compiled DLL. Not yet seen in Excel.
+- **Status:** host changes - need an MSI. Build-verified; date/source helpers checked on the compiled DLL.
+- **Tested live (10-Nov-2026, Debug build registered per-user, Excel on OL-RAMAM, driven by UI Automation):** all pass.
+  - Logged out:
+    - Version History title and dates ("10-Nov-2026 01:33 PM"), the notes panel and the "Currently loaded" line.
+    - Source, header and Remove tooltips; Remove refused on the running version.
+    - Ribbon SuperTips with no internal names.
+    - Online disabled with "Log in to GLSense to check for online updates."
+    - Offline with the same version: "No Updates Found". Offline with an empty folder: the "no manifest.json + zip pair" warning.
+  - After logging in to QA01 (`http://orbqa01.orbit8.com:6060/reporting`): Online is enabled. The index call (`.../orbit-addons/manifests?type=glsense`) returned 404, shown as the "No Updates Found" box with a readable date, and the step log has no server URL.
+  - Not tested: the list of newer versions (no server with a GLSense release published).

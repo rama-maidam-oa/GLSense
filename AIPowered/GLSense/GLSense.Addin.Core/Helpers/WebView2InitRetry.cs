@@ -1,3 +1,4 @@
+#nullable enable
 using GLSense.Addin.Core.Infrastructure;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
