@@ -1199,3 +1199,13 @@ there.**
   `BroadcastMessageFromApi` logs the raw JSON at DEBUG (large responses to a file in
   `GLSense_Logs\Temp`). Same change in AIPowered `GLLogin` and XLEdge `ADXExcelTaskPane1`.
   **Status: FinalWorkingCode `11.1.2` (`afc1ee8`) and `11.1.3` (`ba9d6aa`).**
+
+## `ViewModels\SegmentSelectorViewModel.cs` (typed value containing `$`/`!` reopened as a reference, OISR-22875)
+
+- **Reported:** values picked directly in the Account Assignment window (e.g. `11$9`) showed in that
+  segment's Reference box when reopened. `IsExcelReference` treated any part containing `$` or `!`,
+  or starting with "Sheet", as a reference.
+- **Fix:** it now uses `ExcelRangeHelper.IsRealRange`. `11$9`, `11$9~11$12`, `--11$9`, `!@#2` stay
+  values; `QA!$E$3`, `$E$3`, `QA!F$1` are references. A typed value that is a valid address (`AB$12`)
+  still reopens as a reference - the formula text can't tell them apart.
+  **Status: FinalWorkingCode `11.1.1`, `11.1.2`, `11.1.3`; AIPowered `11.1.3`.** Build-verified.
