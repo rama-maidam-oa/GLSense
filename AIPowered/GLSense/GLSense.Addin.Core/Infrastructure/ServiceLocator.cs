@@ -106,6 +106,20 @@ namespace GLSense.Addin.Core.Infrastructure
             {
                 if (!_isInitialized)
                     throw new InvalidOperationException("ServiceLocator has not been initialized. Call ServiceLocator.Initialize(context) first.");
+
+                // OISR-22873: Application.Hwnd is the active workbook's window. The handle cached at
+                // ribbon load dies when that workbook window is closed, and every window then failed
+                // with "Invalid window handle". Read it live; the cached one is only a fallback.
+                try
+                {
+                    var hwnd = new IntPtr(ExcelApp.Hwnd);
+                    if (hwnd != IntPtr.Zero)
+                        return hwnd;
+                }
+                catch (Exception ex)
+                {
+                    Logger?.LogDebug($"ServiceLocator.ExcelHandle: could not read Application.Hwnd, using cached handle. {ex.Message}");
+                }
                 return _context.ExcelHandle;
             }
         }

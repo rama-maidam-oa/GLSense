@@ -21,7 +21,31 @@ namespace GLSense
         }
         public ILogger Logger { get; }
         public IPathProvider Paths { get; }
-        public IntPtr ExcelHandle { get; set; }
+        // OISR-22873: Application.Hwnd is the active workbook's window, so the handle cached at
+        // ribbon load dies when that workbook window is closed. Read it live; the cached one is
+        // only a fallback.
+        private IntPtr _excelHandle;
+        public IntPtr ExcelHandle
+        {
+            get
+            {
+                try
+                {
+                    if (ExcelApp is Microsoft.Office.Interop.Excel.Application app)
+                    {
+                        var hwnd = new IntPtr(app.Hwnd);
+                        if (hwnd != IntPtr.Zero)
+                            return hwnd;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger?.LogDebug($"GLSenseContext.ExcelHandle: could not read Application.Hwnd, using cached handle. {ex.Message}");
+                }
+                return _excelHandle;
+            }
+            set => _excelHandle = value;
+        }
         public bool DebugMode { get; set; } = false;
 
         // Version properties - get from PathProvider
