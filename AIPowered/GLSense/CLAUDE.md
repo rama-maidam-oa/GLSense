@@ -12,6 +12,12 @@ Scope note: unless stated otherwise, every fix below is **AIPowered-only**
 into `FinalWorkingCode\GLSense` as well (called out below) because the user reported
 them as bugs in both codebases.
 
+**Standing rule (developer, 10-Nov-2026): every fix gets a same-issue sweep.** Name the
+bug's pattern, search every other window/handler/code path here, in FinalWorkingCode and
+in XLEdge for the same shape, fix the matches or list them as open with the reason, and
+record the sweep in the fix's entry below ("Same-issue sweep:"). A fix without a recorded
+sweep is not finished.
+
 ---
 
 ## 1. Window "blank gap" saga (SizeToContent) - READ THIS FIRST
@@ -7443,7 +7449,7 @@ Not yet rebuilt/retested end-to-end by the user for the actual Unhide behavior f
 ## 78. `GLSense.Addin.Core\Models\BalanceDtoModel.cs` (segment-marker follow-ups to `8398ec3`)
 
 - **Regression from `8398ec3` (tilde/hyphen positional-marker fix), identical in both
-  codebases.** The Segment Values window writes NOT BETWEEN with `--` on **both** bounds
+  codebases.** The Segment Values window writes NOTBETWEEN with `--` on **both** bounds
   (`SegmentSelectorViewModel.AddNotBetweenSelection`, joined as `--1000|--2000`). After
   `8398ec3`, `CreateRangeSegmentValue` stripped only the whole-expression prefix, so the
   right-hand bound went out as `"--2000"`. Fixed by also stripping a leading `--` from the
@@ -7523,6 +7529,36 @@ Not yet rebuilt/retested end-to-end by the user for the actual Unhide behavior f
   **Status: AIPowered `11.1.2`; FinalWorkingCode `11.1.0`, `11.1.1` and `11.1.2`.**
   Build-verified. Logging only, so there's no behavior change.
 
+## 82. Multi-ledger FSG templates: period UDFs, Periods Discoverer and period windows (OISR-22700)
+
+- **Reported: the template of an FSG report scheduled with several ledgers kept showing
+  "Click Refresh..." after Sheet Refresh.** The template carries the ledgers as one `;`-joined
+  Ledger value (e.g. `Vision Operations (USA);Vision Brazil SL (USD)`). The period UDFs looked
+  that whole string up as one ledger, failed, and returned the error sentinel. Every
+  `GLSense_GetBalance` taking its Period from those cells then built a cache key that never
+  matched the balances the server returned (keyed by the real period), so it showed "Click
+  Refresh...". `GLSense_GetBalance` itself needed no change: the server already handles the
+  multi-ledger string.
+- **Rule:** split on `;` and check the ledgers in order. Use the first ledger whose cached
+  periods (local DB, per cube + ledger) contain the requested period; later ledgers are only
+  checked when an earlier one has no period data or lacks the period. If none has it, use the
+  first ledger that had data, so "period not found" behaves as for a single ledger. A value
+  without `;` is unchanged.
+- **`Udf\UdfDispatcher.cs`**: new `PModel(string, Func<PeriodModel, bool> periodMatch)`; all 8
+  period handlers pass their own match (period name; year + number for ByYear; date
+  containment for ByDate, whose date parsing now runs before the period load). The unused
+  `GetPeriods` helper was removed.
+- **`Utilities\PeriodsDiscoverer.cs`**: same overload, matching the active cell's period name.
+- **Period windows** (`GLGetPeriod`, `GLGetPeriodByDate`, `GLGetPeriodByYear`,
+  `GLGetPeriodDetails`, `GLGetPeriodStartEnd`): new `CommonFunctions.ResolveMultiLedger`
+  picks the ledger by the same rule (then the first ledger that exists in the cube), and each
+  `ValidateLedgerFromFormula` writes it back into `funcValues` for the ViewModel's
+  `ApplyFormulaParams`. `GLGetPeriodByDate` also replaces `funcArgs[1]`, since its ViewModel
+  would otherwise re-read a `$C$7`-style reference and reject the multi-ledger value.
+  **Status: ported from FinalWorkingCode `11.1.1` (user-verified in Excel there) to AIPowered
+  `11.1.2`; build-verified only (built with `SignAssembly=false`, since the
+  `GLSense.Contracts.pfx` key can't be imported in this environment).**
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain
@@ -7542,3 +7578,725 @@ Excel starts, **a running Excel session won't pick up a fresh build either** - E
 itself must be fully closed and relaunched after rebuilding (or use the Reload button,
 which re-runs `UpdateBootstrapper`). When a fix appears not to have taken effect, rule
 this out before re-investigating the code.
+
+## 83. Online Reload wired to the real ORBIT server endpoints (OISR-22460 / OISR-22759)
+
+Section 76 shipped Online mode against placeholder URLs. The server now exists
+(orbitbootapp `GLSenseAddinController`, PR #1042 + layout fix PR #1044, merge `efc81d0`
+on `development`), so `GLReloadSourcePicker.xaml.cs` now calls:
+
+| Call | URL (relative to `LoginUrl`, which already ends at `/reporting`) |
+|---|---|
+| Release index | `GET /rest/secure/glsense-addin/manifests` |
+| One release's manifest | `GET /rest/secure/glsense-addin/versions/{folderName}/manifest` |
+| One release's zip | `GET /rest/secure/glsense-addin/versions/{folderName}/zip` |
+
+Same `Authorization: Bearer <LoginToken>` as the finance calls. The zip is now fetched
+by `folderName`, not `fileName`. A row whose index entry has no `folderName` is skipped
+with a logged failure, since the server can't serve it.
+
+**Server layout.** The server reads from
+`ORBIT_HOME\download-artifacts\addons\glsense\updates\`:
+- `glsenseManifests.json`: the index, a JSON array with the same 8-field schema as the local `manifest.json`.
+- `{folderName}\manifest.json`: the release's own manifest.
+- `{folderName}\{fileName}`: the release zip.
+
+There is **no** `Contents\` folder. OISR-22759's description and the first PR still
+show it, but PR #1044 removed it. To publish a release, copy the folder from
+`post_build.cmd`'s output (its `manifest.json` and zip) into `updates\` and add its
+entry to `glsenseManifests.json`. The server never checks the checksum. The client
+already does this in `ExtractAndCatalog`.
+
+`GetCheckedAsync` turns a 401 into "session expired, log in again" and a 404 into "not
+listed in glsenseManifests.json, or the file is missing". Other status codes are
+reported with their number. The fetch client's timeout is raised from 100s to 5 min
+for larger zips.
+
+- **Status**: implemented and build-verified (`GLSense.csproj`, Debug). **Not yet
+  live-tested** against a real ORBIT server. Work through section 2 of
+  `docs/superpowers/plans/2026-09-18-online-reload-multiversion-followup.md`.
+
+## 84. Ribbon Ledger box blank after picking a cube (Office 16.0.20527.20088): two real fixes, display issue unresolved
+
+**Symptom:** after Login → pick a cube → OK without clicking a ledger, the ribbon's
+Ledger box (`Ribledger`) shows blank, though the first ledger is selected internally.
+FinalWorkingCode 11.1.1 and 11.1.2 show the same thing on this machine, and 11.1.1
+used to work.
+
+**Proven with a host-side `Ribledger.PropertyChanging` trace and UI Automation:**
+- Excel asks Add-in Express for the text and gets `'GASB34 Secondary Ledger'`, but
+  doesn't draw it.
+- Excel never loads the item list until someone opens the dropdown. The text only ever
+  appeared after the dropdown had been opened in that session, and even then not always.
+
+**Tried and ruled out (all reverted):**
+- enabling the box before filling it;
+- running every ribbon call on Excel's main thread;
+- refreshing the box by its real RibbonX id;
+- a delayed re-send, and a full-ribbon refresh;
+- hiding and re-showing the box;
+- `Ribledger`/`RibSegS` as `ADXRibbonDropDown` instead of combo boxes (same blank);
+- a fresh `Excel15.xlb` (the old one is `Excel15.xlb.bak` in `%APPDATA%\Microsoft\Excel`).
+
+The `ItemID`s of the combo items are empty. That rules out item-id matching: the box
+displayed in one run with the ids still empty.
+
+**Cause:** an Office bug, most likely introduced by the update to 16.0.20527.20088
+(Current Channel) installed 21-Oct-2026. Reproduced without Add-in Express (see 84.3).
+Add-in Express couldn't reproduce it on 16.0.20430.20182, an older build.
+
+**Committed `c827497`, two real fixes found along the way:**
+- `RibbonController.Invalidate` passed the field name (`"Ribledger"`) to
+  `IRibbonUI.InvalidateControl`, so every per-control refresh did nothing. It now
+  resolves the name to the control's RibbonX `Id` first. Section 3's "InvalidateControl"
+  entries never actually took effect.
+- `AddinEntry.Logout` resumed on a ThreadPool (MTA) thread after its API `await` and
+  updated ribbon controls from there. Those updates now run on Excel's main thread via
+  `WpfAppManager.InvokeOnWpfThread`. Logout cleared the ledger correctly in the runs
+  checked afterwards.
+
+**Useful for next time:** UI Automation's Value for a ribbon combo can differ from what
+is drawn (in one run it read the right ledger while the box looked blank), so always
+confirm by eye. Section 3's `[RibbonDiagnostic]` dump (click Debug) shows only the Add-in
+Express control's state, not what Excel displays.
+
+**84.1 Workaround implemented and verified (AIPowered 11.1.2, committed `3d246f9`):**
+`Helpers\RibbonComboPrimer.cs` opens and closes the ribbon Ledger box once per Excel
+window, through UI Automation on a worker thread. It's called from
+`AddinEntry.PrimeLedgerComboIfNeeded()` right after the Cube dialog closes. Afterwards it
+re-applies the selected ledger (clear, set, then `Invalidate("Ribledger")`) on Excel's
+main thread. Only Ledger is primed. Verified: the first cube shows its ledger after one
+dropdown flash, and later cubes show theirs with no flash. Priming at ribbon load was
+rejected: Excel is on the Home tab then, where UI Automation can't see GLSense's
+controls. Full write-up: `docs\office-ribbon-combobox-display-bug.md`. Remove the
+workaround once Microsoft ships a fixed Office build.
+
+**84.2 FinalWorkingCode port (OISR-22762):** the same workaround is in FinalWorkingCode (`Helpers\RibbonComboPrimer.cs`, `AddinModule.PrimeLedgerComboIfNeeded` called from `RibGetCube_OnClick`, `RibbonStateHelper.InvalidateControl`). Committed on `11.1.1` (`956915b`) and `11.1.2` (`851ce15`). 11.1.1 released as the signed 27OCT2026 MSI (orbitbootapp `development` `c35211b143`, `release/ORBIT11.1.1` `adf40f1d0c`); ticket moved to QA Review. The ticket mentions 11.1.1 only - AIPowered 11.1.2 is still in development, so keep it out of the ticket.
+
+**84.3 Add-in Express's reply, and a repro without Add-in Express (27-Oct-2026):**
+- Andrei Smolin (Add-in Express) couldn't reproduce it on Excel Version 2609, build
+  16.0.20430.20182. He said it's an Office issue that Add-in Express can't fix, and
+  suggested a Microsoft support case using a plain VSTO add-in.
+- Built that add-in in `D:\SQLLite_Test\RibbonComboRepro` (outside this repo). It's made
+  from Visual Studio 2022's own VSTO templates and uses only `RibbonComboBox.Items`,
+  `.Text` and `.Enabled`. It signs with a self-signed certificate, "CN=RibbonComboRepro
+  Test", in `CurrentUser\My`, and its build registers it in HKCU. Run
+  `MSBuild /t:Clean` on the project to unregister it.
+- Tested on 16.0.20527.20088 with GLSense turned off: it reproduces the same behavior.
+  Text set from code isn't drawn, though `RibbonComboBox.Text` returns it and an edit
+  box and label set at the same moment show it. A second set before the dropdown has
+  been opened is also not drawn. After the dropdown has been opened once, every set
+  displays until Excel restarts.
+- Prepared for the Microsoft case:
+  - `D:\SQLLite_Test\RibbonComboRepro_ForMicrosoft.zip`: source, README and a sample log.
+  - `D:\SQLLite_Test\RibbonComboRepro_CaseText.txt`: the case text and the reply to Andrei.
+- Keep the priming workaround (84.1/84.2) until Microsoft ships a fixed build. Then
+  remove `RibbonComboPrimer` and its callers in both codebases.
+
+## 85. Segment box not cleared after changing the Ledger (OISR-22789)
+
+Picking a segment in the ribbon (e.g. Account), then changing the Ledger, left the old segment
+showing in the Segment box. `AddinEntry.UpdateRibbonAndSelectionForLedger` (run by
+`LedgerChanged`) cleared and reloaded `RibSegS`'s items but never cleared its text, and it
+deliberately kept `AppState.DefaultSegment`/`SegmentPickedIndex`. A segment picked for the
+previous ledger may not exist in the new ledger's chart of accounts, so Discover could act on a
+stale segment name and index.
+
+**Fix**: `UpdateRibbonAndSelectionForLedger` now also calls `SetComboText("RibSegS", "")` and
+resets `DefaultSegment = ""` and `SegmentPickedIndex = -1`, matching FinalWorkingCode's
+`UpdateRibbonUI` (where only the text clear was missing, fixed in the same ticket).
+`LedgerChanged`'s doc comment, which said these fields were deliberately left alone, is updated.
+
+**Status**: fixed in AIPowered on `11.1.3` only (FinalWorkingCode on `11.1.1`, `11.1.2`,
+`11.1.3`). Build-verified.
+
+## 86. Account Type / Segment DFF showed "#Empty Response" (OISR-22785)
+
+`GLSense_GetAccountType` and `GLSense_GetSegmentDFF` both parse the server reply through
+`UdfDispatcher.ParseSegmentsApiResponse`, which returned the literal text `#Empty Response` when
+the server had no value (e.g. an account with no account type). It now returns an empty string,
+so the cell shows blank, matching FinalWorkingCode. Nothing else checked for that text; the blank
+result is cached like any other value.
+
+**Status**: fixed in AIPowered on `11.1.3` only (FinalWorkingCode on `11.1.1`, `11.1.2`,
+`11.1.3`). Build-verified.
+
+## 87. Journal drilldown for PJTD (`DD_JL.cs` / `DDDatatoWorksheet.cs`, OISR-22795)
+
+Same change as FinalWorkingCode: `GetDrilldownType` maps `PROJECT_TO_DATE_NET` / `PJTD_NET` (with
+or without underscores or spaces, any case) to `PJTD`; `GetSearchTerms` maps `PJTD` to
+`DRILL_DOWN4`/`DRILLDOWN4`; `IsInternalHeader` hides `DRILL_DOWN4`/`DRILLDOWN4`; the "Invalid
+selection" message lists `PROJECT_TO_DATE_NET`. The server returns these for PJTD since
+orbitbootapp PR #798 (parent OISR-19531).
+
+**Status**: fixed in AIPowered on `11.1.3` only (FinalWorkingCode on `11.1.1`, `11.1.2`,
+`11.1.3`). Build-verified.
+
+## 88. Local customization ignored a calculation column's display sequence (`DDDatatoWorksheet.cs`, OISR-22802)
+
+Same change as FinalWorkingCode: `TryGetLocalMetadata` now passes the locally saved metadata
+through new `SortByDisplaySequence` (stable sort on `displaySequence`; missing/non-numeric last).
+The saved `drilldown-metadata` response lists personalized calc columns after every other column,
+so a locally saved calc column always landed last. Server metadata path unchanged.
+
+**Status**: fixed in AIPowered on `11.1.3` only (FinalWorkingCode on `11.1.1`, `11.1.2`,
+`11.1.3`). Build-verified.
+
+## 89. Confirm before Save overwrites the workbook's local customization (`GLDrilldownCustomization.xaml.cs`, OISR-22815)
+
+Same change as FinalWorkingCode: `BtnSaveLocally_ClickCore` now checks
+`DrilldownMetadataXmlStore.GetSavedTypeSummaries` (any type with at least one column saved) before
+fetching and saving the cube's drilldown metadata, and if a local customization already exists asks
+via `AppOverlayControl.ShowConfirmAsync`. Anything other than Yes returns without calling the API or
+touching the store. `webView` is hidden while the confirm is shown (WebView2 airspace). A first save
+is unchanged. Issue 1 of the ticket and OISR-22650 are proposed as a separate enhancement.
+
+**Status**: fixed in AIPowered on `11.1.3` only (FinalWorkingCode on `11.1.2`, `11.1.3`). Build-verified.
+
+## 90. Broadcast button on the Logon ribbon group (`AddinModule.cs` / `RibbonControlIds.cs` / `AddinEntry.cs`, OISR-22777)
+
+Broadcast messages were only shown once, by `GLLogin.SuccessCube` right before the login window
+closed. Added `RibBroadcast` ("Broadcast", ScreenTip "Broadcast Messages", SuperTip "Click to view
+the latest broadcast messages") after Logout, using `broadcastmessage.png` at `ImageList_32X32`
+index 35 (appended to the ImageStream blob in `AddinModule.resx`; the existing 35 images verified
+pixel-identical). The host's `RibBroadcast_OnClick` calls `ExecuteAction("ShowBroadcast")`, which
+falls through to `AddinEntry.OnRibbonAction`; `ShowBroadcastMessages()` reuses
+`GLLogin.BroadcastMessageFromApi` (now `internal`) and shows the result via
+`CommonFunctions.GLSenseMessage`, or "No broadcast messages available.". `RibBroadcast` is in
+`CommonDisabledControls` (logged out) and `PartialLoginEnabledControls` / `LoggedInEnabledControls`;
+`Enabled = false` in the designer.
+
+**Status**: fixed in AIPowered on `11.1.3` only (FinalWorkingCode on `11.1.2`, `11.1.3`). Build-verified.
+
+## 91. `AddinModule.cs` / `AddinEntry.cs`: XLEdge -> GLSense login/logout sync failed silently (GetGLCubeInformation / LogoutSession missing - ported from FinalWorkingCode)
+
+XLEdge (11.1.2, and the XLEdge AIPowered twin) tells GLSense about its own logins and logouts by calling, late-bound
+through `COMAddIns("GLSense.AddinModule").Object`, `GetGLCubeInformation(token, url, userName)` and `LogoutSession()`.
+FinalWorkingCode has both on its `AddinModule`; this codebase had neither, so `InvokeMember` failed with
+DISP_E_UNKNOWNNAME, XLEdge logged it and carried on, and GLSense never followed an XLEdge login or logout. (The other
+direction - GLSense calling XLEdge's `InvokedFromGLSense` / `LogoffFromAddin` - was already in place.)
+
+**Fix**: the shell's `AddinModule` gets the two public methods; each only forwards to the core through the existing
+`OnRibbonAction` dispatch (no contract change, so an older core loaded from Release History just logs an unknown action):
+- `GetGLCubeInformation` -> `OnRibbonAction("LoginFromXLEdge", new object[] { token, url, userName })`. The arguments go
+  as one `object[]` so `OnRibbonAction`'s entry log (`parameter='...'`) prints `System.Object[]`, never the token.
+- `LogoutSession` -> `OnRibbonAction("LogoutFromXLEdge", null)`.
+
+In `AddinEntry`:
+- `LoginFromXLEdge` is FinalWorkingCode's `GetGLCubeInformation` on this codebase's types: blank token/URL -> ignored;
+  `LoginToken` / `LoginUrl` set; POST `{LoginUrl}/rest/secure/finance/finance-cubes`; cubes into `CubeCache.AllCubes`
+  (sorted by name) and `CubeDataRepository.InsertCubeDataAsync()`; `LoginUserName`; ribbon `PartialLoggedIn` (the user
+  picks a cube next, as after GLSense's own login). Two deliberate differences from FinalWorkingCode:
+  - it is fire-and-forget like `Logout` (awaited inside, not `Task.Wait`ed with a 30-minute limit inside XLEdge's COM
+    call - Excel stays responsive and XLEdge's call returns at once);
+  - no cubes / an empty or unparseable response leaves GLSense `LoggedOut` (FinalWorkingCode applied `NoCubes`, a state
+    this codebase does not have, which disabled even Login).
+  - its ribbon calls after the awaits (`PartialLoggedIn`, or the logged-out reset) go through
+    `WpfAppManager.InvokeOnWpfThread`: an await resumes on a ThreadPool thread in this host, and Add-in Express ribbon
+    controls may only be touched on Excel's main thread (as `Logout` since OISR-22460; `ResetLoginState` keeps that marshalling).
+- `LogoutFromXLEdge` is FinalWorkingCode's `LogoutSession` -> `LoggOff()`: the reset part of `Logout()` only, now
+  shared as `ResetLoginState()` (`AppState.Reset()`, RibGetCube label, Ribledger/RibSegS combos, `LoggedOut`). No call
+  back to XLEdge, no `applogout` (XLEdge already ended the server session), no message box.
+
+Two races the sync opens, both guarded:
+- **Logout ping-pong.** GLSense's own `Logout()` calls XLEdge's `LogoffFromAddin`; XLEdge's logoff then calls
+  `LogoutSession` back - possibly re-entrantly, before `Logout()` has built its `applogout` URL (XLEdge has no pane, its
+  wait window failed to show). A reset there would clear `LoginUrl`/`LoginToken` under `Logout()` (a bare
+  `/web/secure/applogout`, or a retry with an empty bearer - `ApiHelper` re-reads the token per attempt). So
+  `_ownLogoutRunning` (set for the whole of `Logout()`) makes `LogoutFromXLEdge` leave the state alone; `Logout()` resets
+  at its end as before - one message box, from `Logout()`. (FinalWorkingCode captured `loginUrlAtLogout` for the same
+  reason.)
+- **Logout during the cube call.** XLEdge logs in, then out while `finance-cubes` is still running: the reset happens
+  first, then the late answer would set `PartialLoggedIn` with no session. `LoginFromXLEdge` drops an answer whose
+  `LoginToken` is no longer the one it was given.
+
+Not yet tested in Excel with XLEdge loaded (compile-verified only: Debug + Release, no new warnings).
+
+## 92. Full Journal Entry drilldown from the Journals sheet (OISR-22823, parent OISR-19286)
+
+The server now returns two extra journal-drilldown columns: `VIEW_FULL_JOURNAL_ENTRY` (shown)
+and `FJE_DD_PARAMETERS` (`ledgerId~~headerId`, to be hidden). Clicking a full-journal link
+returns every line of that journal header.
+
+- `DDDatatoWorksheet.cs`: on JL / BL_JL sheets, `ApplyFullJournalEntryHyperlinks` adds a
+  hyperlink to each non-empty `VIEW_FULL_JOURNAL_ENTRY` cell, matched on display or actual
+  name, with ScreenTip `"View Full Journal Entry"` (`FullJournalEntryScreenTip`).
+  `FJE_DD_PARAMETERS` is added to `IsInternalHeader`, so the column is hidden.
+- Host `GLSense\AddinModule.cs`: `SheetFollowHyperlink` recognises that ScreenTip **before** the
+  journal-attachment fallback, which treats any other link as a header id and would throw on
+  this text. It sends the cell's external address via `OnRibbonAction("RunFullJournalEntry", …)`.
+  The ScreenTip string is duplicated host-side, because the host never references Addin.Core.
+- `AddinEntry.cs`: the `RunFullJournalEntry` case runs `RunFullJournalEntryDrilldown`.
+- New `Drilldowns\DD_FJE.cs` (`DrilldownFje`), modelled on `DD_SL.cs`:
+  - Finds `FJE_DD_PARAMETERS` in header row 5, then row 4, and reads it on the clicked row.
+  - Parses `ledgerId~~headerId`; both must be whole numbers, otherwise it shows an error.
+  - Sends `POST {LoginUrl}/rest/secure/finance/journal-entry-drilldown?cubeId=…`, with **only**
+    `cubeId` (user decision) and body
+    `{"journalEntries":[{"ledgerId":n,"headerId":n}],"metadata":[…]}`. `metadata` is the JOURNAL
+    metadata saved locally for the cube when "Overwrite drilldown metadata with locally saved" is
+    on, otherwise `[]`.
+  - The result follows the subledger protocol (user decision): ddType `SL`, sheet
+    `{sheet}_SL_{cell}`, consolidated object `…*SL*{title}`.
+  - Title `"{link text} ({FJE_DD_PARAMETERS})"`, e.g. `View Full Journal Entry (1~~4396146)`,
+    goes on the progress window and on A3 of the new sheet (A3 = 5th consolidated part).
+  - One click is one journal entry, so `journalEntries` always has one element.
+- The SL result sheet gets no full-journal links, since links are added on JL / BL_JL only.
+
+**Status**: AIPowered `11.1.3` only (user decision; not released yet, so the host change needs no
+delivery handling). Build-verified unsigned (`GLSense.Addin.Core`, `GLSense`: 0 errors, 0
+warnings). Reflection on the compiled DLL confirmed the parameter parsing and the exact request
+JSON. Not yet tested in Excel against a server that returns the new columns.
+
+### 92.1 Correction: the result is its own "Full Journal Entry" sheet, not a subledger sheet
+
+The first version misread the design. The result is the whole journal entry (all lines of that
+header), i.e. journal data at a finer level, not subledger data. Changed:
+- New `DrilldownType.JE` ("Full Journal Entry"), local metadata key `JOURNAL`. Tab color
+  `(255, 230, 128)`, a deeper shade of the journals yellow `(255, 255, 192)`.
+- `DD_FJE.cs` writes ddType `JE`: sheet `{sheet}_JE_{cell}`, A1 `Full Journal Entry`, A3 the
+  `FJE_DD_PARAMETERS` value (e.g. `1~~4396146`), consolidated object `…*JE*{params}`. The progress
+  window title is `Full Journal Entry`.
+- `DDDatatoWorksheet.IsJournalOrSubledger` includes `JE`, so the sheet gets subledger link styling
+  and attachment links. Full-journal links are not added on a `JE` sheet itself.
+- Host `IsJournalsDrilldown` also returns true for A1 `FULL JOURNAL ENTRY`, or a name/marker with
+  `_JE_` and no `_SL_`. That enables `RibSubledgerDD` on the sheet and makes a double-click there
+  resolve to a subledger drilldown. A1 is the reliable check: `SanitizeSheetName` cuts names at
+  29 chars, which can drop `_JE_`.
+- A submitted (background) FJE job comes back with ddType `JE` from the description and is
+  written the same way.
+
+**Status**: AIPowered `11.1.3`. Build-verified unsigned (Debug, 0 errors, 0 warnings). Not yet
+tested in Excel.
+
+## 93. `ViewModels\GLSubmittedJobsViewModel.cs` / `Views\GLSegmentDiscovery.xaml.cs` / `Views\GLLOVs.xaml.cs` / `Drilldowns\DDDatatoWorksheet.cs` (Cancel did not stop the work, OISR-22828)
+
+- **Reported:** cancelling a Download outputs job on the Process screen left Excel hanging. The
+  log showed that Cancel only hid the busy overlay: the `drilldown-data` request carried on, its
+  response arrived after the user had moved on, and the sheet was then written with no progress
+  window. Writing a large sheet took over a minute.
+- **Root cause:** `GLSubmittedJobsViewModel.ShowBusyAsync` gave the overlay a no-op cancel action
+  (`await Task.CompletedTask`). Every request used its own private `CancellationTokenSource`
+  (300 s or 3600 s), which the Cancel button never reached. Log and snapshot downloads used an
+  HttpClient with no token and no timeout.
+- **Fix (Process screen):**
+  - `ShowBusyAsync` now creates `_busyCts` and the overlay Cancel cancels it.
+  - `BusyToken` is linked into the jobs-list call (300 s) and the drilldown-data call (3600 s).
+    It is also passed to the file downloads (`GetAsync`, `CopyToAsync`); a partly written file is
+    deleted.
+  - The job loops check it, and it is checked again after the response, before any sheet is
+    written.
+  - A user cancel shows "<Task> task cancelled." (Loading jobs / Download logs / Download
+    outputs). A real timeout keeps the old messages.
+  - `catch (OperationCanceledException) when (UserCancelled) { throw; }` sits ahead of the
+    existing generic catches, so a user cancel isn't logged as an error or turned into
+    "Error downloading ...".
+- **Same bug, fixed in the same change (audit of every Cancel in the add-in):**
+  - **Segment Discovery Insert:** the overlay had no cancel action, so the write loop ignored
+    Cancel. The loops now stop at the next dispatcher pump or yield, and the user sees
+    "Insert cancelled. N of M value(s) were written." Cells already written, and rows/columns
+    already inserted in Insert mode, stay.
+  - **LOVs Copy LOV:** the cancel token was never checked, so the validation list and comment
+    were still applied and "LOV copied successfully" was shown. It is now checked after the LOV
+    sheet is prepared and after the name clean-up, before the target range is touched. The
+    existing "Operation cancelled by user." message is shown.
+  - **`DDDatatoWorksheet`:** each stage swallows `OperationCanceledException`, so a cancel
+    mid-write left a half-built sheet. `PrepareWorksheet` now records a sheet it adds itself
+    (`_createdSheet`). On cancel, the `finally` block deletes it before `DisplayAlerts` is
+    restored, and sets `WasCancelled` for the caller. A reused existing sheet can't be
+    restored: it was already cleared, as before.
+- **Audit result, not changed:** every `GLWaitWindow` operation already passes its token
+  through. Remaining lower-impact gaps were left for separate tickets: Balance Configurator
+  reload (`CancellationToken.None`), the AIPowered cube commit before `LoadCubeLedgers`, the
+  "Loading periods" fetch, single-sheet Reset, and the login post-steps.
+- **Status:** 11.1.3 only (FinalWorkingCode and AIPowered), per developer. Build-verified.
+  Not yet tested in Excel.
+
+## 94. `ViewModels\GLSubmittedJobsViewModel.cs` / `Drilldowns\DDDatatoWorksheet.cs` (Process screen: Excel froze downloading a huge output, OISR-22830)
+
+- **Reported:** Download outputs for process 2348724 (an SL drilldown over 5,681 journal lines)
+  froze Excel and the overlay timer stopped. The log shows the `drilldown-data` body took 90 s
+  (643,673,049 characters, ~1.3 GB as a .NET string; the server file is 647 MB). Nothing was
+  logged after that.
+- **Root cause:** everything after the download ran synchronously on Excel's UI thread over that
+  one string:
+  - `LogUtility.LogDebug(response)` copied the whole body into a log line (Debug was on). This is
+    where the log stops. FWC only.
+  - Then a full `ApiResponseHelper.Parse<JsonElement>`, and a second full deserialize in
+    `DDDatatoWorksheet.TryDeserializeDrillData`.
+- **Fix:**
+  - `DownloadDrilldownAsync` no longer uses `ApiHelper.ServerAPI`. New `DownloadToFileAsync`
+    streams the body to `GLSense_Logs\Temp\<timestamp>_drilldown-data_<processId>.json`: same HttpClient setup
+    as `DownloadFileAsync`, the busy token linked with the 3600 s timeout, and -1 returned on an
+    HTTP error status.
+  - The file is deserialized with `JsonSerializer.DeserializeAsync<DrillDownQueryData>` inside
+    `Task.Run`, so Excel stays responsive while it parses. No giant string is built, nothing is
+    parsed twice, and the body is never logged.
+  - A `status` other than "success" shows the server `msg`.
+  - The parsed object goes to `DDDatatoWorksheet`. `TryDeserializeDrillData` has a new case 0:
+    it returns an already-parsed `DrillDownQueryData` as is.
+  - In `finally` the file is deleted (success, error and cancel) unless Debug is on. With Debug
+    on it is kept and its path is logged.
+  - Per the developer: no size prompt and no record limit. The writer's existing Excel-row check
+    (more than 1,048,576 rows) still applies; it now runs after a background parse instead of a
+    UI-thread one.
+  - (An earlier draft of this fix had a 300 MB "continue?" prompt and a string-based record
+    counter. Both were removed before commit.)
+- **Large texts out of the main log (all API calls), per developer:** new `LargeLogText` (FWC
+  `Utilities\LargeLogText.cs`, AIPowered `GLSense.Shared\LargeLogText.cs`).
+  - Text over 100 KB (102,400 chars) is written in full to `GLSense_Logs\Temp\<timestamp>_<name>.json`.
+    The main log gets the first 1,000 characters plus `[N chars - full text saved to <path>]`.
+  - Used by `ApiHelper.LogResponseDetails` (Debug-only response logging; it used to write every
+    body in full, by design) and by `LogRawJson` (written even with Debug off).
+  - `LargeLogText.CleanUp` runs at add-in start (FWC `AddinModule_AddinInitialize`, AIPowered
+    `AddinEntry.Initialize`). See the temp-folder bullet below.
+  - Verified on the compiled DLL: a small text is unchanged; a 209,014-char text becomes a
+    1,168-char log line plus a saved file identical to the input; an 8-day-old file is cleaned up
+    while a new one stays.
+- **Measured on 03-Nov after the file/background-parse change (process 2348724):**
+  - Output: 273,117 records x 95 columns.
+  - Download: 3 m 19 s; background parse: ~70 s. Excel was responsive throughout both.
+  - Sheet write: 1 m 46 s "Not Responding", peak ~9 GB. That broke down as 56 s building the
+    cell array, 9 s column formats, 28 s for one `Range.Value2` call, and 12 s post-formatting.
+- **Large outputs (more than 50,000 rows), `DDDatatoWorksheet`, all drilldown types (per developer):**
+  - `RunOnWorkerWhilePumping` builds the cell array (`PrepareDataArray`, pure .NET) on a worker
+    thread. Meanwhile the calling thread pumps its own message loop (`DispatcherFrame`) and
+    resumes on the same thread, with no `await` and so no thread switch before the Excel writes.
+  - The parsed records are released after the build (`drillsData.records = null`).
+  - `WriteInBlocks` writes 20,000 rows per `Range.Value2` call to the captured worksheet (never
+    `ActiveSheet`). Between blocks it shows "Writing rows N of M", checks Cancel and pumps
+    messages.
+  - A cancelled build no longer shows "Error in copying data to array".
+  - At 50,000 rows or fewer, the original single-pass path is unchanged.
+  - Still blocking: column formats and post-formatting (~20 s for this job).
+- **One temp folder, `GLSense_Logs\Temp`:**
+  - FWC `AppPaths.TempFilesPath` now points to `Temp` (was `TempFiles`), the same folder as
+    AIPowered's `PathProvider.Temp`. An old `TempFiles` folder is no longer used.
+  - `LargeLogText` takes that folder directly (no more `Logs\Temp`).
+  - `CleanUp` creates the folder at add-in load and deletes only its own timestamped files
+    (`yyyyMMdd_HHmmss_fff_*`) older than 7 days. Refresh working files are left alone.
+- **Retest after option 2 (20:07):**
+  - Excel responded at every 3 s sample. The sheet write took 62 s (was 1 m 46 s).
+  - Developer saw the modal Process screen freeze around the parse end (~8.6 GB of memory, i.e.
+    full-GC pauses), then drop behind Excel. Excel stayed disabled under the hidden dialog (busy
+    cursor) until clicked.
+- **Low-memory parse:** `DownloadDrilldownAsync` deserializes into `StreamedDrillDownData`.
+  - Its records are `TextRecord` (`TextRecordConverter`): each value is kept as its text, exactly
+    what `JsonElement.ToString()` gives (all `FillDataRows` uses). Column names are interned.
+    `ToQueryData()` hands the writer a normal `DrillDownQueryData`.
+  - Verified on the compiled DLL: 0 differences against the old path over 400,636 real cells
+    (5,220 records) plus tricky values (escapes, Unicode, exponents, true/false, null, nested,
+    null record).
+  - Memory held for 24,605 real records: 128 MB vs 543 MB (4.2x less, ~1.4 GB vs ~6 GB for the
+    full job).
+- **`GLJobsMonitor.BringToFront`** (called in `BtnDownloadOutputs_Click`'s `finally`): restores and
+  activates the window and toggles Topmost, so Excel is never left disabled under a hidden
+  dialog.
+- **Step line on the busy overlay** (developer request): `AppOverlay` has a new optional `BusyStep`
+  line between the message and the timer, set via `SetBusyStep` (thread-safe; hidden on every
+  `ShowBusyasyn`, so the other 23 windows using the overlay are unchanged).
+  - Process screen: `BusyStepAction` shows "waiting for the server", "Downloading: X of Y MB"
+    (every ~5 MB), "Reading the downloaded data" and "Writing N record(s) to Excel".
+  - `DDDatatoWorksheet.StatusCallback` adds the writer steps: preparing rows, creating the sheet,
+    column formats, "Writing rows N of M", links/table/formats, finishing.
+- **Process screen failed to open right after a drilldown (AIPowered only):** `InvalidCastException: Unable to
+  cast __ComObject to WorkbookClass` in `get_ActiveWorkbook` (`DrillDownJobsExists`). It works again about a
+  minute later, or after Refresh.
+  - Cause: .NET keeps one COM wrapper per object per AppDomain. A drilldown (e.g. `Workbook.Names.Add` for
+    `GLSense_DD_<job>`) leaves a generic `__ComObject` wrapper for the active workbook in Addin.Core. The
+    `ActiveWorkbook` reply crossing from the host is typed as the class `WorkbookClass`, and the existing
+    generic wrapper can't be cast to it until it is garbage-collected. Same family as 24.2/25.
+  - Fix: the view model reads names via `Application.Names` (the active workbook's names), whose type is the
+    interface `Names` - no coclass, so it can't hit the cast.
+  - A first attempt that moved these calls to the window's thread (`RunOnUiThread`) did not help (the error
+    recurred with it in the build) and was reverted.
+  - Residual risk, not changed: `DDDatatoWorksheet` still reads `ActiveWorkbook`, so a Download outputs
+    started right after a drilldown could hit the same cast.
+- **Excel stayed in Task Manager after closing, after a drilldown (found during OISR-22830 testing):**
+  - The debug trace showed GLSense's shutdown completing at 22:50:32 (Addin.Core unloaded, "teardown complete").
+  - Excel stayed alive with no window. It started `splwow64.exe` 6 s later, but ending it didn't help.
+  - The Save prompt appeared, so DisplayAlerts was restored.
+  - Most likely cause: the host's own leftover Excel COM wrappers (ribbon, double-click and sheet-event
+    objects). Unloading Addin.Core doesn't release them, and nothing finalizes them in an idle process.
+  - `AddinModule_AddinBeginShutdown` now ends with a double `GC.Collect()`/`WaitForPendingFinalizers()`, as
+    FinalWorkingCode's shutdown does.
+  - Not proven yet - needs a retest of the drilldown -> close case.
+- **Status:** 11.1.3 only (FinalWorkingCode and AIPowered). Build-verified; not yet tested in
+  Excel.
+
+## 95. Excel stays running (no window) after closing, once a drilldown sheet was written - async flows now resume on Excel's main thread
+
+- **Symptom:** after any drilldown to a worksheet (live, or submitted as a job), closing Excel left
+  `EXCEL.EXE` running with no window indefinitely. Excel always started `splwow64.exe` 1-6 s after
+  the close. Opening a new Excel while that one lived could make the add-in not show.
+- **Isolation (03/04-Nov):**
+  - Excel exits cleanly after open, login, opening windows, or writing segment values (with Save or
+    No). It sticks after any drilldown sheet write, with Save or No.
+  - GLSense's own shutdown completed every time ("teardown complete").
+  - Ending `splwow64.exe`, the save prompt, Adobe PDFMaker, Bitdefender (section 71) and a bisect to
+    `81d2b52` (also sticks) were all ruled out. **FinalWorkingCode 11.1.3 exits cleanly** with the
+    same steps.
+- **What the debuggers showed in the stuck Excel** (ClrMD + `cdb`/SOS, WinDbg from winget):
+  - Excel's main thread was idle in its normal message loop (`EXCEL!IdleLoop::MainLoopWaitMessage`).
+    It wasn't hung; it was waiting, as an automation server, for outstanding COM references.
+  - The Addin.Core AppDomain was unloaded. The only .NET COM wrappers left were Add-in Express's own
+    (`_Application`, `ICOMAddIn`), the same as FinalWorkingCode, so the extra reference was not a
+    .NET object.
+- **Ruled out by experiment** (all reverted):
+  - Addin.Core using its own Excel object instead of the host's cross-AppDomain proxy
+    (`IGLSenseContext.AcquireExcelUnknown`).
+  - 20 garbage collections in the host after shutdown.
+  - Running only `Enable/DisableExcelSettings` on the main thread. This stays in as a safety net,
+    see below.
+- **Cause:** the host calls `AddinEntry.OnRibbonAction`/`OnExcelEvent` on Excel's main thread across
+  the AppDomain boundary, where no `SynchronizationContext` is installed.
+  - Every async flow they start (drilldowns, refresh, reset...) resumed after its first `await` on a
+    ThreadPool (MTA) thread and kept calling Excel from there.
+  - A temporary diagnostic confirmed it: `DD_DatetoWorksheet` ran on a pool MTA thread, and the
+    drilldown's `finally` called `EnableExcelSettings` from one.
+  - Those cross-apartment calls leave COM proxies to Excel in the process MTA, which never shuts
+    down, so Excel can't quit.
+  - FinalWorkingCode runs these flows with a `SynchronizationContext` on Excel's main thread, so its
+    awaits resume there. This is the same root as the dispatcher-thread-loss notes (2.4/2.5).
+- **Fix:**
+  - `AddinEntry.EnsureExcelSynchronizationContext()`, called at the start of `OnRibbonAction` and
+    `OnExcelEvent`, installs a `DispatcherSynchronizationContext` for the WPF Dispatcher. That
+    Dispatcher is on Excel's main thread: `WpfAppManager.EnsureApplication` runs in
+    `AddinEntry.Initialize`. It only does this when on that thread and no Dispatcher context is set.
+  - Safety net: `CommonMethods.Enable/DisableExcelSettings` run on Excel's main thread via
+    `RunOnExcelThread` (synchronous `Dispatcher.Invoke`) if called from another thread.
+  - Blocking waits checked for deadlock risk: every `.Wait()`/`.Result` in Addin.Core waits on a
+    `Task.Run` body, or runs on BulkRefresh's own STA thread.
+  - Effect: work after an `await` in these flows now runs on Excel's main thread, as in
+    FinalWorkingCode. Long CPU work after an await now blocks Excel's UI where it didn't before.
+- **Verified:** drilldown then close: the sheet is written on thread 1 (STA) and Excel exits within
+  ~3 s (04-Nov 01:35). Needs a regression pass: other drilldowns (JL/SL/FJE/custom), Sheet/Book
+  Refresh, Reset, Process screen downloads, Reload (hot reload).
+- **Follow-up after the regression pass (04-Nov):**
+  - **Drilldown after Reload failed** with `InvalidCastException: __ComObject to WorkbookClass` in
+    `DDDatatoWorksheet` (`_Application.get_ActiveWorkbook()` through `RealProxy`). Cause: same family
+    as 24.2/25/94 - `ServiceLocator.ExcelApp` was the host's Excel object reached across the
+    AppDomain boundary, so every Excel object Addin.Core got back was a remoting copy. 35
+    `ActiveWorkbook` calls are exposed to it.
+  - Fix: restored Addin.Core's own Excel object.
+    - `IGLSenseContext.AcquireExcelUnknown()` (host `GLSenseContext`:
+      `Marshal.GetIUnknownForObject(ExcelApp)`).
+    - `ServiceLocator.Initialize` (on Excel's main thread) turns the pointer into a local Excel
+      object (`Marshal.GetObjectForIUnknown`, then `Marshal.Release`).
+    - `ServiceLocator.ExcelApp` returns it. If the host can't provide the pointer (e.g. a newer
+      Addin.Core from Online Reload on an older host), it falls back to the host's object with a
+      warning.
+    - `ServiceLocator.Reset()` (shutdown and reload) does `FinalReleaseComObject` plus a double
+      `GC.Collect`/`WaitForPendingFinalizers` in Addin.Core's domain before it unloads.
+    - It was also in the build of the successful stuck-Excel run.
+  - **Reload left the old cube/ledger on the ribbon** while logging out: the ribbon belongs to the
+    host and survives the reload, but `AddinEntry.Initialize` only set the `LoggedOut` state. It now
+    calls `ResetLoginState()` (clears the RibGetCube caption, Ribledger and RibSegS, then
+    `LoggedOut`), like Logout.
+
+## 96. Manifest `release` flag controls the Online Reload list (GLSense and XLEdge AIPowered 11.1.3)
+
+- **Rule (user-confirmed):** a server release is offered in Online Reload only when its `release` is `true`, `"true"`/`"TRUE"` (any case), blank, or missing. `false`, `"false"` or any other value hides it. Several fix builds can be published, with only the last one, the build users actually get, set to `true`.
+- **Code:** `GLSense\Views\OnlineReleaseFilter.cs` (called in `GLReloadSourcePicker.LoadOnlineReleasesAsync`) and `XLEdge\Online\OnlineReleaseFilter.cs` (called in `OnlineReleaseClient.GetReleasesAsync`).
+  - The flag is read from the raw index JSON, not from `VersionInfo`. `VersionInfo` crosses the AppDomain boundary, so a new field could break an older core loaded from Release History.
+  - Offline mode and Release History are not filtered, so a specific build can still be tested by hand.
+- **Defaults:** both build scripts now write `"release": true` (`GLSense.Addin.Core\post_build.cmd`, `XLEdge.Addin.Core\post_build.ps1`). To hide a release, set it to `false` by hand in the server's `glsenseManifests.json` / `xledgeManifests.json`.
+- **Manifest alignment:** XLEdge's `manifest.json` now matches GLSense's fields, order and layout: three-part version, `release`, default notes "Published by the XLEdge build process". It also keeps `contractVersion`, which the XLEdge loader requires. That change is XLEdge commit `6079cd6`.
+- **Verification:**
+  - GLSense: built unsigned; the filter was run against the compiled DLL over 10 cases.
+  - XLEdge: a new `Client_ListsOnlyReleasesMarkedForRelease` test passes. The full suite has the same 3 failures as before (comparisons with the XLEdge 11.1.2 worktree).
+  - Not yet tested against the live server.
+
+## 97. 11.1.3 deployed to ORBIT `development` (05-Nov-2026) - QA testing pending
+
+GLSense and XLEdge AIPowered 11.1.3 went to orbitbootapp `development` (`ddc6442acb`). The build commits were GLSense `e4aee8e` and XLEdge `3566997`.
+
+**Read `docs/releases/11.1.3-development.md` first when resuming.** It lists:
+- what was deployed: MSI codes, core release folders, checksums;
+- the ticket and Jira state;
+- the changes made during the release;
+- what to do for each kind of QA result, including the DLL-only follow-up release.
+
+The procedure itself is in `docs/DEPLOYMENT.md`.
+
+## 98. Formula builders left `&`/`$`/`!` literals unquoted (OISR-22864, ported from FinalWorkingCode 11.1.1 `dcacf99`)
+
+Segment value `XG&O` from the Account Assignment window went into `GLSense_GetBalance` unquoted
+(`@XG&@O`, `#NAME?`), so Sheet Refresh left "Click Refresh...". All 7 `FormatFormulaArg` copies
+(`GLConfiguratorViewModel`, `GLSegmentFuncsViewModel`, `GLDailyRatesViewModel`, the 4 period models)
+returned values containing `!`/`$`/`&` raw; they now leave a value unquoted only if
+`ExcelRangeHelper.IsRealRange` says it is a real reference. `GetFinalPeriodValue` returns the period
+already formatted so the CTD/JED `period&"~"&endPeriod` isn't re-formatted. `ExcelRefEditControl` and
+both Discoverers double `'` in sheet names, `SegmentDiscoverer` doubles `"` in its literals, and
+`ClsFormulaParser.ExtractArguments` accepts `)` inside quoted literals. Not changed: the per-window
+address builders in `GLDailyRates`/`GLLOVs`/`GLRollerGroups`/`GLSegmentValues` code-behind still don't
+double `'` in sheet names. DLL-only release to `development`. Build-verified.
+
+## 99. Typed segment value containing `$` dropped from drilldowns (OISR-22860, ported from FinalWorkingCode 11.1.1 `b9ddb1b`)
+
+- **Reported:** after the server fix (orbitbootapp PR 1075) a formula with a segment value typed as
+  text containing `$` (e.g. `"11$9"`) refreshed, but Balance drilldown from it failed with "Server
+  encountered an error": the add-in sent the drilldown with no segments (`Account: ~`).
+- **Cause:** `Helpers\ClsFormulaParser.cs` treated any argument containing `$` as a cell reference.
+  `FormulaArgs_Values` / `ExtractArguments_WithValues` / `ResolveArgument` / `TrySplitArguments` sent
+  `"11$9"` to `ValueFromReference` -> `RangeVal`; `IsRealRange("11$9")` is false so it returned a lone
+  `"`, `BalanceDtoModel` normalised it to empty and `CreateSegment` dropped it. Literal ranges/lists
+  (`"11$9~11$12"`, `|`, `;`) too, and a literal shaped like an address (`"AB$12"`) was replaced by that
+  cell's value.
+- **Fix:** new `IsQuotedLiteral` (whole argument is one Excel text constant, `""` escapes allowed);
+  such arguments are never resolved as references. `TrySplitArguments` takes the flag from the raw
+  quoted argument so a `;` literal still splits. References, `INDIRECT(...)` and `&` concatenations
+  resolve as before. `"$E$5"` in quotes is text, as in Excel and on the server.
+- **Not changed:** a literal concatenated with a reference (`"11$9~"&$E$6`), `Formula_ArgsCount`,
+  `SegmentSelectorViewModel.IsExcelReference`.
+- **Status:** AIPowered `11.1.3` (FinalWorkingCode fix on `11.1.1`/`11.1.2`). Compile-checked; same
+  code as FinalWorkingCode, which was verified by reflection (19 cases). Shipped to `development` as a
+  DLL-only release together with OISR-22864, replacing the 22864-only release `v11.1.3_2026-11-06T15-32-11`.
+
+## 100. Balance Configurator pane empty / missing after a hot reload (`GLSense\GLConfiguratorPane.cs`)
+
+- **Reported:** after Reload / Release History, the Balance Configurator task pane showed no
+  controls (or nothing). Fine after a fresh MSI install. Reproduced, then verified fixed, in two
+  test runs on 06-Nov-2026.
+- **Cause:** the host pane survives the reload, but embedded the core's WPF window only once, in
+  `HandleCreated`. The outgoing core's `Shutdown()` -> `ConfiguratorPaneHost.Close()` destroys that
+  window; the pane kept the dead handle and never asked the new core for content again, so
+  `RelaunchPane` reached a new core with `_content == null` and did nothing.
+- **Fix:** `EnsureContentEmbedded()` re-runs `EmbedContent()` when `_contentHwnd` is zero or not a
+  live window (`IsWindow`); `RelaunchPane()` calls it first (Balance toggle and selection-change
+  refresh). Log line: `GLConfiguratorPane.EnsureContentEmbedded: content window missing (hot
+  reload?) - re-embedding.`
+- **Not covered:** a pane already open during the reload stays blank until a cell click or toggle.
+- **Delivery:** host DLL change, needs an MSI release (hot reload doesn't replace the host).
+- **Open:** in the Debug-on test reload, ~21 s passed with nothing logged between the logout and
+  the old core's shutdown (progress-window show, then the first 180 ms stage). Not yet known
+  whether Debug causes it; needs timing lines and a Debug-off comparison.
+
+## 101. Login window closed silently: WebView2 0x800700AA "resource in use" (`Helpers\WebView2InitRetry.cs`)
+
+- **Reported (09-Nov-2026, OL-TEJASWIP, 11.1.3):** every Login click from 11:22:47 opened and
+  immediately closed the window. The log showed `WebView2 initialization failed in GLLogin`,
+  `COMException 0x800700AA` (ERROR_BUSY) from `CreateCoreWebView2ControllerAsync`, for about 30 s,
+  until Excel was restarted. The browser profile folder (`GLSense_Logs\BrowserLogs\Login`) was
+  still held by something, most likely a WebView2 browser process that hadn't finished exiting.
+  Not proven: no Debug log or process list from that moment.
+- The earlier "Operation cancelled by user: Connecting to server..." lines come only from the
+  busy overlay's Cancel button firing (mouse, or Enter/Space while it has focus). The user says she
+  didn't press Cancel; unresolved. "Navigation was cancelled by the user." is also written when a
+  new server pick cancels a running connect in code.
+- **Fix:** new `WebView2InitRetry.EnsureAsync` creates a fresh environment and initializes the
+  control, retrying every 1 s for up to 15 s on 0x800700AA, showing "Waiting for the browser
+  component to become available..." on the overlay. Verified from the WPF control's IL that
+  `EnsureCoreWebView2Async` re-runs init when the previous attempt faulted. Used by `GLLogin` and
+  `GLDrilldownCustomization`. If init still fails, both now show a warning ("Unable to start the
+  browser component... close Excel completely and reopen it") instead of closing/blanking silently.
+- **Status:** 11.1.3 (also FinalWorkingCode 11.1.3, via `WebView2Warmup`). Build-verified only;
+  the busy case itself wasn't reproduced.
+- **Same-issue sweep (pattern: WebView2 init on a busy profile folder fails and the window closes or
+  blanks silently):** every `CoreWebView2Environment.CreateAsync`/`EnsureCoreWebView2Async` in both
+  trees and XLEdge. Covered: GLLogin, GLDrilldownCustomization (both trees). `WebView2PopupWindow`
+  reuses its parent's already-running environment, so it can't hit a busy folder. XLEdge's task pane
+  keeps one environment per session and already drops a failed one and retries on the next attempt.
+  Nothing left open.
+
+## 102. No GLSense window opens after using Excel for a while: stale Excel window handle (OISR-22873)
+
+- **Reported (09-Nov-2026, 11.1.3):** after some time, every GLSense window (Broadcast, Rollup
+  Groups, function windows...) failed to open. Log: `Win32Exception: Invalid window handle` from
+  `CreateWindowEx` in `BaseWindow.ShowDialog`.
+- **Cause:** the host read `ExcelApp.Hwnd` once at ribbon load (`AddinModule.cs`) and every window
+  used it as its owner (`ServiceLocator.ExcelHandle`). `Application.Hwnd` is the active workbook's
+  window; once that workbook window is closed (e.g. the Book1 Excel started with), the handle is
+  dead and every dialog fails until Excel restarts. FinalWorkingCode reads `ExcelApp.Hwnd` per
+  window open, so it isn't affected.
+- **Fix:** `ServiceLocator.ExcelHandle` (core, DLL-only) and `GLSenseContext.ExcelHandle` (host,
+  needs an MSI; Reload picker, Release History, reload progress window, task pane focus) read
+  `Application.Hwnd` live, falling back to the cached handle if that fails or returns 0.
+- **Status:** 11.1.3, build-verified. Repro not yet run (open Book1 + a second workbook, close
+  Book1, open any GLSense window).
+- **Same-issue sweep (pattern: an Excel window handle read once and reused later):** every
+  `.Hwnd`/`ExcelHandle`/`IntPtr` field or static in both GLSense trees and XLEdge. GLSense: all
+  remaining uses read `Application.Hwnd` live or go through the now-live `ExcelHandle`
+  (`BaseWindow` reads it per window instance; `WindowLoadingPlaceholder`/`RibbonComboPrimer` get it
+  from callers; `GLConfiguratorPane._contentHwnd` is the pane's own content, handled in §100).
+  FinalWorkingCode passes `ExcelApp.Hwnd` on every open. XLEdge reads it live everywhere
+  (`ReadExcelHandle`, `XLEdgeAppState.ExcelHandle`). Nothing left open.
+
+## 103. Closing Excel while a GLSense dialog is open: ThreadAbortException in AddinBeginShutdown (from XLEdge OISR-22874)
+
+- **Found in XLEdge (OISR-22874), same design here:** Excel closed while a core dialog was open runs
+  `AddinBeginShutdown` inside that dialog's message loop. Unloading the core's AppDomain from there
+  aborts the current thread (it still has core frames on its stack); the `ThreadAbortException`
+  reaches Add-in Express ("Thread was being aborted" box) and Office disables the add-in, so the
+  ribbon is gone on the next start.
+- **Fix (host, needs an MSI):** `AddinModule_AddinBeginShutdown` checks, before shutting the core
+  down, whether Excel's window is disabled (`IsWindowEnabled(ExcelHandle)`) - a modal WPF dialog
+  disables every window on its thread, Excel's included (verified with a WinForms + WPF
+  `ShowDialog` script). If so, it still calls `Addin.Shutdown()` but skips `Loader.Unload` (Excel is
+  exiting anyway). Normal closes are unchanged. No contract change.
+- **Status:** 11.1.3, build-verified; not reproduced in Excel.
+- **Same-issue sweep (pattern: unloading the core's AppDomain while the current thread is inside a
+  core call):** every `Loader.Unload` caller in GLSense and XLEdge. GLSense `ReloadAddinCore` runs
+  from a ribbon click or a host window, never inside a core dialog (Excel is disabled while one is
+  open). XLEdge `CoreHost.Reload` already refuses while the core is busy; `CoreHost.Shutdown` is fixed
+  under OISR-22874. FinalWorkingCode has no AppDomain. Nothing left open.
+
+## 104. Account Assignment: a typed value containing `$` or `!` reopened as a cell reference (OISR-22875)
+
+- **Reported (09-Nov-2026, 11.1.3):** values picked directly in the Account Assignment window (Account
+  `11$9`) showed in that segment's Reference box when the configurator was reopened.
+- **Cause:** `SegmentSelectorViewModel.IsExcelReference` treated any part containing `$` or `!`, or
+  starting with "Sheet", as a reference (left alone by OISR-22860, section 99).
+- **Fix:** it now uses `ExcelRangeHelper.IsRealRange` (regex only, no Excel call), the same test as
+  OISR-22864. Checked on the compiled DLL: `11$9`, `11$9~11$12`, `--11$9`, `11$9,12$3`, `!@#2`,
+  `Sheet1` -> value; `QA!$E$3`, `$E$3`, `'QA'!$E$3`, `QA!F$1` -> reference. Limitation: a typed value
+  that is itself a valid address (`AB$12`) still reopens as a reference - the formula text can't tell.
+- **Same-issue sweep (pattern: "contains `$`/`!` means reference"):** `ClsFormulaParser` was handled
+  by OISR-22860; the `$` tests in `PeriodsDiscoverer` and the date view models only see periods/dates.
+  FinalWorkingCode has the same method - fixed on 11.1.1, 11.1.2, 11.1.3. **Open:** FinalWorkingCode
+  `11.1.3` never got OISR-22864/22860 (its `FormatFormulaArg` copies still use the old `$`/`!` test);
+  they're only on FinalWorkingCode 11.1.1/11.1.2 and AIPowered 11.1.3.
+- **Status:** build-verified; not yet tested in Excel.
+
+## 105. Windows opened at the screen's top-left: centering on a minimized Excel window (OISR-22877)
+
+- **Reported (09-Nov-2026, 11.1.3, same machine/session as OISR-22873):** suddenly every GLSense
+  window opened at the top-left corner. Nothing in the log.
+- **Cause (inferred from code + symptom):** `BaseWindow.CenterOverExcelOnce` centers on the Excel
+  handle (cached at ribbon load before the OISR-22873 fix). A minimized window reports about
+  (-32000,-32000), and `PositionAroundCenter`'s work-area clamp turns that into the top-left corner.
+  If that window is closed instead, you get OISR-22873.
+- **Fix:** `CenterOverExcelOnce` and `WindowLoadingPlaceholder` skip a minimized (`IsIconic`) or
+  off-screen (`Left`/`Top` <= -30000) Excel window and center on the work area instead. With the
+  OISR-22873 live-handle change the handle is normally the active, visible window.
+- **Same-issue sweep (pattern: centering on Excel's window rect):** `GLConfiguratorPane` uses
+  `GetWindowRect` only for pane sizing; host windows use WPF owner centering. FinalWorkingCode reads
+  `ExcelApp.Hwnd` per open with native centering - not changed. XLEdge not checked here.
+- **Status:** AIPowered `11.1.3`, build-verified; not reproduced in Excel (minimize the workbook that
+  was active when GLSense loaded, activate another, open any GLSense window).
+
+## 106. Reload / Version History windows: QA review (OISR-22872, ported to XLEdge)
+
+- **Issue 1 - dates:** new `GLSense\Views\VersionDateText.Format` shows version dates like the About window's Build Date
+  ("dd-MMM-yyyy hh:mm tt"); display only - storage and comparisons keep the raw "yyyy-MM-ddTHH:mm:ss". Used in the Version
+  History grid (sorted on the raw value), its loaded-version line and Remove prompt, the Online list and details, and the
+  Offline/no-update messages.
+- **Issue 2:** ribbon ScreenTip "GLSense Version History" (was "Release History"); the open-failure box title too.
+- **Issue 3:** a 404 on the release index (no `glsenseManifests.json` published) or no new version now logs "No updates
+  found." and shows a "No Updates Found" box, not "Failed to load the release list: Not available (404)...". The step log no
+  longer shows the server URL (it goes to the debug log).
+- **Issue 4 - notes:** Version History has a read-only notes box for the selected version (long notes no longer only in a
+  tooltip). `ReleaseNotes.txt` line 1 reworded without the customer code and internal terms; `docs/DEPLOYMENT.md` and the
+  file's own header now say to write a plain summary, not the Jira title. Notes already deployed on the server (11.1.3
+  `development`) keep the old text until the next release.
+- **Issue 5 / Point 6:** user-visible "GLSense.Addin.Core" wording removed: RibReload / RibReleaseHistory SuperTips, the
+  startup and reload "no usable version" messages, and the picker's login-status lines. Point 6: users never rebuild
+  anything - "Rebuild GLSense.Addin.Core" was a developer note in the RibReload SuperTip.
+- **Point 7:** Source header and cell tooltips explain Install (came with the installer, set up at Excel start), Online
+  (downloaded with Reload > Online) and Offline (loaded from a folder with Reload > Offline). Those are the only values.
+- **Point 8:** Remove deletes the version's `Versions\` folder and its `ReleaseHistory.json` entry on this computer only
+  (`ReleaseHistoryStore.Delete`); never the running version; the server is untouched, so Online lists it again as New.
+  Tooltip and confirmation now say so.
+- Same in XLEdge (AIPoweredXLEdge.md, OISR-22872), which also drops "core version" from its host messages.
+- **Same-issue sweep (pattern: internal names / raw ISO dates in user-facing text):** host `AddinModule.cs` messages and
+  both windows covered; `GLReloadProgressWindow` has neither. Core windows already format dates (About). Nothing left open.
+- **Status:** host changes - need an MSI. Build-verified; date/source helpers checked on the compiled DLL. Not yet seen in Excel.
