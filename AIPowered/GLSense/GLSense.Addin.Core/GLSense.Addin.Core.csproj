@@ -147,6 +147,7 @@
     <Compile Include="Helpers\CompressionHelper.cs" />
     <Compile Include="Helpers\SafeDeleteHelper.cs" />
     <Compile Include="Helpers\SnapshotDialogHelper.cs" />
+    <Compile Include="Helpers\WebView2InitRetry.cs" />
     <Compile Include="Utilities\BatchCalcScope.cs" />
     <Compile Include="Helpers\ApiHelper.cs" />
     <Compile Include="Helpers\ApiOperationHelper.cs" />

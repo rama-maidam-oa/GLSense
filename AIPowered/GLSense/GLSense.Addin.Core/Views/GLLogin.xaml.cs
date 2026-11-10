@@ -245,15 +245,23 @@ namespace GLSense.Addin.Core.Views
                     AllowSingleSignOnUsingOSPrimaryAccount = true
                 };
 
-                // 3) Create the environment with options + user data folder
-                var env = await CoreWebView2Environment.CreateAsync(
-                    browserExecutableFolder: null,
-                    userDataFolder: webViewLogsPath,
-                    options: envOptions);
-
-                // 4) Initialize WebView2 with that environment
-                _webViewInitTask = webView.EnsureCoreWebView2Async(env);
+                // 3+4) Create the environment and initialize WebView2 with it, retrying while
+                // the profile folder is still in use (0x800700AA).
+                bool busyShown = false;
+                _webViewInitTask = WebView2InitRetry.EnsureAsync(
+                    webView,
+                    () => CoreWebView2Environment.CreateAsync(
+                        browserExecutableFolder: null,
+                        userDataFolder: webViewLogsPath,
+                        options: envOptions),
+                    () =>
+                    {
+                        busyShown = true;
+                        AppOverlayControl.ShowBusyasyn("Waiting for the browser component to become available...");
+                    });
                 await _webViewInitTask;
+                if (busyShown)
+                    await AppOverlayControl.HideBusyAsync();
 
                 // 5) Hook device permission handler and diagnostics after CoreWebView2 is ready
                 webView.CoreWebView2.PermissionRequested += CoreWebView2_PermissionRequested;
@@ -280,6 +288,7 @@ namespace GLSense.Addin.Core.Views
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, "WebView2 initialization failed in GLLogin");
+                CommonFunctions.GLSenseMessage(WebView2InitRetry.InitFailedMessage, MessageBoxImage.Warning);
                 Close();
             }
         }
