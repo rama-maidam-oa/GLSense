@@ -389,8 +389,9 @@ namespace GLSense.ViewModels
                 AddParsedSelection(s, entry);
         }
 
+        // OISR-22875: only a real A1 address/range is a reference - a typed value such as 11$9 stays a value.
         private static bool IsExcelReference(string part) =>
-            part.Contains("$") || part.Contains("!") || part.StartsWith("Sheet", StringComparison.OrdinalIgnoreCase);
+            ExcelRangeHelper.IsRealRange(part);
 
         private string ResolveSegmentValueText(string segmentValues)
         {
