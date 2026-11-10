@@ -4948,6 +4948,37 @@ elsewhere in this same region never needed a cast (assigning a `double` into an
 Not yet rebuilt/retested end-to-end by the user for the actual Unhide behavior fix itself
 (48.3's logic change) - only the compile errors are resolved so far.
 
+## 49. `ViewModels\GLConfiguratorViewModel.cs`: Balance Configurator inserted the formula with no Budget/Encumbrance value (fixed in **both** codebases) (OISR-22699)
+
+Reported: with Actual Flag set to Budget, Encumbrance or Actual+Encumbrance and no Budget
+name / Encumbrance type selected, Insert still wrote the formula, with an empty `""` in the
+Budget/Encumbrance slot (`GetBudgetEncumbranceValue()` just returns the empty field value).
+`ValidateMandatoryFields()` checked Ledger, Activity, Balance Type, Currency, Currency Type,
+Actual Flag, the period/date fields and the account assignment, but never the
+Budget/Encumbrance field that the chosen Actual Flag depends on.
+
+Fixed by adding `ValidateActualFlagSpecificFields()`, called from `ValidateMandatoryFields()`
+right after the required-field checks. It reads the Actual Flag through `GetFieldValue()`
+(so a flag supplied by cell reference is resolved too; matches either the short name
+`B`/`E`/`A+E` or the full name) and calls the existing `ValidateRequired()` on `BudgetField`
+for Budget, or on `EncumbranceField` for Encumbrance and Actual+Encumbrance. A selection or a
+cell reference both count as filled. The thrown message goes through the existing
+`BuildFormulaArguments()` catch, which shows the overlay warning toast and stops the insert,
+so nothing is written to the cell. Actual (`A`) is unaffected. The same Insert path is used
+when editing an existing formula, so that is covered too.
+**Status: fixed in FinalWorkingCode and AIPowered on `11.1.1`.** Build-verified.
+
+- **Follow-up: a cell-referenced Actual Flag dropped the Budget/Encumbrance value.**
+  `GetBudgetEncumbranceValue()` (the formula argument) and `AddConditionalBudgetEncumbrance()`
+  (the parameter summary) picked the Budget or Encumbrance field from
+  `ActualFlagField.ComboValue` only. With the Actual Flag supplied by cell reference the
+  dropdown is empty, so both returned nothing and the formula was written with `""` even when
+  the Budget/Encumbrance reference box was filled. Added `GetActualFlagType()`: it reads the
+  flag through `GetFieldValue()` (cell reference resolved), matches B/E/A+E or the full names
+  case-insensitively, and returns Budget/Encumbrance/Actual+Encumbrance (or the raw value).
+  Both methods and `ValidateActualFlagSpecificFields()` now use it, so the check and the
+  written formula always agree. Build-verified.
+
 ## Deployment note (important when a fix "doesn't seem to work")
 
 `GLSense.Addin.Core` loads into a separate, shadow-copied AppDomain

@@ -1158,3 +1158,211 @@ there.**
   - `GLDrilldownCustomization`: the WebView2 `BrowserVersion` (was `LogDebug`).
   **Status: FinalWorkingCode `11.1.0`, `11.1.1` and `11.1.2`; AIPowered `11.1.2` (its section
   81).** Build-verified. Logging only, so there's no behavior change.
+
+## Multi-ledger FSG templates: period functions, Periods Discoverer and period windows (OISR-22700)
+
+- **Reported: the template of an FSG report scheduled with several ledgers kept showing
+  "Click Refresh..." after Sheet Refresh.** FSG reports scheduled in the Orbit application
+  can use more than one ledger, and the downloaded template carries them as one `;`-joined
+  Ledger value, e.g. `Vision Operations (USA);Vision Brazil SL (USD)`. The period UDFs
+  passed that whole string to `PeriodDataService.GetPeriodsForLedger`, whose
+  `CubeRecord.GetLedgerIdByName` lookup only matches a single exact name, so
+  `GLSense_GetPeriod` threw `Ledger '...;...' not found in selected cube` and returned
+  `#GETTING_DATA`. The sheet refresh itself was fine: the server returned every balance,
+  keyed by formulas with the real period (`"Jan-07"`). But every `GLSense_GetBalance` took
+  its Period from those failed cells, so its local cache key carried `xlErrorGettingData`
+  instead, never matched a returned balance, and fell back to "Click Refresh...".
+  `GLSense_GetBalance` itself never needed a change: it sends the full multi-ledger string to
+  the server, which already handles it.
+- **Rule (agreed with the user and a colleague):** split the Ledger value on `;` and check the
+  ledgers in the order given. For each one, check whether the local DB has period data for that
+  cube and ledger, then whether the requested period exists in it. Use the first ledger that
+  has the period; later ledgers are only checked when an earlier one has no period data or
+  lacks the period. If none has it, return the first ledger that had data, so the caller's own
+  "period not found" handling runs exactly as for a single ledger. A value without `;` takes
+  the old path unchanged. An earlier attempt that just made `GetLedgerIdByName` fall back to
+  the first listed ledger was reverted in favor of this rule, which keys off actual period data.
+- **Period UDFs** (`GLSenseExcelFunctions.cs`): new `PModel(string, Func<PeriodModel, bool>
+  periodMatch)` overload implementing the rule. All 8 period functions now call it with their
+  own notion of "the period exists": period name for `GetPeriod`/`GetPeriodStart`/
+  `GetPeriodEnd`/`GetPeriodNum`/`GetPeriodQuarter`/`GetPeriodYear`; year + period number for
+  `GetPeriodByYear`; date containment for `GetPeriodByDate` (date parsing moved ahead of the
+  period load so the match can use it). The unused `GetPeriods` helper was removed.
+- **Periods Discoverer** (`Utilities\PeriodsDiscoverer.cs`): same overload, duplicated per this
+  codebase's per-file convention, matching the active cell's period name. The cells it fills
+  still pass the full multi-ledger reference to `GLSense_GetPeriod`, which now resolves it.
+  On `11.1.2`, where the Discoverer also has a by-date mode, the base date/period name is now
+  resolved before the periods are loaded so the ledger choice can use it.
+- **Period windows** (`GLGetPeriod`, `GLGetPeriodByDate`, `GLGetPeriodByYear`,
+  `GLGetPeriodDetails`, `GLGetPeriodStartEnd`): each `ValidateLedgerFromFormula` did an exact
+  ledger-name lookup, so opening one on a multi-ledger formula showed "ledger not found" and
+  fell back to defaults. New `CommonFunctions.ResolveMultiLedger(ledgerValue, periodMatch)`
+  applies the same rule (falling back to the first ledger with data, then the first ledger
+  that exists in the cube) and the windows write the resolved name back into `funcValues`,
+  because each ViewModel's `ApplyFormulaParams` re-reads the ledger from there. `GLGetPeriodByDate`
+  also replaces `funcArgs[1]`: its ViewModel passes the raw argument to `ProcessLedgerField`,
+  so a `$C$7`-style reference would otherwise be re-read via `OnRefEditTextChanged` and
+  rejected by `MatchLedger`. Clicking Insert then writes the single selected ledger into the
+  formula, the same as these windows already did for any reference-supplied ledger.
+  **Status: user-verified in Excel on `11.1.1` (sheet refresh, Discoverer and the period
+  windows); released as the 16OCT2026 MSI. Ported to FinalWorkingCode `11.1.0` and `11.1.2`
+  and AIPowered `11.1.2` (its section 82), build-verified only there.**
+
+## `ViewModels\GLConfiguratorViewModel.cs` (Budget/Encumbrance required for their Actual Flag, OISR-22699)
+
+- **Reported: the Balance Configurator inserted the formula with Actual Flag Budget,
+  Encumbrance or Actual+Encumbrance and no Budget name / Encumbrance type selected.** The
+  formula went out with an empty `""` in the Budget/Encumbrance slot
+  (`GetBudgetEncumbranceValue()` just returns the empty field value).
+  `ValidateMandatoryFields()` checked Ledger, Activity, Balance Type, Currency, Currency Type,
+  Actual Flag, the period/date fields and the account assignment, but never the
+  Budget/Encumbrance field that the chosen Actual Flag depends on.
+- Fixed by adding `ValidateActualFlagSpecificFields()`, called from `ValidateMandatoryFields()`
+  right after the required-field checks. It reads the Actual Flag through `GetFieldValue()`, so
+  a flag supplied by cell reference is resolved too, and matches either the short name
+  (`B`/`E`/`A+E`) or the full name. It then calls the existing `ValidateRequired()` on
+  `BudgetField` for Budget, or on `EncumbranceField` for Encumbrance and Actual+Encumbrance; a
+  selection or a cell reference both count as filled. The thrown message goes through the
+  existing `BuildFormulaArguments()` catch, which shows the overlay warning toast and stops the
+  insert, so nothing is written to the cell. Actual (`A`) is unaffected. Editing an existing
+  formula uses the same Insert path, so it is covered too.
+  **Status: fixed in FinalWorkingCode and AIPowered (its section 49) on `11.1.1`.**
+  Build-verified.
+
+- **Follow-up: a cell-referenced Actual Flag dropped the Budget/Encumbrance value.**
+  `GetBudgetEncumbranceValue()` (the formula argument) and `AddConditionalBudgetEncumbrance()`
+  (the parameter summary) picked the Budget or Encumbrance field from
+  `ActualFlagField.ComboValue` only. With the Actual Flag supplied by cell reference the
+  dropdown is empty, so both returned nothing and the formula was written with `""` even when
+  the Budget/Encumbrance reference box was filled. Added `GetActualFlagType()`: it reads the
+  flag through `GetFieldValue()` (cell reference resolved), matches B/E/A+E or the full names
+  case-insensitively, and returns Budget/Encumbrance/Actual+Encumbrance (or the raw value).
+  Both methods and `ValidateActualFlagSpecificFields()` now use it, so the check and the
+  written formula always agree. Build-verified.
+
+## `AddinModule.cs` (Segment box not cleared after changing the Ledger, OISR-22789)
+
+- **Changing the Ledger from the ribbon left the old segment showing in the Segment box.**
+  `UpdateRibbonUI` (run by `Ribledger_OnChange` -> `PerformLedgerChangeAsync`) cleared
+  `RibSegS.Items` and reset `AppState.DefaultSegment`/`SegmentPickedIndex`, then reloaded the
+  new ledger's segments, but never cleared `RibSegS.Text`. The ribbon kept showing e.g.
+  "Account" while no segment was selected internally, so Discover treated it as unselected;
+  the old segment may not even exist in the new ledger's chart of accounts. Added
+  `RibSegS.Text = string.Empty` after `Items.Clear()`, the same as
+  `GLCubeDetails.UpdateRibbonForCube` already does on a cube change.
+  **Status: fixed in FinalWorkingCode on `11.1.1`, `11.1.2` and `11.1.3`.** Build-verified.
+
+## `GLSenseExcelFunctions.cs` (Account Type / Segment DFF showed "#Empty Response", OISR-22785)
+
+- **`GLSense_GetAccountType` and `GLSense_GetSegmentDFF` wrote the text `#Empty Response`
+  into the cell when the server had no value** (e.g. an account with no account type).
+  Both formulas parse the server reply through `ParseSegmentsApiResponse`, which returned that
+  literal when the extracted value was blank. It now returns an empty string, so the cell shows
+  blank. Nothing else checked for the `#Empty Response` text. The blank result is cached like any
+  other value, so a sheet reopened before login still shows blank. If Fusion shows a value the
+  server does not return, that is a server-side data issue the add-in cannot fill in.
+  **Status: fixed in FinalWorkingCode on `11.1.1`, `11.1.2` and `11.1.3`.** Build-verified.
+
+## `Drilldowns\DD_JL.cs` / `DDDatatoWorksheet.cs` (journal drilldown for PJTD, OISR-22795 / parent OISR-19531)
+
+- **Journal / Subledger / Unified drilldown from a PJTD balances drilldown sheet.** The server now
+  supports it (orbitbootapp PR #798) and returns a `PROJECT_TO_DATE_NET` amount column plus a new
+  key column `DRILL_DOWN4`. `DrilldownJl.GetDrilldownType` only mapped PTD/YTD/QTD and the
+  ENTERED/ACCOUNTED headers, so the PJTD column gave "Invalid selection"; `GetSearchTerms` had no
+  PJTD mapping; and `DDDatatoWorksheet.InternalHeaders` did not hide `DRILL_DOWN4`.
+  Added: a header match for `PROJECT_TO_DATE_NET` / `PJTD_NET` with or without underscores or
+  spaces, any case (compares the key with underscores removed) -> `PJTD`; `PJTD` ->
+  `DRILL_DOWN4`/`DRILLDOWN4`; `DRILL_DOWN4`/`DRILLDOWN4` hidden on drilldown sheets; the
+  "Invalid selection" message now lists `PROJECT_TO_DATE_NET` (and the missing " or " before
+  `ENTERED_DR`). The balance type sent to the server still comes from the drill key string.
+  Same change in the Finance template (`GLSenseFinanceTemplate_VBA_Fixes.md` #29).
+  **Status: fixed in FinalWorkingCode on `11.1.1`, `11.1.2` and `11.1.3`.** Build-verified; the
+  header mapping was checked by reflection on the compiled DLL.
+  **Removed again from `11.1.1` only (29-Oct-2026, at the user's request)**: the header mapping,
+  `PJTD` -> `DRILL_DOWN4`, the hidden `DRILL_DOWN4` columns and `PROJECT_TO_DATE_NET` in the
+  message were reverted. The " or " before `ENTERED_DR` was kept. Still present on `11.1.2`/`11.1.3`.
+
+## `Drilldowns\DDDatatoWorksheet.cs` (local customization ignored a calculation column's display sequence, OISR-22802)
+
+- **A calculation column saved to the workbook showed as the last drilldown column instead of at
+  its display sequence.** "Save" in `GLDrilldownCustomization` stores the raw `drilldown-metadata`
+  response, and the server appends personalized calc columns (`personalizedCalcColumn: true`)
+  after every other column, whatever their `displaySequence`. With "Overwrite drilldown metadata
+  with locally saved" on, `TryGetLocalMetadata` returned that list in saved order, and column order
+  on the sheet follows metadata order. New `SortByDisplaySequence` sorts the local list by
+  `displaySequence` (stable `OrderBy`; equal sequences keep saved order; missing/non-numeric go
+  last). Server metadata is unchanged. Not a regression: local customization is new in 11.1.0 and
+  never sorted (the VB 11.0.0 add-in has no such feature).
+  **Status: fixed in FinalWorkingCode on `11.1.1`, `11.1.2` and `11.1.3`.** Build-verified; the
+  sort was checked against the ticket workbook's saved JOURNAL metadata (NETA, sequence 50, moves
+  from last to between LINE_DESCRIPTION 50 and JE_BATCH_NAME 60).
+
+## `GLSenseExcelFunctions.cs` / `AddinModule.cs` (GLSense_GetAccountType hidden, OISR-22812)
+
+- **`GLSense_GetAccountType` disabled for the 11.1.1 / 11.1.2 MSIs.** It is a REST call per cell;
+  dragged over many cells it showed `#CALC`/`#GETTING_DATA` for a long time. Per the ticket it is
+  hidden, not deleted: the UDF and its only helper `TryParseSegmentIndex` are wrapped in
+  `#if ENABLE_ACCOUNT_TYPE`, and `AddinModule`'s constructor sets `RibSegmentAccountType.Visible =
+  false` under `#if !ENABLE_ACCOUNT_TYPE` (kept out of the Designer file so it survives
+  regeneration). The UDF has no function descriptor; Add-in Express registers every public static
+  method of `XLLContainer`, so leaving it out of the build removes it from Insert Function and a
+  typed formula shows `#NAME?`. The picker window / view-model `ACCOUNTTYPE` branches are only
+  reachable from that button and were left as they are. To re-enable: add `ENABLE_ACCOUNT_TYPE`
+  to `DefineConstants` in `GLSense.csproj`.
+  **Status: FinalWorkingCode on `11.1.1` and `11.1.2` only (not `11.1.3`, user's call).**
+  Build-verified.
+
+## Formula builders left `&`/`$`/`!` literals unquoted (OISR-22864)
+
+- **Reported: `XG&O` picked in the Account Assignment window went into the formula as `@XG&@O`
+  and the cell stayed on "Click Refresh...".** The segment window returns `"XG&O"` correctly;
+  `GLConfiguratorViewModel.GetAccountSegments` strips the quotes and re-formats each segment via
+  `FormatFormulaArg`, which returned a value as-is if it contained `!` or `$` ("cell reference")
+  or `&` ("already a concatenation"). So `XG&O` went in raw; Excel parsed it as names `XG` & `O`
+  (`#NAME?`). The server still returned a balance for the echoed `XG&O`, but the UDF's evaluated
+  arguments never matched it. The same 7 copies of `FormatFormulaArg` (configurator, segment
+  functions, daily rates, the 4 period windows) had the flaw for any value with `&`, `$`, `!`
+  (ledger, journal source, segment, DFF...).
+- Fixed: each copy now leaves a value unquoted only if `ExcelRangeHelper.IsRealRange` says it is a
+  real A1 reference (the test `NormalizeSegment` already used); everything else is quoted
+  (numeric rule in the period windows kept). The `&` rule only existed for the CTD/JED
+  `period&"~"&endPeriod` built by `CombinePeriod`: `GetFinalPeriodValue` now returns the period
+  already formatted and `BuildFormulaArguments` no longer re-formats it.
+- Related escapes: `ExcelRefEditControl` and both Discoverers double `'` in sheet names;
+  `SegmentDiscoverer` doubles `"` in the segment/ledger literals; `ClsFormulaParser.ExtractArguments`
+  allows `)` inside a quoted literal (a value with both `)` and `,` broke the refresh cache key).
+- Not changed: embedded `"` in configurator values is still dropped (the refresh key strips quotes);
+  values containing the segment window's separators `; , |`; `SegmentSelectorViewModel.IsExcelReference`.
+  **Status: FinalWorkingCode `11.1.1`.** Build-verified; formatter/parser checked by reflection on
+  the compiled DLL.
+
+## `Helpers\ClsFormulaParser.cs` (typed segment value containing `$` dropped from drilldowns, OISR-22860)
+
+- **Reported: a formula with a segment value typed as text containing `$` (e.g. `"11$9"`) refreshed
+  after the server fix (orbitbootapp PR 1075), but Balance drilldown from it failed with "Server
+  encountered an error".** The add-in sent the drilldown with no segments (`Account: ~`).
+  `ClsFormulaParser` treated any argument containing `$` as a cell reference: `FormulaArgs_Values` /
+  `ExtractArguments_WithValues` / `ResolveArgument` / `TrySplitArguments` sent `"11$9"` to
+  `ValueFromReference` -> `RangeVal`, where `IsRealRange("11$9")` is false and it returned a lone `"`,
+  which `BalanceDtoModel` normalised to empty and `CreateSegment` dropped. Same for literal ranges
+  and lists (`"11$9~11$12"`, `|`, `;`), and a literal shaped like an address (`"AB$12"`) was replaced
+  by that cell's value.
+- Fixed: new `IsQuotedLiteral` (the whole argument is one Excel text constant, `""` escapes allowed).
+  Those arguments are never resolved as references; `TrySplitArguments` gets the flag from the raw
+  (still quoted) argument so a `;` literal is still split. References, `INDIRECT(...)` and `&`
+  concatenations (`$E$5&"~"&$E$6`, `"~"&$E$5`) don't match and resolve as before. Matches Excel and
+  the server: `"$E$5"` typed in quotes is text.
+- Not changed: a literal concatenated with a reference (`"11$9~"&$E$6`) was already dropped for any
+  literal; `Formula_ArgsCount`; `SegmentSelectorViewModel.IsExcelReference`.
+  **Status: FinalWorkingCode `11.1.1`, `11.1.2`; AIPowered `11.1.3`.** Build-verified; checked by
+  reflection on the compiled DLL (19 cases).
+
+## `ViewModels\SegmentSelectorViewModel.cs` (typed value containing `$`/`!` reopened as a reference, OISR-22875)
+
+- **Reported:** values picked directly in the Account Assignment window (e.g. `11$9`) showed in that
+  segment's Reference box when reopened. `IsExcelReference` treated any part containing `$` or `!`,
+  or starting with "Sheet", as a reference.
+- **Fix:** it now uses `ExcelRangeHelper.IsRealRange`. `11$9`, `11$9~11$12`, `--11$9`, `!@#2` stay
+  values; `QA!$E$3`, `$E$3`, `QA!F$1` are references. A typed value that is a valid address (`AB$12`)
+  still reopens as a reference - the formula text can't tell them apart.
+  **Status: FinalWorkingCode `11.1.1`, `11.1.2`, `11.1.3`; AIPowered `11.1.3`.** Build-verified.
