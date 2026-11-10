@@ -20,6 +20,7 @@ namespace GLSense
         // user clicks a worksheet cell while the Balance Configurator task pane is visible -
         // see adxExcelAppEvents1_SheetSelectionChange below for why this is needed.
         [DllImport("user32.dll")] private static extern IntPtr SetFocus(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr hWnd);
 
         public AddinModule()
         {
@@ -619,6 +620,21 @@ namespace GLSense
                 GlobalsEx.Context?.Logger?.LogDebug("AddinModule_AddinBeginShutdown fired - tearing down GLSense.Addin.Core before Excel exits.");
                 GlobalsEx.Context?.Logger?.FlushDebugLogs("add-in shutting down");
 
+                // OISR-22874 (found in XLEdge, same design here): Excel can close while a GLSense dialog is open. This
+                // handler then runs inside that dialog's message loop, and unloading the AppDomain from here aborts this
+                // thread - the ThreadAbortException reaches Add-in Express and Office disables the add-in. A modal WPF
+                // dialog disables Excel's window, so a disabled Excel window means: shut down, but don't unload.
+                bool coreDialogOpen = false;
+                try
+                {
+                    IntPtr excelHwnd = GlobalsEx.Context?.ExcelHandle ?? IntPtr.Zero;
+                    coreDialogOpen = excelHwnd != IntPtr.Zero && !IsWindowEnabled(excelHwnd);
+                }
+                catch (Exception ex)
+                {
+                    GlobalsEx.Context?.Logger?.LogException(ex, "AddinModule_AddinBeginShutdown: checking for an open dialog failed");
+                }
+
                 // Defensive: stop forwarding any further Excel events into the add-in
                 // while it's mid-teardown. AddinModule/adxExcelAppEvents1 are never
                 // unloaded, but explicitly unsubscribing here matches FinalWorkingCode's
@@ -670,13 +686,20 @@ namespace GLSense
                 //    Excel COM RCWs, HttpClient instances, timers/threads) so Excel's own
                 //    process shutdown isn't left waiting on (or silently abandoning) any
                 //    of it.
-                try
+                if (coreDialogOpen)
                 {
-                    GlobalsEx.Loader?.Unload(GlobalsEx.Context);
+                    GlobalsEx.Context?.Logger?.LogWarn("AddinModule_AddinBeginShutdown: a GLSense dialog is open - shut down without unloading the AppDomain.");
                 }
-                catch (Exception ex)
+                else
                 {
-                    GlobalsEx.Context?.Logger?.LogException(ex, "AddinModule_AddinBeginShutdown: GlobalsEx.Loader.Unload failed");
+                    try
+                    {
+                        GlobalsEx.Loader?.Unload(GlobalsEx.Context);
+                    }
+                    catch (Exception ex)
+                    {
+                        GlobalsEx.Context?.Logger?.LogException(ex, "AddinModule_AddinBeginShutdown: GlobalsEx.Loader.Unload failed");
+                    }
                 }
 
                 GlobalsEx.Loader = null;
