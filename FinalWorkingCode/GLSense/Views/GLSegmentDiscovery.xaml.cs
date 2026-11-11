@@ -453,7 +453,8 @@ namespace GLSense.Views
                 ? "GLSense_GetPreviousSegment"
                 : "GLSense_GetNextSegment";
 
-            return $"={function}('{config.SheetName}'!{address},\"{config.SegmentName}\",{config.ParentChecked},{config.ChildChecked},\"{config.LedgerName}\")";
+            // Excel doubles ' inside a quoted sheet name and " inside a text constant
+            return $"={function}('{config.SheetName?.Replace("'", "''")}'!{address},\"{config.SegmentName?.Replace("\"", "\"\"")}\",{config.ParentChecked},{config.ChildChecked},\"{config.LedgerName?.Replace("\"", "\"\"")}\")";
         }
         private static bool IsBackwardDirection(DirectionType direction)
         {

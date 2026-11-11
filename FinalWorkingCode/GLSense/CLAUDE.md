@@ -1217,4 +1217,5 @@ there.**
 - **Fix:** `BuildFormula` adds the ribbon's selected ledger (`AppState.Instance.SelectedLedger.LedgerName`)
   as the 5th argument of `GLSense_GetNextSegment` / `GLSense_GetPreviousSegment`, which already accept
   an optional Ledger.
+- **Follow-up:** `BuildFormula` now doubles `"` inside the segment and ledger names and `'` inside the sheet name, so a name containing a quote no longer breaks the formula.
   **Status: FinalWorkingCode `11.1.1`, `11.1.2`, `11.1.3`; AIPowered `11.1.3`.** Build-verified.
