@@ -79,10 +79,9 @@ namespace GLSense.Views
             await ShowBusyOverlayAsync(initCancellation, "Initializing browser component...");
             try
             {
-                var env = await WebView2Warmup.GetEnvironmentAsync();
-
-                // Initialize WebView2 with that environment
-                _webViewInitTask = webView.EnsureCoreWebView2Async(env);
+                // Retries while the browser profile folder is still in use (0x800700AA).
+                _webViewInitTask = WebView2Warmup.EnsureCoreWebView2WithRetryAsync(webView,
+                    () => AppOverlayControl.ShowBusyasyn("Waiting for the browser component to become available..."));
                 await _webViewInitTask;
 
                 // Hook device permission handler and diagnostics after CoreWebView2 is ready
@@ -144,6 +143,8 @@ namespace GLSense.Views
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "WebView2 initialization failed in GLDrilldownCustomization");
+                if (webView.CoreWebView2 == null)
+                    CommonFunctions.GLSenseMessage(WebView2Warmup.InitFailedMessage, System.Windows.Forms.MessageBoxIcon.Warning);
                 await AppOverlayControl.HideBusyAsync();
                 webView.Visibility = Visibility.Visible;
             }

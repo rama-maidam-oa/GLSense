@@ -1,6 +1,8 @@
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace GLSense.Utilities
@@ -34,6 +36,60 @@ namespace GLSense.Utilities
                 if (_environmentTask == null)
                     _environmentTask = CreateEnvironmentAsync();
                 return _environmentTask;
+            }
+        }
+
+        // 0x800700AA (ERROR_BUSY): the login browser profile folder is still held, e.g. by a WebView2
+        // browser process that has not finished exiting. Seen in a customer log on every login
+        // attempt for ~30s until Excel was restarted, and the window just closed silently.
+        private const int ErrorBusy = unchecked((int)0x800700AA);
+        private static readonly TimeSpan BusyRetryWindow = TimeSpan.FromSeconds(15);
+
+        public const string InitFailedMessage =
+            "Unable to start the browser component. Please wait a moment and try again. " +
+            "If this keeps happening, close Excel completely and reopen it.";
+
+        /// <summary>
+        /// Initializes <paramref name="webView"/> with the shared environment, retrying for up to
+        /// 15s while WebView2 reports ERROR_BUSY. Each retry drops the cached environment so a
+        /// fresh one is created. <paramref name="onBusy"/> runs once, on the first busy result.
+        /// Any other error, or still busy after 15s, is thrown to the caller.
+        /// </summary>
+        public static async Task EnsureCoreWebView2WithRetryAsync(WebView2 webView, Action onBusy = null)
+        {
+            var deadline = DateTime.UtcNow + BusyRetryWindow;
+            for (int attempt = 1; ; attempt++)
+            {
+                var envTask = GetEnvironmentAsync();
+                try
+                {
+                    await webView.EnsureCoreWebView2Async(await envTask);
+                    if (attempt > 1)
+                        LogUtility.LogInfo($"WebView2Warmup: browser initialized on attempt {attempt} after ERROR_BUSY.");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Forget(envTask);
+                    if (!(ex is COMException com && com.HResult == ErrorBusy) || DateTime.UtcNow >= deadline)
+                        throw;
+
+                    LogUtility.LogWarn($"WebView2Warmup: browser profile folder in use (0x800700AA), attempt {attempt}; retrying.");
+                    if (attempt == 1)
+                        onBusy?.Invoke();
+                    await Task.Delay(1000);
+                }
+            }
+        }
+
+        // Drops a failed environment so the next GetEnvironmentAsync creates a new one instead of
+        // returning the same failed task for the rest of the Excel session.
+        private static void Forget(Task<CoreWebView2Environment> envTask)
+        {
+            lock (_lock)
+            {
+                if (ReferenceEquals(_environmentTask, envTask))
+                    _environmentTask = null;
             }
         }
 
