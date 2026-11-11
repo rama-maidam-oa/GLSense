@@ -8309,3 +8309,11 @@ double `'` in sheet names. DLL-only release to `development`. Build-verified.
     - Offline with the same version: "No Updates Found". Offline with an empty folder: the "no manifest.json + zip pair" warning.
   - After logging in to QA01 (`http://orbqa01.orbit8.com:6060/reporting`): Online is enabled. The index call (`.../orbit-addons/manifests?type=glsense`) returned 404, shown as the "No Updates Found" box with a readable date, and the step log has no server URL.
   - Not tested: the list of newer versions (no server with a GLSense release published).
+
+## 107. Discover Segments formulas: quotes in names doubled (OISR-22856 follow-up)
+
+`GLSegmentDiscovery.BuildFormula` (ledger added by OISR-22856, `c633773`) put the segment and ledger names
+in quotes without doubling `"`, and the sheet name in `'...'!` without doubling `'`; a name containing one
+broke the formula. It now doubles them, like `SegmentDiscoverer`'s Segment Properties formulas.
+Same-issue sweep: Segment Properties and Period Discover already pass the ledger; Expand/Explode write values only.
+**Status:** FinalWorkingCode `11.1.1`, `11.1.2`, `11.1.3`; AIPowered `11.1.3`. Build-verified.
