@@ -1366,3 +1366,12 @@ there.**
   values; `QA!$E$3`, `$E$3`, `QA!F$1` are references. A typed value that is a valid address (`AB$12`)
   still reopens as a reference - the formula text can't tell them apart.
   **Status: FinalWorkingCode `11.1.1`, `11.1.2`, `11.1.3`; AIPowered `11.1.3`.** Build-verified.
+
+## `Views\GLSegmentDiscovery.xaml.cs` (Discover formulas without the ledger, OISR-22856)
+
+- **Reported:** Next/Previous Segment formulas written by Discover (as formula) had no Ledger
+  argument, so they used whichever ledger was the default at calculation time.
+- **Fix:** `BuildFormula` adds the ribbon's selected ledger (`AppState.Instance.SelectedLedger.LedgerName`)
+  as the 5th argument of `GLSense_GetNextSegment` / `GLSense_GetPreviousSegment`, which already accept
+  an optional Ledger.
+  **Status: FinalWorkingCode `11.1.1`, `11.1.2`, `11.1.3`; AIPowered `11.1.3`.** Build-verified.

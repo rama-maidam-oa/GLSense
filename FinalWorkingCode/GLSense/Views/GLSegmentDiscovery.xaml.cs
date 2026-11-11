@@ -44,6 +44,7 @@ namespace GLSense.Views
             public bool IsFormula { get; set; }
             public string SheetName { get; set; }
             public string SegmentName { get; set; }
+            public string LedgerName { get; set; }
             public bool ParentChecked { get; set; }
             public bool ChildChecked { get; set; }
         }
@@ -255,6 +256,7 @@ namespace GLSense.Views
                 IsFormula = AddinModule.CurrentInstance.RibAsFormula.Pressed,
                 SheetName = OrbActCell.Worksheet.Name,
                 SegmentName = AppState.Instance.DefaultSegment,
+                LedgerName = AppState.Instance.SelectedLedger.LedgerName,
                 ParentChecked = chkParent.IsChecked == true,
                 ChildChecked = chkChild.IsChecked == true
             };
@@ -426,7 +428,7 @@ namespace GLSense.Views
                 ? "GLSense_GetPreviousSegment"
                 : "GLSense_GetNextSegment";
 
-            return $"={function}('{config.SheetName}'!{address},\"{config.SegmentName}\",{config.ParentChecked},{config.ChildChecked})";
+            return $"={function}('{config.SheetName}'!{address},\"{config.SegmentName}\",{config.ParentChecked},{config.ChildChecked},\"{config.LedgerName}\")";
         }
         private static bool IsBackwardDirection(DirectionType direction)
         {

@@ -28,7 +28,7 @@ namespace GLSense
 
         // Default version info (can be overridden at runtime if needed)
         public const string DefaultVersion = "11.1.1";
-        public const string DefaultCommitDate = "10-Nov-2026";
+        public const string DefaultCommitDate = "11-Nov-2026";
 
         // Default values
         public const int DefaultSegmentPickedIndex = -1;
