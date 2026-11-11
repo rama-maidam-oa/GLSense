@@ -47,9 +47,15 @@ namespace GLSense.Addin.Core.Utilities
         private static string LedgerString { get; set; }
         private static CancellationHelper _ctsHelper;
         private static CancellationToken Token => _ctsHelper?.GetToken() ?? default;
-        public static async Task FillPeriods()
+        public static Task FillPeriods() => RunFillPeriods(isByDate: false);
+
+        // OISR-19533 (ported from FinalWorkingCode): Discover > Periods By Date fills from a date in the active cell.
+        public static Task FillPeriodsByDate() => RunFillPeriods(isByDate: true);
+
+        private static async Task RunFillPeriods(bool isByDate)
         {
-            ServiceLocator.Logger?.LogDebug("PeriodsDiscoverer.FillPeriods: started.");
+            string opName = isByDate ? "FillPeriodsByDate" : "FillPeriods";
+            ServiceLocator.Logger?.LogDebug($"PeriodsDiscoverer.{opName}: started.");
             try
             {
                 _ctsHelper = new CancellationHelper();
@@ -66,8 +72,6 @@ namespace GLSense.Addin.Core.Utilities
 
                 if (!isValid) return;
 
-                string rngValue = CellActive.Value2.ToString();
-
                 PrWorbook = ExcelApp.ActiveWorkbook;
                 PrWorksheet = CellActive.Worksheet;
 
@@ -82,7 +86,31 @@ namespace GLSense.Addin.Core.Utilities
                     return;
                 }
 
-                Periods = PModel(LedgerString, p => p.PeriodName == rngValue);
+                string dateArgument = string.Empty;
+                int baseOffsetValue = 0;
+                DateTime baseDate = default;
+                string rngValue = string.Empty;
+                Func<PeriodModel, bool> periodMatch;
+
+                if (isByDate)
+                {
+                    if (!TryResolveBaseDate(out baseDate, out dateArgument, out baseOffsetValue))
+                    {
+                        ServiceLocator.Logger?.LogWarn($"PeriodsDiscoverer.{opName}: the selected cell does not contain a recognizable date.");
+                        await ShowWarnMessage("The selected cell does not contain a valid date.");
+                        return;
+                    }
+
+                    // Calendar-day containment: a period's EndDate is midnight of its last day.
+                    periodMatch = p => p.StartDate.Date <= baseDate.Date && p.EndDate.Date >= baseDate.Date;
+                }
+                else
+                {
+                    rngValue = CellActive.Value2.ToString();
+                    periodMatch = p => p.PeriodName == rngValue;
+                }
+
+                Periods = PModel(LedgerString, periodMatch);
 
                 Token.ThrowIfCancellationRequested();
 
@@ -92,21 +120,52 @@ namespace GLSense.Addin.Core.Utilities
                     return;
                 }
 
-                BasePeriod = Periods.FirstOrDefault(p => p.PeriodName == rngValue);
-
-                Token.ThrowIfCancellationRequested();
-
-                if (BasePeriod == null)
+                if (isByDate)
                 {
-                    await ShowWarnMessage($"The selected item \"{rngValue}\" does not exists in the periods list.");
-                    return;
+                    int dateIndex = Periods.FindIndex(p => periodMatch(p));
+
+                    Token.ThrowIfCancellationRequested();
+
+                    if (dateIndex < 0)
+                    {
+                        ServiceLocator.Logger?.LogWarn($"PeriodsDiscoverer.{opName}: date '{baseDate:d}' does not fall within any period for ledger '{LedgerString}'.");
+                        await ShowWarnMessage($"The selected date \"{baseDate:d}\" does not exists in the periods list.");
+                        return;
+                    }
+
+                    // The active cell resolves to the date's period shifted by the offset already in its own
+                    // GLSense_GetPeriodByDate formula (0 for a plain date); the fill continues from there.
+                    BasePeriodIndex = dateIndex + baseOffsetValue;
+
+                    if (BasePeriodIndex < 0 || BasePeriodIndex >= Periods.Count)
+                    {
+                        ServiceLocator.Logger?.LogWarn($"PeriodsDiscoverer.{opName}: date '{baseDate:d}' with offset {baseOffsetValue} resolves outside the periods list for ledger '{LedgerString}'.");
+                        await ShowWarnMessage($"The selected date \"{baseDate:d}\" with offset {baseOffsetValue} does not exists in the periods list.");
+                        return;
+                    }
+
+                    BasePeriod = Periods[BasePeriodIndex];
+                    ServiceLocator.Logger?.LogDebug($"PeriodsDiscoverer.{opName}: base date '{baseDate:d}' (offset {baseOffsetValue}) resolved to period '{BasePeriod.PeriodName}' at index {BasePeriodIndex} of {Periods.Count}.");
+                }
+                else
+                {
+                    BasePeriod = Periods.FirstOrDefault(p => p.PeriodName == rngValue);
+
+                    Token.ThrowIfCancellationRequested();
+
+                    if (BasePeriod == null)
+                    {
+                        await ShowWarnMessage($"The selected item \"{rngValue}\" does not exists in the periods list.");
+                        return;
+                    }
+
+                    BasePeriodIndex = Periods.FindIndex(p => p.PeriodName == rngValue);
                 }
 
-                BasePeriodIndex = Periods.FindIndex(p => p.PeriodName == rngValue);
-
-                await RunPeriodDiscovery();
+                await RunPeriodDiscovery(isByDate, dateArgument, baseOffsetValue);
 
                 await MessageProgressWindowAsync("Excel refreshing the formulas.");
+                ServiceLocator.Logger?.LogDebug($"PeriodsDiscoverer.{opName}: completed.");
             }
             catch (OperationCanceledException)
             {
@@ -127,13 +186,13 @@ namespace GLSense.Addin.Core.Utilities
                 }
                 catch (Exception ex)
                 {
-                    ServiceLocator.Logger?.LogWarn($"FillPeriods: failed disposing CancellationHelper (non-fatal): {ex.Message}");
+                    ServiceLocator.Logger?.LogWarn($"{opName}: failed disposing CancellationHelper (non-fatal): {ex.Message}");
                 }
                 await SafelyCloseWindowAsync();
-                CommonMethods.TryEnableExcelSettings("PeriodsDiscoverer.FillPeriods");
+                CommonMethods.TryEnableExcelSettings($"PeriodsDiscoverer.{opName}");
             }
         }
-        private static async Task RunPeriodDiscovery()
+        private static async Task RunPeriodDiscovery(bool isByDate, string dateArgument, int baseOffsetValue)
         {
 
             await MessageProgressWindowAsync("Extracting information.");
@@ -156,7 +215,7 @@ namespace GLSense.Addin.Core.Utilities
 
             if (!string.IsNullOrWhiteSpace(ledgerRef))
             {
-                await FillPeriodDiscoverValues(isReverse, Selection, CellActive, BasePeriodIndex, ledgerRef, Periods);
+                await FillPeriodDiscoverValues(isReverse, Selection, CellActive, BasePeriodIndex, ledgerRef, Periods, isByDate, dateArgument, baseOffsetValue);
             }
         }
 
@@ -195,7 +254,10 @@ namespace GLSense.Addin.Core.Utilities
             Excel.Range formulaRange,
             int periodIndex,
             string ledgerRef,
-            List<PeriodModel> periods)
+            List<PeriodModel> periods,
+            bool isByDate,
+            string dateArgument,
+            int baseOffsetValue)
         {
             await MessageProgressWindowAsync("Filling period details.");
             await Task.Yield();
@@ -246,8 +308,11 @@ namespace GLSense.Addin.Core.Utilities
                         else
                         {
                             targetCell.NumberFormat = AppConstants.General;
-                            // Offset is the relative move used by the GLSense_GetPeriod function
-                            targetCell.Value = $"=GLSense_GetPeriod({rangeRef}, {offset}, {ledgerRef})";
+                            // Offset is the relative move. GLSense_GetPeriodByDate's offset is relative to the date's
+                            // own period (dateArgument is the same for every cell), so the base cell's offset is added.
+                            targetCell.Value = isByDate
+                                ? $"=GLSense_GetPeriodByDate({dateArgument}, {ledgerRef}, {baseOffsetValue + offset})"
+                                : $"=GLSense_GetPeriod({rangeRef}, {offset}, {ledgerRef})";
                         }
                     }
                     catch (Exception ex)
@@ -377,6 +442,94 @@ namespace GLSense.Addin.Core.Utilities
                 LedgerString = string.Empty;
                 LedgerReference = string.Empty;
             }
+        }
+
+        /// <summary>
+        /// The base date for "Periods By Date" from the active cell: a date value or any formula that evaluates to one.
+        /// If the cell already holds a GLSense_GetPeriodByDate(...) formula (which evaluates to a period name), the
+        /// date argument and offset are read back from that formula instead.
+        /// </summary>
+        private static bool TryResolveBaseDate(out DateTime baseDate, out string dateArgument, out int baseOffsetValue)
+        {
+            baseDate = default;
+            dateArgument = string.Empty;
+            baseOffsetValue = 0;
+
+            try
+            {
+                if ((bool)CellActive.HasFormula)
+                {
+                    string formula = CellActive.Formula.ToString();
+
+                    if (formula.Contains("GLSense_GetPeriodByDate("))
+                    {
+                        var parameters = CommonFunctions.FormulaParameters(formula);
+                        var values = CommonFunctions.FormulaValues(formula);
+
+                        string param = parameters != null && parameters.Count > 0 ? parameters[0] : null;
+                        string value = values != null && values.Count > 0 ? values[0]?.Trim() : null;
+                        bool isCellRef = !string.IsNullOrWhiteSpace(param) && param.Contains("$");
+
+                        if (!string.IsNullOrWhiteSpace(value) && TryParseDateArgument(value, out baseDate))
+                        {
+                            dateArgument = isCellRef ? param : value;
+
+                            // The offset is the 3rd argument; 0 (the UDF's default) when missing or not a number.
+                            string offsetText = values.Count > 2 ? values[2]?.Replace("\"", "").Trim() : null;
+                            if (!string.IsNullOrWhiteSpace(offsetText) && int.TryParse(offsetText, out int parsedOffset))
+                                baseOffsetValue = parsedOffset;
+
+                            ServiceLocator.Logger?.LogDebug($"PeriodsDiscoverer.TryResolveBaseDate: from GLSense_GetPeriodByDate formula, dateArgument='{dateArgument}', baseDate={baseDate:d}, baseOffsetValue={baseOffsetValue}.");
+                            return true;
+                        }
+                    }
+                }
+
+                object rawValue = CellActive.Value2;
+                if (rawValue == null)
+                    return false;
+
+                baseDate = Udf.UdfDispatcher.ParsePeriodDate(rawValue);
+                if (baseDate == default)
+                    return false;
+
+                dateArgument = $"'{CellActive.Worksheet.Name.Replace("'", "''")}'!{CellActive.Address[true, true]}"; // Excel doubles ' in quoted sheet names
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "PeriodsDiscoverer.TryResolveBaseDate");
+                baseDate = default;
+                dateArgument = string.Empty;
+                baseOffsetValue = 0;
+                return false;
+            }
+        }
+
+        /// <summary>A formula argument's text as a date: a literal DATE(y,m,d), or anything ParsePeriodDate accepts.</summary>
+        private static bool TryParseDateArgument(string text, out DateTime date)
+        {
+            date = default;
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            var match = System.Text.RegularExpressions.Regex.Match(text, @"DATE\(\s*(\d{4})\s*,\s*(\d{1,2})\s*,\s*(\d{1,2})\s*\)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                try
+                {
+                    date = new DateTime(int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value), int.Parse(match.Groups[3].Value));
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger?.LogException(ex, $"PeriodsDiscoverer.TryParseDateArgument: invalid DATE(...) literal '{text}'");
+                    return false;
+                }
+            }
+
+            date = Udf.UdfDispatcher.ParsePeriodDate(text);
+            return date != default;
         }
 
         //Standard helpers

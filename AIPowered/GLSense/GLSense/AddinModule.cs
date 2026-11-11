@@ -986,6 +986,13 @@ namespace GLSense
             _ribbonController?.ExecuteAction("RibDiscoverPeriod");
         }
 
+        private void RibDiscoverPeriodByDate_OnClick(object sender, IRibbonControl control, bool pressed)
+        {
+            GlobalsEx.Context?.Logger?.LogDebug($"RibDiscoverPeriodByDate_OnClick fired (pressed={pressed})");
+            // OISR-19533: PeriodsDiscoverer.FillPeriodsByDate() in the core (an older core logs the action as unknown).
+            _ribbonController?.ExecuteAction("RibDiscoverPeriodByDate");
+        }
+
         private void RibRefreshAll_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             GlobalsEx.Context?.Logger?.LogDebug($"RibRefreshAll_OnClick fired (pressed={pressed})");
@@ -1451,7 +1458,7 @@ namespace GLSense
                 {
                     "RibDBL1", "RibGetCube", "Ribledger", "RibAccount", "RibRollerGroup", "RibLOVs", "RibFSG", "RibHideRows", "RibUnHideRows",
                     "RibLiveCalc", "RibSegS", "RibSegmentDiscover", "RigSegDiscover", "RibSegProperty", "RibSegmentExpand",
-                    "RibSegmentExplode", "RibExpodeAll", "RibbonExplode1Level", "RibDiscoverPeriod", "RibAsFormula", "RibRefreshRange", "RibRefreshAll", "RibRefreshBook",
+                    "RibSegmentExplode", "RibExpodeAll", "RibbonExplode1Level", "RibDiscoverPeriod", "RibDiscoverPeriodByDate", "RibAsFormula", "RibRefreshRange", "RibRefreshAll", "RibRefreshBook",
                     "RibClearSheet", "RibClear", "RibHighlight", "RibCellHighlight", "RibSnapShot", "RibSnapWorksheet", "RibSnapWorkbook", "RibSnapSubmit",
                     "RibFunctionsMenu", "RibSegmentEnabledFlag", "RibSummaryFlag", "RibSegment", "RibNextSegment",
                     "RibPreviousSegment", "RibSegmentDFF", "RibSegmentAccountType", "RibPeriod", "RibPeriodbyDate", "RibPeriodbyYear", "RibPeriodNum", "RibPeriodQtr", "RibPeriodYear",

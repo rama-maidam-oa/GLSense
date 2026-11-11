@@ -863,7 +863,7 @@ namespace GLSense.Addin.Core.Udf
             }
         }
 
-        private static DateTime ParsePeriodDate(object dateObj)
+        internal static DateTime ParsePeriodDate(object dateObj)
         {
             try
             {
@@ -920,7 +920,8 @@ namespace GLSense.Addin.Core.Udf
 
         private static string FindPeriodName(IEnumerable<PeriodModel> periods, DateTime date)
         {
-            return periods.FirstOrDefault(p => p.StartDate <= date && p.EndDate >= date)?.PeriodName ?? string.Empty;
+            // Calendar-day containment: a period's EndDate is midnight of its last day (OISR-19533 port).
+            return periods.FirstOrDefault(p => p.StartDate.Date <= date.Date && p.EndDate.Date >= date.Date)?.PeriodName ?? string.Empty;
         }
 
         private static string CalculateOffsetPeriod(List<PeriodModel> periods, string basePeriod, int offset)

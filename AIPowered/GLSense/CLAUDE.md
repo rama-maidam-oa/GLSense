@@ -8319,3 +8319,33 @@ in quotes without doubling `"`, and the sheet name in `'...'!` without doubling 
 broke the formula. It now doubles them, like `SegmentDiscoverer`'s Segment Properties formulas.
 Same-issue sweep: Segment Properties and Period Discover already pass the ledger; Expand/Explode write values only.
 **Status:** FinalWorkingCode `11.1.1`, `11.1.2`, `11.1.3`; AIPowered `11.1.3`. Build-verified.
+
+## 108. Balance Configurator pane empty in 32-bit Excel (`GLSense\GLConfiguratorPane.cs`, no OISR)
+
+- **Reported (11-Nov-2026, colleague's machine, 32-bit Excel, 125%):** the task pane was empty and the configurator
+  controls floated outside it as a borderless window that could not be closed. Fine on 64-bit Excel.
+- **Cause (log):** `EmbedContent` threw `EntryPointNotFoundException` for `GetWindowLongPtr` right after the content
+  window was created: 32-bit `user32.dll` exports only `GetWindowLong`/`SetWindowLong`. The window was never restyled
+  to `WS_CHILD` or reparented. A second 32-bit trap on the same line: a sign-extended `WS_POPUP` style would overflow
+  `new IntPtr(long)`.
+- **Fix:** `GetWindowStyle`/`SetWindowStyle` pick the 64-bit or 32-bit export by `IntPtr.Size` and keep the style in
+  32 bits on 32-bit. Host change (needs an MSI).
+- **Same-issue sweep (pattern: 64-bit-only user32 imports):** GLSense `WindowChromeHelper`, XLEdge `PaneEmbedding` and
+  `WindowChromeHelper` already switch by `IntPtr.Size`; FinalWorkingCode has none. Nothing else open.
+- **Status:** build-verified; the 32-bit path's style arithmetic checked; needs a retest on 32-bit Excel.
+
+## 109. Discover > Periods By Date was never in AIPowered (OISR-19533 port)
+
+- OISR-19533 (`77420a4`, 01-Sep) was implemented only in FinalWorkingCode; the shipped 11.1.3 had no Periods By Date
+  button and no `FillPeriodsByDate`, though its release notes listed the ticket.
+- **Ported:** `RibDiscoverPeriodByDate` in the Discover menu (host Designer/AddinModule, `RibbonControlIds` lists),
+  `AddinEntry` action, `PeriodsDiscoverer.FillPeriodsByDate` (date resolved from the active cell, or read back from an
+  existing `GLSense_GetPeriodByDate` formula with its offset; matcher passed to the multi-ledger `PModel`).
+  `UdfDispatcher.ParsePeriodDate` made `internal`.
+- **Also fixed (same as FinalWorkingCode):** `DataRepository` period dates use `UtcDateTime` (midnight-UTC epoch;
+  `LocalDateTime` moved the boundary by the UTC offset, so a 1st-of-month date gave `#GETTING_DATA`); `FindPeriodName`
+  compares `.Date`.
+- **Same-issue sweep:** the date reference doubles `'` in the sheet name (OISR-22864 rule); FinalWorkingCode's own
+  `TryResolveBaseDate` didn't - fixed there too (11.1.3).
+- **Status:** build-verified; tested in Excel by the developer (G9 = 01-Jun-2001, G9:L9, As Formula: Jul-01..Nov-01,
+  `L9 = GLSense_GetPeriodByDate(Sheet1!$G$9, "Vision Operations (USA)", 5)`). Host change (needs an MSI).

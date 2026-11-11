@@ -521,7 +521,7 @@ namespace GLSense.Utilities
                 if (baseDate == default)
                     return false;
 
-                dateArgument = $"'{CellActive.Worksheet.Name}'!{CellActive.Address[true, true]}";
+                dateArgument = $"'{CellActive.Worksheet.Name.Replace("'", "''")}'!{CellActive.Address[true, true]}"; // Excel doubles ' in quoted sheet names
                 return true;
             }
             catch (Exception ex)

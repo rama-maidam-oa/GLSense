@@ -407,6 +407,9 @@ namespace GLSense.Addin.Core
                 case "RibDiscoverPeriod":
                     _ = PeriodsDiscoverer.FillPeriods();
                     break;
+                case "RibDiscoverPeriodByDate":
+                    _ = PeriodsDiscoverer.FillPeriodsByDate();
+                    break;
 
                 // RigSegDiscover_OnClick - unlike the 6 cases above, the old host body
                 // did real validation (DefaultSegment/SegmentPickedIndex + active-cell

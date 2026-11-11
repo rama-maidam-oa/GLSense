@@ -294,8 +294,9 @@ namespace GLSense.Addin.Core.Repositories
                         QuarterNum = reader.GetInt32(3),
                         PeriodSetName = reader.GetString(4),
                         PeriodType = reader.GetString(5),
-                        StartDate = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(6)).LocalDateTime,
-                        EndDate = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)).LocalDateTime,
+                        // Stored as midnight-UTC epoch ms: UtcDateTime keeps the calendar day; LocalDateTime shifted it by the UTC offset (OISR-19533 port).
+                        StartDate = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(6)).UtcDateTime,
+                        EndDate = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)).UtcDateTime,
                         AdjustmentPeriodFlag = reader.IsDBNull(8) ? "N" : reader.GetString(8)
                     });
                 }

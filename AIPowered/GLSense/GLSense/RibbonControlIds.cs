@@ -28,6 +28,7 @@ namespace GLSense
         public const string RibExpodeAll = "RibExpodeAll";
         public const string RibbonExplode1Level = "RibbonExplode1Level";
         public const string RibDiscoverPeriod = "RibDiscoverPeriod";
+        public const string RibDiscoverPeriodByDate = "RibDiscoverPeriodByDate";
         public const string RibAsFormula = "RibAsFormula";
         public const string RibRefreshRange = "RibRefreshRange";
         public const string RibRefreshAll = "RibRefreshAll";
@@ -85,7 +86,7 @@ namespace GLSense
                 RibDBL1, RibGetCube, RibLedger, RibAccount, RibRollerGroup, RibLOVs, RibFSG,
                 RibHideRows, RibUnHideRows, RibLiveCalc, RibSegS, RibSegmentDiscover, RigSegDiscover,
                 RibSegProperty, RibSegmentExpand, RibSegmentExplode,
-                RibExpodeAll, RibbonExplode1Level, RibDiscoverPeriod, RibAsFormula, RibRefreshRange,
+                RibExpodeAll, RibbonExplode1Level, RibDiscoverPeriod, RibDiscoverPeriodByDate, RibAsFormula, RibRefreshRange,
                 RibRefreshAll, RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight,
                 RibSnapShot, RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibDrilldownMenu,
                 RibBalanceDD, RibBalanceJournalDD, RibBalanceSubLedgerDD, RibJournalDD, RibSubledgerDD,
@@ -114,7 +115,7 @@ namespace GLSense
                 RibLedger, RibAccount, RibRollerGroup, RibLOVs, RibFSG, RibHideRows, RibUnHideRows,
                 RibLiveCalc, RibSegS, RibSegmentDiscover, RigSegDiscover, RibSegProperty,
                 RibSegmentExpand, RibSegmentExplode, RibExpodeAll,
-                RibbonExplode1Level, RibDiscoverPeriod, RibAsFormula, RibRefreshRange, RibRefreshAll,
+                RibbonExplode1Level, RibDiscoverPeriod, RibDiscoverPeriodByDate, RibAsFormula, RibRefreshRange, RibRefreshAll,
                 RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight, RibSnapShot,
                 RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibDrilldownMenu, RibBalanceDD,
                 RibBalanceJournalDD, RibBalanceSubLedgerDD, RibJournalDD, RibSubledgerDD, RibTotaDD,
@@ -136,7 +137,7 @@ namespace GLSense
                 RibDBL1, RibGetCube, RibLedger, RibAccount, RibRollerGroup, RibLOVs, RibFSG,
                 RibHideRows, RibUnHideRows, RibLiveCalc, RibSegS, RibSegmentDiscover, RigSegDiscover,
                 RibSegProperty, RibSegmentExpand, RibSegmentExplode,
-                RibExpodeAll, RibbonExplode1Level, RibDiscoverPeriod, RibAsFormula, RibRefreshRange,
+                RibExpodeAll, RibbonExplode1Level, RibDiscoverPeriod, RibDiscoverPeriodByDate, RibAsFormula, RibRefreshRange,
                 RibRefreshAll, RibRefreshBook, RibClearSheet, RibClear, RibHighlight, RibCellHighlight,
                 RibSnapShot, RibSnapWorksheet, RibSnapWorkbook, RibSnapSubmit, RibDrilldownMenu,
                 // RibBalanceDD/RibBalanceJournalDD/RibBalanceSubLedgerDD/RibJournalDD/
