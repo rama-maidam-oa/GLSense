@@ -78,8 +78,22 @@ namespace GLSense
 
         // Win32 interop for the HWND-reparenting bridge.
         [DllImport("user32.dll")] private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
-        [DllImport("user32.dll")] private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
-        [DllImport("user32.dll")] private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+        // 32-bit user32.dll has no GetWindowLongPtr/SetWindowLongPtr exports (EntryPointNotFoundException in 32-bit
+        // Excel left the configurator floating outside an empty pane); use GetWindowLong/SetWindowLong there.
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")] private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")] private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong")] private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong")] private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        // On 32-bit the style stays within 32 bits: a sign-extended WS_POPUP would overflow new IntPtr(long) there.
+        private static long GetWindowStyle(IntPtr hWnd) =>
+            IntPtr.Size == 8 ? GetWindowLongPtr64(hWnd, GWL_STYLE).ToInt64() : (uint)GetWindowLong32(hWnd, GWL_STYLE);
+
+        private static void SetWindowStyle(IntPtr hWnd, long style)
+        {
+            if (IntPtr.Size == 8) SetWindowLongPtr64(hWnd, GWL_STYLE, new IntPtr(style));
+            else SetWindowLong32(hWnd, GWL_STYLE, unchecked((int)style));
+        }
         [DllImport("user32.dll")] private static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
         [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -337,10 +351,10 @@ namespace GLSense
                 }
 
                 // Restyle from a top-level popup window into embedded child content.
-                long style = GetWindowLongPtr(_contentHwnd, GWL_STYLE).ToInt64();
+                long style = GetWindowStyle(_contentHwnd);
                 style &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MAXIMIZEBOX | WS_MINIMIZEBOX);
                 style |= WS_CHILD;
-                SetWindowLongPtr(_contentHwnd, GWL_STYLE, new IntPtr(style));
+                SetWindowStyle(_contentHwnd, style);
 
                 SetParent(_contentHwnd, this.Handle);
                 ResizeContent();
