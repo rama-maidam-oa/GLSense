@@ -28,7 +28,6 @@ namespace GLSense
             public string ReleaseDateDisplay => VersionDateText.Format(Entry.ReleaseDate);
             public string Source => Entry.Source;
             public string SourceDescription => DescribeSource(Entry.Source);
-            public string Notes => Entry.Notes;
             public bool IsCurrentlyLoaded { get; set; }
             public string LoadedMarker => IsCurrentlyLoaded ? "●" : string.Empty;
         }
@@ -132,8 +131,6 @@ namespace GLSense
         private void GridReleases_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             var row = GridReleases.SelectedItem as ReleaseRow;
-            TxtSelectedNotes.Text = row == null ? "Select a version to see its notes."
-                : string.IsNullOrWhiteSpace(row.Notes) ? "No notes recorded for this version." : row.Notes;
             BtnLoad.IsEnabled = row != null;
             BtnRemove.IsEnabled = row != null;
         }
