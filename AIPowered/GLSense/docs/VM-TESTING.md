@@ -10,8 +10,12 @@ iteration on the dev machine. Releases themselves: see `DEPLOYMENT.md`.
 2. Install Claude Code on the VM and copy the whole `D:\SQLLite_Test\ExcelSmoke` folder to it, in any location.
    The scripts find `SmokeLib.ps1` next to themselves. Screenshots go to `.\out`, or to `$env:SMOKE_OUT` if it's
    set (point it at the shared folder).
-3. For the login script, set the test account once as user environment variables:
-   `setx GLSENSE_TEST_USER <user>` and `setx GLSENSE_TEST_PASSWORD <password>`. Never put them in a script.
+3. For the login script, save the test accounts once as user environment variables, numbered per account:
+   `setx GLSENSE_TEST_USER_1 '<user>'` and `setx GLSENSE_TEST_PASSWORD_1 '<password>'`, then `_2`, `_3`, and so
+   on. Single quotes keep `$` and `&` in passwords literal. Open a new terminal afterwards. Pick the account with
+   `Step4c-Login.ps1 -Account 2`. Without `-Account`, the script reads the unnumbered `GLSENSE_TEST_USER` and
+   `GLSENSE_TEST_PASSWORD`. Never put credentials in a script. They're stored as plain text in the VM's user
+   profile and in its snapshots, so use test accounts only.
 4. Create a shared folder between the host and the VM for builds going in and logs/screenshots coming out.
 5. Take a snapshot now: **"Clean - Office only"**. Revert to it before every MSI test, so every install is a real
    first install.
@@ -33,7 +37,7 @@ iteration on the dev machine. Releases themselves: see `DEPLOYMENT.md`.
 |---|---|
 | Core only (`GLSense.Addin.Core`, a DLL-only release) | Install the current MSI once. Then **Reload > Offline**, pointing at a folder with the new `manifest.json` + zip (copied from `GLSense.Addin.Core\SetupFiles\Release\Manifest\`). Script: `Step3-ReloadOffline.ps1 -Folder <that folder> -Tag <name>`. |
 | Host (`GLSense\...`: ribbon, task pane, Reload/Version History windows, shutdown) | Revert the snapshot, install the new MSI. |
-| Already deployed to development | Log in (`Step4b-PickInstance.ps1`, `Step4c-Login.ps1`), then **Reload > Online** (`Step5-ReloadOnline.ps1`). |
+| Already deployed to development | Log in (`Step4b-PickInstance.ps1`, `Step4c-Login.ps1 -Account <n>`), then **Reload > Online** (`Step5-ReloadOnline.ps1`). |
 
 To save signing operations, test core-only fixes with Reload > Offline. Only build a new MSI when the host changed.
 
