@@ -8349,3 +8349,63 @@ Same-issue sweep: Segment Properties and Period Discover already pass the ledger
   `TryResolveBaseDate` didn't - fixed there too (11.1.3).
 - **Status:** build-verified; tested in Excel by the developer (G9 = 01-Jun-2001, G9:L9, As Formula: Jul-01..Nov-01,
   `L9 = GLSense_GetPeriodByDate(Sheet1!$G$9, "Vision Operations (USA)", 5)`). Host change (needs an MSI).
+
+## 110. FIXED (15-Nov-2026, not committed): the ribbon was unusable for up to 60 s after login while the broadcast toast showed
+
+- **Seen:** VM test 13-Nov-2026 (QA02, which has a broadcast "Maintenance Alert"); the developer confirmed it by hand.
+- `GLLogin.SuccessCube` (`Views\GLLogin.xaml.cs`) awaited `AppOverlayControl.ShowInfoAsync(broadcastMsg)` - a 60 s toast
+  - before `Close()`. Until the toast timed out, the modal login window stayed open, so Excel's ribbon (GLSense, XLEdge
+  and Excel's own) ignored clicks.
+- **Fix:** `SuccessCube` closes the window first, then posts (`Dispatcher.BeginInvoke`) `CommonFunctions.GLSenseMessage`
+  with the broadcast - the OK box the Broadcast button uses (section 90). This also fixes 111 B.
+- **Verified (VM, Debug build, QA02):** login window closes 1 s after login (was 63-67 s); the broadcast shows in the
+  OK box; Excel exits in 4.8 s after login + logout + Quit (was a crash, see 111 B).
+- **Same-issue sweep:** XLEdge's login broadcast is already an OK message box (no toast). `GLDrilldownDeleteCustomization`
+  awaits a 60 s success toast and then `Close()`s when no types are left - same shape, left open (not reproduced, not
+  login-related). FinalWorkingCode `GLLogin.SuccessCube` has the identical toast-then-Close - open, not ported (11.1.2 was
+  just released; developer to decide).
+
+## 111. Two bugs found by the VM login tests (parked 14-Nov, resolved 15-Nov-2026)
+
+**Outcome 15-Nov (VM, 11.1.3 MSIs then a Debug build, QA02):**
+- **A - not reproducible.** `Tests\BugA-GLSenseRibbonAfterXLEdge.ps1`: right after an XLEdge login the GLSense tab is
+  drawn logged in (Logout, Broadcast, "Cube : Select Cube"), also after a tab switch and minimize/restore (screenshots,
+  not only UIA). The VM's Office is now 16.0.20527.20196; the symptom matched the section 84 Office redraw bug.
+- **B - a crash, not a hang; fixed by the section 110 change.** Excel crashes on Quit (access violation 0xc0000005,
+  `EXCEL!FOutspaceVisible+0x9b`, event 1000) and Windows Error Reporting relaunches an empty Excel ~15 s later (no
+  arguments, parent = exited WerFault) - that relaunched Excel is the "Excel still running". Stack (cdb attached by
+  `Close-Excel.ps1`, full dump): `CloseMain -> DestroyFinal -> TerminateTSU -> TBS::Delete -> ... TBCWP::DestroyAll ->
+  NUIDocument::~NUIDocument -> DestroyWindow` -> `WM_ACTIVATE` to XLMAIN -> `_MainWndProc2 -> CurUiFrameInternal ->
+  FOutspaceVisible` (Excel's UI frame already torn down). GLSense's own shutdown log is identical in crashing and clean
+  runs and finishes before this. Isolation: GLSense alone crashes (XLEdge not involved); login window opened and closed
+  without login -> clean; focus on the sheet instead of the ribbon at Quit -> still crashes; closing the login window
+  at once and showing the broadcast afterwards (110 fix) -> clean exit 4.8 s. The 60 s toast inside the login window
+  is the trigger; the exact Excel-side mechanism is not proven (the toast is pure WPF inside the login window).
+  FinalWorkingCode 11.1.2 showed the same relaunch on 14-Nov (same toast-then-Close).
+- Harness: `Close-Excel.ps1` now prints Excel's GUI-thread state, any Excel started after Quit (with parent), crash/WER
+  events, and attaches cdb when `D:\VM-Stage\Debugger` is copied in. `Run-VMTest.ps1` turns on WER LocalDumps (Office
+  bypasses them; cdb is what worked).
+
+Original notes (14-Nov):
+
+Both reproduced by the developer by hand in the VM. Resume when QA02 is reachable: VM tests `Tests\Login-GLSense.ps1`,
+`Tests\Login-XLEdge.ps1`, `Tests\LoggedIn-GLSense.ps1` (ExcelSmoke), account via `Host\Set-VMTestAccounts.ps1`.
+
+**A. GLSense ribbon stays "logged out" after an XLEdge login.** XLEdge -> `GetGLCubeInformation` -> `LoginFromXLEdge`
+loads the cubes and applies `PartialLoggedIn` (log: RibLogout enabled, RibLogin hidden, RibGetCube enabled), all on
+Excel's UI thread (STA, DispatcherSynchronizationContext - checked with temporary thread logging, since removed). GLSense's
+own login runs the same `SetState` the same way and Excel redraws; after the XLEdge login Excel keeps drawing the old
+state, even after switching tabs. Nothing sets the controls back. Suspect: Excel not re-reading the Add-in Express
+callbacks (cf. section 84's Office 16.0.20527 ribbon redraw bug). Next: developer check - after an XLEdge login,
+minimize/restore Excel - does GLSense's tab then show Logout?
+
+**B. EXCEL.EXE keeps running after Quit once a GLSense login happened** (GLSense alone, no XLEdge):
+no login / Debug only / login window opened and closed -> exits in 3-5 s; real login (then quit logged in, or logout then
+quit) -> still running after 120 s, window gone, responding. Ruled out: XLEdge, the test harness's UIA/COM references,
+background-thread COM calls (whole login flow is on Excel's UI thread). Dump of a stuck Excel
+(`D:\VM-Out\run-20261113-225706\EXCEL-stuck-9176.dmp`, WinDbg installed on the laptop, cdb under
+`C:\Program Files\WindowsApps\Microsoft.WinDbg_*\amd64`): main thread idle in `EXCEL!IdleLoop::MainLoopWaitMessage`
+(waiting for COM references), and the `GLSenseDomain_11.1.3` AppDomain still listed with live handles (2 WPF
+Dispatchers, `ComMessageFilter+Filter`, 2 COM wrappers held by its statics) although the log said it unloaded. But the
+dump's process uptime (1:52) suggests it may be a second Excel started ~11 s after the first quit. `Close-Excel.ps1` now
+prints the stuck Excel's command line/parent and dumps it - one clean logged-in run settles which.
