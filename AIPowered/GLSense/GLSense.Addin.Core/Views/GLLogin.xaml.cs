@@ -722,11 +722,14 @@ namespace GLSense.Addin.Core.Views
             var broadcastMsg = await BroadcastMessageFromApi(token);
 
             await AppOverlayControl.HideBusyAsync();
-            if (broadcastMsg != null && !string.IsNullOrWhiteSpace(broadcastMsg))
-                await AppOverlayControl.ShowInfoAsync(broadcastMsg);
 
+            // CLAUDE.md 110: the broadcast used to be a 60 s toast awaited before Close(), so the modal login window kept
+            // Excel's ribbon disabled for up to a minute. Close first; then show it in the OK box the Broadcast button uses.
+            // Posted, so the login dialog has finished closing before the message box opens.
             ServiceLocator.Logger?.LogDebug("GLLogin.SuccessCube: closing login window");
             Close();
+            if (!string.IsNullOrWhiteSpace(broadcastMsg))
+                _ = Dispatcher.BeginInvoke(new Action(() => CommonFunctions.GLSenseMessage(broadcastMsg, MessageBoxImage.Information)));
         }
 
         private async Task ShowErrorAndCloseAsync(string message)
