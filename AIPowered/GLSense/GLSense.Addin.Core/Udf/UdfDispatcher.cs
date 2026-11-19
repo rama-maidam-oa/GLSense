@@ -68,8 +68,15 @@ namespace GLSense.Addin.Core.Udf
         private const string GLClickToRefresh = "Click Refresh...";
         private const string GLDateFormat = "dd-MM-yyyy";
 
+        // True while an async UDF runs on Excel's thread (host appended UdfSentinels.OnExcelThread): its handler must
+        // not call the server but return UdfSentinels.NeedsServerCall, and the host repeats the call on a background
+        // thread. Results returned on Excel's thread keep the Ctrl+C marquee (CLAUDE.md 126).
+        [ThreadStatic] private static bool _onExcelThread;
+
         internal static object Execute(string functionName, object[] args)
         {
+            _onExcelThread = args != null && args.Length > 0 && Equals(args[args.Length - 1], UdfSentinels.OnExcelThread);
+            if (_onExcelThread) Array.Resize(ref args, args.Length - 1);
             try
             {
                 switch (functionName)
@@ -117,6 +124,10 @@ namespace GLSense.Addin.Core.Udf
             {
                 ServiceLocator.Logger?.LogException(ex, $"UdfDispatcher.Execute('{functionName}'): unhandled error");
                 return UdfSentinels.XlErrorGettingData;
+            }
+            finally
+            {
+                _onExcelThread = false;
             }
         }
 
@@ -361,7 +372,10 @@ namespace GLSense.Addin.Core.Udf
             string resolvedSegmentName = ResolveSegmentName(parameters[1], ledgerName);
             return segmentValues
                 .Where(sv => sv.SegmentName.Equals(resolvedSegmentName, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(sv => sv.SegmentValue)
+                // Character-code (binary) order, as the segment values are ordered in the ledger: digits, then capitals,
+                // then lower case, then symbols such as "~". The default culture order put "~118" FIRST, so
+                // GetNextSegment("~118") returned the first ordinary value (1000) instead of #GETTING_DATA (CLAUDE.md 121).
+                .OrderBy(sv => sv.SegmentValue, StringComparer.Ordinal)
                 .ToList();
         }
 
@@ -516,8 +530,7 @@ namespace GLSense.Addin.Core.Udf
         {
             try
             {
-                ServiceLocator.Logger?.LogDebug($"Formula: {CompressionHelper.DecompressString(formulaCompressed)}");
-
+                // The formula text is logged by HandleGetBalance when no value is found.
                 if (FormulaCacheManager.Instance.ContainsKey(formulaCompressed))
                 {
                     return GetResultValue(FormulaCacheManager.Instance.GetValue(formulaCompressed));
@@ -645,6 +658,24 @@ namespace GLSense.Addin.Core.Udf
                 ServiceLocator.Logger?.LogException(ex, $"GetResultValue|{obj}");
                 return obj;
             }
+        }
+
+        /// <summary>
+        /// The segment value a segment function looks up. The value as given is text and is used exactly as it is when
+        /// that value exists (e.g. a real code "118~" or "--X"); only when it doesn't are GLSense's GetBalance markers
+        /// stripped (leading "--" = exclude, trailing "~" = non-summary), as written by the Segment Values window
+        /// (CLAUDE.md 123). Values without a marker are returned unchanged with no lookup.
+        /// </summary>
+        private static string ResolveSegmentValueText(string raw, string segmentName, Func<IEnumerable<SegmentValueModel>> candidates)
+        {
+            string asGiven = (raw ?? string.Empty).Trim();
+            if (!asGiven.StartsWith("--", StringComparison.Ordinal) && !asGiven.EndsWith("~", StringComparison.Ordinal))
+                return asGiven;
+
+            bool exists = candidates()?.Any(sv =>
+                (segmentName == null || sv.SegmentName.Equals(segmentName, StringComparison.OrdinalIgnoreCase)) &&
+                sv.SegmentValue.Equals(asGiven, StringComparison.OrdinalIgnoreCase)) == true;
+            return exists ? asGiven : CleanSegmentValue(asGiven);
         }
 
         private static string CleanSegmentValue(string segmentValue)
@@ -1359,7 +1390,7 @@ namespace GLSense.Addin.Core.Udf
                     return GetCachedFormulaResultOrError(formulaCompressed);
                 }
 
-                string segmentValueStr = CleanSegmentValue(parameters[0].ToString());
+                string segmentValueStr = ResolveSegmentValueText(parameters[0].ToString(), resolvedSegmentName, () => segmentValues);
 
                 var segmentValue = segmentValues.FirstOrDefault(sv =>
                     sv.SegmentName.Equals(resolvedSegmentName, StringComparison.OrdinalIgnoreCase) &&
@@ -1417,7 +1448,7 @@ namespace GLSense.Addin.Core.Udf
                     return GetCachedFormulaResultOrError(formulaCompressed);
                 }
 
-                string segmentValueStr = CleanSegmentValue(parameters[0].ToString());
+                string segmentValueStr = ResolveSegmentValueText(parameters[0].ToString(), resolvedSegmentName, () => segmentValues);
 
                 var segmentValue = segmentValues.FirstOrDefault(sv =>
                     sv.SegmentName.Equals(resolvedSegmentName, StringComparison.OrdinalIgnoreCase) &&
@@ -1466,7 +1497,7 @@ namespace GLSense.Addin.Core.Udf
                     return GetCachedFormulaResultOrError(formulaCompressed);
                 }
 
-                string segmentValueStr = CleanSegmentValue(parameters[0].ToString());
+                string segmentValueStr = ResolveSegmentValueText(parameters[0].ToString(), resolvedSegmentName, () => segmentValues);
 
                 var segmentValue = segmentValues.FirstOrDefault(sv =>
                     sv.SegmentName.Equals(resolvedSegmentName, StringComparison.OrdinalIgnoreCase) &&
@@ -1500,13 +1531,19 @@ namespace GLSense.Addin.Core.Udf
 
             if (!AppState.Instance.IsLoginCompleted)
                 return HandleNotLoggedIn(formulaCompressed);
+            if (_onExcelThread) return UdfSentinels.NeedsServerCall;
 
             try
             {
                 string segmentValueStr = parameters[0]?.ToString() ?? string.Empty;
                 string attributeStr = parameters[2]?.ToString() ?? string.Empty;
 
-                segmentValueStr = CleanSegmentValue(segmentValueStr);
+                // Name resolved inside the lambda: it is only needed (and only costs a lookup) when the value carries a marker.
+                segmentValueStr = ResolveSegmentValueText(segmentValueStr, null, () =>
+                {
+                    string name = DataServiceLocator.SegmentDataService.ResolveSegmentName(parameters[1], ledgerValue);
+                    return LoadSegmentValues(ledgerValue)?.Where(sv => sv.SegmentName.Equals(name, StringComparison.OrdinalIgnoreCase));
+                });
                 if (string.IsNullOrEmpty(segmentValueStr) || segmentValueStr == "null")
                 {
                     return string.Empty;
@@ -1587,12 +1624,14 @@ namespace GLSense.Addin.Core.Udf
 
             if (!AppState.Instance.IsLoginCompleted)
                 return HandleNotLoggedIn(formulaCompressed);
+            if (_onExcelThread) return UdfSentinels.NeedsServerCall;
 
             try
             {
                 string segmentValueStr = parameters[0]?.ToString() ?? string.Empty;
 
-                segmentValueStr = CleanSegmentValue(segmentValueStr);
+                // Segment given by position here, so any segment holding exactly this value counts.
+                segmentValueStr = ResolveSegmentValueText(segmentValueStr, null, () => LoadSegmentValues(ledgerValue));
                 if (string.IsNullOrEmpty(segmentValueStr) || segmentValueStr == "null")
                 {
                     return string.Empty;
@@ -1655,7 +1694,8 @@ namespace GLSense.Addin.Core.Udf
             string formulaCompressed = FormulaCacheString(parameters);
 
             if (!AppState.Instance.IsLoginCompleted)
-                return HandleNotLoggedIn(formulaCompressed);
+                return GetResultValue(HandleNotLoggedIn(formulaCompressed)); // number, not text (see HandleGetBalance)
+            if (_onExcelThread) return UdfSentinels.NeedsServerCall;
 
             try
             {
@@ -1703,6 +1743,39 @@ namespace GLSense.Addin.Core.Udf
         // XLLR1C1 computed host-side). LedgerName here is a distinct, mandatory raw value -
         // unrelated to the optional "Ledger" ResolveLedger resolution used by every other
         // function above.
+        /// <summary>
+        /// Builds GLSense_GetBalance's cache key and its 31 normalised parameters (11 fixed + 20 segments) from
+        /// the UDF's evaluated arguments. Shared with the JSON refresh (BulkRefreshProcess.Json) so the keys it
+        /// stores in PreComputedBalances match this UDF's lookup by construction.
+        /// </summary>
+        internal static string BuildGetBalanceKey(object[] args, out object[] parameters, out string[] segmentValues)
+        {
+            segmentValues = new string[20];
+            for (int i = 0; i < 20; i++)
+            {
+                segmentValues[i] = GetSegmentString(args[11 + i]);
+            }
+
+            if (!string.IsNullOrWhiteSpace(segmentValues[0]) && segmentValues[0].Contains(";"))
+            {
+                var combinedSegments = SplitCombinedSegments(segmentValues[0]);
+                for (int i = 0; i < segmentValues.Length && i < combinedSegments.Length; i++)
+                {
+                    segmentValues[i] = combinedSegments[i];
+                }
+            }
+
+            var parametersList = new List<object>
+            {
+                args[0], args[1], args[2], args[3], args[4],
+                args[5], args[6], args[7], args[8], args[9], args[10]
+            };
+            parametersList.AddRange(segmentValues);
+            parameters = parametersList.ToArray();
+
+            return FormulaCacheString(parameters);
+        }
+
         private static object HandleGetBalance(object[] args)
         {
             // Old monolith's short-circuit: checked BEFORE building/validating parameters.
@@ -1717,55 +1790,40 @@ namespace GLSense.Addin.Core.Udf
             {
                 string xllR1C1 = args.Length > 31 ? (args[31]?.ToString() ?? string.Empty) : string.Empty;
 
-                var segmentValues = new string[20];
-                for (int i = 0; i < 20; i++)
-                {
-                    segmentValues[i] = GetSegmentString(args[11 + i]);
-                }
+                string formulaCompressed = BuildGetBalanceKey(args, out object[] parameters, out string[] segmentValues);
 
-                if (!string.IsNullOrWhiteSpace(segmentValues[0]) && segmentValues[0].Contains(";"))
-                {
-                    var combinedSegments = SplitCombinedSegments(segmentValues[0]);
-                    for (int i = 0; i < segmentValues.Length && i < combinedSegments.Length; i++)
-                    {
-                        segmentValues[i] = combinedSegments[i];
-                    }
-                }
-
-                var parametersList = new List<object>
-                {
-                    args[0], args[1], args[2], args[3], args[4],
-                    args[5], args[6], args[7], args[8], args[9], args[10]
-                };
-                parametersList.AddRange(segmentValues);
-                object[] parameters = parametersList.ToArray();
-
-                string formulaCompressed = FormulaCacheString(parameters);
-
-                ServiceLocator.Logger?.LogDebug($"GLSense_GetBalance: ledger='{args[1]}' activity='{args[2]}' period='{args[3]}' balanceType='{args[4]}' currency='{args[5]}' segmentsSet={segmentValues.Count(s => !string.IsNullOrWhiteSpace(s))} singleRefresh={AppState.Instance.SingleRefresh} batchCalc={AppState.Instance.StartBatchCalc}");
+                // One debug line per call (path + arguments + result): a refresh recalculates
+                // thousands of these, so per-step lines flooded the log and the log buffer.
+                string Describe(string route) =>
+                    $"GLSense_GetBalance [{route}] cell={xllR1C1} ledger='{args[1]}' activity='{args[2]}' period='{args[3]}' balanceType='{args[4]}' currency='{args[5]}' segmentsSet={segmentValues.Count(s => !string.IsNullOrWhiteSpace(s))}";
 
                 if (!AppState.Instance.IsLoginCompleted)
                 {
-                    ServiceLocator.Logger?.LogDebug("GLSense_GetBalance: not logged in - returning cached/'Not Logged In' result.");
-                    return HandleNotLoggedIn(formulaCompressed);
+                    // The cache stores text; return a number like the logged-in cache path does, or Excel shows the
+                    // balance as text and ignores the cell's number format (looked like "format reset to General").
+                    object notLoggedIn = GetResultValue(HandleNotLoggedIn(formulaCompressed));
+                    ServiceLocator.Logger?.LogDebug($"{Describe("not logged in")} -> '{notLoggedIn}'");
+                    return notLoggedIn;
                 }
 
                 List<string> balanceParameters = GetBalanceParameters(parameters);
 
                 object rawResult;
+                string path;
                 if (AppState.Instance.SingleRefresh && !AppState.Instance.StartBatchCalc)
                 {
-                    ServiceLocator.Logger?.LogDebug("GLSense_GetBalance: dispatching single-refresh (live API) balance call.");
+                    if (_onExcelThread) return UdfSentinels.NeedsServerCall; // never block Excel on the server
+                    path = "single refresh";
                     rawResult = ExecuteSingleRefreshAsync(formulaCompressed, balanceParameters, xllR1C1).GetAwaiter().GetResult();
                 }
                 else if (AppState.Instance.StartBatchCalc)
                 {
-                    ServiceLocator.Logger?.LogDebug("GLSense_GetBalance: dispatching batch-calc precomputed lookup.");
+                    path = "batch";
                     rawResult = HandleBatchCalculation(formulaCompressed);
                 }
                 else
                 {
-                    ServiceLocator.Logger?.LogDebug("GLSense_GetBalance: dispatching cached-result lookup (no refresh in progress).");
+                    path = "cache";
                     rawResult = HandleCachedResult(formulaCompressed);
                 }
 
@@ -1781,7 +1839,15 @@ namespace GLSense.Addin.Core.Udf
                     _ => rawResult ?? GLClickToRefresh
                 };
 
-                ServiceLocator.Logger?.LogDebug($"GLSense_GetBalance: resolved output='{finalResult}' (raw='{rawResult}')");
+                if (finalResult is double)
+                {
+                    ServiceLocator.Logger?.LogDebug($"{Describe(path)} -> {finalResult}");
+                }
+                else
+                {
+                    // No number came back: also log the full formula so the cell can be traced.
+                    ServiceLocator.Logger?.LogDebug($"{Describe(path)} -> '{finalResult}' (raw='{rawResult}') formula={CompressionHelper.DecompressString(formulaCompressed)}");
+                }
                 return finalResult;
             }
             catch (Exception ex)

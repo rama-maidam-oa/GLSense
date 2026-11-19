@@ -138,6 +138,8 @@
     <Compile Include="Drilldowns\DataTableBuilder.cs" />
     <Compile Include="Drilldowns\ExcelFormulaGenerator.cs" />
     <Compile Include="Drilldowns\BulkRefreshProcess.cs" />
+    <Compile Include="Drilldowns\BulkRefreshProcess.Json.cs" />
+    <Compile Include="Drilldowns\SnapshotOpenXml.cs" />
     <Compile Include="Drilldowns\BalanceRefresh.cs" />
     <Compile Include="Drilldowns\BalanceHighlighter.cs" />
     <Compile Include="Drilldowns\RangeRefresher.cs" />
@@ -215,6 +217,7 @@
     <Compile Include="Utilities\WebView2NavigationResilience.cs" />
     <Compile Include="Utilities\WpfAppManager.cs" />
     <Compile Include="Utilities\WindowLoadingPlaceholder.cs" />
+    <Compile Include="Utilities\ProgressWindowHost.cs" />
     <Compile Include="Views\AppOverlay.xaml.cs">
       <DependentUpon>AppOverlay.xaml</DependentUpon>
     </Compile>

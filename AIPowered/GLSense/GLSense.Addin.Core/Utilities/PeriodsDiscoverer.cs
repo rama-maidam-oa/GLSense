@@ -616,21 +616,7 @@ namespace GLSense.Addin.Core.Utilities
                 // WpfAppManager.InvokeOnWpfThread only takes an Action (no return value),
                 // so capture the created window from inside the delegate - same pattern
                 // AddinEntry.LedgerChanged / SegmentDiscoverer.CreateAndShowProgressWindow use.
-                WpfAppManager.InvokeOnWpfThread(() =>
-                {
-                    try
-                    {
-                        // Use the passed-in cts, don't create a new one
-                        win = new GLWaitWindow(cts);
-                        win.Show();
-                        win.StartMonitoring();
-                    }
-                    catch (Exception ex)
-                    {
-                        ServiceLocator.Logger?.LogException(ex, "PeriodsDiscoverer.CreateAndShowProgressWindow: failed on WPF thread");
-                        win = null;
-                    }
-                });
+                win = ProgressWindowHost.Show(cts); // own UI thread: keeps painting while Excel is busy (CLAUDE.md 114)
             }
             catch (Exception ex)
             {

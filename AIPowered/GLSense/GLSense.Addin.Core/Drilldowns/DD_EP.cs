@@ -138,12 +138,7 @@ namespace GLSense.Addin.Core.Drilldowns
         {
             try
             {
-                WpfAppManager.InvokeOnWpfThread(() =>
-                {
-                    Win = new GLWaitWindow(cts);
-                    Win.Show();
-                    Win.StartMonitoring();
-                });
+                Win = ProgressWindowHost.Show(cts); // own UI thread: keeps painting while Excel is busy (CLAUDE.md 114)
 
                 await UpdateProgressWindow("Getting dependent formulas", "Processing request...");
             }
@@ -160,6 +155,7 @@ namespace GLSense.Addin.Core.Drilldowns
             // Fire-and-forget: progress UI update only. Do not introduce a
             // suspend point here — callers proceed to touch Excel COM objects
             // immediately after awaiting this method.
+            if (Win == null) return Task.CompletedTask; // window couldn't be created (logged); carry on without it
             _ = Win.Dispatcher.InvokeAsync(() => Win.SetProcessTitle(title));
             _ = Win.Dispatcher.InvokeAsync(() => Win.SetProcessMessage(message));
             return Task.CompletedTask;

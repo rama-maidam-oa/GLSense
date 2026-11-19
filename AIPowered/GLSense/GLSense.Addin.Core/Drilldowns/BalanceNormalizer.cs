@@ -58,7 +58,7 @@ namespace GLSense.Addin.Core.Drilldowns
         }
 
         // Extract all GLSENSE_GETBALANCE(...) occurrences (with optional @ and _XLL.)
-        private static List<string> ExtractUdfCalls(string formulaText, string udfName)
+        internal static List<string> ExtractUdfCalls(string formulaText, string udfName)
         {
             var result = new List<string>();
 

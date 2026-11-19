@@ -46,11 +46,15 @@ namespace GLSense.Addin.Core
             int argCount = args?.Length ?? 0;
             try
             {
-                ServiceLocator.Logger?.LogDebug($"ExecuteUdf: function='{functionName}' argCount={argCount}");
+                // GetBalance logs its own single line (it runs thousands of times per refresh).
+                bool trace = functionName != AppConstants.glBal;
+                if (trace)
+                    ServiceLocator.Logger?.LogDebug($"ExecuteUdf: function='{functionName}' argCount={argCount}");
 
                 object result = Udf.UdfDispatcher.Execute(functionName, args);
 
-                ServiceLocator.Logger?.LogDebug($"ExecuteUdf: function='{functionName}' returned '{result}'");
+                if (trace)
+                    ServiceLocator.Logger?.LogDebug($"ExecuteUdf: function='{functionName}' returned '{result}'");
                 return result;
             }
             catch (Exception ex)
@@ -1171,14 +1175,8 @@ namespace GLSense.Addin.Core
                 // WpfAppManager.InvokeOnWpfThread only takes an Action (no return value,
                 // see CommonFunctions.GLSenseMessage for the same pattern), so capture the
                 // created window from inside the delegate.
-                WpfAppManager.InvokeOnWpfThread(() =>
-                {
-                    win = new GLWaitWindow(ctsHelper);
-                    win.SetProcessTitle("Switching Ledger");
-                    win.SetProcessMessage(sheetClear ? "Clearing sheet..." : "Loading ledger data...");
-                    win.Show();
-                    win.StartMonitoring();
-                });
+                // Own UI thread: keeps painting while Excel is busy (CLAUDE.md 114).
+                win = ProgressWindowHost.Show(ctsHelper, "Switching Ledger", sheetClear ? "Clearing sheet..." : "Loading ledger data...");
 
                 // Cross-thread COM note: this Task.Run body touches ServiceLocator.ExcelApp
                 // (Cells.Clear) and, via UpdateRibbonAndSelectionForLedger, the ribbon's
@@ -1201,7 +1199,8 @@ namespace GLSense.Addin.Core
                         {
                             sheet.Cells.Clear();
                         }
-                        await win.Dispatcher.InvokeAsync(() => win.SetProcessMessage("Loading ledger data..."));
+                        if (win != null)
+                            await win.Dispatcher.InvokeAsync(() => win.SetProcessMessage("Loading ledger data..."));
                     }
 
                     token.ThrowIfCancellationRequested();
@@ -2082,16 +2081,9 @@ namespace GLSense.Addin.Core
                 if (!CommonMethods.TryDisableExcelSettings("AddinEntry.ResetBalances"))
                     return;
 
-                WpfAppManager.InvokeOnWpfThread(() =>
-                {
-                    win = new GLWaitWindow(ctsHelper);
-                    win.SetProcessTitle("Reset Balance Formulas");
-                    win.SetProcessMessage("Resetting balances...");
-                    win.Show();
-                    win.StartMonitoring();
-                });
-
-                await win.Dispatcher.InvokeAsync(() => win.SetProcessMessage("Checking if there are any broken links in the workbook."));
+                // Own UI thread: opens at once and keeps painting while the reset recalculates on
+                // Excel's thread (CLAUDE.md 114).
+                win = ProgressWindowHost.Show(ctsHelper, "Reset Balance Formulas", "Checking if there are any broken links in the workbook.");
                 string brokenLinks = CommonFunctions.WorkbookBrokenLinks();
                 if (!string.IsNullOrWhiteSpace(brokenLinks))
                 {
@@ -2107,7 +2099,9 @@ namespace GLSense.Addin.Core
                 {
                     if (activeSheet != null)
                     {
-                        BalancesReset(activeSheet.Name);
+                        string name = activeSheet.Name;
+                        _ = win?.Dispatcher.InvokeAsync(() => win.SetProcessMessage($"Resetting worksheet \"{name}\"."));
+                        BalancesReset(name);
                         token.ThrowIfCancellationRequested();
                     }
                 }
@@ -2118,8 +2112,10 @@ namespace GLSense.Addin.Core
                         foreach (Excel.Worksheet sheet in ServiceLocator.ExcelApp.ActiveWorkbook.Worksheets)
                         {
                             token.ThrowIfCancellationRequested();
+                            string name = sheet.Name;
+                            _ = win?.Dispatcher.InvokeAsync(() => win.SetProcessMessage($"Resetting worksheet \"{name}\"."));
                             sheet.Activate();
-                            BalancesReset(sheet.Name);
+                            BalancesReset(name);
                         }
                     }
                     activeSheet?.Activate();
@@ -2220,6 +2216,9 @@ namespace GLSense.Addin.Core
                     // comment for why leaving this running is the most likely reason
                     // Excel.exe lingers as an orphaned process after a real close.
                     Utilities.WpfAppManager.Shutdown();
+                    // The progress windows' own UI thread too (stops 10 s after its last operation; closing Excel or
+                    // Reloading sooner left it alive and AppDomain.Unload timed out - CLAUDE.md 114/119).
+                    Utilities.ProgressWindowHost.Shutdown();
                 }
                 catch (Exception ex)
                 {

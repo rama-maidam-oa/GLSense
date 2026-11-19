@@ -266,7 +266,10 @@ namespace GLSense.Addin.Core.Models
 
         public static object CreateFromXllParameters(string cellRef, List<string> args)
         {
-            ServiceLocator.Logger?.LogDebug($"BalanceDto.CreateFromXllParameters started. CellRef={cellRef}, ArgCount={args?.Count ?? 0}");
+            // Bulk refresh builds one DTO per balance inside BeginBatchLookupCache: skip the per-call line there
+            // (it logs the counts and any failure itself); single-cell refresh keeps it.
+            if (_batchLookups == null)
+                ServiceLocator.Logger?.LogDebug($"BalanceDto.CreateFromXllParameters started. CellRef={cellRef}, ArgCount={args?.Count ?? 0}");
             string periodName = NormalizeStrings(args[3]);
 
             var normalizedBT = NormalizeStrings(args[4]);
@@ -339,15 +342,19 @@ namespace GLSense.Addin.Core.Models
                 balance.isFunctionalCurrency = true; // Default to true if no matching ledger found
             }
 
-            EnsureLedgerDataLoaded(AppState.Instance.SelectedCube.CubeId, ledgerId);
+            BatchMemo($"ensure|{AppState.Instance.SelectedCube.CubeId}|{ledgerId}", () =>
+            {
+                EnsureLedgerDataLoaded(AppState.Instance.SelectedCube.CubeId, ledgerId);
+                return true;
+            });
 
             //Safer converter for Activity type if short form used manually
             string Activity = NormalizeStrings(args[2]);
 
             if (!string.IsNullOrEmpty(Activity))
             {
-                var repo = new DataRepository();
-                var activities = repo.GetActivities(AppState.Instance.SelectedCube.CubeId, AppState.Instance.SelectedLedger.LedgerId);
+                var activities = BatchMemo($"act|{AppState.Instance.SelectedCube.CubeId}|{AppState.Instance.SelectedLedger.LedgerId}",
+                    () => new DataRepository().GetActivities(AppState.Instance.SelectedCube.CubeId, AppState.Instance.SelectedLedger.LedgerId));
 
                 var matchedActivity = activities.FirstOrDefault(a =>
                     string.Equals(a.DisplayName, Activity, StringComparison.OrdinalIgnoreCase) ||
@@ -385,8 +392,8 @@ namespace GLSense.Addin.Core.Models
 
                 if (ledgerId != 0 && !string.IsNullOrEmpty(budEncum))
                 {
-                    var repo = new DataRepository();
-                    var encumbrances = repo.GetEncumbrances(AppState.Instance.SelectedCube.CubeId, ledgerId);
+                    var encumbrances = BatchMemo($"enc|{AppState.Instance.SelectedCube.CubeId}|{ledgerId}",
+                        () => new DataRepository().GetEncumbrances(AppState.Instance.SelectedCube.CubeId, ledgerId));
 
                     var encumbranceNames = budEncum
                         .Split(';')
@@ -755,7 +762,39 @@ namespace GLSense.Addin.Core.Models
             return !string.Equals(firstMatch.SummaryFlag, "N", StringComparison.OrdinalIgnoreCase);
         }
 
+        // ---- batch lookup cache (JSON refresh only) ----
+        // CreateFromXllParameters reloads ledger reference data from SQLite on every call - fine for one cell
+        // (single-cell refresh), ~10 ms x every request for a bulk refresh. Inside BeginBatchLookupCache() each
+        // lookup runs once per key on the calling thread; outside it (UDF, single refresh) behaviour is unchanged.
+        [ThreadStatic] private static Dictionary<string, object> _batchLookups;
+
+        public static IDisposable BeginBatchLookupCache()
+        {
+            _batchLookups = new Dictionary<string, object>(StringComparer.Ordinal);
+            return new BatchLookupScope();
+        }
+
+        private sealed class BatchLookupScope : IDisposable
+        {
+            public void Dispose() => _batchLookups = null;
+        }
+
+        private static T BatchMemo<T>(string key, Func<T> load)
+        {
+            if (_batchLookups == null) return load();
+            if (_batchLookups.TryGetValue(key, out object cached)) return (T)cached;
+            T value = load();
+            _batchLookups[key] = value;
+            return value;
+        }
+
         private static ObservableCollection<SegmentValueModel> LoadSegmentValues(string ledgerName)
+            => BatchMemo("segvals|" + ledgerName, () => LoadSegmentValuesCore(ledgerName));
+
+        private static ObservableCollection<SegmentModel> LoadSegments(string ledgerName)
+            => BatchMemo("segs|" + ledgerName, () => LoadSegmentsCore(ledgerName));
+
+        private static ObservableCollection<SegmentValueModel> LoadSegmentValuesCore(string ledgerName)
         {
             ServiceLocator.Logger?.LogDebug($"BalanceDto.LoadSegmentValues: LedgerName={ledgerName}");
             try
@@ -783,7 +822,7 @@ namespace GLSense.Addin.Core.Models
             }
         }
 
-        private static ObservableCollection<SegmentModel> LoadSegments(string ledgerName)
+        private static ObservableCollection<SegmentModel> LoadSegmentsCore(string ledgerName)
         {
             ServiceLocator.Logger?.LogDebug($"BalanceDto.LoadSegments: LedgerName={ledgerName}");
             try
@@ -814,6 +853,10 @@ namespace GLSense.Addin.Core.Models
 
     public class Balances
     {
+        // excelSheet/inputFormula: set only by the JSON refresh (/sheet-balances-json); null elsewhere, so the
+        // single-cell /balance payload is unchanged (JsonGlobals skips nulls).
+        public string excelSheet { get; set; }
+        public string inputFormula { get; set; }
         public string excelCell { get; set; }
         public string cellSign { get; set; }
         public object[] ledgerIdList { get; set; }

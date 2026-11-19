@@ -1,0 +1,331 @@
+// Prototype: replace GLSense formulas with values directly in the .xlsx package (no Excel).
+// Usage: OxmlSnapshot.exe <in.xlsx> <out.xlsx> <GLSense.Addin.Core.dll> [keepSheet] [--break]
+// Sheet XML is scanned as text: cells without a formula are copied byte for byte; only formula cells are rebuilt.
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Net;
+using System.Reflection;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
+
+static class OxmlSnapshot
+{
+    static readonly XNamespace M = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    static readonly XNamespace PR = "http://schemas.openxmlformats.org/package/2006/relationships";
+    static readonly XNamespace CT = "http://schemas.openxmlformats.org/package/2006/content-types";
+    static readonly Regex AttrRegex = new Regex("([A-Za-z_][\\w:.-]*)=\"([^\"]*)\"", RegexOptions.Compiled);
+    static MethodInfo buildCell;
+    static readonly Dictionary<string, int> stats = new Dictionary<string, int>();
+    static void Count(string k) { stats.TryGetValue(k, out int n); stats[k] = n + 1; }
+
+    static int Main(string[] a)
+    {
+        string inPath = a[0], outPath = a[1];
+        buildCell = Assembly.LoadFrom(a[2]).GetType("GLSense.Addin.Core.Drilldowns.ExcelFormulaGenerator", true).GetMethod("BuildSnapshotCell");
+        string keepSheet = a.Length > 3 && !a[3].StartsWith("--") ? a[3] : null;
+        bool breakIt = a.Contains("--break");
+
+        var sw = Stopwatch.StartNew();
+        long xmlMs = 0;
+        File.Copy(inPath, outPath, true);
+        using (var zip = ZipFile.Open(outPath, ZipArchiveMode.Update))
+        {
+            var wbEntry = zip.GetEntry("xl/workbook.xml");
+            XDocument wb = Load(wbEntry);
+            var relsEntry = zip.GetEntry("xl/_rels/workbook.xml.rels");
+            XDocument rels = Load(relsEntry);
+            var ctEntry = zip.GetEntry("[Content_Types].xml");
+            XDocument ct = Load(ctEntry);
+
+            var sheets = wb.Root.Element(M + "sheets").Elements(M + "sheet").Select((s, i) => new
+            {
+                El = s, Index = i, Name = (string)s.Attribute("name"),
+                Part = "xl/" + ((string)rels.Root.Elements(PR + "Relationship").First(r => (string)r.Attribute("Id") == (string)s.Attribute(R + "id")).Attribute("Target")).TrimStart('/').Replace("xl/", "")
+            }).ToList();
+
+            var deleted = keepSheet == null ? new HashSet<string>() : new HashSet<string>(sheets.Where(s => s.Name != keepSheet).Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var s in sheets.Where(s => !deleted.Contains(s.Name)))
+            {
+                var entry = zip.GetEntry(s.Part);
+                string xml;
+                using (var rd = new StreamReader(entry.Open(), Encoding.UTF8)) xml = rd.ReadToEnd();
+                var t = Stopwatch.StartNew();
+                string result = RewriteSheet(xml, deleted);
+                xmlMs += t.ElapsedMilliseconds;
+                xml = null;
+                entry.Delete();
+                using (var w = new StreamWriter(zip.CreateEntry(s.Part, CompressionLevel.Fastest).Open(), new UTF8Encoding(false))) w.Write(result);
+            }
+
+            if (!breakIt) RemoveCalcChain(zip, rels, ct);
+            if (deleted.Count > 0) DeleteSheets(zip, wb, rels, ct, sheets.Where(s => deleted.Contains(s.Name)).Select(s => (s.El, s.Index, s.Part)).ToList());
+
+            Save(zip, wbEntry.FullName, wb);
+            Save(zip, relsEntry.FullName, rels);
+            Save(zip, ctEntry.FullName, ct);
+        }
+        Console.WriteLine($"OpenXML rewrite: {sw.ElapsedMilliseconds} ms (cell rewriting {xmlMs} ms)  " + string.Join(", ", stats.Select(k => $"{k.Key}={k.Value}")));
+        return 0;
+    }
+
+    // ---- worksheet text scan ----
+    static string RewriteSheet(string xml, HashSet<string> deletedSheets)
+    {
+        if (Environment.GetEnvironmentVariable("OX_NOTRANSFORM") != null) return xml;
+        var sb = new StringBuilder(xml.Length);
+        var glsenseSi = new HashSet<string>(); // shared formulas whose master is GLSense (masters precede their dependents)
+        int pos = 0;
+        while (true)
+        {
+            int start = xml.IndexOf("<c ", pos, StringComparison.Ordinal);
+            if (start < 0) break;
+            int gt = xml.IndexOf('>', start);
+            bool selfClosing = xml[gt - 1] == '/';
+            int end = selfClosing ? gt + 1 : xml.IndexOf("</c>", gt, StringComparison.Ordinal) + 4;
+            if (selfClosing || xml.IndexOf("<f", gt, end - gt, StringComparison.Ordinal) < 0)
+            {
+                sb.Append(xml, pos, end - pos); // no formula: copied as is
+            }
+            else
+            {
+                sb.Append(xml, pos, start - pos);
+                sb.Append(RewriteCell(xml.Substring(start, end - start), glsenseSi, deletedSheets));
+            }
+            pos = end;
+        }
+        sb.Append(xml, pos, xml.Length - pos);
+        return sb.ToString();
+    }
+
+    sealed class Cell
+    {
+        public string OpenTagAttrs;   // raw attribute text of <c ...>
+        public string FAttrs = "", FText = "", V; // <f ...>text</f>, <v>text</v>
+        public bool Simple = true;    // only <f> and <v> children
+        List<KeyValuePair<string, string>> attrs, fattrs;
+        public List<KeyValuePair<string, string>> Attrs => attrs ??= ParseAttrs(OpenTagAttrs);
+        public string Attr(string name) => Find(Attrs, name);
+        public string FAttr(string name) => Find(fattrs ??= ParseAttrs(FAttrs), name);
+        static string Find(List<KeyValuePair<string, string>> list, string name) { foreach (var kv in list) if (kv.Key == name) return kv.Value; return null; }
+        // name="value" pairs; values stay XML-escaped (they are written back as they were).
+        static List<KeyValuePair<string, string>> ParseAttrs(string s)
+        {
+            var list = new List<KeyValuePair<string, string>>(4);
+            int i = 0;
+            while (i < s.Length)
+            {
+                while (i < s.Length && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')) i++;
+                int eq = s.IndexOf('=', i); if (eq < 0) break;
+                int q1 = s.IndexOf('"', eq); int q2 = s.IndexOf('"', q1 + 1); if (q1 < 0 || q2 < 0) break;
+                list.Add(new KeyValuePair<string, string>(s.Substring(i, eq - i).Trim(), s.Substring(q1 + 1, q2 - q1 - 1)));
+                i = q2 + 1;
+            }
+            return list;
+        }
+    }
+
+    static Cell Parse(string raw)
+    {
+        var c = new Cell();
+        int gt = raw.IndexOf('>');
+        c.OpenTagAttrs = raw.Substring(3, gt - 3);
+        int p = gt + 1, close = raw.Length - 4; // before "</c>"
+        while (p < close)
+        {
+            if (string.CompareOrdinal(raw, p, "<f", 0, 2) == 0)
+            {
+                int fgt = raw.IndexOf('>', p);
+                bool selfClosing = raw[fgt - 1] == '/';
+                c.FAttrs = raw.Substring(p + 2, (selfClosing ? fgt - 1 : fgt) - p - 2);
+                if (selfClosing) { p = fgt + 1; continue; }
+                int fend = raw.IndexOf("</f>", fgt, StringComparison.Ordinal);
+                c.FText = XmlUnescape(raw.Substring(fgt + 1, fend - fgt - 1));
+                p = fend + 4;
+            }
+            else if (string.CompareOrdinal(raw, p, "<v>", 0, 3) == 0)
+            {
+                int vend = raw.IndexOf("</v>", p, StringComparison.Ordinal);
+                c.V = XmlUnescape(raw.Substring(p + 3, vend - p - 3));
+                p = vend + 4;
+            }
+            else if (string.CompareOrdinal(raw, p, "<v/>", 0, 4) == 0) { p += 4; }
+            else { c.Simple = false; break; } // <is>, <extLst>, ... - not expected on a formula cell
+        }
+        return c;
+    }
+
+    static string RewriteCell(string raw, HashSet<string> glsenseSi, HashSet<string> deletedSheets)
+    {
+        Cell c = Parse(raw);
+        if (!c.Simple) { Count("left as is (unexpected shape)"); return raw; }
+        string fType = c.FAttr("t"), si = c.FAttr("si");
+        bool isGl = c.FText.IndexOf("GLSENSE", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (isGl && fType == "shared" && si != null) glsenseSi.Add(si);
+        if (!isGl && fType == "shared" && si != null && glsenseSi.Contains(si)) isGl = true;
+
+        if (!isGl)
+        {
+            if (deletedSheets.Count > 0 && RefersTo(c.FText, deletedSheets)) { Count("other-sheet ref -> value"); return ValueCell(c, CachedValue(c)); }
+            return raw;
+        }
+        if (IsSingleBalanceCall(c.FText))
+        {
+            // Prototype balance source = the cached value (the real path passes the JSON balance).
+            if (c.Attr("t") == null && double.TryParse(c.V, NumberStyles.Float, CultureInfo.InvariantCulture, out double num)) { Count("balance -> number"); return ValueCell(c, num); }
+            Count("balance -> text"); return ValueCell(c, CachedValue(c));
+        }
+        if (c.FText.IndexOf("GETBALANCE", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            var values = TestBalances(c);
+            object content = values == null ? null : buildCell.Invoke(null, new object[] { "=" + c.FText, values });
+            if (content is double d) { Count("balance -> number"); return ValueCell(c, d); }
+            if (content is string s && s.StartsWith("=")) { Count("balance -> formula with values"); return FormulaCell(c, s.Substring(1)); }
+            if (content is string txt) { Count("balance -> text"); return ValueCell(c, txt.TrimStart('\'')); }
+            Count("balance -> cached (unresolved)"); return ValueCell(c, CachedValue(c));
+        }
+        Count("other GLSense -> value");
+        return ValueCell(c, CachedValue(c));
+    }
+
+    static List<string> TestBalances(Cell c)
+    {
+        // T(00) of test.xlsx: the balances behind the mixed formulas (the real path has them from the JSON response).
+        var known = new Dictionary<string, string> { ["D3"] = "29838012.64", ["E3"] = "-1500", ["F3"] = "15964242.66" };
+        return known.TryGetValue(c.Attr("r") ?? "", out var v) ? new List<string> { v } : null;
+    }
+
+    static bool IsSingleBalanceCall(string f)
+    {
+        const string name = "GLSense_GetBalance(";
+        int start = f.StartsWith("_xll.", StringComparison.OrdinalIgnoreCase) ? 5 : 0;
+        if (string.Compare(f, start, name, 0, name.Length, StringComparison.OrdinalIgnoreCase) != 0) return false;
+        int depth = 0; bool q = false;
+        for (int i = start + name.Length - 1; i < f.Length; i++)
+        {
+            char ch = f[i];
+            if (ch == '"') q = !q;
+            else if (!q && ch == '(') depth++;
+            else if (!q && ch == ')' && --depth == 0) return i == f.Length - 1;
+        }
+        return false;
+    }
+
+    static object CachedValue(Cell c)
+    {
+        string t = c.Attr("t");
+        if (t == "str") return c.V ?? "";
+        if (t == "e") return "#GETTING_DATA";
+        if (t == "b") return c.V == "1";
+        return double.TryParse(c.V, NumberStyles.Float, CultureInfo.InvariantCulture, out double d) ? (object)d : (object)"";
+    }
+
+    // Keeps every attribute of <c> except t (re-set) and cm (dynamic-array metadata of the removed formula).
+    static string KeptAttrs(Cell c)
+    {
+        var sb = new StringBuilder();
+        foreach (var kv in c.Attrs) if (kv.Key != "t" && kv.Key != "cm") sb.Append(' ').Append(kv.Key).Append("=\"").Append(kv.Value).Append('"');
+        return sb.ToString();
+    }
+
+    // The five XML entities (all a worksheet part uses) plus numeric references.
+    static string XmlUnescape(string s)
+    {
+        if (s.IndexOf('&') < 0) return s;
+        var sb = new StringBuilder(s.Length);
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] != '&') { sb.Append(s[i]); continue; }
+            int semi = s.IndexOf(';', i);
+            string ent = semi > i ? s.Substring(i + 1, semi - i - 1) : "";
+            switch (ent)
+            {
+                case "quot": sb.Append('"'); break;
+                case "amp": sb.Append('&'); break;
+                case "lt": sb.Append('<'); break;
+                case "gt": sb.Append('>'); break;
+                case "apos": sb.Append('\''); break;
+                default:
+                    if (ent.StartsWith("#x")) sb.Append(char.ConvertFromUtf32(Convert.ToInt32(ent.Substring(2), 16)));
+                    else if (ent.StartsWith("#")) sb.Append(char.ConvertFromUtf32(int.Parse(ent.Substring(1))));
+                    else { sb.Append('&'); continue; }
+                    break;
+            }
+            i = semi;
+        }
+        return sb.ToString();
+    }
+
+    static string ValueCell(Cell c, object value)
+    {
+        string attrs = KeptAttrs(c);
+        switch (value)
+        {
+            case double d: return $"<c{attrs}><v>{d.ToString("R", CultureInfo.InvariantCulture)}</v></c>";
+            case bool b: return $"<c{attrs} t=\"b\"><v>{(b ? 1 : 0)}</v></c>";
+            default: return $"<c{attrs} t=\"inlineStr\"><is><t xml:space=\"preserve\">{SecurityElement(value?.ToString() ?? "")}</t></is></c>";
+        }
+    }
+
+    static string FormulaCell(Cell c, string formula) => $"<c{KeptAttrs(c)}><f>{SecurityElement(formula)}</f></c>"; // no cached <v>: Excel calculates it on open
+
+    static string SecurityElement(string s) => System.Security.SecurityElement.Escape(s);
+
+    static bool RefersTo(string formula, HashSet<string> sheets) =>
+        sheets.Any(s => formula.IndexOf("'" + s.Replace("'", "''") + "'!", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        formula.IndexOf(s + "!", StringComparison.OrdinalIgnoreCase) >= 0);
+
+    // ---- package-level parts ----
+    static void RemoveCalcChain(ZipArchive zip, XDocument rels, XDocument ct)
+    {
+        zip.GetEntry("xl/calcChain.xml")?.Delete();
+        rels.Root.Elements(PR + "Relationship").Where(r => ((string)r.Attribute("Type")).EndsWith("/calcChain")).Remove();
+        ct.Root.Elements(CT + "Override").Where(o => (string)o.Attribute("PartName") == "/xl/calcChain.xml").Remove();
+        Count("calcChain removed");
+    }
+
+    static void DeleteSheets(ZipArchive zip, XDocument wb, XDocument rels, XDocument ct, List<(XElement El, int Index, string Part)> del)
+    {
+        var deletedIdx = new HashSet<int>(del.Select(d => d.Index));
+        foreach (var d in del)
+        {
+            string rid = (string)d.El.Attribute(R + "id");
+            rels.Root.Elements(PR + "Relationship").Where(r => (string)r.Attribute("Id") == rid).Remove();
+            ct.Root.Elements(CT + "Override").Where(o => (string)o.Attribute("PartName") == "/" + d.Part).Remove();
+            zip.GetEntry(d.Part)?.Delete();
+            zip.GetEntry(d.Part.Replace("worksheets/", "worksheets/_rels/") + ".rels")?.Delete();
+            d.El.Remove();
+            Count("sheet deleted");
+        }
+        var names = wb.Root.Element(M + "definedNames");
+        if (names != null)
+        {
+            foreach (var n in names.Elements(M + "definedName").ToList())
+            {
+                var lsi = n.Attribute("localSheetId");
+                if (lsi == null) continue;
+                int idx = (int)lsi;
+                if (deletedIdx.Contains(idx)) { n.Remove(); continue; }
+                lsi.Value = (idx - deletedIdx.Count(x => x < idx)).ToString();
+            }
+            if (!names.HasElements) names.Remove();
+        }
+        foreach (var v in wb.Root.Descendants(M + "workbookView")) { v.SetAttributeValue("activeTab", "0"); v.Attribute("firstSheet")?.Remove(); }
+    }
+
+    static XDocument Load(ZipArchiveEntry e) { using (var s = e.Open()) return XDocument.Load(s); }
+    static void Save(ZipArchive zip, string name, XDocument doc)
+    {
+        zip.GetEntry(name)?.Delete();
+        using (var s = zip.CreateEntry(name, CompressionLevel.Fastest).Open())
+        using (var w = XmlWriter.Create(s, new XmlWriterSettings { Encoding = new UTF8Encoding(false) })) doc.Save(w);
+    }
+}

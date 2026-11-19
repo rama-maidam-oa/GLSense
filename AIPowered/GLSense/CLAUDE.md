@@ -8409,3 +8409,479 @@ background-thread COM calls (whole login flow is on Excel's UI thread). Dump of 
 Dispatchers, `ComMessageFilter+Filter`, 2 COM wrappers held by its statics) although the log said it unloaded. But the
 dump's process uptime (1:52) suggests it may be a second Excel started ~11 s after the first quit. `Close-Excel.ps1` now
 prints the stuck Excel's command line/parent and dumps it - one clean logged-in run settles which.
+
+## 112. Sheet/Book Refresh progress window froze (17-Nov-2026, branch ribbon-compact, not committed)
+Symptom: after clicking Sheet Refresh the loading placeholder showed, then a lag before the progress window drew, and the
+progress window froze (no step text, no elapsed time) until the formula write-back finished.
+Root cause: `WpfAppManager.EnsureApplication` runs on Excel's main thread (from `AddinEntry.Initialize`), so the "WPF
+thread" IS Excel's thread. Every `RunExcelAsync` block (formula collection, JSON extraction, step 5 `Dirty()`/`Calculate()`)
+blocks the window's dispatcher; `BaseWindow`'s placeholder also waits for a `ContentRendered` that cannot happen while
+Excel's thread is busy.
+Fix: `BalanceRefresh.CreateAndShowProgressWindow` hosts the `GLWaitWindow` on its own STA thread + dispatcher
+(`ShowActivated=false`, so showing it never waits on the busy Excel owner; dispatcher shut down on `Closed`). All callers
+already used `Win.Dispatcher`. `BaseWindow` shows the shared placeholder only for windows on the main WPF dispatcher.
+`BulkRefreshProcess.MessageProgressWindowAsync` is fire-and-forget and skips a shut-down dispatcher;
+`SafelyCloseWindowAsync` skips it too. The PARITY check after write-back runs only with Debug logs on.
+Known limit: the window is owned by Excel's window across threads, which attaches input queues - painting and timers keep
+running while Excel is busy, but a click (e.g. Cancel) is processed only when Excel pumps again.
+Same-issue sweep: every other `new GLWaitWindow` caller still creates it on the main (Excel) thread and freezes the same
+way during long Excel work - BalanceHighlighter, CustomDrilldown, DD_BL, DD_EP, DD_FJE, DD_JL, DD_SL,
+DrillCellHighlighter, RangeRefresher, RowVisibilityProcessor, PeriodsDiscoverer, SegmentDiscoverer, AddinEntry (2).
+Open: not changed, pending the user's test of this fix; the same CreateAndShowProgressWindow pattern applies.
+
+## 113. Debug logging held a whole refresh's lines in RAM (17-Nov-2026, branch ribbon-compact, not committed)
+
+**Symptom/risk:** with Debug on, a Sheet/Book Refresh wrote ~7 debug lines per GLSense_GetBalance
+call (host wrapper "called" + "ExecuteUdf returned", AddinEntry.ExecuteUdf in/out, UdfDispatcher
+params/dispatch/resolved): 187,782 formulas -> ~1.3M lines, 160 MB. `Logger.LogDebug` buffers lines
+per action (AsyncLocal ActionBuffer; the UDF calls inherit the refresh's scope because Calculate runs
+inside it) and flushed only at scope end, on warn/error, or after 30 s (sweep every 15 s), so up to
+~45 s of lines sat in memory, then the flush copied the list and built one giant string (2-3x again).
+Large enough to risk OutOfMemory in 32-bit Excel.
+
+**Fix:**
+- `GLSense.Shared\Logger.cs`:
+  - the buffer also flushes when it reaches 2,000 lines or 512K chars (`MaxBufferedLines`/`MaxBufferedChars`);
+  - the flush swaps the list instead of copying it and writes it in 500-line chunks, never one huge string;
+    a per-buffer `FlushLock` keeps chunks in order when the timer and a writer flush at once;
+    the block header now shows the line count;
+  - LogWarn/LogError/LogException flush the buffered debug context BEFORE writing the warning/error,
+    so the lines leading up to it appear above it (they used to appear after);
+  - LogException logs the whole inner-exception chain (all AggregateException inners, up to 10), not one level.
+- GetBalance now writes ONE debug line per call: `GLSense_GetBalance [batch|cache|single refresh|not logged in]
+  cell=... ledger=... activity=... period=... balanceType=... currency=... segmentsSet=n -> result`;
+  when no number comes back it adds the raw result and the full formula text. Removed: the host
+  "called" line, the AddinEntry.ExecuteUdf in/out lines (GetBalance only, other UDFs unchanged), the
+  host "ExecuteUdf returned" line (GetBalance only, still logged when the sentinel is translated), and
+  the per-call "Formula:" line in HandleCachedResult. Added a debug line when the host's input
+  validation rejects a GetBalance call (it used to be silent once the "called" line went).
+  All exception/warning logging is unchanged.
+
+**Verified:** solution builds; standalone test against real NLog (scratchpad logtest\LoggerTest.cs): 5,000 lines
+written once and in order with the buffer never above 2,000; warn and exception appear after their
+context; full inner chain logged; 8 threads x 3,000 lines in one scope all present with per-thread
+order; a 600K-char line written intact; Debug off writes nothing. Not yet run in Excel.
+
+**Same-issue sweep:** the identical per-action buffer (unbounded until scope end/30 s, copy + one big
+string on flush, flush after the warning) exists in `FinalWorkingCode\GLSense\Utilities\LogUtility.cs`,
+`XLEdge\BusinessLayers\11.1.3\AIPowered\XLEdge\XLEdge.Shared\Logger.cs`,
+`XLEdge\BusinessLayers\11.1.3\XLEdge\Utilities\LogUtility.cs`, the XLEdge SingleLayer 11.1.0/11.1.2
+worktrees, and the GLSense 11.1.0/11.1.1/11.1.2/floating-balance-configurator worktrees and main
+checkout. OPEN - not changed (other branches/products; port after this one is confirmed in Excel).
+Other per-cell UDFs (GetPeriod*, GetSegment*) still log 4+ lines per call; low volume in practice, left as is.
+
+## 114. Every GLWaitWindow progress window now runs on one shared progress UI thread (17-Nov-2026, branch ribbon-compact, not committed)
+
+**Report (user, after testing 112):** the Sheet/Book Refresh window now opens at once, but Reset Sheet's
+window still opens late/freezes; every progress window should open immediately after its validations.
+Same root cause as 112: the other 14 creation sites built GLWaitWindow on the main WPF dispatcher, which
+is Excel's own thread, then ran their Excel work on that same thread (Reset: BalancesReset Dirty/Calculate).
+
+**Fix:** new `Utilities\ProgressWindowHost.Show(cts, title?, message?)` - creates the window on ONE
+long-lived background STA thread (started on first use, DPI context set like the main WPF thread),
+shows it un-activated and asynchronously, returns null on failure (logged). Unlike 112's thread per window,
+the thread does NOT stop when a window closes: a caller's late `await win.Dispatcher.InvokeAsync(RequestClose)`
+(e.g. in a finally after Cancel already closed it) would otherwise be aborted and throw TaskCanceledException.
+It is shut down on AppDomain.DomainUnload (hot reload / Excel exit; a thread blocked in Dispatcher.Run
+would make AppDomain.Unload fail). All 15 sites use it: BalanceRefresh (replaces 112's per-window thread),
+AddinEntry LedgerChanged + ResetBalances, BalanceHighlighter, CustomDrilldown, DD_BL, DD_EP, DD_FJE, DD_JL,
+DD_SL, DrillCellHighlighter, RangeRefresher, RowVisibilityProcessor, PeriodsDiscoverer, SegmentDiscoverer.
+Audit before moving: every later access in these files already goes through win.Dispatcher (directly or via
+InitializeWaitWindowAsync/MessageWaitWindowAsync/SafelyClose*/DDDatatoWorksheet/SnapshotDialogHelper/
+ShowConfirmToastAsync), none uses the window as an Owner or touches it from the main dispatcher.
+Null-safety added where a site assumed creation never fails: AddinEntry LedgerChanged's message update,
+DD_EP.UpdateProgressWindow. Reset now also shows "Resetting worksheet "<name>"." per sheet.
+
+**Also (same report, item 2):** the JSON refresh said "Requesting balances for 1 worksheet(s)" on a 3-sheet
+Book Refresh. Correct behaviour, misleading text: requests group each distinct balance under the FIRST
+worksheet using it, and the test book's 3 sheets repeat the same 62,068 formulas (186,204 calls, 62,068
+distinct) -> one request. Message now: "Requesting <distinct> balances for <formulas> formulas on <sheets>
+worksheet(s). Repeated formulas are requested once. Sending N requests, up to 4 at a time." (the last two
+parts only when they apply); progress "Balances received for x of N requests (last: worksheet 'S', n balances)";
+debug line "RefreshPerf: J4 scope = ...". BalanceDto.CreateFromXllParameters no longer logs its per-call
+"started" line inside BeginBatchLookupCache (62k useless lines per refresh; failures/counts still logged).
+
+**Known limit (unchanged from 112):** the window stays owned by Excel's window, so Cancel clicks are handled
+only when Excel's thread pumps again; painting/timer/step text are unaffected.
+
+**Same-issue sweep:** `new GLWaitWindow` now appears only in ProgressWindowHost. Other windows created on the
+main dispatcher are modal dialogs (ShowDialog: GLLogin, GLCubeDetails, configurators...) that run no Excel
+work while open - not affected. FinalWorkingCode/XLEdge progress windows: OPEN, not checked in this change.
+Status: builds; not yet tested in Excel.
+
+## 115. Refresh responses saved to Temp again (17-Nov-2026, branch ribbon-compact, not committed)
+
+User noticed refresh API responses no longer went to a file. Cause: the RefreshPerf work replaced the
+file path's full inline "Server response data" log with a 2,000-char cap (full response lost), and the new
+JSON path logged only sizes - both bypassed OISR-22830's `GLSense.Shared.LargeLogText.ToLogText`.
+Fix: both now use it with Debug on (same rule as ApiHelper): over 100K chars -> full text in
+`GLSense_Logs\Temp\<yyyyMMdd_HHmmss_fff>_sheet-balances_response.json` /
+`..._sheet-balances-json_<n-N 'Sheet'>.json`, log keeps a 1,000-char preview + the path; timed as
+"RefreshPerf: 4a2 / J4 ... save response to Temp (debug only)" so it's visible apart from server time.
+A FAILED JSON request's response is logged as WARN (inline or saved) even with Debug off.
+Sweep: every other API response log already goes through ApiHelper (LargeLogText) or Logger.LogRawJson
+(LargeLogText) - no other bypass found. Files are kept 7 days (LargeLogText.CleanUp at add-in start);
+an 89 MB response per worksheet per Debug run adds up quickly.
+- 114 follow-up (user wording): the JSON refresh progress text is now per request, shown when that request
+  starts: "Worksheet <i> of <N>[ (part p of q)]: Requesting <balances> balances for <formulas> formulas.
+  Duplicate formulas are requested only once." (<formulas> = all formula cells those balances serve, across
+  sheets; "Duplicate formulas are requested only once." removed per user), then "Balances received for <formulas> formulas."
+  (one request) / "Balances received for x of N requests (last: worksheet 'S', n formulas)." (several).
+- 114 follow-up (17-Nov 21:13): two Reloads after this change logged "AppDomain.Unload did not complete within
+  5s" (no older logs left to say whether that predates it). A thread blocked in Dispatcher.Run can stall
+  AppDomain.Unload, and the DomainUnload hook evidently isn't always enough, so the progress thread now
+  stops itself: each window holds a lease until its operation's CancellationHelper is disposed (new
+  `CancellationHelper.OnDisposed`; without a helper, until the window closes); 10 s after the last lease ends
+  the thread shuts down, and the next Show starts a fresh one. Leasing on the helper, not the window, keeps a
+  late `await win.Dispatcher.InvokeAsync(RequestClose)` after Cancel (window already closed, Excel still
+  calculating) from hitting a stopped dispatcher. DD_JL never disposes its _ctsHelper, so a JL drilldown keeps
+  the thread alive (old behaviour, safe). Verified outside Excel with the real GLWaitWindow (harness via
+  reflection): 2 concurrent operations, late RequestClose after close, idle stop, fresh restart - all pass.
+  Still to confirm in Excel: Reload no longer logs the unload timeout.
+
+## 116. Cached balances shown as text when not logged in - number format looked reset to General (17-Nov-2026, branch ribbon-compact, not committed)
+
+**Report (user):** balance cells lost their number format (showed as General) after inserting/deleting rows
+or columns, or after F2+Enter - but only when NOT logged in; logged in, formats stayed. Log proof:
+`GLSense_GetBalance [not logged in] ... -> '15964242.66'` (text) vs `[cache] ... -> 15964242.66` (number).
+**Cause:** `UdfDispatcher.HandleNotLoggedIn` returns the cache entry's stored TEXT as-is; the logged-in cache
+path (`HandleCachedResult`/`GetCachedFormulaResultOrError`) and the refresh path (PreComputedBalances) convert
+it with `GetResultValue`. Excel shows a text result left-aligned and ignores the cell's number format. Any
+recalculation while logged out (insert/delete shifting formulas, F2+Enter, F9...) triggered it.
+**Fix:** `GetResultValue(HandleNotLoggedIn(...))` at the two numeric UDFs' call sites: GLSense_GetBalance and
+GLSense_GetDailyRate (same bug). HandleNotLoggedIn itself is unchanged because GetSegmentDFF/GetAccountType
+share it and must keep text (a DFF value like "001" must not become 1).
+**Same-issue sweep:** every other cache read in UdfDispatcher already goes through GetResultValue
+(GetCachedFormulaResultOrError, HandleCachedResult, BulkRefreshProcess PreComputedBalances). Text UDFs
+(GetPeriod*, GetSegment*) return text by design. FinalWorkingCode/XLEdge not checked: OPEN.
+Status: builds; not yet tested in Excel.
+
+## 117. Snapshot (sheet/book) moved to the JSON path + faster, safer write into the copy (17-Nov-2026, branch ribbon-compact, not committed)
+
+**Before:** SaveCopyAs to Temp -> File.Copy to the snapshot path -> zip -> upload the WHOLE workbook to
+/sheet-balances -> server returns per cell inputFormula + balanceValue..balanceValue24 -> ExcelFormulaGenerator
+(1-2 debug lines per cell) -> hidden Excel opens the copy -> ONE cross-process COM call per balance cell ->
+RemoveGlSenseFormulasFastAsync -> delete other sheets (sheet snapshot) -> save.
+**Now (BulkRefreshProcess.StartAsync):** snapshot S1 = SaveCopyAs straight to the snapshot file (no Temp copy, no
+zip, no upload) -> the same JSON steps J1-J4 as Refresh (dedupe across sheets, one request per worksheet, 4 in
+parallel, 100k split) -> J5 snapshot: per GetBalance cell `ExcelFormulaGenerator.BuildSnapshotCell(formula,
+values)` (J1 records each cell's formula + its calls, snapshot only) -> step 5 in the hidden Excel:
+`WriteSnapshotBalancesAsync` writes through `WriteCellsInBlocks` (cells merged into rectangles, one
+Range.Formula = object[,] per rectangle; a rectangle Excel refuses, e.g. part of an array formula, falls back to
+cell-by-cell and skips only failing cells, logged) -> RemoveGlSense... -> delete other sheets -> save.
+Timers: "RefreshPerf: snapshot S1 save copy", "J5 build snapshot cell contents", "5a/5b/5c snapshot ...".
+**Behaviour fixes riding along (all snapshot-only):**
+- Arithmetic around a single balance call was dropped: =GetBalance(..)/1000 with no other references was written as
+  the raw balance (server sends no "value", generator fell back to balanceValue) - same bug as server OISR-22530.
+  BuildSnapshotCell keeps the formula with values whenever anything but a number is left.
+- Values were written as strings (cell.Value = "123.45" - locale-dependent parse); now doubles.
+- RemoveGlSenseFormulasFastAsync rewrote whole formula AREAS through ToTextArray, which prefixed "'" to EVERY
+  entry: any ordinary formula sharing an area with a GLSense formula (e.g. =SUM next to GetPeriod) became text.
+  Now only the GLSense cells are written (blocks); numeric/boolean results stay numbers (GetPeriodNum,
+  GetDailyRate were text, ignoring the cell format - cf. 116), text stays text ("'"), errors -> "#GETTING_DATA"
+  as before (all Value2 int error codes, not only #N/A). ToTextValue/ToTextArray deleted.
+- The hidden instance's thread no longer calls into the user's Excel for the sheet name (_worksheetName captured).
+- A balance cell with an unresolvable call (or no balance returned) shows "Click Refresh..." in the snapshot, with a
+  WARN listing up to 5 cells (old path: whatever the server sent).
+**Now unused (kept for rollback, delete once snapshot is confirmed):** Step_SaveAndZipWorkbook/
+Step_UploadZipToServer/Step_ExtractZipFile/Step_BalancesToDataTable (+ BalancestoDTAsync's snapshot branch,
+_snapshotJsonArray, ExcelFormulaGenerator.GenerateExcelOutput).
+**Verified:** builds; BuildSnapshotCell 7/7 cases (single call, /1000, two calls, reference, _xll + E notation,
+text balance, count mismatch). NOT verified: WriteCellsInBlocks / RemoveGlSense in Excel - a test process here
+can't drive an out-of-process Excel via typed interop (TYPE_E_CANTLOADLIBRARY on _Application although the
+typelib loads fine via oleaut32 from PowerShell; unresolved). First real check = the user's snapshot run.
+**Same-issue sweep:** ToTextArray had no other callers. Known, left as is: ExcelFormulaGenerator.CleanFormula
+strips every "@" (breaks Table[@Col] references kept in a snapshot formula); a sheet snapshot deletes the other
+sheets after writing, so kept formulas referring to them become #REF! (unchanged from before).
+- 117 follow-up (user's own spec of snapshot, 17-Nov): "copy the workbook, open it, refresh it (formulas
+  recalculated), convert all GLSense formulas to values; Sheet = only that sheet kept, Book = all sheets kept".
+  OpenXML editing without opening the workbook was tried by the user and corrupted files - keep the hidden Excel.
+  Gap found vs that spec (also in the old code): the hidden instance runs Manual and never calculated, so formulas
+  depending on balances (totals) kept stale values, and the file was saved in Manual mode. Added step
+  "5d snapshot recalculate" as the LAST step (after GLSense formulas are values and other sheets deleted, so no
+  GLSense UDF is evaluated): Application.Calculate() then Calculation = Automatic before Save.
+- 117 follow-up 2: the 5d recalculate step was REMOVED again at the user's request - by design snapshot refreshes
+  only the GLSense cells (dirty-cell calculation), never the whole sheet/workbook. Do not re-add it. (Known
+  consequence, accepted: the hidden instance stays Manual, so ordinary formulas depending on balances keep the
+  values the copy had, and the file is saved with the calc mode the hidden instance had.)
+
+## 118. Snapshot progress window never appeared on the first snapshot after Excel starts (18-Nov-2026, branch ribbon-compact, not committed)
+
+**Report (user):** first Sheet/Book Snapshot after opening a workbook: no progress window at all, only the
+"Snapshot completed" message at the end; repeatable. After one Sheet Refresh (which shows its window) the snapshot
+window appeared too. Log (00:04:58): window created + loaded, then ~60 ms later SnapshotDialogHelper hid it
+(Visibility=Hidden) for the save dialog, before it had painted (no ContentRendered), and set it Visible after the
+dialog - it never showed. GLWaitWindow is AllowsTransparency=True (a layered window); hidden before its first paint
+it stays invisible when re-shown. "First time only" because the first window after Excel starts paints slowly
+(cold JIT/resources); warm windows paint within the 60 ms, so hide/show worked.
+**Fix (BalanceRefresh.RefreshBalancesInternalAsync):** order is now: saved check -> formulas exist -> broken links
+-> snapshot save dialog -> THEN the progress window (shown once, never hidden). SnapshotDialogHelper gets a null
+window, so its hide/show are no-ops. Same "validations before the window" order applied to
+SubmitSnapshotInternalAsync (formulas exist + broken links before the window; the VCheck step stays after
+because its confirm toast lives inside the window).
+**Same-issue sweep:** PromptSnapshotAsync was the only code hiding/re-showing a progress window
+(grep "Visibility = ...Hidden" / ".Hide()" - others are WebView/placeholder/inner panels). Other progress windows
+are shown once and closed. Not tested in Excel yet.
+
+## 119. Snapshot results verified; hidden Excel lingering after snapshot; unload timeout at Excel exit (18-Nov-2026, branch ribbon-compact, not committed)
+
+**User's snapshot run (00:19, small test book):** Sheet 25.4 s / Book 28.8 s total incl. save dialog; JSON server
+time 14-16 s (fixed per-request cost, 78-156 formulas); write 0.02-0.07 s (1 block per sheet), replace other
+GLSense 0.06-0.10 s, failed 0, unresolved 0. Files checked (sheetSnapshot1/bookSnapshot1.xlsx in Temp): no GLSense
+formula left; T(00) arithmetic kept and calculated (29838012.64/1000, -1500*(-100), x+SUM(10,20,30)); SUM totals
+match the balances; calcMode=manual (accepted, see 117).
+**Hidden Excel stayed in Task Manager:** the runner Save/Close/Quit'd in the try, then the finally closed the book
+AGAIN (logged RPC_E_DISCONNECTED on every snapshot) and ran ONE GC pass; RCWs the snapshot steps leave to the
+finalizer kept EXCEL.EXE alive. Fix (RunSnapshotInIsolatedExcelAsync): book closed + released once and nulled;
+pid read from app.Hwnd (GetWindowThreadProcessId) before Quit; two GC passes; `EnsureIsolatedExcelExited(pid)`
+waits 5 s, then ends that pid only if it still has no visible window (logged either way).
+**Unload timeout at Excel exit (00:20:06):** Excel closed 5 s after the snapshot, while the progress UI thread was in
+its 10 s idle window; the DomainUnload hook didn't stop it in time. Fix: `ProgressWindowHost.Shutdown()` (stops
+the thread, joins up to 2 s) called from AddinEntry.Shutdown right after WpfAppManager.Shutdown (also Reload);
+leases carry a generation so a release arriving after Shutdown doesn't corrupt the next thread's count (found by
+the test). Harness 11/11 pass (incl. Shutdown while busy: 278-337 ms).
+Not yet confirmed in Excel: process gone right after snapshot; no unload timeout on exit.
+- 119 follow-up (00:37 run): the hidden Excel still didn't exit by itself - log "did not exit 5 s after Quit -
+  ending it" - so it vanished only when the 5 s safety net killed it. Cause: objects taken from the hidden Excel
+  and never released (app.Workbooks; workbook.Worksheets collections + foreach enumerators; sheet.Cells per cell
+  access in WriteCellsInBlocks; formulaCells.Areas + enumerator). Fix: all released explicitly (indexed loops
+  instead of foreach over Sheets/Areas; one Cells object per sheet in WriteCellsInBlocks). Safety net 5 s -> 3 s;
+  the debug log now says how many ms after Quit it exited. Rule for this code: anything read from the hidden
+  Excel's object model gets its own variable and a Marshal.ReleaseComObject.
+- 119 follow-up 2 (10:51 run): still "did not exit 3 s after Quit - ending it". Measured with a VBScript-started
+  Excel that holds NO references: it takes ~3 s to exit on this machine, because third-party COM add-ins load in
+  automation instances (PDFMaker.OfficeAddin, TFCOfficeShim.Connect.16, VS15ExcelAdaptor = Connect True;
+  GLSense.AddinModule = Connect False, i.e. GLSense does NOT load in the hidden instance). So the 3 s cutoff was
+  killing a normally-exiting Excel mid-shutdown (risk to its settings files). Safety net now 10 s; the exit time is
+  logged at INFO ("Snapshot: hidden Excel (pid N) exited X ms after Quit") so it shows without Debug. Expect ~3 s
+  of EXCEL.EXE in Task Manager after a snapshot on machines with such add-ins - that is Excel's own shutdown.
+
+## 120. GLSense tab "disappeared" after snapshots: the hidden Excel switched the add-in off (18-Nov-2026, branch ribbon-compact, not committed)
+
+**Symptom (twice, 17-Nov ~22:05 and 18-Nov 10:51):** GLSense tab gone on the next Excel start;
+HKCU\Software\Microsoft\Office\Excel\Addins\GLSense.AddinModule LoadBehavior 3 -> 2; no Resiliency/Disabled Items.
+**Root cause, reproduced without GLSense code or any kill:** an Excel started from code (the snapshot's isolated
+instance, or a plain VBScript CreateObject) does not load GLSense (registered CommandLineSafe=0 -> Connect=False),
+and when that instance quits Office saves GLSense as not loaded: LoadBehavior 2. Probe: LoadBehavior 3 -> start
+hidden Excel -> Quit -> 2. Pre-existing since snapshot uses an isolated instance; noticed now because snapshots were
+run repeatedly. (My kills were not the cause.)
+**Fix (RunSnapshotInIsolatedExcelAsync):** `ReadStartupExcelAddins()` (HKCU add-ins with LoadBehavior 3) before
+the hidden Excel starts; `RestoreStartupExcelAddins()` after it has exited (EnsureIsolatedExcelExited) sets 3 back
+for any of them that changed, with a WARN naming it. Verified end to end (harness calling the real helpers around a
+script-started Excel: 3 -> 2 on exit -> 3 after restore; exit took 2,985 ms, matching 119's ~3 s).
+**Open:** only HKCU registrations are covered; a per-machine (HKLM) install may get the same flip as an HKCU
+override - check with an MSI install. Alternatives considered: CommandLineSafe=1 (GLSense would then load and log
+in inside every hidden snapshot Excel - heavy), or opening the copy in the user's own instance (gives up the
+isolation the snapshot design relies on).
+- 120 follow-up: user's run 13:41 - "hidden Excel (pid 30848) exited 2471 ms after Quit" (on its own, no kill, no
+  add-in restore needed). That line went back to LogDebug at the user's request (it was INFO).
+
+## 121. GetNextSegment/GetPreviousSegment wrong for segment values with symbols ("~118") (18-Nov-2026, branch ribbon-compact, not committed)
+
+**Report:** last segment value "~118": GLSense_GetNextSegment("~118") returned the FIRST value (1000) instead of
+#GETTING_DATA; plain last values (T, E, 1900, 1DT) worked.
+**Cause:** UdfDispatcher.GetFilteredSegments sorted with `.OrderBy(sv => sv.SegmentValue)` = culture comparison,
+which puts symbols BEFORE digits/letters: "~118, 1000, 1100, ..., T" - so "~118" was first, Next = 1000 and
+Previous = #GETTING_DATA. Fix: `StringComparer.Ordinal` (binary order: digits < capitals < lower case < "~", the
+order the user expects and Oracle's default BINARY sort). Checked with the user's sample values: old order reproduces
+Next(~118)=1000, new gives #GETTING_DATA and Previous(~118)=T.
+Other segment functions (Desc, Enabled/Summary flag, DFF, AccountType) look the value up by exact match - a leading
+"~" works there. Note: CleanSegmentValue still strips a TRAILING "~" and a leading "--" (GLSense markers), so a
+real value like "118~" would be looked up as "118" - not reported, left as is.
+**Same-issue sweep (OPEN):** FinalWorkingCode\GLSense\GLSenseExcelFunctions.cs:432 has the identical culture
+OrderBy (same bug). SegmentSelectorViewModel.cs:525 (both codebases) sorts the picker list the same culture way, so
+the picker shows "~118" first while Next/Previous now treat it as last - align if the user wants the picker in the
+same order. Not yet tested in Excel.
+
+## 122. Research: snapshot via OpenXML (edit the copy without opening Excel) - prototype verified, NOT integrated (18-Nov-2026)
+
+User asked for a deep dive (their own earlier OpenXML attempt gave "corrupted / repaired, content lost").
+Prototype: docs/perf/OxmlSnapshotPrototype.cs.txt (+ oxml_check_open.vbs, oxml_open_save_time.vbs). Plain
+System.IO.Compression + text scan of each sheet part (no new dependency): cells without <f> copied byte for byte,
+formula cells rebuilt as text. Verified by opening every output in a script-started hidden Excel with repair
+detection (window caption "[Repaired]" + new %TEMP%\error*.xml repair log; an unrepairable file fails to open).
+**Corruption causes found / handled:**
+1. calcChain.xml still listing cells whose formula was removed -> Excel cannot open it (reproduced: "OPEN FAILED").
+   Fix: delete xl/calcChain.xml + its workbook relationship + its [Content_Types] Override; Excel rebuilds it.
+2. Shared formulas: dependents are <f t="shared" si="n"/> with NO text - a GLSense master's dependents must be
+   converted too (tracked by si; masters precede dependents in document order). Non-GLSense shared groups
+   (Sheet1 SUM D7:AB7, si=0) left intact - verified.
+3. Cell type after removing <f>: t="str" (formula string) -> t="inlineStr" <is><t>; t="e" -> text "#GETTING_DATA"
+   (same as the Excel path); bool -> t="b"; numbers -> plain <v> (InvariantCulture "R"). Style s= kept -> formats kept.
+4. cm= (dynamic-array cell metadata) removed with the formula.
+5. Sheet snapshot sheet deletion: workbook.xml <sheet>, its relationship, Content_Types Override, the part and its
+   _rels; definedNames: sheet-scoped (localSheetId) names of deleted sheets dropped, others renumbered;
+   workbookView activeTab -> 0, firstSheet removed. Ordinary formulas referring to a deleted sheet were turned
+   into their cached VALUE (Excel's own delete makes them #REF!) - behaviour choice to confirm with the user.
+6. Mixed GLSense formulas (=GetBalance()/1000) written as formula WITHOUT cached <v>: Excel calculated them on open
+   (calc mode automatic) - not tested with the user's Excel in Manual mode.
+**Results (all opened with repaired=False, 0 GLSense formulas left, formats kept):**
+| file | OpenXML | hidden-Excel path |
+| test.xlsx book (3 sheets, 241 formulas) | 0.14 s | ~1.7 s start/open + writes + save + ~2.5-3 s exit |
+| test.xlsx sheet (keep Sheet1) | 0.09 s | same |
+| HugeFormulas book (13.5 MB, 23 sheets, 1.44M GLSense formulas) | 24.7 s (cell rewrite 11.2 s, zip I/O rest) | 108 s just to start+open (32 s), save (58 s), exit - before writing anything |
+| HugeFormulas sheet (keep Sheet1, 22 deleted) | 4.3 s | same ~108 s (opens the whole book) |
+Also removes: the LoadBehavior 3->2 flip (120), the hidden EXCEL.EXE lifetime issues (119).
+**Not covered yet (would need handling before shipping):** global defined names / print titles that refer to a
+deleted sheet by NAME (would be invalid -> likely repair; must become #REF!), charts/pivots/tables on or referring
+to deleted sheets (their parts are left unreferenced), table calculatedColumnFormula / conditional formatting /
+data validation containing GLSense, files whose sheet XML uses a prefixed namespace (<x:c>) or a cell without
+attributes ("<c>"), Manual-calc display of mixed formulas without <v>. Further speed: ZipArchive Update mode buffers
+the whole package; streaming to a new archive and rewriting sheets in parallel would cut the 13 s zip part.
+
+## 123. Snapshot now written with OpenXML (no hidden Excel); sheet snapshot keeps referenced sheets; segment values used as given (18-Nov-2026, branch ribbon-compact, not committed)
+
+**User decision:** OpenXML takes over the snapshot write (research 122). Sheet snapshot should keep the other sheets
+the snapshot sheet refers to ("only if not overload").
+**New `Drilldowns\SnapshotOpenXml.cs`** (`Apply(path, balances, keepSheet, token)`), called from
+BulkRefreshProcess.Step_FinalRefresh (timer "RefreshPerf: 5 snapshot write (OpenXML)"); writes a new package next
+to the saved copy and swaps it in. Rules: see the file header. Key points beyond the prototype:
+- Balances come from the JSON step per cell AND per call (J5 `BuildSnapshotBalances` -> `_snapshotBalances`); the
+  mixed formula is rebuilt from the FILE's formula text (keeps `_xlfn.`/`_xll.` prefixes of other functions - the
+  text Excel shows lacks them and would give #NAME?); negative literals wrapped in ( ).
+- Shared GetBalance formulas (filled down): dependents (no text) take their own balance when the master is a single
+  call; a mixed shared shape keeps its current value (can't rebuild without shifting references).
+- Sheet snapshot keeps: the sheet + sheets referred to by kept sheets' formulas ('Name'! / Name! with a name-char
+  boundary) + sheets reached through defined names used in those formulas (breadth-first). GetBalance cells on
+  the extra sheets are NOT requested - they keep their current value (debug count "balance cells on referenced
+  sheets -> current value"). Deleted sheets: part + its _rels + the parts it references (one level) + overrides;
+  sheet-scoped names dropped/renumbered; names referring to a deleted sheet -> #REF!; activeTab = the snapshot
+  sheet; tabSelected only on it.
+- Removed (dead): RunSnapshotInIsolatedExcelAsync, WriteSnapshotBalancesAsync, RemoveGlSenseFormulasFastAsync,
+  DeleteOtherSheetsIfWorksheetSnapshotAsync, WriteCellsInBlocks, EnsureIsolatedExcelExited, Read/Restore
+  StartupExcelAddins (120's guard is unnecessary - no second Excel any more), ExcelFormulaGenerator.BuildSnapshotCell.
+  Entries 117-120 describe the replaced hidden-Excel step.
+**Verified (harness calling the real Apply on test2.xlsx = test.xlsx + H20='T(00)'!C3, H21=MyName (->T(01)), sheet
+Extra + ExtraName + Extra print area, filled-down GetBalance C30:C33), each output opened in Excel: repaired=False
+for sheet snapshot of Sheet1 (kept Sheet1, T(00), T(01); deleted Extra; ExtraName=#REF!; H20/H21 still correct),
+sheet snapshot of T(01) (1 sheet), book snapshot (4 sheets; mixed =(-1500)*(-100) etc. calculated; C30:C33
+shared dependents -> 555). Not yet run from the ribbon in Excel.
+**Segment values (OISR-22901 follow-up, user: "anything in a string is text"):** UdfDispatcher
+`ResolveSegmentValueText` - segment functions (Desc, Enabled/Summary flag, DFF, AccountType) look the value up
+EXACTLY as given; only when that exact value doesn't exist are the GetBalance markers stripped (leading "--",
+trailing "~", written by the Segment Values window). Values without a marker: no extra work. 8/8 cases pass
+("118~", "--X" kept; "1000~", "--1000" stripped; "~118" unchanged). Next/Previous already compare all characters
+by code (121). GetBalance segment ARGUMENTS still use the marker syntax (|, ',', ';', trailing ~, leading --) -
+a real value containing those can't be told apart there; open for OISR-22901.
+- 123 follow-up (user, 18-Nov): REVERTED "sheet snapshot keeps referenced sheets" - a kept referenced sheet would
+  still hold live GLSense formulas, defeating the snapshot. Sheet snapshot keeps ONLY its sheet again (SheetsToKeep
+  and helpers deleted). New instead: ordinary formulas on the kept sheet that refer to a deleted sheet get the
+  reference replaced by #REF! and the cell's stored value set to the #REF! error (shared dependents follow their
+  master) - what Excel's own delete produced on the old hidden-Excel path; left as is, Excel takes the unknown sheet
+  for another workbook and asks for it on the next recalculation. Defined names referring to a deleted sheet ->
+  #REF! (cells using them keep their last value until Excel recalculates, as after a manual delete).
+  Verified: sheet snapshot of test2 Sheet1 -> only Sheet1, H20 "=#REF!" (#REF!), repaired=False; book snapshot
+  unchanged, repaired=False.
+
+## 124. Windows not owned by Excel (Alt+Tab / z-order); book snapshot progress text stuck on "Worksheet 1 of 3" (18-Nov-2026, branch ribbon-compact, not committed)
+
+**Report:** with a GLSense window open (progress window and others), Alt+Tab listed it separately from Excel and
+clicking Excel put Excel in front of it. Wanted: Excel and its GLSense windows behave as one set, everywhere.
+**Cause:** BaseWindow set Excel as owner only `if (helper.Owner == IntPtr.Zero)`. For ShowInTaskbar="False"
+windows (GLWaitWindow, GLMessageWindow, AttachmentsDialog, and everything shown with ShowInTaskbar=false from
+AddinEntry/CommonFunctions/JournalAttachments) WPF has already set ITS OWN hidden window as owner (that's how it keeps
+them off the taskbar), so the Excel owner was never set -> unowned by Excel. Also: the progress window is built on
+its own thread, where reading Application.Hwnd is unreliable; the host's Reload picker / release history / reload
+progress used the handle cached at ribbon load (not the active workbook's window in multi-workbook/SDI Excel).
+**Fix:** BaseWindow.OnSourceInitialized + ShowDialog: owner = Excel window whenever the window has no WPF `Owner`
+(a real WPF owner, e.g. WebView2PopupWindow's parent, is respected); debug log "[Window] owner = 0x.. (Excel
+window 0x..)". New `BaseWindow.ExcelOwnerHandle`; ProgressWindowHost reads ServiceLocator.ExcelHandle (live
+Application.Hwnd) on Excel's thread and passes it in. Host AddinModule.CurrentExcelHandle() (live Application.Hwnd,
+cached fallback) for the three host windows. ConfiguratorPaneHost is a child of the task pane - not affected;
+WindowLoadingPlaceholder (brief) not changed.
+Note: an owned window stays with the workbook window that was active when it opened.
+**Progress text:** with sheets repeating the same formulas, one request serves several sheets (de-duplication),
+and the text said "Worksheet 1 of 3" for the whole ~2-min server wait. Now names every sheet the request's balances
+serve: "Worksheets 1-3 of 3: Requesting 62,068 balances for 186,204 formulas." (`SheetsText`: runs collapsed,
+max 6 items then "+n more"; 5/5 cases pass).
+**Sheet snapshot "slower" (17:32 vs book 17:29, Debug off):** both sent ONE request for the same 62,068 balances;
+server 2.80 min vs 2.17 min, client side ~0.7 min both incl. save dialog -> server variance, not the snapshot code.
+Status: builds (v11.1.3_2026-11-18T17-42-15); ownership not yet checked in Excel.
+
+## 125. Copy marquee missing after editing a cell referenced by GetBalance formulas - investigating (19-Nov-2026, branch ribbon-compact, not committed)
+
+**Report:** Ctrl+C shows Excel's copy marquee normally, also after F2+Enter on a balance cell; but after editing a
+cell that balance formulas REFER to (e.g. B1), Ctrl+C copies without showing the marquee.
+**Ruled out (log 19-Nov 12:09-12:10, Debug on):** late async results - the B1 edit (12:10:12.54) triggered 78
+GetBalance cache hits that all finished by 12:10:12.51/12:10:12.6; the copies came 1-10 s later with NO GLSense
+activity at all (no cell writes, no ribbon refresh). GLSense handles no calculation events; SelectionChange only acts
+when the Balance Configurator pane is visible.
+**Diagnostic added:** host AddinModule.ExcelStateForLog() appends [calcState, calcMode, cutCopyMode, ready] to the
+SheetSelectionChange / SheetChange debug lines (Debug only; read-only property reads). Hypothesis to check: after a
+burst of async UDF results Excel still reports a calculation pending/in progress, which suppresses copy mode.
+Next: user repro with Debug on (edit B1 -> select a cell -> Ctrl+C -> select another cell) and read the states.
+- 125 update (19-Nov): reproduced by the user on FinalWorkingCode 11.1.2, AIP 11.1.2 and AIP 11.1.3 -> pre-existing.
+  12:14 log: after the edit Excel reports cutCopyMode=xlCopy and calcState=xlDone - copy mode is ON, only the
+  marquee isn't drawn; no GLSense code runs between edit and copy. Finding: Add-in Express
+  ADXExcelFunctionDescriptor.IsMacro defaults to TRUE (read from AddinExpress.MSO.2005.dll), so every GLSense UDF is
+  registered macro-sheet-equivalent ("#"); GetBalance calls back into Excel (xlfCaller via CallWorksheetFunction).
+  EXPERIMENT built (v11.1.3_2026-11-19T13-07-29, ribbon-compact, registered): GLSenseExcelFunctions.Designer.cs
+  adxExcelFunctionDescriptor16 (GetBalance) IsMacro = false. Check: marquee after editing a referenced cell, and
+  that the debug line still shows cell=R?C? (xlfCaller works as a non-macro function). Revert or extend to the
+  other UDFs depending on the result.
+- 125 experiment RESULT (19-Nov 13:11): NEGATIVE. With GetBalance registered IsMacro=false the marquee still
+  didn't appear after editing B1; only GetBalance recalculated on that edit (78 cache hits, cell=R?C? still correct,
+  so xlfCaller works as a non-macro function); cutCopyMode=xlCopy afterwards. Macro-type registration is NOT the
+  cause. Reverted (Designer.cs back to original; rebuilt v11.1.3_2026-11-19T13-12-38).
+  Remaining lead: GetBalance is an ASYNCHRONOUS UDF (ADXExcelAsyncCallObject -> xlAsyncReturn); after an async
+  recalculation triggered by a precedent edit, Excel keeps copy mode but doesn't draw the marquee; editing the balance
+  cell itself is followed by a ribbon refresh (SetState LoggedIn), which may be what makes it draw again. To test:
+  (a) built-in async function in plain Excel (e.g. STOCKHISTORY referring to a cell) - same symptom?;
+  (b) after editing B1, click a ribbon tab / Alt then Esc, then Ctrl+C - marquee back?
+- 125 (19-Nov 13:15): user checked a built-in async function in plain Excel (STOCKHISTORY referring to B1): the
+  marquee DOES show after editing B1 -> not Excel's general async behaviour; GLSense-specific.
+  EXPERIMENT 2 build (v11.1.3_2026-11-19T13-18-33): switches in the GetBalance host wrapper (GLSenseExcelFunctions.cs,
+  MarqueeTestFlags, read once at load from %LOCALAPPDATA%\ORBIT\Excel_Logs\GLSense_Logs\marquee-test.txt, logged as
+  WARN "MARQUEE EXPERIMENT active"): "constant" = ReturnResult(1.0) immediately (bare ADX async), "nocaller" = skip
+  GetCellCallerAddress/xlfCaller, "inline" = CrossToExecuteUdf + ReturnResult on Excel's thread (no Task.Run).
+  REMOVE the switches and the file after the investigation.
+
+  RESULT: "constant" -> marquee shows (values 1). "inline" -> marquee shows with real values. Switches, the
+  marquee-test.txt file and the ExcelStateForLog diagnostic are removed. Fix in 126.
+
+## 126. Copy marquee fix: GetBalance returns on Excel's thread unless it needs the server (19-Nov-2026, branch ribbon-compact, not committed)
+
+Root cause (from the 125 experiments): the GetBalance host wrapper always handed the work to Task.Run and called
+asyncCallObject.ReturnResult from a background thread, even for a cache hit. When a referenced cell is edited, Excel
+recalculates the dependent async formulas; results that come back from another thread leave Excel unable to draw the
+Ctrl+C marquee afterwards (the copy itself still works; CutCopyMode stays xlCopy, calcState xlDone). Returning the same
+result on Excel's thread (inside the UDF call) keeps the marquee. Plain-Excel async functions (STOCKHISTORY) are fine, and
+so was a bare ReturnResult(1.0) - only the off-thread return breaks it. Present since the async rewrite (also in
+FinalWorkingCode 11.1.2, which uses the same Task.Run pattern).
+
+Fix:
+- GLSenseExcelFunctions.GLSense_GetBalance: calls CrossToExecuteUdf on Excel's thread first, with an extra trailing
+  arg (args[32] = true, "don't call the server"), and returns the result directly. Only if that returns
+  UdfSentinels.NeedsServerCall does it repeat the call on Task.Run with args[32] = false (old behavior).
+- UdfDispatcher.HandleGetBalance: in the single-refresh branch (the only route that calls the server), returns
+  NeedsServerCall when args[32] is true. Cache / batch (PreComputedBalances lookup) / not logged in / ResetFormulas
+  all run inline - they are dictionary lookups, no I/O. Log line unchanged (written once, by the call that does the work).
+- GLSense.Contracts.UdfSentinels: NeedsServerCall + OnExcelThread constants (never reach Excel).
+- Generalized the same day (user-confirmed fix): host helper ReturnAsyncResult(asyncCallObject, fn, args, errorValue)
+  used by all 4 async UDFs. It appends UdfSentinels.OnExcelThread; UdfDispatcher.Execute strips it and sets a
+  [ThreadStatic] _onExcelThread flag (so cache keys / arg indexes are unchanged); a handler that would call the server
+  returns NeedsServerCall while the flag is set, and the helper repeats the call on Task.Run. GetBalance: single refresh
+  only. GetSegmentDFF / GetAccountType / GetDailyRate: logged-in results always come from the server, so only their
+  logged-out (cache) result is now returned on Excel's thread - after a server call the marquee can still be lost
+  for those three (inherent: the value has to come back later). Their per-call debug line is written twice when logged
+  in (inline probe + background call) - debug only.
+- Cost: none for the common path (one cross-domain call, as before); a server call pays one extra cheap call.
+
+Same-issue sweep:
+- AIPowered: all 4 async UDFs covered (above). The 13 synchronous UDFs return inline already.
+- FinalWorkingCode 11.1.2: GLSense_GetBalance ported (cache/batch returned inline, Task.Run only for single refresh);
+  its DFF/AccountType/DailyRate already return the logged-out result inline. Build-verified. See its CLAUDE.md.
+  FWC 11.1.0 / 11.1.1 / 11.1.3: same code, NOT ported (not requested). OPEN.
+- XLEdge: not checked for async UDFs in this pass. OPEN.
+
+## 127. Entries 112-126 ported from branch ribbon-compact to 11.1.3 (19-Nov-2026, not committed)
+
+Both branches were at 8020571, so the ribbon-compact working-tree diff was applied as-is (git apply --check clean)
+plus the 3 new files (BulkRefreshProcess.Json.cs, SnapshotOpenXml.cs, ProgressWindowHost.cs) and docs/perf.
+Verified: every changed/new file identical to ribbon-compact (CR-insensitive compare), whole source tree identical
+apart from ignored build output; full Rebuild of GLSense.sln (Debug) 0 errors, only the existing CS8602 warning
+(SegmentDiscoverer.cs line 356, unchanged line).
+Known limit (126): the host appends UdfSentinels.OnExcelThread to async UDF calls. If an OLDER GLSense.Addin.Core
+release is loaded into this host (release history / reload source picker), its dispatcher doesn't strip it: async
+UDFs then run fully on Excel's thread (live single refresh blocks Excel while the server answers) and
+GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from the same build are unaffected.

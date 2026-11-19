@@ -347,20 +347,7 @@ namespace GLSense.Addin.Core.Drilldowns
             GLWaitWindow? win = null;
             try
             {
-                WpfAppManager.InvokeOnWpfThread(() =>
-                {
-                    try
-                    {
-                        win = new GLWaitWindow(cts);
-                        win.Show();
-                        win.StartMonitoring();
-                    }
-                    catch (Exception ex)
-                    {
-                        ServiceLocator.Logger?.LogException(ex);
-                        win = null;
-                    }
-                });
+                win = ProgressWindowHost.Show(cts); // own UI thread: keeps painting while Excel is busy (CLAUDE.md 114)
             }
             catch (Exception ex)
             {

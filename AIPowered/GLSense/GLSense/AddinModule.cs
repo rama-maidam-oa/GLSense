@@ -115,6 +115,25 @@ namespace GLSense
             }
         }
 
+        /// <summary>
+        /// The active workbook's Excel window, read now (each workbook has its own top-level window). Owning a dialog by it
+        /// keeps dialog and workbook together in Alt+Tab and z-order; the handle cached at ribbon load can belong to a
+        /// workbook window that is no longer the active one, or closed (CLAUDE.md 124, OISR-22873).
+        /// </summary>
+        private IntPtr CurrentExcelHandle()
+        {
+            try
+            {
+                var hwnd = new IntPtr(ExcelApp.Hwnd);
+                if (hwnd != IntPtr.Zero) return hwnd;
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogDebug($"CurrentExcelHandle: Application.Hwnd unavailable, using the cached handle. {ex.Message}");
+            }
+            return GlobalsEx.Context?.ExcelHandle ?? IntPtr.Zero;
+        }
+
         public Excel._Application ExcelApp
         {
             get
@@ -236,7 +255,7 @@ namespace GLSense
                 try
                 {
                     picker = new GLReloadSourcePicker();
-                    new System.Windows.Interop.WindowInteropHelper(picker).Owner = GlobalsEx.Context.ExcelHandle;
+                    new System.Windows.Interop.WindowInteropHelper(picker).Owner = CurrentExcelHandle();
                     pickerResult = picker.ShowDialog();
                 }
                 catch (Exception ex)
@@ -283,7 +302,7 @@ namespace GLSense
                 try
                 {
                     browser = new GLReleaseHistoryBrowser();
-                    new System.Windows.Interop.WindowInteropHelper(browser).Owner = GlobalsEx.Context.ExcelHandle;
+                    new System.Windows.Interop.WindowInteropHelper(browser).Owner = CurrentExcelHandle();
                     browserResult = browser.ShowDialog();
                 }
                 catch (Exception ex)
@@ -488,7 +507,7 @@ namespace GLSense
                     "Preparing the GLSense reload...",
                     GlobalsEx.Context?.Version,
                     GlobalsEx.Context?.ReleaseDate);
-                new System.Windows.Interop.WindowInteropHelper(progressWindow).Owner = GlobalsEx.Context.ExcelHandle;
+                new System.Windows.Interop.WindowInteropHelper(progressWindow).Owner = CurrentExcelHandle();
                 progressWindow.ShowAndRender();
             }
             catch (Exception ex)

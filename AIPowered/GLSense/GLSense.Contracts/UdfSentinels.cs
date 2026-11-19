@@ -35,5 +35,17 @@ namespace GLSense.Contracts
         /// GLSense_GetBalance's "rawResult is null" case.
         /// </summary>
         public const string XlErrorNull = "#GLSENSE_XL_ERROR_NULL#";
+
+        /// <summary>
+        /// Not an Excel value: GLSense_GetBalance called on Excel's thread returns this when the result needs a
+        /// server call (single refresh); the host then repeats the call on a background thread.
+        /// </summary>
+        public const string NeedsServerCall = "#GLSENSE_NEEDS_SERVER_CALL#";
+
+        /// <summary>
+        /// Not an Excel value: appended by the host as the last argument of an async UDF call made on Excel's thread;
+        /// UdfDispatcher.Execute removes it before the handler sees the arguments.
+        /// </summary>
+        public const string OnExcelThread = "#GLSENSE_ON_EXCEL_THREAD#";
     }
 }

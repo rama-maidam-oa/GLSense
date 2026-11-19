@@ -110,6 +110,13 @@ namespace GLSense.Addin.Core.Drilldowns
 
             try
             {
+                // Validations first, so a failing one shows its message without a progress window flashing up first.
+                if (!await ValidateBalanceFormulasExistAsync())
+                    return;
+
+                if (!await ValidateNoBrokenLinksAsync())
+                    return;
+
                 Win = CreateAndShowProgressWindow(_ctsHelper);
                 if (Win == null)
                 {
@@ -118,14 +125,6 @@ namespace GLSense.Addin.Core.Drilldowns
                 }
 
                 await InitializeProgressWindowAsync("Processing request...");
-
-                Token.ThrowIfCancellationRequested();
-
-                if (!await ValidateBalanceFormulasExistAsync())
-                    return;
-
-                if (!await ValidateNoBrokenLinksAsync())
-                    return;
 
                 Token.ThrowIfCancellationRequested();
 
@@ -389,6 +388,7 @@ namespace GLSense.Addin.Core.Drilldowns
         public async Task RefreshBalancesInternalAsync(string RefreshType, string RefreshMode)
         {
             using (ServiceLocator.Logger?.BeginLogScope($"RefreshBalancesInternalAsync ({RefreshType}, {RefreshMode})"))
+            using (PerformanceHelper.MeasureExecutionTime($"RefreshPerf: TOTAL {RefreshType} ({RefreshMode}) incl. any prompts"))
             {
             bool showMessage = false;
             string completionMessage = string.Empty;
@@ -409,9 +409,29 @@ namespace GLSense.Addin.Core.Drilldowns
                 // before the window exists. Broken-links and the snapshot-path prompt are
                 // NOT part of this reordering - they intentionally still run after the
                 // window is up, unchanged from before.
-                if (!await ValidateWorkbookIsSavedAsync()) return;
-                if (!await ValidateBalanceFormulasExistAsync()) return;
+                using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: pre 1 check workbook saved"))
+                    if (!await ValidateWorkbookIsSavedAsync()) return;
+                using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: pre 2 check balance formulas exist"))
+                    if (!await ValidateBalanceFormulasExistAsync()) return;
+                using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: pre 3 check broken links"))
+                    if (!await ValidateNoBrokenLinksAsync()) return;
 
+                Token.ThrowIfCancellationRequested();
+
+                bool isSnapshot = IsSnapshotMode();
+                string snapshotFilePath = string.Empty;
+
+                // The snapshot save dialog comes BEFORE the progress window (CLAUDE.md 118): the window used to be shown,
+                // hidden for the dialog and shown again - and a window hidden before its first paint (the first window
+                // after Excel starts paints slowly) stayed invisible for the whole snapshot.
+                if (isSnapshot)
+                {
+                    snapshotFilePath = await PromptForSnapshotPathAsync(Token);
+                    Token.ThrowIfCancellationRequested();
+                    if (string.IsNullOrEmpty(snapshotFilePath)) return;
+                }
+
+                // All checks and prompts done: the progress window opens now and stays up until the end.
                 Win = CreateAndShowProgressWindow(_ctsHelper);
 
                 if (Win == null)
@@ -422,28 +442,16 @@ namespace GLSense.Addin.Core.Drilldowns
 
                 await InitializeProgressWindowAsync("Processing request...");
 
-                if (!await ValidateNoBrokenLinksAsync()) return;
-
                 Token.ThrowIfCancellationRequested();
 
-                bool isSnapshot = IsSnapshotMode();
-                string snapshotFilePath = string.Empty;
-
-                if (isSnapshot)
-                {
-                    snapshotFilePath = await PromptForSnapshotPathAsync(Token);
-                    Token.ThrowIfCancellationRequested();
-                    if (string.IsNullOrEmpty(snapshotFilePath)) return;
-                }
-
-                Token.ThrowIfCancellationRequested();
-
-                await CollectBalanceFormulasAsync(RefreshMode);
+                using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: pre 4 collect balance formulas"))
+                    await CollectBalanceFormulasAsync(RefreshMode);
 
                 if (_state.VersionCheck)
                 {
                     Token.ThrowIfCancellationRequested();
-                    await ValidateAndUpdateFormulasIfNeededAsync();
+                    using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: pre 5 validate/update formula versions (VCheck on)"))
+                        await ValidateAndUpdateFormulasIfNeededAsync();
                 }
 
                 await MessageProgressWindowAsync("Saving copy and preparing for refresh...");
@@ -633,11 +641,9 @@ namespace GLSense.Addin.Core.Drilldowns
 
             try
             {
-                if (Win.Dispatcher.CheckAccess())
-                {
-                    Win.RequestClose();
-                }
-                await Win.Dispatcher.InvokeAsync(() => Win.RequestClose());
+                // Its own thread shuts down once the window has closed (cancel, or an earlier close call).
+                if (!Win.Dispatcher.HasShutdownStarted)
+                    await Win.Dispatcher.InvokeAsync(() => Win.RequestClose());
             }
             catch (Exception ex)
             {
@@ -910,40 +916,8 @@ namespace GLSense.Addin.Core.Drilldowns
                 MessageBoxButton.OK);
         }
 
-        private GLWaitWindow? CreateAndShowProgressWindow(CancellationHelper? cts)
-        {
-            try
-            {
-                GLWaitWindow? win = null;
-
-                // WpfAppManager.InvokeOnWpfThread only takes an Action (no return value),
-                // so capture the created window from inside the delegate - same pattern
-                // DrillCellHighlighter.cs/DD_JL.cs use for GLWaitWindow. win.Show() replaces
-                // the original's win.ShowWithOwner(hwnd) - GLWaitWindow (BaseWindow-derived)
-                // sets its Excel owner automatically via ServiceLocator.ExcelHandle.
-                WpfAppManager.InvokeOnWpfThread(() =>
-                {
-                    try
-                    {
-                        win = new GLWaitWindow(cts);
-                        win.Show();
-                        win.StartMonitoring();
-                    }
-                    catch (Exception ex)
-                    {
-                        ServiceLocator.Logger?.LogException(ex);
-                        win = null;
-                    }
-                });
-
-                return win;
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex);
-            }
-            return null;
-        }
+        // Own UI thread, so the window keeps painting while Excel calculates (CLAUDE.md 112/114).
+        private static GLWaitWindow? CreateAndShowProgressWindow(CancellationHelper? cts) => ProgressWindowHost.Show(cts);
 
         private Task InitializeProgressWindowAsync(string message)
         {

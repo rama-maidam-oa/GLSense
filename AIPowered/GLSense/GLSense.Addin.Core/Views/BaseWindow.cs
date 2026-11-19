@@ -222,12 +222,17 @@ namespace GLSense.Addin.Core.Views
                 {
                     try
                     {
+                        // Excel's workbook window owns the dialog unless the code gave it a WPF Owner window. Not gated on
+                        // helper.Owner == Zero: for ShowInTaskbar="False" windows (the progress window, message window...)
+                        // WPF has already put its own hidden window there, which left them unowned by Excel - separate in
+                        // Alt+Tab and dropping behind Excel when Excel was clicked (CLAUDE.md 124).
                         var helper = new WindowInteropHelper(this);
-                        if (helper.Owner == IntPtr.Zero)
+                        if (Owner == null)
                         {
                             helper.Owner = _excelHandle;
                             _ownerSet = true;
                         }
+                        ServiceLocator.Logger?.LogDebug($"[{_windowName}] owner = 0x{GetWindow(helper.Handle, GW_OWNER).ToInt64():X} (Excel window 0x{_excelHandle.ToInt64():X})");
                     }
                     catch (Exception ex)
                     {
@@ -253,9 +258,14 @@ namespace GLSense.Addin.Core.Views
                     ApplyLayoutRefresh();
                 }
 
-                int placeholderGen = WindowLoadingPlaceholder.ShowMatching(
-                    Left, Top, ResolveExpectedWidth(), ResolveExpectedHeight(), _excelHandle);
-                HookPlaceholderDismissal(placeholderGen);
+                // The shared placeholder lives on the main WPF thread; a window running on its own
+                // UI thread (the refresh progress window) paints by itself and must not touch it.
+                if (Application.Current?.Dispatcher.CheckAccess() == true)
+                {
+                    int placeholderGen = WindowLoadingPlaceholder.ShowMatching(
+                        Left, Top, ResolveExpectedWidth(), ResolveExpectedHeight(), _excelHandle);
+                    HookPlaceholderDismissal(placeholderGen);
+                }
             }
             catch (Exception ex)
             {
@@ -971,7 +981,7 @@ namespace GLSense.Addin.Core.Views
                         try
                         {
                             var helper = new WindowInteropHelper(this);
-                            if (helper.Owner == IntPtr.Zero)
+                            if (Owner == null) // see OnSourceInitialized: WPF's hidden owner must not block Excel's
                             {
                                 helper.Owner = _excelHandle;
                                 _ownerSet = true;
@@ -1031,6 +1041,18 @@ namespace GLSense.Addin.Core.Views
 
         [DllImport("user32.dll")]
         private static extern bool IsWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+        private const uint GW_OWNER = 4;
+
+        /// <summary>The Excel window to be owned by, for a window built on another thread (ProgressWindowHost reads the
+        /// active workbook's window on Excel's thread and passes it in; Application.Hwnd isn't reliably readable there).</summary>
+        public IntPtr ExcelOwnerHandle
+        {
+            get => _excelHandle;
+            set { if (value != IntPtr.Zero) _excelHandle = value; }
+        }
 
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOSIZE = 0x0001;

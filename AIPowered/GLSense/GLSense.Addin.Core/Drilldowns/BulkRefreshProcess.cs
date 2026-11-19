@@ -45,7 +45,7 @@ using Excel = Microsoft.Office.Interop.Excel;
 namespace GLSense.Addin.Core.Drilldowns
 {
 #nullable enable
-    public class BulkRefreshProcess
+    public partial class BulkRefreshProcess
     {
         private readonly GLWaitWindow _win;
         private readonly AppState _state;
@@ -76,6 +76,7 @@ namespace GLSense.Addin.Core.Drilldowns
         private readonly bool _isTypeSheet;
         private readonly bool _isSnapshot;
         private readonly string _snapShotFilepath;
+        private string? _worksheetName;
 
         private BulkRefreshProcess(
             GLWaitWindow window,
@@ -131,20 +132,30 @@ namespace GLSense.Addin.Core.Drilldowns
             {
                 Exception? ex;
 
-                ex = await Step_SaveAndZipWorkbook(_token);
+                // RefreshPerf: per-step timings (debug log) - grep the log for "RefreshPerf".
+                if (_isSnapshot)
+                {
+                    // The snapshot file is a plain copy of the workbook; balances come from the JSON path below and are
+                    // written into the copy in step 5. Nothing is uploaded (the old path zipped + uploaded this file).
+                    using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: snapshot S1 save copy"))
+                        ex = await Step_SaveSnapshotCopy(_token);
+                    if (ex != null) return HandleStepFailure(ex);
+                }
+
+                // Sheet/Book Refresh and Snapshot: JSON (one request per worksheet) replaces the old file steps 1-4.
+                using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: JSON steps 1-4"))
+                    ex = await Step_JsonBalances(_token);
                 if (ex != null) return HandleStepFailure(ex);
 
-                ex = await Step_UploadZipToServer(_token);
+                using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: step 5 write balances back (recalculate)"))
+                    ex = await Step_FinalRefresh(_token);
                 if (ex != null) return HandleStepFailure(ex);
 
-                ex = await Step_ExtractZipFile(_token);
-                if (ex != null) return HandleStepFailure(ex);
-
-                ex = await Step_BalancesToDataTable(_token);
-                if (ex != null) return HandleStepFailure(ex);
-
-                ex = await Step_FinalRefresh(_token);
-                if (ex != null) return HandleStepFailure(ex);
+                if (!_isSnapshot && _state.DebugLogs) // re-reads every value: only when debug logs are on
+                {
+                    await MessageProgressWindowAsync("Verifying refreshed values (debug logs on).");
+                    await LogRefreshParityAsync();
+                }
 
                 _state.SnapshotSuccess = true;
                 return null;
@@ -163,6 +174,7 @@ namespace GLSense.Addin.Core.Drilldowns
                 _excelApp = ServiceLocator.ExcelApp;
                 _workbook = _excelApp?.ActiveWorkbook;
                 _worksheet = _excelApp?.ActiveSheet as Excel.Worksheet;
+                _worksheetName = _worksheet?.Name; // read here: the snapshot's isolated thread must not call into this Excel
             });
         }
 
@@ -176,6 +188,40 @@ namespace GLSense.Addin.Core.Drilldowns
             }
 
             return await RunLongRunningTask(token, ct => SaveAndZipWorkbookAsync(_workbook!, ct));
+        }
+
+        private async Task<Exception?> Step_SaveSnapshotCopy(CancellationToken token)
+        {
+            if (_workbook == null)
+            {
+                var ex = new Exception("No active workbook found.");
+                LogError(ex);
+                return ex;
+            }
+
+            try
+            {
+                token.ThrowIfCancellationRequested();
+                await MessageProgressWindowAsync("Saving a copy of the workbook for the snapshot.");
+                // Straight to the snapshot file (was: SaveCopyAs to Temp, then File.Copy). Includes unsaved changes.
+                await RunExcelAsync(() =>
+                {
+                    _workbook!.CheckCompatibility = false;
+                    _workbook.SaveCopyAs(_snapShotFilepath);
+                });
+                LogDebug($"RefreshPerf: snapshot copy size = {FileSizeText(_snapShotFilepath)} ({_snapShotFilepath})");
+                return null;
+            }
+            catch (OperationCanceledException ex)
+            {
+                LogWarn("Snapshot canceled by user.");
+                return ex;
+            }
+            catch (Exception ex)
+            {
+                LogError(ex);
+                return ex;
+            }
         }
 
         private async Task<Exception?> Step_UploadZipToServer(CancellationToken token)
@@ -241,16 +287,24 @@ namespace GLSense.Addin.Core.Drilldowns
 
             if (_isSnapshot)
             {
-                await MessageProgressWindowAsync("Creating snapshot...");
-                return await RunSnapshotInIsolatedExcelAsync(
-                    _snapShotFilepath,
-                    async workbook =>
-                    {
-                        await UpdateCellsFromJsonFastAsync(workbook);
-                        await RemoveGlSenseFormulasFastAsync(workbook);
-                        await DeleteOtherSheetsIfWorksheetSnapshotAsync(workbook);
-                    },
-                    token);
+                // Written straight into the saved copy's package - no second Excel (CLAUDE.md 122/123).
+                // Only the GLSense cells change; nothing is recalculated (user, 17-Nov).
+                await MessageProgressWindowAsync(_isTypeSheet
+                    ? "Creating the sheet snapshot (balances to values, other sheets removed)."
+                    : "Creating the workbook snapshot (balances to values).");
+                return await RunLongRunningTask(token, ct =>
+                {
+                    SnapshotOpenXml.Result result;
+                    using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 5 snapshot write (OpenXML)"))
+                        result = SnapshotOpenXml.Apply(_snapShotFilepath,
+                            _snapshotBalances ?? new Dictionary<string, Dictionary<(int row, int col), List<string>?>>(),
+                            _isTypeSheet ? _worksheetName : null, ct);
+                    LogDebug($"RefreshPerf: snapshot OpenXML: {result}; kept sheets: {string.Join(", ", result.KeptSheets)}" +
+                             (result.DeletedSheets.Count > 0 ? $"; deleted: {string.Join(", ", result.DeletedSheets)}" : string.Empty));
+                    if (_isTypeSheet && result.KeptSheets.Count > 1)
+                        LogDebug($"Sheet snapshot of '{_worksheetName}' also kept {result.KeptSheets.Count - 1} sheet(s) it refers to: {string.Join(", ", result.KeptSheets.Where(s => !s.Equals(_worksheetName, StringComparison.OrdinalIgnoreCase)))}.");
+                    return Task.CompletedTask;
+                });
             }
 
             return await RunLongRunningTask(token, ct => RefreshWithBalancesAsync(_workbook!, _worksheet!, ct));
@@ -306,8 +360,10 @@ namespace GLSense.Addin.Core.Drilldowns
                 await RunExcelAsync(() =>
                 {
                     wb.CheckCompatibility = false;
-                    wb.SaveCopyAs(filePath);
+                    using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 1a Excel SaveCopyAs"))
+                        wb.SaveCopyAs(filePath);
                 });
+                LogDebug($"RefreshPerf: saved copy size = {FileSizeText(filePath)} ({filePath})");
 
                 if (_isSnapshot)
                 {
@@ -347,9 +403,11 @@ namespace GLSense.Addin.Core.Drilldowns
 
                     token.ThrowIfCancellationRequested();
 
-                    using ZipArchive newfile = ZipFile.Open(zipPath, ZipArchiveMode.Create);
-                    newfile.CreateEntryFromFile(filePath, _refreshFileName);
+                    using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 1b zip the copy"))
+                    using (ZipArchive newfile = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+                        newfile.CreateEntryFromFile(filePath, _refreshFileName);
                 }, token).ConfigureAwait(false);
+                LogDebug($"RefreshPerf: upload zip size = {FileSizeText(zipPath)}");
 
                 token.ThrowIfCancellationRequested();
 
@@ -439,7 +497,10 @@ namespace GLSense.Addin.Core.Drilldowns
 
                 await MessageProgressWindowAsync("Sending upload request to server.");
 
-                var response = await client.PostAsync(uri, content, token);
+                HttpResponseMessage response;
+                // Covers sending the zip and the server's whole processing, up to the response headers.
+                using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 2a upload + server processing (until response headers)"))
+                    response = await client.PostAsync(uri, content, token);
 
                 await MessageProgressWindowAsync($"Received response from server. Status code: {response.StatusCode}");
 
@@ -459,14 +520,20 @@ namespace GLSense.Addin.Core.Drilldowns
                     LogDebug("Writing response stream to file.");
 
                     await MessageProgressWindowAsync("Saving server response to file.");
-                    do
+                    long responseBytes = 0;
+                    using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 2b download response body"))
                     {
-                        bytesRead = await responseStream.ReadAsync(buffer, 0, buffer.Length, token);
-                        if (bytesRead > 0)
+                        do
                         {
-                            await fileOutput.WriteAsync(buffer, 0, bytesRead, token);
-                        }
-                    } while (bytesRead != 0);
+                            bytesRead = await responseStream.ReadAsync(buffer, 0, buffer.Length, token);
+                            if (bytesRead > 0)
+                            {
+                                await fileOutput.WriteAsync(buffer, 0, bytesRead, token);
+                                responseBytes += bytesRead;
+                            }
+                        } while (bytesRead != 0);
+                    }
+                    LogDebug($"RefreshPerf: response zip size = {responseBytes / 1024.0:F1} KB");
 
                     await MessageProgressWindowAsync("Response flushed to file.");
 
@@ -707,16 +774,27 @@ namespace GLSense.Addin.Core.Drilldowns
                     {
                         token.ThrowIfCancellationRequested();
 
-                        string jsonString = File.ReadAllText(jsonFileName);
+                        string jsonString;
+                        using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 4a read response json file"))
+                            jsonString = File.ReadAllText(jsonFileName);
                         _state.CalculatedBalances = new DataTable();
-                        LogDebug($"Server response data : {jsonString}");
+                        // OISR-22830 pattern: a large response is saved in full to the Temp folder and the log gets a
+                        // preview + the file path (writing tens of MB into the log skewed debug-mode timings).
+                        if (_state.DebugLogs)
+                        {
+                            using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 4a2 save response to Temp (debug only)"))
+                                LogDebug($"Server response data ({jsonString.Length:N0} chars): {GLSense.Shared.LargeLogText.ToLogText(jsonString, ServiceLocator.Paths?.Temp, "sheet-balances_response")}");
+                        }
 
                         if (!string.IsNullOrWhiteSpace(jsonString) &&
                             jsonString.IndexOf("balanceValue", StringComparison.OrdinalIgnoreCase) >= 0)
                         {
                             jsonString = jsonString.Replace("=@_XLL.", "=_XLL");
 
-                            JsonArray? rawJson = JsonNode.Parse(jsonString)?.AsArray();
+                            JsonArray? rawJson;
+                            using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 4b parse response json"))
+                                rawJson = JsonNode.Parse(jsonString)?.AsArray();
+                            LogDebug($"RefreshPerf: response records = {rawJson?.Count ?? 0:N0}");
 
                             if (rawJson != null)
                             {
@@ -726,8 +804,12 @@ namespace GLSense.Addin.Core.Drilldowns
                                 }
                                 else
                                 {
-                                    JsonArray normalized = BalanceNormalizer.Normalize(rawJson);
-                                    _state.CalculatedBalances = DataTableBuilder.ToDataTable(normalized);
+                                    JsonArray normalized;
+                                    using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 4c normalize balances"))
+                                        normalized = BalanceNormalizer.Normalize(rawJson);
+                                    using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 4d build DataTable"))
+                                        _state.CalculatedBalances = DataTableBuilder.ToDataTable(normalized);
+                                    LogDebug($"RefreshPerf: DataTable rows = {_state.CalculatedBalances?.Rows.Count ?? 0:N0}, adaptive-memory hits = {_state.CalculatedBalances?.AsEnumerable().Count(r => r["cache"] is bool hit && hit) ?? 0:N0}");
 
                                     if (_state.CalculatedBalances != null && _state.CalculatedBalances.Rows.Count > 0)
                                     {
@@ -975,8 +1057,9 @@ namespace GLSense.Addin.Core.Drilldowns
                                 // Use the entire sheet's cells when searching for formulas. UsedRange
                                 // can sometimes exclude cells with formulas, so search sheet.Cells
                                 // to ensure we find all formula cells.
-                                formulaCells = sheet.Cells.SpecialCells(
-                                    Excel.XlCellType.xlCellTypeFormulas);
+                                using (PerformanceHelper.MeasureExecutionTime($"RefreshPerf: 5a [{sheet.Name}] find formula cells"))
+                                    formulaCells = sheet.Cells.SpecialCells(
+                                        Excel.XlCellType.xlCellTypeFormulas);
                             }
                             catch (Exception ex)
                             {
@@ -986,8 +1069,11 @@ namespace GLSense.Addin.Core.Drilldowns
 
                             if (formulaCells != null)
                             {
-                                formulaCells.Dirty();
-                                formulaCells.Calculate();
+                                LogDebug($"RefreshPerf: [{sheet.Name}] formula cells = {formulaCells.CountLarge:N0}, areas = {formulaCells.Areas.Count:N0}");
+                                using (PerformanceHelper.MeasureExecutionTime($"RefreshPerf: 5b [{sheet.Name}] Dirty"))
+                                    formulaCells.Dirty();
+                                using (PerformanceHelper.MeasureExecutionTime($"RefreshPerf: 5c [{sheet.Name}] Calculate"))
+                                    formulaCells.Calculate();
                             }
                         }
                         finally
@@ -999,9 +1085,16 @@ namespace GLSense.Addin.Core.Drilldowns
                         }
                     }
 
-                    workbook.Application.Calculate();
+                    using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 5d Application.Calculate"))
+                        workbook.Application.Calculate();
                 }
             });
+        }
+
+        private static string FileSizeText(string path)
+        {
+            try { return File.Exists(path) ? $"{new FileInfo(path).Length / (1024.0 * 1024.0):F2} MB" : "(missing)"; }
+            catch (IOException) { return "(unknown)"; }
         }
 
         private async Task ReactivateOriginalSheet(Excel.Workbook wrkbook)
@@ -1023,377 +1116,6 @@ namespace GLSense.Addin.Core.Drilldowns
                     LogError(ex);
                 }
             });
-        }
-
-        private Task<Exception?> RunSnapshotInIsolatedExcelAsync(
-    string filePath,
-    Func<Excel.Workbook, Task> processor,
-    CancellationToken token)
-        {
-            LogDebug($"RunSnapshotInIsolatedExcelAsync: opening isolated Excel instance for '{filePath}'.");
-
-            var tcs = new TaskCompletionSource<Exception?>();
-
-            var thread = new Thread(() =>
-            {
-                Excel.Application? app = null;
-                Excel.Workbook? book = null;
-
-                try
-                {
-                    token.ThrowIfCancellationRequested();
-
-                    app = new Excel.Application
-                    {
-                        Visible = false,
-                        ScreenUpdating = false,
-                        EnableEvents = false,
-                        DisplayAlerts = false
-                    };
-
-                    book = app.Workbooks.Open(filePath, ReadOnly: false);
-
-                    app.Calculation = Excel.XlCalculation.xlCalculationManual;
-                    app.AskToUpdateLinks = false;
-                    app.AlertBeforeOverwriting = false;
-                    app.CalculationInterruptKey = Excel.XlCalculationInterruptKey.xlNoKey;
-
-                    token.ThrowIfCancellationRequested();
-
-                    processor(book).GetAwaiter().GetResult();
-
-                    token.ThrowIfCancellationRequested();
-
-                    book.Save();
-                    book.Close(false);
-                    app.Quit();
-
-                    tcs.SetResult(null);
-                }
-                catch (OperationCanceledException ex)
-                {
-                    // Not routed through RunLongRunningTask (this runs on its own isolated STA
-                    // thread), so log directly here - otherwise a snapshot cancellation would
-                    // never appear in the log at all.
-                    LogWarn($"RunSnapshotInIsolatedExcelAsync: snapshot creation canceled: {ex.Message}");
-                    tcs.SetResult(ex);
-                }
-                catch (Exception ex)
-                {
-                    // Same as above: this path bypasses RunLongRunningTask's logging, so log
-                    // explicitly here or a snapshot failure would silently never be logged.
-                    LogError(ex, "RunSnapshotInIsolatedExcelAsync: snapshot creation failed");
-                    tcs.SetResult(ex);
-                }
-                finally
-                {
-                    try
-                    {
-                        book?.Close(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        ServiceLocator.Logger?.LogWarn($"RunSnapshotInIsolatedExcelAsync: failed to close workbook (non-fatal): {ex.Message}");
-                    }
-
-                    if (book != null)
-                        Marshal.ReleaseComObject(book);
-
-                    try
-                    {
-                        app?.Quit();
-                    }
-                    catch (Exception ex)
-                    {
-                        ServiceLocator.Logger?.LogWarn($"RunSnapshotInIsolatedExcelAsync: failed to quit Excel app (non-fatal): {ex.Message}");
-                    }
-
-                    if (app != null)
-                        Marshal.ReleaseComObject(app);
-
-                    GC.Collect();
-                    GC.WaitForPendingFinalizers();
-                }
-            });
-
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.IsBackground = true;
-            thread.Start();
-
-            return tcs.Task;
-        }
-
-        private async Task UpdateCellsFromJsonFastAsync(Excel.Workbook workbook)
-        {
-
-            await MessageProgressWindowAsync("Updating balances from json.");
-
-            var grouped = _snapshotJsonArray
-                ?.OfType<JsonObject>()
-                .Where(x => x["excelSheet"] != null && x["excelCell"] != null)
-                .GroupBy(x => x["excelSheet"]!.GetValue<string>())
-                .ToList() ?? new();
-
-            LogDebug($"UpdateCellsFromJsonFastAsync: updating cells across {grouped.Count} sheet(s), {_snapshotJsonArray?.Count ?? 0} total entries.");
-
-            // No Task.Yield() here: this method runs on the isolated STA thread
-            // (see RunSnapshotInIsolatedExcelAsync), which has no SynchronizationContext
-            // or message pump, so yielding would resume subsequent Excel COM calls on
-            // an arbitrary ThreadPool thread — a cross-thread COM violation.
-            foreach (var group in grouped)
-            {
-                if (string.IsNullOrWhiteSpace(group.Key))
-                    continue;
-
-                Excel.Worksheet sheet;
-
-                try
-                {
-                    sheet = (Excel.Worksheet)workbook.Worksheets[group.Key];
-                }
-                catch (Exception ex)
-                {
-                    ServiceLocator.Logger?.LogWarn($"UpdateCellsFromJsonFastAsync: worksheet '{group.Key}' not found in workbook (non-fatal): {ex.Message}");
-                    continue;
-                }
-
-                foreach (var item in group)
-                {
-                    string address = item["excelCell"]!
-                        .GetValue<string>()
-                        .Replace("$", "");
-
-                    Excel.Range cell = sheet.Range[address];
-
-                    bool hasReferences =
-                        item["hasReferences"]?.GetValue<bool>() ?? false;
-
-                    if (hasReferences)
-                        cell.Formula = item["formula"]?.GetValue<string>() ?? "";
-                    else
-                        cell.Value = item["value"]?.GetValue<string>();
-
-                    Marshal.ReleaseComObject(cell);
-                }
-
-                Marshal.ReleaseComObject(sheet);
-            }
-        }
-        private async Task RemoveGlSenseFormulasFastAsync(Excel.Workbook workbook)
-        {
-            await MessageProgressWindowAsync("Replacing glsense formulas with values.");
-
-            foreach (Excel.Worksheet sheet in workbook.Worksheets)
-            {
-                if (_isTypeSheet &&
-                    sheet.Name != _worksheet?.Name)
-                {
-                    Marshal.ReleaseComObject(sheet);
-                    continue;
-                }
-
-                Excel.Range formulaCells;
-
-                try
-                {
-                    formulaCells = sheet.Cells.SpecialCells(
-                        Excel.XlCellType.xlCellTypeFormulas);
-                }
-                catch (Exception ex)
-                {
-                    ServiceLocator.Logger?.LogWarn($"RemoveGlSenseFormulasFastAsync: no formula cells found on sheet '{sheet?.Name}' (non-fatal): {ex.Message}");
-                    Marshal.ReleaseComObject(sheet);
-                    continue;
-                }
-
-                if (formulaCells == null)
-                {
-                    Marshal.ReleaseComObject(sheet);
-                    continue;
-                }
-
-                // SpecialCells may return a non-contiguous range (multiple Areas).
-                // Accessing .Formula on the union can return unexpected/partial results.
-                // Iterate each Area and process it individually to ensure we handle
-                // all formula cells on the sheet correctly.
-                Excel.Range? area = null;
-                try
-                {
-                    foreach (Excel.Range a in formulaCells.Areas)
-                    {
-                        area = a;
-
-                        object? formulaObj = null;
-                        object? valueObj = null;
-
-                        try
-                        {
-                            formulaObj = area.Formula;
-                            valueObj = area.Value2;
-                        }
-                        catch (Exception ex)
-                        {
-                            // Skip this area if we cannot read formulas/values
-                            ServiceLocator.Logger?.LogWarn($"RemoveGlSenseFormulasFastAsync: unable to read formulas/values for area (non-fatal): {ex.Message}");
-                            Marshal.ReleaseComObject(area);
-                            continue;
-                        }
-
-                        // Single-cell area (or uniform single formula) handling
-                        if (!(formulaObj is object[,]))
-                        {
-                            string formula = formulaObj?.ToString() ?? string.Empty;
-
-                            if (formula.IndexOf("GLSENSE", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                                formula.IndexOf("GETBALANCE", StringComparison.OrdinalIgnoreCase) < 0)
-                            {
-                                try { area.Value2 = ToTextValue(valueObj); }
-                                catch (Exception ex)
-                                {
-                                    ServiceLocator.Logger?.LogWarn($"RemoveGlSenseFormulasFastAsync: failed to set single-cell area value (non-fatal): {ex.Message}");
-                                }
-                            }
-
-                            Marshal.ReleaseComObject(area);
-                            continue;
-                        }
-
-                        var formulas = (object[,])formulaObj;
-                        var values = (object[,])valueObj;
-
-                        bool modified = false;
-
-                        // NOTE: This method runs on a dedicated isolated STA thread (see
-                        // RunSnapshotInIsolatedExcelAsync), which blocks synchronously via
-                        // GetAwaiter().GetResult() and installs no SynchronizationContext.
-                        // Wrapping this array math in Task.Run would resume the subsequent
-                        // area.Value2 write / Marshal.ReleaseComObject(area) calls on an
-                        // arbitrary ThreadPool thread — a cross-thread COM violation.
-                        // The math itself is cheap (in-memory array manipulation), so it
-                        // runs synchronously in-line on the STA thread instead.
-                        int rows = formulas.GetLength(0);
-                        int cols = formulas.GetLength(1);
-
-                        for (int r = 1; r <= rows; r++)
-                        {
-                            for (int c = 1; c <= cols; c++)
-                            {
-                                if (formulas[r, c] is string formula &&
-                                    formula.IndexOf("GLSENSE", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                                    formula.IndexOf("GETBALANCE", StringComparison.OrdinalIgnoreCase) < 0)
-                                {
-                                    formulas[r, c] = values[r, c];
-                                    modified = true;
-                                }
-                            }
-                        }
-
-                        if (modified)
-                        {
-                            try { area.Value2 = ToTextArray(formulas); }
-                            catch (Exception ex)
-                            {
-                                ServiceLocator.Logger?.LogWarn($"RemoveGlSenseFormulasFastAsync: failed to set area values (non-fatal): {ex.Message}");
-                            }
-                        }
-
-                        Marshal.ReleaseComObject(area);
-                    }
-                }
-                    finally
-                    {
-                        // Ensure formulaCells is released
-                        try { Marshal.ReleaseComObject(formulaCells); }
-                        catch (Exception ex)
-                        {
-                            ServiceLocator.Logger?.LogWarn($"RemoveGlSenseFormulasFastAsync: failed to release formulaCells COM object (non-fatal): {ex.Message}");
-                        }
-                        Marshal.ReleaseComObject(sheet);
-                    }
-            }
-        }
-
-        private static object? ToTextValue(object value)
-        {
-            if (value == null)
-                return null;
-
-            if (IsExcelErrorObject(value))
-            {
-                return "#GETTING_DATA";
-            }
-
-            var text = value.ToString() ?? string.Empty;
-            if (text.Length > 0 && text[0] == '\'')
-                return text;
-
-            return "'" + text;
-        }
-
-        private static bool IsExcelErrorObject(object? value)
-        {
-            if (value == null) return false;
-
-            // Common COM Excel error sentinel observed: -2146826246 (displays as #VALUE!)
-            // Handle numeric boxed errors (int/long/double)
-            try
-            {
-                if (value is int i && i == -2146826246) return true;
-                if (value is long l && l == -2146826246L) return true;
-                if (value is double d && Math.Abs(d - -2146826246.0) < 0.0001) return true;
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogWarn($"IsExcelErrorObject: comparison failed for value '{value}' (ignored): {ex.Message}");
-            }
-
-            // If the value string starts with '#' treat it as an error token
-            var s = value.ToString();
-            if (!string.IsNullOrEmpty(s) && s.Length > 0 && s[0] == '#')
-                return true;
-
-            return false;
-        }
-
-        private static object[,] ToTextArray(object[,] values)
-        {
-            int rows = values.GetLength(0);
-            int cols = values.GetLength(1);
-            var result = new object[rows, cols];
-
-            for (int r = 0; r < rows; r++)
-            {
-                for (int c = 0; c < cols; c++)
-                {
-                    result[r, c] = ToTextValue(values[r + 1, c + 1]) ?? string.Empty;
-                }
-            }
-
-            return result;
-        }
-        private async Task DeleteOtherSheetsIfWorksheetSnapshotAsync(
-              Excel.Workbook workbook)
-        {
-            if (!_isTypeSheet)
-                return;
-
-            await MessageProgressWindowAsync("Deleting sheets for sheet snapshot.");
-
-            int sheetCount = workbook.Worksheets.Count;
-            LogDebug($"DeleteOtherSheetsIfWorksheetSnapshotAsync: deleting all sheets except '{_worksheet?.Name}' ({sheetCount} sheet(s) total).");
-
-            for (int i = sheetCount; i >= 1; i--)
-            {
-                Excel.Worksheet sheet =
-                    (Excel.Worksheet)workbook.Worksheets[i];
-
-                if (sheet.Name != _worksheet?.Name)
-                {
-                    sheet.Delete();
-                }
-
-                Marshal.ReleaseComObject(sheet);
-            }
         }
 
         private bool IsCancelled(CancellationToken token)
@@ -1423,19 +1145,21 @@ namespace GLSense.Addin.Core.Drilldowns
         }
         private Task MessageProgressWindowAsync(string? message)
         {
-            if (_win == null || _win.Dispatcher == null)
+            if (_win == null || _win.Dispatcher == null || _win.Dispatcher.HasShutdownStarted)
                 return Task.CompletedTask;
 
             try
             {
-                var op = _win.Dispatcher.InvokeAsync(
+                // Fire-and-forget: the window has its own UI thread (BalanceRefresh.CreateAndShowProgressWindow), so
+                // nothing needs to wait for the label, and a window closed by Cancel must not fail the refresh.
+                _ = _win.Dispatcher.InvokeAsync(
                     () =>
                     {
                         _win.SetProcessMessage(message);
                     },
                     DispatcherPriority.Normal);
 
-                return op.Task;
+                return Task.CompletedTask;
             }
             catch (TaskCanceledException)
             {

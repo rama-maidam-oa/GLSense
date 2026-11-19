@@ -137,7 +137,9 @@ namespace GLSense
                 {
                     object result = addin.ExecuteUdf(functionName, args);
                     object translated = TranslateSentinel(result);
-                    GlobalsEx.Context?.Logger?.LogDebug($"{functionName}: ExecuteUdf returned \'{result}\' (translated: \'{translated}\').");
+                    // GetBalance's result is already in its one Addin.Core line; only log a translation.
+                    if ((functionName != "GLSense_GetBalance" || !Equals(result, translated)) && !Equals(result, GLSense.Contracts.UdfSentinels.NeedsServerCall))
+                        GlobalsEx.Context?.Logger?.LogDebug($"{functionName}: ExecuteUdf returned \'{result}\' (translated: \'{translated}\').");
                     return translated;
                 }
                 catch (Exception ex)
@@ -620,8 +622,40 @@ namespace GLSense
                 }
             }
 
+            /// <summary>
+            /// Returns an async UDF's result. First runs it on Excel's thread (UdfSentinels.OnExcelThread appended) and
+            /// returns there - cache / batch / logged-out results. A result returned from a background thread leaves Excel
+            /// unable to draw the Ctrl+C marquee after an edit to a cell the formula refers to (CLAUDE.md 126). Only when
+            /// the handler answers NeedsServerCall is the call repeated on a background thread, so Excel never waits on it.
+            /// </summary>
+            private static void ReturnAsyncResult(ADXExcelAsyncCallObject asyncCallObject, string functionName, object[] args, object errorValue)
+            {
+                object[] onExcelThread = new object[args.Length + 1];
+                Array.Copy(args, onExcelThread, args.Length);
+                onExcelThread[args.Length] = GLSense.Contracts.UdfSentinels.OnExcelThread;
+                object result = CrossToExecuteUdf(functionName, onExcelThread);
+                if (!Equals(result, GLSense.Contracts.UdfSentinels.NeedsServerCall))
+                {
+                    asyncCallObject.ReturnResult(result);
+                    return;
+                }
+
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        asyncCallObject.ReturnResult(CrossToExecuteUdf(functionName, args));
+                    }
+                    catch (Exception ex)
+                    {
+                        GlobalsEx.Context?.Logger?.LogException(ex, $"{functionName} background (host wrapper)");
+                        asyncCallObject.ReturnResult(errorValue);
+                    }
+                });
+            }
+
             // ─── Async UDFs (return void, take a trailing required ADXExcelAsyncCallObject) ───
-            // The real work runs on a background thread (Task.Run) so the ExecuteUdf call
+            // ReturnAsyncResult: Excel's thread when no server call is needed, else a background thread (Task.Run) so the ExecuteUdf call
             // (which blocks synchronously across the AppDomain boundary while it does REST
             // calls / SQLite reads) never blocks Excel's UI thread. asyncCallObject.ReturnResult
             // is safe to call from any thread - ADX marshals it back into Excel itself (this
@@ -646,19 +680,7 @@ namespace GLSense
                         return;
                     }
 
-                    System.Threading.Tasks.Task.Run(() =>
-                    {
-                        try
-                        {
-                            object result = CrossToExecuteUdf("GLSense_GetSegmentDFF", parameters);
-                            asyncCallObject.ReturnResult(result);
-                        }
-                        catch (Exception ex)
-                        {
-                            GlobalsEx.Context?.Logger?.LogException(ex, "GLSense_GetSegmentDFF background (host wrapper)");
-                            asyncCallObject.ReturnResult(AddinExpress.MSO.ADXExcelError.xlErrorGettingData);
-                        }
-                    });
+                    ReturnAsyncResult(asyncCallObject, "GLSense_GetSegmentDFF", parameters, AddinExpress.MSO.ADXExcelError.xlErrorGettingData);
                 }
                 catch (Exception ex)
                 {
@@ -685,19 +707,7 @@ namespace GLSense
                         return;
                     }
 
-                    System.Threading.Tasks.Task.Run(() =>
-                    {
-                        try
-                        {
-                            object result = CrossToExecuteUdf("GLSense_GetAccountType", parameters);
-                            asyncCallObject.ReturnResult(result);
-                        }
-                        catch (Exception ex)
-                        {
-                            GlobalsEx.Context?.Logger?.LogException(ex, "GLSense_GetAccountType background (host wrapper)");
-                            asyncCallObject.ReturnResult(AddinExpress.MSO.ADXExcelError.xlErrorGettingData);
-                        }
-                    });
+                    ReturnAsyncResult(asyncCallObject, "GLSense_GetAccountType", parameters, AddinExpress.MSO.ADXExcelError.xlErrorGettingData);
                 }
                 catch (Exception ex)
                 {
@@ -725,19 +735,7 @@ namespace GLSense
                         return;
                     }
 
-                    System.Threading.Tasks.Task.Run(() =>
-                    {
-                        try
-                        {
-                            object result = CrossToExecuteUdf("GLSense_GetDailyRate", parameters);
-                            asyncCallObject.ReturnResult(result);
-                        }
-                        catch (Exception ex)
-                        {
-                            GlobalsEx.Context?.Logger?.LogException(ex, "GLSense_GetDailyRate background (host wrapper)");
-                            asyncCallObject.ReturnResult(AddinExpress.MSO.ADXExcelError.xlErrorGettingData);
-                        }
-                    });
+                    ReturnAsyncResult(asyncCallObject, "GLSense_GetDailyRate", parameters, AddinExpress.MSO.ADXExcelError.xlErrorGettingData);
                 }
                 catch (Exception ex)
                 {
@@ -797,7 +795,7 @@ namespace GLSense
             {
                 try
                 {
-                    GlobalsEx.Context?.Logger?.LogDebug($"GLSense_GetBalance called (LedgerName={LedgerName}, Activity={Activity}, Period={Period}, BalanceType={BalanceType}, CurrencyCode={CurrencyCode})");
+                    // Arguments and result are logged once per call in Addin.Core (UdfDispatcher.HandleGetBalance).
                     object[] parameters = new object[]
                     {
                         ChangeSign, LedgerName, Activity, Period, BalanceType,
@@ -805,10 +803,10 @@ namespace GLSense
                         Seg1!, Seg2!, Seg3!, Seg4!, Seg5!, Seg6!, Seg7!, Seg8!, Seg9!, Seg10!,
                         Seg11!, Seg12!, Seg13!, Seg14!, Seg15!, Seg16!, Seg17!, Seg18!, Seg19!, Seg20!
                     };
-
                     object? validationResult = ValidateInputs(parameters);
                     if (validationResult != null)
                     {
+                        GlobalsEx.Context?.Logger?.LogDebug($"GLSense_GetBalance rejected by input validation -> '{validationResult}' (LedgerName={LedgerName}, Activity={Activity}, Period={Period}, BalanceType={BalanceType}, CurrencyCode={CurrencyCode})");
                         asyncCallObject.ReturnResult(validationResult);
                         return;
                     }
@@ -819,19 +817,7 @@ namespace GLSense
                     Array.Copy(parameters, crossingArgs, parameters.Length);
                     crossingArgs[parameters.Length] = XLLR1C1 ?? string.Empty;
 
-                    System.Threading.Tasks.Task.Run(() =>
-                    {
-                        try
-                        {
-                            object result = CrossToExecuteUdf("GLSense_GetBalance", crossingArgs);
-                            asyncCallObject.ReturnResult(result);
-                        }
-                        catch (Exception ex)
-                        {
-                            GlobalsEx.Context?.Logger?.LogException(ex, "GLSense_GetBalance background (host wrapper)");
-                            asyncCallObject.ReturnResult("Click Refresh...");
-                        }
-                    });
+                    ReturnAsyncResult(asyncCallObject, "GLSense_GetBalance", crossingArgs, "Click Refresh...");
                 }
                 catch (Exception ex)
                 {

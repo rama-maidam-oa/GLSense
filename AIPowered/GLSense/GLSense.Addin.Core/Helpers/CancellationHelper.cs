@@ -106,9 +106,28 @@ namespace GLSense.Addin.Core.Helpers
             }
         }
 
+        private Action? _onDisposed;
+
+        /// <summary>
+        /// Runs <paramref name="callback"/> once when this helper is disposed, i.e. when its operation has
+        /// finished (immediately if it already is). Used by ProgressWindowHost to know a progress window's
+        /// operation is done with it.
+        /// </summary>
+        internal void OnDisposed(Action callback)
+        {
+            bool alreadyDisposed;
+            lock (_lock)
+            {
+                alreadyDisposed = _disposed;
+                if (!alreadyDisposed) _onDisposed += callback;
+            }
+            if (alreadyDisposed) callback();
+        }
+
         public void Dispose()
         {
             CancellationTokenSource? toDispose = null;
+            Action? onDisposed;
 
             lock (_lock)
             {
@@ -118,6 +137,17 @@ namespace GLSense.Addin.Core.Helpers
                 _cancelled = true;
                 toDispose = _cts;
                 _cts = null;
+                onDisposed = _onDisposed;
+                _onDisposed = null;
+            }
+
+            try
+            {
+                onDisposed?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "CancellationHelper.Dispose: OnDisposed callback failed");
             }
 
             try

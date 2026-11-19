@@ -46,8 +46,12 @@ namespace GLSense.Shared
         private sealed class ActionBuffer
         {
             public readonly Guid Id = Guid.NewGuid();
-            public readonly List<string> Lines = new List<string>();
+            // Swapped (not copied) on flush, so the buffered text is never held twice.
+            public List<string> Lines = new List<string>();
+            public long BufferedChars;
             public readonly object Lock = new object();
+            // Serializes flushes of one buffer so its chunks reach the file in order.
+            public readonly object FlushLock = new object();
             public string RootScopeName;
             public int Depth;
             public DateTime OldestUnflushedAtUtc = DateTime.UtcNow;
@@ -65,6 +69,13 @@ namespace GLSense.Shared
         // this, the safety net flushes what's there so far (and keeps buffering under
         // the same scope) - caps how much a stuck/very-long-running action can lose.
         private static readonly TimeSpan SafetyNetMaxAge = TimeSpan.FromSeconds(30);
+
+        // Size caps: a busy action (e.g. a refresh recalculating thousands of formulas)
+        // flushes as soon as either is reached, so its buffer never grows unbounded in RAM.
+        private const int MaxBufferedLines = 2000;
+        private const long MaxBufferedChars = 512 * 1024;
+        // Lines per NLog write when flushing, so no single huge string is ever built.
+        private const int FlushChunkLines = 500;
         private static Timer _safetyNetTimer;
         private static readonly object _safetyNetInitLock = new object();
 
@@ -447,24 +458,41 @@ namespace GLSense.Shared
 
         private static void FlushBufferStatic(ActionBuffer buffer, string label)
         {
-            List<string> lines;
-            lock (buffer.Lock)
+            var nlog = _currentLoggerForStaticFlush?._logger;
+            lock (buffer.FlushLock)
             {
-                if (buffer.Lines.Count == 0) return;
-                lines = new List<string>(buffer.Lines);
-                buffer.Lines.Clear();
-                buffer.OldestUnflushedAtUtc = DateTime.UtcNow;
+                List<string> lines;
+                lock (buffer.Lock)
+                {
+                    if (buffer.Lines.Count == 0) return;
+                    lines = buffer.Lines;
+                    buffer.Lines = new List<string>();
+                    buffer.BufferedChars = 0;
+                    buffer.OldestUnflushedAtUtc = DateTime.UtcNow;
+                }
+
+                if (nlog == null) return;
+
+                var header = $"===== {label} | {DateTime.Now:yyyy-MM-dd HH:mm:ss} | {lines.Count} line(s) =====";
+                var rule = new string('-', header.Length);
+                var sb = new StringBuilder();
+                sb.AppendLine(header);
+                sb.AppendLine(rule);
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    sb.AppendLine(lines[i]);
+                    lines[i] = null; // let each line be collected once it's copied out
+                    bool last = i == lines.Count - 1;
+                    if (last)
+                        sb.AppendLine(rule);
+                    if (last || (i + 1) % FlushChunkLines == 0)
+                    {
+                        // NLog's layout adds the newline itself.
+                        nlog.Debug(sb.ToString(0, sb.Length - Environment.NewLine.Length));
+                        sb.Clear();
+                    }
+                }
             }
-
-            var header = $"===== {label} | {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====";
-            var sb = new StringBuilder();
-            sb.AppendLine(header);
-            sb.AppendLine(new string('-', header.Length));
-            foreach (var line in lines)
-                sb.AppendLine(line);
-            sb.AppendLine(new string('-', header.Length));
-
-            _currentLoggerForStaticFlush?._logger?.Debug(sb.ToString());
         }
 
         // FlushBufferStatic/RunSafetyNetSweep are static (the buffer registry itself is
@@ -490,18 +518,19 @@ namespace GLSense.Shared
         public void LogWarn(string msg)
         {
             var logMessage = $"{Indent()}WARN  | {DateTime.Now:HH:mm:ss} | {msg}";
+            // Flush first so the debug lines that led up to the warning sit above it in the file.
+            FlushCurrentBuffer("context before warning");
             WriteImmediate(logMessage);
-            FlushCurrentBuffer("warning logged");
         }
 
         public void LogError(string msg, Exception ex = null)
         {
             var logMessage = $"{Indent()}ERROR | {DateTime.Now:HH:mm:ss} | {msg}";
+            FlushCurrentBuffer("context before error");
             if (ex != null)
                 _logger?.Error(ex, logMessage);
             else
                 WriteImmediate(logMessage);
-            FlushCurrentBuffer("error logged");
         }
 
         public void LogDebug(string msg)
@@ -520,12 +549,18 @@ namespace GLSense.Shared
                 return;
             }
 
+            bool full;
             lock (buffer.Lock)
             {
                 if (buffer.Lines.Count == 0)
                     buffer.OldestUnflushedAtUtc = DateTime.UtcNow;
                 buffer.Lines.Add(logMessage);
+                buffer.BufferedChars += logMessage.Length;
+                full = buffer.Lines.Count >= MaxBufferedLines || buffer.BufferedChars >= MaxBufferedChars;
             }
+
+            if (full)
+                FlushBufferStatic(buffer, $"{buffer.RootScopeName} - continued (buffer size limit)");
         }
 
         public void LogException(Exception ex, string context = "")
@@ -541,18 +576,34 @@ namespace GLSense.Shared
             sb.AppendLine($"{Indent()}StackTrace:");
             foreach (var line in ex.StackTrace?.Split(new[] { Environment.NewLine }, StringSplitOptions.None) ?? Array.Empty<string>())
                 sb.AppendLine($"{Indent()}{line}");
-            if (ex.InnerException != null)
+            // Whole inner chain (Task/TargetInvocation wrappers often hide the real cause two
+            // or more levels down); every inner of an AggregateException, capped to stay readable.
+            var pending = new Queue<(Exception e, int level)>();
+            if (ex is AggregateException agg0)
+                foreach (var e in agg0.InnerExceptions) pending.Enqueue((e, 1));
+            else if (ex.InnerException != null)
+                pending.Enqueue((ex.InnerException, 1));
+            int shown = 0;
+            while (pending.Count > 0 && shown < 10)
             {
-                sb.AppendLine($"{Indent()}----- Inner Exception -----");
-                sb.AppendLine($"{Indent()}Type: {ex.InnerException.GetType().FullName}");
-                sb.AppendLine($"{Indent()}Message: {ex.InnerException.Message}");
-                sb.AppendLine($"{Indent()}{ex.InnerException.StackTrace}");
+                var (inner, level) = pending.Dequeue();
+                shown++;
+                sb.AppendLine($"{Indent()}----- Inner Exception (level {level}) -----");
+                sb.AppendLine($"{Indent()}Type: {inner.GetType().FullName}");
+                sb.AppendLine($"{Indent()}Message: {inner.Message}");
+                sb.AppendLine($"{Indent()}{inner.StackTrace}");
+                if (inner is AggregateException agg)
+                    foreach (var e in agg.InnerExceptions) pending.Enqueue((e, level + 1));
+                else if (inner.InnerException != null)
+                    pending.Enqueue((inner.InnerException, level + 1));
             }
+            if (pending.Count > 0)
+                sb.AppendLine($"{Indent()}({pending.Count} more inner exception(s) not shown)");
             sb.AppendLine($"{Indent()}============================");
 
             var exceptionMessage = sb.ToString();
+            FlushCurrentBuffer("context before exception");
             WriteImmediate(exceptionMessage);
-            FlushCurrentBuffer("exception logged");
         }
 
         public void LogRawJson(string context, string rawJson)
