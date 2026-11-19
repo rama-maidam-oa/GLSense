@@ -368,7 +368,7 @@
                             Style="{StaticResource BrowserButton}"
                             IsEnabled="False"
                             Click="BtnRemove_Click"
-                            ToolTip="Delete the selected version's files from this computer only. The server is not changed: if it still offers this version, Reload Add-in &gt; Online &gt; Check for Updates lists it again. The running version can't be removed."/>
+                            ToolTip="Removes the selected version's files from this computer only. The files on the server are not changed. The running version can't be removed."/>
                     <Button x:Name="BtnCancel"
                             Content="Close"
                             Style="{StaticResource BrowserButton}"

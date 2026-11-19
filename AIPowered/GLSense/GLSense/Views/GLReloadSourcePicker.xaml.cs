@@ -54,6 +54,19 @@ namespace GLSense
         // index or its file is missing on the server. Turned into readable messages for the step log.
         private const string NotOnServerMessage = "This version is no longer available on the server.";
 
+        // OISR-22872: same settings as the core's ApiHelper (TLS 1.2/1.3, no proxy). With the system
+        // proxy, machines whose proxy can't reach the server got "Unable to connect to the remote server".
+        private static HttpClient CreateHttpClient(TimeSpan? timeout = null)
+        {
+            var client = new HttpClient(new HttpClientHandler
+            {
+                SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                UseProxy = false,
+            }, disposeHandler: true);
+            if (timeout.HasValue) client.Timeout = timeout.Value;
+            return client;
+        }
+
         private static async Task<HttpResponseMessage> GetCheckedAsync(HttpClient client, string url)
         {
             var response = await client.GetAsync(url);
@@ -441,7 +454,7 @@ namespace GLSense
                 GlobalsEx.Context?.Logger?.LogDebug($"GLReloadSourcePicker: release list URL {url}");
 
                 string listJson;
-                using (var client = new HttpClient())
+                using (var client = CreateHttpClient())
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginInfo.LoginToken);
                     try
@@ -603,7 +616,7 @@ namespace GLSense
                 }
 
                 // Release zips can be several MB; HttpClient's default 100s timeout is too tight on a slow link.
-                using (var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+                using (var client = CreateHttpClient(TimeSpan.FromMinutes(5)))
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginInfo.LoginToken);
 

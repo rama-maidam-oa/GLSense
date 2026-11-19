@@ -1343,8 +1343,7 @@ namespace GLSense
             this.RibReleaseHistory.Ribbons = AddinExpress.MSO.ADXRibbons.msrExcelWorkbook;
             this.RibReleaseHistory.ScreenTip = "GLSense Version History";
             this.RibReleaseHistory.Size = AddinExpress.MSO.ADXRibbonXControlSize.Large;
-            this.RibReleaseHistory.SuperTip = "See every GLSense version installed or downloaded on this computer, with its date" +
-    ", source and notes. Load any of them, or remove one you no longer need, without restarting Excel.";
+            this.RibReleaseHistory.SuperTip = "Shows every GLSense version installed or downloaded on this computer. Load or remove any version without restarting Excel.";
             this.RibReleaseHistory.OnClick += new AddinExpress.MSO.ADXRibbonOnAction_EventHandler(this.RibReleaseHistory_OnClick);
             // 
             // adxExcelTaskPanesManager1

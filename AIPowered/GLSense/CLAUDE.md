@@ -8311,6 +8311,17 @@ double `'` in sheet names. DLL-only release to `development`. Build-verified.
   - Not tested: the list of newer versions (no server with a GLSense release published).
 - **Follow-up (11-Nov-2026, developer):** Version History no longer shows notes - the NOTES column and the notes box
   were removed (both add-ins); SOURCE takes the spare width. Notes are still stored in ReleaseHistory.json.
+- **QA retest (19-Nov-2026, qa02):**
+  - Version History SuperTip reworded to QA's text, without "date, source and notes" (notes are gone).
+  - Remove button tooltip shortened to QA's text (both add-ins).
+  - Check for Updates failed with "An error occurred while sending the request" (inner: "Unable to connect to the
+    remote server"), not a 404. The Reload window's HttpClient used the Windows system proxy; every core call
+    (`ApiHelper`) uses `UseProxy = false`, and so does XLEdge's `OnlineReleaseClient`. `GLReloadSourcePicker`
+    now builds both its HttpClients via `CreateHttpClient` (TLS 1.2/1.3, no proxy).
+  - Same-issue sweep (pattern: a host-side HttpClient on the default proxy): GLSense `UpdateManager` has one too, but
+    it has no callers left (section 17). XLEdge's shell client is already correct. Core HttpClients in
+    `BulkRefreshProcess`, `JournalAttachments`, `GLSubmittedJobsViewModel` and `GLAbout` also keep the default
+    proxy. They were left as they are: they work on QA's machine, and changing them wasn't part of this ticket.
 
 ## 107. Discover Segments formulas: quotes in names doubled (OISR-22856 follow-up)
 
