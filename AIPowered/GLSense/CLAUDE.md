@@ -8896,3 +8896,27 @@ Known limit (126): the host appends UdfSentinels.OnExcelThread to async UDF call
 release is loaded into this host (release history / reload source picker), its dispatcher doesn't strip it: async
 UDFs then run fully on Excel's thread (live single refresh blocks Excel while the server answers) and
 GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from the same build are unaffected.
+
+## 128. Ledger switch and Sheet/Book Refresh called Excel from a ThreadPool thread (threading audit, 20-Nov-2026, not committed)
+
+Found by a six-area threading audit (loading, ribbon, ribbon actions, drilldowns/windows, Excel events/UDFs, COM
+release). Same class as section 95: Excel COM from a ThreadPool (MTA) thread leaves cross-apartment proxies that can
+keep EXCEL.EXE alive after close.
+- **`AddinEntry.LedgerChanged`:** the whole body ran inside `Task.Run`, i.e. on a pool thread: `ActiveSheet.Cells.Clear()`,
+  `UpdateRibbonAndSelectionForLedger` (RibSegS combo) and `RelaunchConfiguratorPaneIfVisible`. Its comment ("COM will
+  marshal... safe") was the reasoning section 95 disproved. Now only `FillResponsibilitiesAsync` (HTTP + SQLite, no
+  Excel) runs on a worker; the sheet clear and the ribbon/pane calls go through `WpfAppManager.InvokeOnWpfThread`
+  (inline on Excel's thread, else synchronous Invoke; it rethrows, so the existing catch still shows the error).
+- **`BulkRefreshProcess`:** `RefreshSheetAsync` read `sheet.Name` and `ReactivateOriginalSheet` read `_worksheet.Name`
+  outside `RunExcelAsync`, from inside `RunLongRunningTask` (pool thread), on every Sheet/Book Refresh. Both reads now run
+  inside `RunExcelAsync`.
+- **Verified (VM, Debug build v11.1.3_2026-11-20T13-42-15, QA02, `ExcelSmoke\Tests\Threading-LedgerRefresh.ps1`):** pick
+  cube "102 EBS to Blaze", switch IAS Reporting Vision Ops -> Vision Belgium, "Clear sheet?" Yes: sheet cleared, Segment
+  combo refilled with Belgium's chart of accounts (6 segments). Sheet then Book Refresh on a saved 2-sheet book: both
+  write-backs ran (RefreshPerf 5a-5d logged), values written, original sheet reactivated. No ERROR/Exception in the log;
+  Excel exited 9.5 s after Quit.
+- **Same-issue sweep (pattern: Excel COM or ribbon calls inside a `Task.Run` body / after `ConfigureAwait(false)`):** all
+  46 `Task.Run` calls in GLSense.Addin.Core checked; the only other one near a ribbon call (`GLCubeDetails.LoadCubeLedgers`)
+  already marshals via `Dispatcher.InvokeAsync`. Remaining audit findings (busy guard, RCW release in `SheetExistsAsync`,
+  double-click login check, batch-cache overwrite, load hardening) are listed for later batches, not fixed here.
+  FinalWorkingCode has no AppDomain/MTA split: its `PerformLedgerChangeAsync` Task.Run pattern was not changed.

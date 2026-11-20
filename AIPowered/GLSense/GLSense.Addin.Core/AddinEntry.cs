@@ -1178,36 +1178,32 @@ namespace GLSense.Addin.Core
                 // Own UI thread: keeps painting while Excel is busy (CLAUDE.md 114).
                 win = ProgressWindowHost.Show(ctsHelper, "Switching Ledger", sheetClear ? "Clearing sheet..." : "Loading ledger data...");
 
-                // Cross-thread COM note: this Task.Run body touches ServiceLocator.ExcelApp
-                // (Cells.Clear) and, via UpdateRibbonAndSelectionForLedger, the ribbon's
-                // ADX controls - both live on Excel's main STA apartment, not this
-                // ThreadPool thread. That's safe here because Excel's main thread returned
-                // immediately from Ribledger_OnChange (LedgerChanged was fired as
-                // fire-and-forget) and keeps pumping its message loop, so COM will marshal
-                // these calls back to that apartment automatically; it will not deadlock.
-                // This mirrors the original monolith's PerformLedgerChangeAsync, which used
-                // the identical Task.Run-wrapped-COM-access pattern. Kept inside one
-                // Task.Run (rather than dispatching each COM call individually) to match
-                // that proven behavior; revisit if this group ever needs to run in a
-                // stricter threading model.
-                await Task.Run(async () =>
+                // Excel COM and the ribbon are used only on Excel's main thread (InvokeOnWpfThread
+                // runs inline there, else Invoke): calling them from a ThreadPool (MTA) thread
+                // leaves COM proxies that keep EXCEL.EXE alive after close (CLAUDE.md 95).
+                // Only the server call + SQLite insert run on a worker.
+                if (sheetClear)
                 {
-                    if (sheetClear)
+                    token.ThrowIfCancellationRequested();
+                    WpfAppManager.InvokeOnWpfThread(() =>
                     {
-                        token.ThrowIfCancellationRequested();
                         if (ServiceLocator.ExcelApp?.ActiveSheet is Excel.Worksheet sheet)
                         {
                             sheet.Cells.Clear();
                         }
-                        if (win != null)
-                            await win.Dispatcher.InvokeAsync(() => win.SetProcessMessage("Loading ledger data..."));
-                    }
+                    });
+                    if (win != null)
+                        await win.Dispatcher.InvokeAsync(() => win.SetProcessMessage("Loading ledger data..."));
+                }
 
-                    token.ThrowIfCancellationRequested();
+                token.ThrowIfCancellationRequested();
 
-                    await CommonFunctions.FillResponsibilitiesAsync(ledger.LedgerId, AppState.Instance.SelectedCube.CubeId, token);
+                long cubeId = AppState.Instance.SelectedCube.CubeId;
+                await Task.Run(() => CommonFunctions.FillResponsibilitiesAsync(ledger.LedgerId, cubeId, token), token);
 
-                    token.ThrowIfCancellationRequested();
+                token.ThrowIfCancellationRequested();
+                WpfAppManager.InvokeOnWpfThread(() =>
+                {
                     UpdateRibbonAndSelectionForLedger(ledger);
 
                     // Group H (resolved): old monolith's ledger-change relaunch
@@ -1217,7 +1213,7 @@ namespace GLSense.Addin.Core
                     // check before deciding whether to call back into
                     // RelaunchConfiguratorPane.
                     ServiceLocator.RibbonController?.RelaunchConfiguratorPaneIfVisible();
-                }, token);
+                });
             }
             catch (OperationCanceledException)
             {
