@@ -8929,7 +8929,30 @@ GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from t
   strong-name OK; adxloader files Valid.
 - **Same-issue sweep (pattern: installer signs one copy, packages another):** the other packaged host files
   (Contracts/Shared/Loader.Core, signed by their own post-build in `bin\Release`, copied in) are Valid in the MSI;
-  the Addin.Core zip is built from the signed `bin\Release` output. XLEdge's installer: not checked - OPEN.
+  the Addin.Core zip is built from the signed `bin\Release` output. XLEdge's installer already signs
+  `obj\Release\XLEdge.dll` and runs `verify-signed.ps1`; its 14-Nov-2026 MSI unpacked all Valid - not affected.
 - **Build note:** a fresh worktree has no `adxloader*.GLSense.dll` in `GLSense\bin\Release`, so the installer fails
   pre-build validation; copy them from `GLSense\Loader\` first. A signed Release build needs an admin shell (the
   machine-wide strong-name key containers are only readable elevated).
+
+## 132. Sheet/Book Refresh and Snapshot: gzip request and response on `/sheet-balances-json` (OISR-22975)
+
+- **Why:** a 62,068-balance request is ~62 MB of JSON up and ~89 MB down; gzip makes it ~2-4 MB each way (ticket
+  has the measurements). Mainly helps remote/VPN users; server calculation time is unchanged.
+- **Change (`Drilldowns\BulkRefreshProcess.Json.cs` only):**
+  - `CreateJsonHttpClient`: `AutomaticDecompression = GZip | Deflate` (sends `Accept-Encoding`, unzips the reply;
+    a plain reply still works).
+  - `SendJsonBatchAsync`: body serialized to UTF-8 bytes, gzipped (`CompressionLevel.Fastest`) and sent with
+    `Content-Encoding: gzip` (new `Gzip`/`PostJsonAsync` helpers).
+  - Fallback: HTTP 400/415 to a gzip request -> WARN, resend that request as plain JSON, and `_gzipRequests = false`
+    for the rest of that refresh. A server without request decompression that answers anything else (e.g. 500)
+    fails the refresh.
+  - Debug log shows JSON and gzip size per request.
+- **Server side:** needs the matching server change (request decompression on `/sheet-balances-json`, response
+  compression), done by another engineer; not on any shared server yet.
+- **To undo:** revert this commit - the request goes back to plain `StringContent` JSON with no Accept-Encoding.
+- **Same-issue sweep:** `/sheet-balances-json` is the only call Sheet/Book Refresh and Snapshot make (the old
+  `/sheet-balances` upload steps are dead code since `506a5e0`). Other API calls (`ApiHelper`) left uncompressed -
+  not in scope. FinalWorkingCode still uses the old upload path - not changed.
+- **Status:** committed before server confirmation, at the developer's request. Test MSI (23-Nov 22:39) built
+  from this code; build-verified, MSI contents checked. Not yet tested against the engineer's server.

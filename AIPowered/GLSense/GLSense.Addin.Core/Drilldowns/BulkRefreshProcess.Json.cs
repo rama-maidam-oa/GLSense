@@ -16,7 +16,9 @@ using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
@@ -38,6 +40,8 @@ namespace GLSense.Addin.Core.Drilldowns
         private const int MaxParallelSheetRequests = 4;
         // Larger worksheets are split so one JSON body stays far below .NET's string size limit.
         private const int MaxRequestsPerPost = 100000;
+        // OISR-22975: request bodies are sent gzip-compressed until a server rejects that (see SendJsonBatchAsync).
+        private volatile bool _gzipRequests = true;
 
         // Cell reference as written in a formula argument: A1, $A$1, Sheet1!A1, 'My Sheet'!$A$1.
         private static readonly Regex CellRefRegex = new Regex(
@@ -498,7 +502,9 @@ namespace GLSense.Addin.Core.Drilldowns
                 SslProtocols = System.Security.Authentication.SslProtocols.Tls12 |
                                System.Security.Authentication.SslProtocols.Tls13,
                 ServerCertificateCustomValidationCallback = StrictCertificateValidator.Validate,
-                MaxConnectionsPerServer = MaxParallelSheetRequests // .NET Framework allows only 2 per server by default
+                MaxConnectionsPerServer = MaxParallelSheetRequests, // .NET Framework allows only 2 per server by default
+                // OISR-22975: sends Accept-Encoding and unzips a gzip response; a plain response still works.
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
             };
             var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
             client.DefaultRequestHeaders.ExpectContinue = false;
@@ -506,20 +512,59 @@ namespace GLSense.Addin.Core.Drilldowns
             return client;
         }
 
+        private static byte[] Gzip(byte[] data)
+        {
+            using (var ms = new MemoryStream())
+            {
+                using (var gz = new GZipStream(ms, CompressionLevel.Fastest, leaveOpen: true))
+                    gz.Write(data, 0, data.Length);
+                return ms.ToArray();
+            }
+        }
+
+        private static async Task<HttpResponseMessage> PostJsonAsync(
+            HttpClient client, string url, byte[] body, bool gzip, string label, CancellationToken token)
+        {
+            using (var content = new ByteArrayContent(body))
+            {
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+                if (gzip) content.Headers.ContentEncoding.Add("gzip");
+                using (PerformanceHelper.MeasureExecutionTime($"RefreshPerf: J4 {label} upload + server processing"))
+                    return await client.PostAsync(url, content, token).ConfigureAwait(false);
+            }
+        }
+
         private async Task SendJsonBatchAsync(
             HttpClient client, string url, List<Balances> batch, string label, List<string> uniqueKeys,
             Dictionary<string, (string value, bool cache)> valueOfKey, CancellationToken token)
         {
-            string body;
+            byte[]? body;
             using (PerformanceHelper.MeasureExecutionTime($"RefreshPerf: J4 {label} serialize"))
-                body = JsonSerializer.Serialize(new { balanceDtos = batch }, JsonGlobals.Options);
-            LogDebug($"RefreshPerf: request {label}: {batch.Count:N0} balances, {body.Length / (1024.0 * 1024.0):F2} MB JSON");
+                body = JsonSerializer.SerializeToUtf8Bytes(new { balanceDtos = batch }, JsonGlobals.Options);
 
             HttpResponseMessage response;
-            using (var content = new StringContent(body, Encoding.UTF8, "application/json"))
-            using (PerformanceHelper.MeasureExecutionTime($"RefreshPerf: J4 {label} upload + server processing"))
-                response = await client.PostAsync(url, content, token).ConfigureAwait(false);
-            body = string.Empty; // release the request text before the response is read
+            if (_gzipRequests)
+            {
+                byte[] zipped;
+                using (PerformanceHelper.MeasureExecutionTime($"RefreshPerf: J4 {label} gzip request"))
+                    zipped = Gzip(body);
+                LogDebug($"RefreshPerf: request {label}: {batch.Count:N0} balances, {body.Length / (1024.0 * 1024.0):F2} MB JSON, {zipped.Length / (1024.0 * 1024.0):F2} MB gzip");
+                response = await PostJsonAsync(client, url, zipped, gzip: true, label, token).ConfigureAwait(false);
+                // A server without request decompression rejects the body: send plain JSON from now on.
+                if (response.StatusCode == HttpStatusCode.BadRequest || response.StatusCode == HttpStatusCode.UnsupportedMediaType)
+                {
+                    LogWarn($"sheet-balances-json request {label}: server answered HTTP {(int)response.StatusCode} to a gzip request - resending uncompressed, and not compressing further requests.");
+                    _gzipRequests = false;
+                    response.Dispose();
+                    response = await PostJsonAsync(client, url, body, gzip: false, label, token).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                LogDebug($"RefreshPerf: request {label}: {batch.Count:N0} balances, {body.Length / (1024.0 * 1024.0):F2} MB JSON");
+                response = await PostJsonAsync(client, url, body, gzip: false, label, token).ConfigureAwait(false);
+            }
+            body = null; // release the request bytes before the response is read
 
             string text;
             using (response)
