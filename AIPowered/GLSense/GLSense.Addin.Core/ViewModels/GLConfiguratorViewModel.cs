@@ -1654,8 +1654,10 @@ namespace GLSense.Addin.Core.ViewModels
                     // clear period field
                     PeriodField.ComboValue = null;
                     PeriodField.RefValue = null;
-                });
 
+                // OISR-22998: the Start/End date setters below must run on the UI thread too
+                // (StartDateSelected -> ValidateDates -> UpdateParameterSummary does a DependencyObject.SetValue);
+                // after the awaits above this method can be on a ThreadPool thread.
                 string periodArg = FuncArgs[3].Replace("\"", "");
                 string periodValues = FuncValues[3].Replace("\"", "");
                 if (!string.IsNullOrEmpty(periodArg) && periodArg.Contains("~"))
@@ -1699,6 +1701,7 @@ namespace GLSense.Addin.Core.ViewModels
                         }
                     }
                 }
+                });
             }
             else
             {

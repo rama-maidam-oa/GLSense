@@ -8896,3 +8896,20 @@ Known limit (126): the host appends UdfSentinels.OnExcelThread to async UDF call
 release is loaded into this host (release history / reload source picker), its dispatcher doesn't strip it: async
 UDFs then run fully on Excel's thread (live single refresh blocks Excel while the server answers) and
 GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from the same build are unaffected.
+## 129. JE-type (JED/JEDP/JEDU) formula reopened with blank Start/End dates in the Balance Configurator (OISR-22998)
+
+- **Reported (QA02, 11.1.3-SNAPSHOT-5):** write a JEDU formula, select the cell: Start and End period (date) fields blank.
+- **Log:** `InvalidOperationException: The calling thread cannot access this object` from
+  `UpdateParameterSummary <- ValidateDates <- set_StartDateSelected <- ProcessBalanceTypeAndPeriod`, during
+  `ReLoadConfigurator` (pane relaunch on selection change). The reload aborted right after Start Date, so both
+  stayed blank (and every field after it - Currency, Actual Flag, Account Assignment - was never filled).
+- **Cause:** `ProcessBalanceTypeAndPeriod`'s JED branch set `StartDateField`/`StartDateSelected`/`EndDate...` directly
+  after `await` calls; the pane relaunch path has no dispatcher sync context, so it ran on a ThreadPool thread
+  (same family as 2.4/2.5/21.2). The CTD and single-Period branches already went through `_dispatcher.InvokeAsync`.
+- **Fix:** the JED start/end parsing moved inside the branch's existing `_dispatcher.InvokeAsync` block.
+- **Same-issue sweep (pattern: field/date setters after an await outside the dispatcher in the formula re-hydration
+  path):** every `StartDateSelected`/`EndDateSelected`/`SelectedPeriod` assignment in `GLConfiguratorViewModel.cs`:
+  ResetWindowAsync (inside InvokeAsync), ProcessStartDate/EndDate (InvokeAsync), field-clear handler (UI event),
+  ProcessPeriodPart (InvokeAsync). No other match. FinalWorkingCode: no AppDomain split, its awaits resume on Excel's
+  thread (section 95) - not affected.
+- **Status:** AIPowered 11.1.3, build-verified (Debug, unsigned). Not yet tested in Excel.
