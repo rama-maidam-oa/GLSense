@@ -8913,3 +8913,23 @@ GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from t
   ProcessPeriodPart (InvokeAsync). No other match. FinalWorkingCode: no AppDomain split, its awaits resume on Excel's
   thread (section 95) - not affected.
 - **Status:** AIPowered 11.1.3, build-verified (Debug, unsigned). Not yet tested in Excel.
+
+## 131. Installer packaged an unsigned GLSense.dll (`OrbitGLSense.vdproj`)
+
+(130 is reserved for the threading-audit K1/K2 entry.)
+
+- **Found (23-Nov-2026)** while building the OISR-22975 test MSI: the `GLSense.dll` unpacked from the MSI
+  (`msiexec /a`) was NotSigned. The 15-Nov-2026 MSI was the same.
+- **Cause:** section 53 moved host DLL signing into the installer's PreBuildEvent, which signs
+  `bin\Release\GLSense.dll`. The installer packages "Primary output from GLSense", which comes from
+  `obj\Release\GLSense.dll` (hash of the MSI's copy = the obj copy). The adxloader files are fine: they're
+  plain File entries from `bin\Release`.
+- **Fix:** the PreBuildEvent also signs `$(ProjectDir)..\obj\Release\GLSense.dll`. Primary Output is kept (section 74).
+- **Verified:** rebuilt MSI unpacked - GLSense.dll, GLSense.Contracts/Shared/Loader.Core Authenticode Valid and
+  strong-name OK; adxloader files Valid.
+- **Same-issue sweep (pattern: installer signs one copy, packages another):** the other packaged host files
+  (Contracts/Shared/Loader.Core, signed by their own post-build in `bin\Release`, copied in) are Valid in the MSI;
+  the Addin.Core zip is built from the signed `bin\Release` output. XLEdge's installer: not checked - OPEN.
+- **Build note:** a fresh worktree has no `adxloader*.GLSense.dll` in `GLSense\bin\Release`, so the installer fails
+  pre-build validation; copy them from `GLSense\Loader\` first. A signed Release build needs an admin shell (the
+  machine-wide strong-name key containers are only readable elevated).
