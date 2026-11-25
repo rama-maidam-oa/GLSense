@@ -1169,7 +1169,7 @@ namespace GLSense.Views
         private void UpdateRibbonForCube(CubeRecord cube)
         {
             LogUtility.LogDebug($"GLCubeDetails.UpdateRibbonForCube invoked - cube={cube?.CubeName}");
-            AddinModule.CurrentInstance.RibGetCube.Caption = cube != null ? "Cube: " + cube.CubeName : "Cube: Select cube";
+            AddinModule.CurrentInstance.SetCubeRibbonCaption(cube != null ? "Cube: " + cube.CubeName : "Cube: Select cube");
 
             AddinModule.CurrentInstance.RibSegS.Items.Clear();
             AddinModule.CurrentInstance.RibSegS.Text = string.Empty;
