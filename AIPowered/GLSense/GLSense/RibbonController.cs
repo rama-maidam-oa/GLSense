@@ -13,7 +13,7 @@ namespace GLSense
         private const string StatePartialLoggedIn = "PartialLoggedIn";
         private const string StateLoggedIn = "LoggedIn";
         private const string CubeControlName = "RibGetCube";
-        private const int MaximumCubeCaptionLength = 40;
+        private const int MaximumCubeNameLength = 25;
         private const string DefaultCubeSuperTip = "Click to get list of available cubes";
 
         // Not a real login-state transition - re-evaluates the active sheet's
@@ -354,12 +354,23 @@ namespace GLSense
             }
         }
 
+        // OISR-22854 (aligned with FinalWorkingCode 11.1.1): the cube NAME is limited to 25 characters - the
+        // "Cube : " prefix is not counted - and a longer name shows its first 25 characters + "...".
         private static string TruncateCubeCaption(string label)
         {
-            if (string.IsNullOrEmpty(label) || label.Length <= MaximumCubeCaptionLength)
+            if (string.IsNullOrEmpty(label))
                 return label;
 
-            return label.Substring(0, MaximumCubeCaptionLength - 1).TrimEnd() + "\u2026";
+            int colon = label.IndexOf(':');
+            int nameStart = colon + 1;
+            while (nameStart < label.Length && label[nameStart] == ' ')
+                nameStart++;
+
+            string name = label.Substring(nameStart);
+            if (name.Length <= MaximumCubeNameLength)
+                return label;
+
+            return label.Substring(0, nameStart) + name.Substring(0, MaximumCubeNameLength).TrimEnd() + "...";
         }
 
         private void SetCubeSuperTip(object control, string fullCaption)

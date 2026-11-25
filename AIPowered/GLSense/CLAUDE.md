@@ -8989,3 +8989,12 @@ GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from t
   `BaseWindow.RestoreOwnerFocusOnClosed` (mouse capture held / cursor counter negative) and their `GetCapture`/`IsWindow`
   imports are gone; stale "LogInfo" comments in `GLLogin`/`GLDrilldownCustomization` corrected (those lines were
   already `LogDebug`). `ReleaseCapture()` and the bounded `ShowCursor(true)` loop are unchanged.
+
+## 134. Long cube names: limit 25 characters, as in FinalWorkingCode 11.1.1 (OISR-22854)
+
+- `RibbonController.TruncateCubeCaption` (from 9a00c07) cut the whole caption at 40 characters with a single "\u2026".
+  Aligned with FinalWorkingCode 11.1.1 (user's call, 25-Nov-2026): only the cube name counts (the "Cube : " prefix is not
+  counted); a name over 25 characters shows its first 25 characters (trailing space trimmed) + "...". The SuperTip still has
+  the full caption; "Cube : Select Cube" keeps the default tooltip. Logic checked with a harness (25 chars unchanged,
+  26 -> 25 + "...").
+  **Status: AIPowered `11.1.3` and `threading-audit`.** Compile-checked (unsigned).
