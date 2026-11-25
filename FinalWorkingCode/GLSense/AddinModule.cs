@@ -2104,7 +2104,7 @@ namespace GLSense
                 if (cube == null)
                     return;
 
-                RibGetCube.Caption = $"Cube: {cube.CubeName}";
+                SetCubeRibbonCaption($"Cube: {cube.CubeName}");
 
                 Ribledger.Items.Clear();
                 if (cube.Ledgers != null)
@@ -3126,8 +3126,36 @@ namespace GLSense
             AppState.Instance.Reset();
             Ribledger.Items.Clear();
             Ribledger.Text = string.Empty;
-            RibGetCube.Caption = "Cube:  Select cube";
+            SetCubeRibbonCaption("Cube:  Select cube");
             RibbonHelper.ApplyState("LoggedOut");
+        }
+
+        // OISR-22854 (ported from AIPowered 11.1.3, 9a00c07; limit set to 25 for FinalWorkingCode): a long
+        // cube name made the ribbon's Cube button very wide. Only the displayed caption is shortened - the
+        // cube name to its first 25 characters + "..." - and the full "Cube: <name>" goes into the button's
+        // hover text. Nothing reads RibGetCube.Caption back (the selected cube lives in
+        // AppState.SelectedCube), so shortening it changes nothing else.
+        private const string CubeCaptionPrefix = "Cube: ";
+        private const int MaximumCubeNameLength = 25;
+        private const string DefaultCubeSuperTip = "Click to get list of available cubes";
+
+        public void SetCubeRibbonCaption(string fullCaption)
+        {
+            // "Cube: Select cube" is written with 1-3 spaces in different places - compare without spaces
+            string compact = new string((fullCaption ?? string.Empty).Where(c => !char.IsWhiteSpace(c)).ToArray());
+            bool isDefault = compact.Length == 0 || string.Equals(compact, "Cube:Selectcube", StringComparison.OrdinalIgnoreCase);
+
+            string caption = fullCaption ?? string.Empty;
+            if (!isDefault)
+            {
+                bool hasPrefix = caption.StartsWith(CubeCaptionPrefix, StringComparison.Ordinal);
+                string name = hasPrefix ? caption.Substring(CubeCaptionPrefix.Length) : caption;
+                if (name.Length > MaximumCubeNameLength)
+                    caption = (hasPrefix ? CubeCaptionPrefix : string.Empty) + name.Substring(0, MaximumCubeNameLength).TrimEnd() + "...";
+            }
+
+            RibGetCube.Caption = caption;
+            RibGetCube.SuperTip = isDefault ? DefaultCubeSuperTip : fullCaption;
         }
 
         private void HideTaskPanes()
