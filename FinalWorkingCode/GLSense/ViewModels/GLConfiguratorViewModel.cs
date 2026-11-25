@@ -2417,7 +2417,7 @@ namespace GLSense.ViewModels
                 return;
             }
 
-            string? rngValue = GetRangeValueSafe(refText);
+            string? rngValue = GetRangeValueSafe(refText, IsDateField(field));
             if (string.IsNullOrWhiteSpace(rngValue))
             {
                 LogUtility.LogWarn($"GLConfiguratorViewModel.OnRefEditTextChanged: referenced cell \"{refText}\" resolved to an empty value, resetting field {field?.Type}.");
@@ -2622,9 +2622,13 @@ namespace GLSense.ViewModels
             EncumbranceField.RefreshEnableState();
         }
 
-        private string? GetRangeValueSafe(string refText)
+        // OISR-23022: a number in the referenced cell is a date only for a date-type field (asDate).
+        private static bool IsDateField(FieldBinding? field) =>
+            field != null && (field.Type == FieldBinding.FieldType.StartDate || field.Type == FieldBinding.FieldType.EndDate ||
+                              field.Type == FieldBinding.FieldType.Period || field.Type == FieldBinding.FieldType.EndPeriod);
+
+        private string? GetRangeValueSafe(string refText, bool asDate = false)
         {
-            LogUtility.LogDebug($"GLConfiguratorViewModel.GetRangeValueSafe: refText={refText}");
             try
             {
                 var val = _excelApp?.Range[refText]?.Value2;
@@ -2639,19 +2643,12 @@ namespace GLSense.ViewModels
                 if (val is DateTime dt)
                     return dt.ToString(AppConstants.DateFormatIso);
 
-                // Excel often returns dates as doubles (OADate)
-                if (val is double d)
-                {
-                    try
-                    {
-                        var date = DateTime.FromOADate(d);
-                        return date.ToString(AppConstants.DateFormatIso);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtility.LogException(ex, $"GLConfiguratorViewModel.GetRangeValueSafe: failed to convert OADate to DateTime for refText={refText} (falling back)");
-                    }
-                }
+                // Excel returns dates as doubles (OADate). OISR-23022: only a date-type field reads a number as a
+                // date, and only within Excel's date range. Converting every number threw for large values (account
+                // codes) - an exception logged per call, many per second while the Balance Configurator was open - and
+                // turned small numbers (1110) into dates. The per-call Debug line is gone too.
+                if (val is double d && asDate && d >= -657435.0 && d < 2958466.0)
+                    return DateTime.FromOADate(d).ToString(AppConstants.DateFormatIso);
 
                 // Fallback: attempt to convert to string
                 return val.ToString();
@@ -4039,7 +4036,7 @@ namespace GLSense.ViewModels
                 // disabled.
                 if (ExcelRangeHelper.IsRealRange(trimmedRefVal))
                 {
-                    var resolvedVal = GetRangeValueSafe(trimmedRefVal) ?? string.Empty;
+                    var resolvedVal = GetRangeValueSafe(trimmedRefVal, IsDateField(field)) ?? string.Empty;
                     if (!string.IsNullOrWhiteSpace(resolvedVal))
                     {
                         return resolvedVal.Trim();

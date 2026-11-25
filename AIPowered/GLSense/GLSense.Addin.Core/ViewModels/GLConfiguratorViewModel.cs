@@ -2493,7 +2493,7 @@ namespace GLSense.Addin.Core.ViewModels
                 return;
             }
 
-            string? rngValue = GetRangeValueSafe(refText);
+            string? rngValue = GetRangeValueSafe(refText, IsDateField(field));
             if (string.IsNullOrWhiteSpace(rngValue))
             {
                 ServiceLocator.Logger?.LogWarn($"OnRefEditTextChanged: could not resolve a value from range '{refText}' for field {field?.Type} - field reset.");
@@ -2690,7 +2690,12 @@ namespace GLSense.Addin.Core.ViewModels
             EncumbranceField.RefreshEnableState();
         }
 
-        private string? GetRangeValueSafe(string refText)
+        // OISR-23022: a number in the referenced cell is a date only for a date-type field (asDate).
+        private static bool IsDateField(FieldBinding? field) =>
+            field != null && (field.Type == FieldBinding.FieldType.StartDate || field.Type == FieldBinding.FieldType.EndDate ||
+                              field.Type == FieldBinding.FieldType.Period || field.Type == FieldBinding.FieldType.EndPeriod);
+
+        private string? GetRangeValueSafe(string refText, bool asDate = false)
         {
             try
             {
@@ -2706,19 +2711,12 @@ namespace GLSense.Addin.Core.ViewModels
                 if (val is DateTime dt)
                     return dt.ToString("yyyy-MM-dd");
 
-                // Excel often returns dates as doubles (OADate)
-                if (val is double d)
-                {
-                    try
-                    {
-                        var date = DateTime.FromOADate(d);
-                        return date.ToString("yyyy-MM-dd");
-                    }
-                    catch (Exception ex)
-                    {
-                        ServiceLocator.Logger?.LogWarn($"GetRangeValueSafe: failed to convert OADate to DateTime (falling back): {ex.Message}");
-                    }
-                }
+                // Excel returns dates as doubles (OADate). OISR-23022: only a date-type field reads a number as a
+                // date, and only within Excel's date range. Converting every number threw for large values (account
+                // codes) - a WARN and a log flush per call, ~170/s while the Balance Configurator was open - and turned
+                // small numbers (1110) into dates.
+                if (val is double d && asDate && d >= -657435.0 && d < 2958466.0)
+                    return DateTime.FromOADate(d).ToString("yyyy-MM-dd");
 
                 // Fallback: attempt to convert to string
                 return val.ToString();
@@ -3624,11 +3622,11 @@ namespace GLSense.Addin.Core.ViewModels
         // plain text (IsRealRange on it is false, so Process* naturally treats it as
         // ComboValue-mode - exactly like today's "read an existing formula with a literal
         // argument" path).
-        private (string Arg, string Val) ResolveSavedField(string? combo, string? refValue)
+        private (string Arg, string Val) ResolveSavedField(string? combo, string? refValue, bool asDate = false)
         {
             if (refValue is not null && refValue.Trim().Length > 0)
             {
-                var resolved = GetRangeValueSafe(refValue) ?? string.Empty;
+                var resolved = GetRangeValueSafe(refValue, asDate) ?? string.Empty;
                 return (refValue, resolved);
             }
 
@@ -3665,21 +3663,21 @@ namespace GLSense.Addin.Core.ViewModels
                 btText.Equals(AppConstants.BalanceTypeJEDP, StringComparison.OrdinalIgnoreCase) ||
                 btText.Equals(AppConstants.BalanceTypeJEDU, StringComparison.OrdinalIgnoreCase))
             {
-                var (startArg, startVal) = ResolveSavedField(config.StartDateCombo, config.StartDateRef);
-                var (endArg, endVal) = ResolveSavedField(config.EndDateCombo, config.EndDateRef);
+                var (startArg, startVal) = ResolveSavedField(config.StartDateCombo, config.StartDateRef, asDate: true);
+                var (endArg, endVal) = ResolveSavedField(config.EndDateCombo, config.EndDateRef, asDate: true);
                 periodArg = $"{startArg}~{endArg}";
                 periodVal = $"{startVal}~{endVal}";
             }
             else if (btText.Equals(AppConstants.BalanceTypeCTD, StringComparison.OrdinalIgnoreCase))
             {
-                var (pArg, pVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef);
-                var (epArg, epVal) = ResolveSavedField(config.EndPeriodCombo, config.EndPeriodRef);
+                var (pArg, pVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef, asDate: true);
+                var (epArg, epVal) = ResolveSavedField(config.EndPeriodCombo, config.EndPeriodRef, asDate: true);
                 periodArg = $"{pArg}~{epArg}";
                 periodVal = $"{pVal}~{epVal}";
             }
             else
             {
-                (periodArg, periodVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef);
+                (periodArg, periodVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef, asDate: true);
             }
 
             // Budget/Encumbrance (index 8) - branches on the resolved actual-flag text, same
@@ -4156,7 +4154,7 @@ namespace GLSense.Addin.Core.ViewModels
                 // disabled.
                 if (ExcelRangeHelper.IsRealRange(trimmedRefVal))
                 {
-                    var resolvedVal = GetRangeValueSafe(trimmedRefVal) ?? string.Empty;
+                    var resolvedVal = GetRangeValueSafe(trimmedRefVal, IsDateField(field)) ?? string.Empty;
                     if (!string.IsNullOrWhiteSpace(resolvedVal))
                     {
                         return resolvedVal.Trim();
