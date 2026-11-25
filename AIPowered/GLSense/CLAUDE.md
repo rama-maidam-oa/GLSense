@@ -8985,3 +8985,7 @@ GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from t
   Express pane, and a child with a different DPI awareness from its parent can make `SetParent` fail. It needs its
   own fix and test.
   **Status: AIPowered `11.1.3` and `threading-audit`.** Compile-checked (unsigned); not run in Excel.
+- **Section 81 diagnostics removed (25-Nov-2026, as in FinalWorkingCode 11.1.1):** the two always-on `LogInfo` lines in
+  `BaseWindow.RestoreOwnerFocusOnClosed` (mouse capture held / cursor counter negative) and their `GetCapture`/`IsWindow`
+  imports are gone; stale "LogInfo" comments in `GLLogin`/`GLDrilldownCustomization` corrected (those lines were
+  already `LogDebug`). `ReleaseCapture()` and the bounded `ShowCursor(true)` loop are unchanged.

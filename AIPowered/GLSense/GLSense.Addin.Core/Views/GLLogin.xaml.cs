@@ -179,9 +179,6 @@ namespace GLSense.Addin.Core.Views
 
         private void GLLogin_Loaded(object sender, RoutedEventArgs e)
         {
-            // Mouse-pointer-missing-after-login diagnostics (with the "login success" and
-            // "closing" lines below, and BaseWindow.RestoreOwnerFocusOnClosed): LogInfo,
-            // not LogDebug, so these reach a customer's log even with Debug mode off.
             ServiceLocator.Logger?.LogDebug("GLLogin.GLLogin_Loaded: login window opened");
 
             if (!File.Exists(ServiceLocator.Paths.UrlsDirectory))
@@ -277,10 +274,7 @@ namespace GLSense.Addin.Core.Views
                 // Optional: turn on DevTools during development
                 webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-                // 6) Diagnostics: log WebView2 runtime and SSO setting. The version is LogInfo
-                // (not Debug-gated) because it confirms or rules out the WebView2 Runtime
-                // 152.0.4191.x+ cursor-hidden regression
-                // (https://github.com/MicrosoftEdge/WebView2Feedback/issues/5687).
+                // 6) Diagnostics: log WebView2 runtime and SSO setting.
                 var version = webView.CoreWebView2.Environment.BrowserVersionString;
                 ServiceLocator.Logger?.LogDebug($"WebView2 BrowserVersion={version}");
                 ServiceLocator.Logger?.LogDebug($"AllowSingleSignOnUsingOSPrimaryAccount={envOptions.AllowSingleSignOnUsingOSPrimaryAccount}");
