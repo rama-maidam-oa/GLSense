@@ -9091,6 +9091,7 @@ one ran started another that overwrote them.
   24-Nov):** Sheet + Book Refresh; Book Refresh then Sheet 0.8 s later -> message shown, WARN logged, Book Refresh
   finished; a following Sheet Refresh ran normally (guard released); Insert LOVs twice OK. No ERROR/Exception in the
   log; Excel exited 10 s after Quit.
+- **Re-verified on 11.1.3 (25-Nov-2026, `99ce7dc`, runs 4-6):** second refresh refused with the message, guard released.
 - **Same-issue sweep (pattern: fire-and-forget long operation with no re-entry guard):** all `_ =` dispatches in
   `OnRibbonAction` checked; Login/Logout/window-opening actions are modal or short and left out. Window-level guards
 
@@ -9106,8 +9107,10 @@ one ran started another that overwrote them.
 - **Same-issue sweep (pattern: an Excel event starting server work while logged out):** `SheetFollowHyperlink`
   (journal attachments / full journal entry) checked; ribbon actions are disabled while logged out.
   FinalWorkingCode already has the check.
-- **Status:** build-verified (Debug, unsigned). Not yet VM-verified: run 7 was stopped; to be tested with
-  batches 5-6.
+- **Status: VM-verified (25-Nov-2026, GLSense 11.1.3 `99ce7dc`, Debug v11.1.3_2026-11-25T11-57-44, QA02, runs 4 and 6 of
+  `ExcelSmoke\Tests\Threading-LedgerRefresh.ps1`):** logged out, a double-click on a GetBalance cell entered Excel's
+  in-cell edit (status bar "Cell Mode Edit"); no drilldown in the log, no message, no new sheet, formula intact.
+  Host change: reaches users only through an MSI.
 
 ## 138. Batch refresh cached "Click Refresh..." over the last good balance (E7, threading audit, 24-Nov-2026; section 135 on threading-audit)
 
@@ -9119,7 +9122,10 @@ one ran started another that overwrote them.
   refresh) caches only a real server reply (a non-numeric reply is stored as empty, by design - the server
   answered); `UpdateFormulaCache` (Next/Previous segment) stores resolved output only. FinalWorkingCode not
   checked: OPEN.
-- **Status:** build-verified (Debug, unsigned). Not yet VM-verified.
+- **Status:** build-verified (Debug, unsigned). **VM test added but the case was not reproduced** (25-Nov-2026, runs 5-6):
+  after Book Refresh, Sheet2!B2 marked dirty and a Sheet Refresh of Sheet1 - the batch answered it with its balance (0),
+  not "Click Refresh...", so the "don't cache Click Refresh..." path never ran. A full recalc kept 0 (no regression).
+  Still needs a way to make the batch miss a formula that already has a cached balance.
 
 ## 139. Load hardening: bad staged zip, OnRibbonLoaded exceptions, GetTypes (L1/L3/L10, threading audit, 24-Nov-2026; section 136 on threading-audit)
 
@@ -9137,4 +9143,7 @@ one ran started another that overwrote them.
   installs next to GLSense.dll.
 - **Same-issue sweep (pattern: an Office-facing host handler without try/catch):** `AddinBeginShutdown`
   already has one; ribbon OnClick handlers call into the core, which catches. Nothing else open.
-- **Status:** build-verified (Debug, unsigned). Not yet VM-verified.
+- **Status: L1 VM-verified (25-Nov-2026, run 6, `ExcelSmoke\Tests\Threading-StagedZip.ps1`):** a manifest + corrupt zip
+  staged for a newer release in `AddinCore\Manifest` -> ERROR "checksum mismatch", WARN "could not be used ... falling
+  back to the newest installed release", and GLSense loaded (Login enabled, no "could not start"). **L3/L10:** every VM
+  load in runs 1-6 started normally (no regression); their failure paths were not forced. L3 is a host change (MSI).

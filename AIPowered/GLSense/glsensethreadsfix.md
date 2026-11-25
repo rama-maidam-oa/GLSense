@@ -3,6 +3,17 @@
 When this file is passed to Claude: read it, then continue at **"Next step"**. Don't redo finished work.
 Read **"Checkpoint 24-Nov-2026 evening"** first: it overrides older state below where they differ.
 
+## Checkpoint 25-Nov-2026 afternoon: VM results on 11.1.3 (overrides everything below)
+- Build: 11.1.3 `99ce7dc`, Debug core v11.1.3_2026-11-25T11-57-44, staged from the 11.1.3 worktree (Host\Stage-Build.ps1
+  hardcodes the main checkout, which is now on `main` - a scratchpad copy with the 11.1.3 path was used). QA02.
+- Runs 1-3 failed on the test only (LOV target cell moved by the tab click; E1 edit mode not detected). Fixed in ExcelSmoke
+  `40a2589`. Run 4: Threading-LedgerRefresh PASS. Runs 5-6 added E7 + new Tests\Threading-StagedZip.ps1 (`3e04a94`);
+  run 6: both PASS. No ERROR/Exception except the 2 expected checksum errors of the L1 test; Excel exits 3-7 s after Quit.
+- **VM-verified:** batch 1 (R1/C2), K1/K2, C1 busy guard (136), **E1 (137)**, **L1 (139)**. L3/L10: normal loads only.
+- **Not reproduced: E7 (138).** The batch answered a dirty Sheet2!B2 with its balance, not "Click Refresh...". Needs a
+  scenario where the batch misses a formula that already has a cached balance.
+- **Still open:** E7 scenario; MSI for E1/L3 (host changes); L8 (user will discuss later); C3 closed (by design).
+
 ## Checkpoint 25-Nov-2026: moved to 11.1.3 (overrides everything below)
 - At the user's request, all of `threading-audit` was brought to `11.1.3` (code + this file + fix log), then the
   `threading-audit` branch was deleted. Work continues on `11.1.3` (worktree `D:\SQLLite_Test\worktrees\GLSense-11.1.3`).
