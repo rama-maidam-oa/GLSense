@@ -394,18 +394,13 @@ namespace GLSense.Addin.Core.Utilities
                 var wb = ServiceLocator.ExcelApp?.ActiveWorkbook;
                 if (wb == null) return false;
 
+                // No FinalReleaseComObject here: a sheet has one RCW per AppDomain, so releasing it detached
+                // the same sheet cached by a running refresh/drilldown (CLAUDE.md 34, 129).
                 foreach (Excel.Worksheet worksheet in wb.Worksheets)
                 {
-                    try
+                    if (worksheet.Name == shtname)
                     {
-                        if (worksheet.Name == shtname)
-                        {
-                            return true;
-                        }
-                    }
-                    finally
-                    {
-                        ExcelComHelper.SafeRelease(worksheet, "Worksheet");
+                        return true;
                     }
                 }
                 await Task.CompletedTask;

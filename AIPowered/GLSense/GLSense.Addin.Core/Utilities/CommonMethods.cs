@@ -115,12 +115,14 @@ namespace GLSense.Addin.Core.Utilities
             if (ServiceLocator.ExcelApp == null || !AppState.Instance.IsLoginCompleted)
                 return false;
 
+            // No FinalReleaseComObject on the workbook: it is the same RCW a running refresh caches (CLAUDE.md 129).
             Excel.Workbook wb = ServiceLocator.ExcelApp.ActiveWorkbook;
-            if (wb?.Worksheets[sheetName] is not Excel.Worksheet worksheet)
+            Excel.Worksheet worksheet = null;
+            try { worksheet = wb?.Worksheets[sheetName] as Excel.Worksheet; }
+            catch (System.Runtime.InteropServices.COMException) { }   // no such sheet in the active workbook
+            if (worksheet == null)
             {
-                ServiceLocator.Logger?.LogWarn("Worksheet is null. Aborting Get_GLSense_MultiFormulas.");
-                if (wb != null)
-                    ExcelComHelper.SafeRelease(wb, "Workbook");
+                ServiceLocator.Logger?.LogWarn($"Worksheet '{sheetName}' not found in the active workbook. Skipping Get_GLSense_MultiFormulas.");
                 return false;
             }
 

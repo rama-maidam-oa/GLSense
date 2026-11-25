@@ -8896,6 +8896,30 @@ Known limit (126): the host appends UdfSentinels.OnExcelThread to async UDF call
 release is loaded into this host (release history / reload source picker), its dispatcher doesn't strip it: async
 UDFs then run fully on Excel's thread (live single refresh blocks Excel while the server answers) and
 GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from the same build are unaffected.
+## 128. Ledger switch and Sheet/Book Refresh called Excel from a ThreadPool thread (threading audit, 20-Nov-2026, not committed)
+
+Found by a six-area threading audit (loading, ribbon, ribbon actions, drilldowns/windows, Excel events/UDFs, COM
+release). Same class as section 95: Excel COM from a ThreadPool (MTA) thread leaves cross-apartment proxies that can
+keep EXCEL.EXE alive after close.
+- **`AddinEntry.LedgerChanged`:** the whole body ran inside `Task.Run`, i.e. on a pool thread: `ActiveSheet.Cells.Clear()`,
+  `UpdateRibbonAndSelectionForLedger` (RibSegS combo) and `RelaunchConfiguratorPaneIfVisible`. Its comment ("COM will
+  marshal... safe") was the reasoning section 95 disproved. Now only `FillResponsibilitiesAsync` (HTTP + SQLite, no
+  Excel) runs on a worker; the sheet clear and the ribbon/pane calls go through `WpfAppManager.InvokeOnWpfThread`
+  (inline on Excel's thread, else synchronous Invoke; it rethrows, so the existing catch still shows the error).
+- **`BulkRefreshProcess`:** `RefreshSheetAsync` read `sheet.Name` and `ReactivateOriginalSheet` read `_worksheet.Name`
+  outside `RunExcelAsync`, from inside `RunLongRunningTask` (pool thread), on every Sheet/Book Refresh. Both reads now run
+  inside `RunExcelAsync`.
+- **Verified (VM, Debug build v11.1.3_2026-11-20T13-42-15, QA02, `ExcelSmoke\Tests\Threading-LedgerRefresh.ps1`):** pick
+  cube "102 EBS to Blaze", switch IAS Reporting Vision Ops -> Vision Belgium, "Clear sheet?" Yes: sheet cleared, Segment
+  combo refilled with Belgium's chart of accounts (6 segments). Sheet then Book Refresh on a saved 2-sheet book: both
+  write-backs ran (RefreshPerf 5a-5d logged), values written, original sheet reactivated. No ERROR/Exception in the log;
+  Excel exited 9.5 s after Quit.
+- **Same-issue sweep (pattern: Excel COM or ribbon calls inside a `Task.Run` body / after `ConfigureAwait(false)`):** all
+  46 `Task.Run` calls in GLSense.Addin.Core checked; the only other one near a ribbon call (`GLCubeDetails.LoadCubeLedgers`)
+  already marshals via `Dispatcher.InvokeAsync`. Remaining audit findings (busy guard, RCW release in `SheetExistsAsync`,
+  double-click login check, batch-cache overwrite, load hardening) are listed for later batches, not fixed here.
+  FinalWorkingCode has no AppDomain/MTA split: its `PerformLedgerChangeAsync` Task.Run pattern was not changed.
+
 ## 129. JE-type (JED/JEDP/JEDU) formula reopened with blank Start/End dates in the Balance Configurator (OISR-22998)
 
 - **Reported (QA02, 11.1.3-SNAPSHOT-5):** write a JEDU formula, select the cell: Start and End period (date) fields blank.
@@ -8913,6 +8937,27 @@ GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from t
   ProcessPeriodPart (InvokeAsync). No other match. FinalWorkingCode: no AppDomain split, its awaits resume on Excel's
   thread (section 95) - not affected.
 - **Status:** AIPowered 11.1.3, build-verified (Debug, unsigned). Not yet tested in Excel.
+
+## 130. Insert LOVs / refresh diagnostic released Excel objects other code still held (K1/K2, threading audit, 24-Nov-2026)
+
+Code commit `d22ab78` (branch threading-audit). Same class as section 34: .NET keeps one COM wrapper per
+Excel object per AppDomain, so `FinalReleaseComObject` on an enumerated sheet/workbook detaches the same
+wrapper every other holder of that object uses ("COM object that has been separated from its underlying RCW").
+- **K1, `CommonFunctions.SheetExistsAsync`:** released every sheet it looped over. `GLLOVs.CreateLOVSheetAsync`
+  then re-fetched the existing `<ledgerId>_LOV` sheet by name and got the detached wrapper, so a second
+  Insert LOVs for the same ledger was at risk; a refresh/drilldown holding a sheet could also be hit. Removed.
+- **K2, `CommonMethods.CanAccessWorksheet`:** released `ActiveWorkbook`. Removed; a missing sheet is now caught
+  as `COMException` and returns false. Its only caller is the `Get_GLSense_MultiFormulas` diagnostic, so a
+  missing sheet now skips that diagnostic instead of aborting the refresh (intended).
+- **Verified (VM, Debug build v11.1.3_2026-11-20T15-31-10, QA02, `ExcelSmoke\Tests\Threading-LedgerRefresh.ps1`,
+  run 22, 24-Nov):** Sheet + Book Refresh OK; Insert LOVs twice for the same ledger: run 1 created `1_LOV` (D5),
+  run 2 reused the existing sheet (no new sheet created) and wrote D6; both "LOV copied successfully" with list
+  validation (type 3) on the target cell. No ERROR/Exception/"separated" in the log; Excel exited 9 s after Quit.
+  (Run 21 failed in the harness only: `Worksheets.Add()` puts the LOV sheet first, so the script read the wrong sheet.)
+- **Same-issue sweep (pattern: `FinalReleaseComObject`/`SafeRelease` on an object the code did not create):**
+  the remaining `SafeRelease` calls in `CommonMethods` (`rngFind`, `cell`) release ranges the method obtained
+  itself and doesn't hand out - fine. Section 34 already removed the same pattern from `SegmentDiscoverer`.
+  FinalWorkingCode not checked in this pass: OPEN.
 
 ## 131. Installer packaged an unsigned GLSense.dll (`OrbitGLSense.vdproj`)
 
@@ -9032,3 +9077,64 @@ GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from t
   - Fresh 150%: unchanged, no rescale.
   - The WARN "Display scale changed" line is logged once per switch.
   **Status: AIPowered `11.1.3` and `threading-audit`.** This replaces the "ConfiguratorPaneHost not changed" note in 133.
+
+## 136. Second long operation could start while one was running (C1 busy guard, threading audit, 24-Nov-2026; section 133 on threading-audit)
+
+Refresh, reset, snapshot, drilldowns, discover, highlight and hide/unhide rows are started fire-and-forget from
+`AddinEntry.OnRibbonAction` and share static fields (progress window, cancel token, worksheet). A second click while
+one ran started another that overwrote them.
+- **Fix:** `AddinEntry.RunExclusive(name, op)` (`Interlocked.CompareExchange` on `_operationRunning`, released in
+  `finally`) wraps the 27 fire-and-forget long-operation dispatches in `OnRibbonAction` plus `GLExpandOptions`'
+  `SegmentAction`. A refused click logs WARN `RunExclusive: '<name>' ignored` and shows "Another GLSense operation is
+  still running. Please wait for it to finish, or cancel it, and try again."
+- **Verified (VM, Debug build v11.1.3_2026-11-24T08-52-33, QA02, `ExcelSmoke\Tests\Threading-LedgerRefresh.ps1`,
+  24-Nov):** Sheet + Book Refresh; Book Refresh then Sheet 0.8 s later -> message shown, WARN logged, Book Refresh
+  finished; a following Sheet Refresh ran normally (guard released); Insert LOVs twice OK. No ERROR/Exception in the
+  log; Excel exited 10 s after Quit.
+- **Same-issue sweep (pattern: fire-and-forget long operation with no re-entry guard):** all `_ =` dispatches in
+  `OnRibbonAction` checked; Login/Logout/window-opening actions are modal or short and left out. Window-level guards
+
+## 137. Logged-out double-click started a drilldown (E1, threading audit, 24-Nov-2026; section 134 on threading-audit)
+
+- **Cause:** the host's `SheetBeforeDoubleClick` called `DrillDownsStart` without checking the login state, so
+  a double-click while logged out could start a (precedents) drilldown instead of Excel's normal in-cell edit.
+  FinalWorkingCode checks `IsLoginCompleted` first.
+- **Fix (host `AddinModule.cs`, needs an MSI):** return before `DrillDownsStart` unless
+  `_ribbonController.IsLoggedIn`.
+- **Test:** `ExcelSmoke\Tests\Threading-LedgerRefresh.ps1` step 5 (logged-out double-click: no message, no new
+  sheet).
+- **Same-issue sweep (pattern: an Excel event starting server work while logged out):** `SheetFollowHyperlink`
+  (journal attachments / full journal entry) checked; ribbon actions are disabled while logged out.
+  FinalWorkingCode already has the check.
+- **Status:** build-verified (Debug, unsigned). Not yet VM-verified: run 7 was stopped; to be tested with
+  batches 5-6.
+
+## 138. Batch refresh cached "Click Refresh..." over the last good balance (E7, threading audit, 24-Nov-2026; section 135 on threading-audit)
+
+- **Cause:** `UdfDispatcher.HandleBatchCalculation` stored whatever `GetBatchResult` returned, including
+  "Click Refresh..." for a formula the batch had no balance for. That overwrote the last good value in the
+  formula cache, which the logged-out and cache paths then showed.
+- **Fix:** don't cache the "Click Refresh..." result. The cell still shows it for that refresh.
+- **Same-issue sweep (pattern: a "no data" result written into the formula cache):** `CacheResult` (single
+  refresh) caches only a real server reply (a non-numeric reply is stored as empty, by design - the server
+  answered); `UpdateFormulaCache` (Next/Previous segment) stores resolved output only. FinalWorkingCode not
+  checked: OPEN.
+- **Status:** build-verified (Debug, unsigned). Not yet VM-verified.
+
+## 139. Load hardening: bad staged zip, OnRibbonLoaded exceptions, GetTypes (L1/L3/L10, threading audit, 24-Nov-2026; section 136 on threading-audit)
+
+- **L1, `UpdateBootstrapper.ResolveVersionToLoad` (Loader.Core):** a staged zip in `Manifest\` that failed to
+  extract (corrupt, checksum mismatch, unreadable) returned null, so GLSense didn't load even with a good
+  release installed. It is now logged (WARN) and the newest installed release from the catalog is used. The
+  zip stays in `Manifest\`. The first-run seed path is unchanged (no catalog to fall back to).
+- **L3, host `AddinModule_OnRibbonLoaded`:** no try/catch, so an exception went back to Office, which can
+  disable the add-in. The body moved to `LoadOnRibbonLoaded`; the handler logs the exception and shows
+  "GLSense could not start in this Excel session".
+- **L10, `RemoteLoader.Create` (Loader.Core):** `asm.GetTypes()` throws `ReflectionTypeLoadException` if any
+  type in GLSense.Addin.Core can't load. It now uses `asm.GetType("GLSense.Addin.Core.AddinEntry", true)` and
+  checks that it implements `IGLSenseAddin`.
+- **Delivery:** ship all three in the MSI. L3 is a host change; L1 runs from the GLSense.Loader.Core.dll the MSI
+  installs next to GLSense.dll.
+- **Same-issue sweep (pattern: an Office-facing host handler without try/catch):** `AddinBeginShutdown`
+  already has one; ribbon OnClick handlers call into the core, which catches. Nothing else open.
+- **Status:** build-verified (Debug, unsigned). Not yet VM-verified.

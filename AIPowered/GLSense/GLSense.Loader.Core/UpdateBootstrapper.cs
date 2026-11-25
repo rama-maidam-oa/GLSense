@@ -130,7 +130,23 @@ namespace GLSense.Loader.Core
                             logger?.LogWarn($"UpdateBootstrapper: a manifest+zip is already staged in '{paths.ManifestDirectory}' (version={candidateVersion}, releaseDate={candidateReleaseDate}) - adopting THAT staged release instead of the one just fetched via Online. If this wasn't expected, check whether a local dev rebuild (GLSense\\post_build.cmd) staged it.");
                         }
 
-                        return ExtractManifestZipAndAdopt(context, source);
+                        // A bad staged zip (corrupt, checksum mismatch, unreadable) must not stop
+                        // the add-in loading when a good release is already installed: log it and
+                        // fall through to the catalog lookup below. The zip stays in Manifest\.
+                        ResolvedRelease adopted = null;
+                        try
+                        {
+                            adopted = ExtractManifestZipAndAdopt(context, source);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger?.LogException(ex, $"UpdateBootstrapper: could not extract the staged release in '{paths.ManifestDirectory}'.");
+                        }
+
+                        if (adopted != null)
+                            return adopted;
+
+                        logger?.LogWarn($"UpdateBootstrapper: the staged release in '{paths.ManifestDirectory}' could not be used (source={source}) - falling back to the newest installed release.");
                     }
                 }
 

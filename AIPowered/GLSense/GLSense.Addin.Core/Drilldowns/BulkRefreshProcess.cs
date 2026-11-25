@@ -947,8 +947,10 @@ namespace GLSense.Addin.Core.Drilldowns
 
             token.ThrowIfCancellationRequested();
 
+            // Read on Excel's thread: this method runs on a ThreadPool thread (CLAUDE.md 95).
+            string sheetName = await RunExcelAsync(() => sheet.Name);
             await MessageProgressWindowAsync(
-                $"Refreshing worksheet \"{sheet.Name}\".");
+                $"Refreshing worksheet \"{sheetName}\".");
 
             await RunExcelAsync(() =>
             {
@@ -1101,13 +1103,13 @@ namespace GLSense.Addin.Core.Drilldowns
         {
             if (_worksheet == null) return;
 
-            string? originalSheetName = _worksheet.Name;
-            if (string.IsNullOrWhiteSpace(originalSheetName)) return;
-
             await RunExcelAsync(() =>
             {
                 try
                 {
+                    // Read on Excel's thread: this method runs on a ThreadPool thread (CLAUDE.md 95).
+                    string? originalSheetName = _worksheet.Name;
+                    if (string.IsNullOrWhiteSpace(originalSheetName)) return;
                     var originalSheet = (Excel.Worksheet)wrkbook.Worksheets[originalSheetName];
                     originalSheet?.Activate();
                 }

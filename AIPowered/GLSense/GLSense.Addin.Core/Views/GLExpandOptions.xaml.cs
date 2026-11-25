@@ -74,7 +74,7 @@ namespace GLSense.Addin.Core.Views
                 // it runs.
                 Close();
 
-                _ = SegmentDiscoverer.SegmentAction(actionType, byColumns);
+                _ = AddinEntry.RunExclusive("SegmentAction", () => SegmentDiscoverer.SegmentAction(actionType, byColumns));
             }
             catch (Exception ex)
             {

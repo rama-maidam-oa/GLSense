@@ -144,6 +144,33 @@ namespace GLSense
         private RibbonController _ribbonController;
         private void AddinModule_OnRibbonLoaded(object sender, IRibbonUI ribbon)
         {
+            // An exception escaping this handler goes back to Office, which can then disable
+            // the add-in (LoadBehavior) so the GLSense tab is gone on the next start too.
+            try
+            {
+                LoadOnRibbonLoaded(ribbon);
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    GlobalsEx.Context?.Logger?.LogException(ex, "AddinModule_OnRibbonLoaded: loading GLSense failed");
+                    MessageBox.Show(
+                        "GLSense could not start in this Excel session: " + ex.Message + Environment.NewLine +
+                        "Restart Excel. If this keeps happening, contact Orbit support with the GLSense log.",
+                        "GLSense",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+                catch
+                {
+                    // Nothing more can be done here; never let this reach Office.
+                }
+            }
+        }
+
+        private void LoadOnRibbonLoaded(IRibbonUI ribbon)
+        {
             IntPtr hwnd = new IntPtr(ExcelApp.Hwnd);
 
             // Create context with ExcelApp
@@ -1637,6 +1664,11 @@ namespace GLSense
                 // GlobalsEx.Addin?.OnRibbonAction("RunDrilldownExternal", "ddType|external")
                 // - see AddinEntry.RunDrilldownByExternalAddress for the Addin.Core side.
                 if (e?.Range is not Excel.Range currRange || e?.Sheet is not Excel.Worksheet currSheet)
+                    return;
+
+                // FinalWorkingCode's IsLoginCompleted check: logged out, a double-click must stay
+                // Excel's normal in-cell edit, not start a (precedents) drilldown.
+                if (_ribbonController == null || !_ribbonController.IsLoggedIn)
                     return;
 
                 bool actionTaken = false;

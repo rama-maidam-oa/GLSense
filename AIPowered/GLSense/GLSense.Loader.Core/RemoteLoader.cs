@@ -43,11 +43,13 @@ namespace GLSense.Loader.Core
                 var asm = Assembly.LoadFrom(dllPath);
                 logger?.LogDebug($"RemoteLoader.Create: loaded assembly '{asm.FullName}'.");
 
-                var type = asm.GetTypes()
-                    .FirstOrDefault(t => typeof(IGLSenseAddin).IsAssignableFrom(t) && !t.IsAbstract && !t.IsInterface);
+                // Look the entry type up by name. GetTypes() loads every type in the assembly and
+                // throws ReflectionTypeLoadException if any one of them can't load (e.g. a missing
+                // optional dependency), even though AddinEntry itself is fine.
+                var type = asm.GetType("GLSense.Addin.Core.AddinEntry", throwOnError: true);
 
-                if (type == null)
-                    throw new InvalidOperationException("Add-in entry type not found in GLSense.Addin.Core.dll");
+                if (!typeof(IGLSenseAddin).IsAssignableFrom(type) || type.IsAbstract)
+                    throw new InvalidOperationException($"'{type.FullName}' in GLSense.Addin.Core.dll does not implement IGLSenseAddin.");
 
                 var instance = (IGLSenseAddin)Activator.CreateInstance(type);
                 logger?.LogDebug($"RemoteLoader.Create: instantiated add-in entry type '{type.FullName}'.");

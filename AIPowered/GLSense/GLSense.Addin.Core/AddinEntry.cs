@@ -270,6 +270,23 @@ namespace GLSense.Addin.Core
             }
             return true;
         }
+        // C1 busy guard: 1 while a long operation (refresh, reset, snapshot, drilldown, discover,
+        // highlight, hide rows) runs. They are fire-and-forget and share static window/token/sheet
+        // fields, so a second click while one is running must not start another.
+        private static int _operationRunning;
+
+        internal static async Task RunExclusive(string name, Func<Task> operation)
+        {
+            if (Interlocked.CompareExchange(ref _operationRunning, 1, 0) != 0)
+            {
+                ServiceLocator.Logger?.LogWarn($"RunExclusive: '{name}' ignored - another GLSense operation is still running.");
+                CommonFunctions.GLSenseMessage("Another GLSense operation is still running. Please wait for it to finish, or cancel it, and try again.", MessageBoxImage.Information);
+                return;
+            }
+            try { await operation(); }
+            finally { Volatile.Write(ref _operationRunning, 0); }
+        }
+
         public void OnRibbonAction(string action, object parameter)
         {
             // Single entry-point log for every ribbon button/control dispatched through this
@@ -301,7 +318,7 @@ namespace GLSense.Addin.Core
                     // boundary from AddinModule). The method already catches and logs every
                     // exception internally (including OperationCanceledException), so it's
                     // safe to discard the Task here.
-                    _ = DrillCellHighlighter.RibCellHighlight_OnClick();
+                    _ = RunExclusive("RibCellHighlight_OnClick", () => DrillCellHighlighter.RibCellHighlight_OnClick());
                     break;
                 case "Logout":
                     // Fire-and-forget for the same reason as RibCellHighlight above - Logout
@@ -403,19 +420,19 @@ namespace GLSense.Addin.Core
                 // fire-and-forget dispatch here, same reasoning as RibCellHighlight/Logout
                 // above (both methods catch+log every exception internally).
                 case "RibSegProperty":
-                    _ = SegmentDiscoverer.SegmentAction("Property");
+                    _ = RunExclusive("SegmentAction", () => SegmentDiscoverer.SegmentAction("Property"));
                     break;
                 case "RibExpodeAll":
-                    _ = SegmentDiscoverer.SegmentAction("ExplodeAll");
+                    _ = RunExclusive("SegmentAction", () => SegmentDiscoverer.SegmentAction("ExplodeAll"));
                     break;
                 case "RibbonExplode1Level":
-                    _ = SegmentDiscoverer.SegmentAction("Explode1Level");
+                    _ = RunExclusive("SegmentAction", () => SegmentDiscoverer.SegmentAction("Explode1Level"));
                     break;
                 case "RibDiscoverPeriod":
-                    _ = PeriodsDiscoverer.FillPeriods();
+                    _ = RunExclusive("FillPeriods", () => PeriodsDiscoverer.FillPeriods());
                     break;
                 case "RibDiscoverPeriodByDate":
-                    _ = PeriodsDiscoverer.FillPeriodsByDate();
+                    _ = RunExclusive("FillPeriodsByDate", () => PeriodsDiscoverer.FillPeriodsByDate());
                     break;
 
                 // RigSegDiscover_OnClick - unlike the 6 cases above, the old host body
@@ -465,23 +482,23 @@ namespace GLSense.Addin.Core
                 // above). Fire-and-forget for the same reason as RibCellHighlight/Logout -
                 // RunBalanceDrilldown catches and logs every exception internally.
                 case "RunBalanceDrilldownBL":
-                    _ = RunBalanceDrilldown("BL");
+                    _ = RunExclusive("RunBalanceDrilldown", () => RunBalanceDrilldown("BL"));
                     break;
                 case "RunBalanceDrilldownBLJL":
-                    _ = RunBalanceDrilldown("BL_JL");
+                    _ = RunExclusive("RunBalanceDrilldown", () => RunBalanceDrilldown("BL_JL"));
                     break;
                 case "RunBalanceDrilldownBLSL":
-                    _ = RunBalanceDrilldown("BL_SL");
+                    _ = RunExclusive("RunBalanceDrilldown", () => RunBalanceDrilldown("BL_SL"));
                     break;
                 case "RunBalanceDrilldownUF":
-                    _ = RunBalanceDrilldown("UF");
+                    _ = RunExclusive("RunBalanceDrilldown", () => RunBalanceDrilldown("UF"));
                     break;
 
                 // RibJournalDD/RibSubledgerDD - old monolith's RibJournalDD_OnClick/
                 // RibSubledgerDD_OnClick bodies, moved here verbatim (fire-and-forget,
                 // same reasoning as the balance drilldowns above).
                 case "RibJournalDD":
-                    _ = RunJournalDrilldown();
+                    _ = RunExclusive("RunJournalDrilldown", () => RunJournalDrilldown());
                     break;
                 // RibBalancesDDToSubLedger/RibBalancesDDToUnified - old monolith's
                 // RibBalancesDDToSubLedger_OnClick/RibBalancesDDToUnified_OnClick (both
@@ -490,13 +507,13 @@ namespace GLSense.Addin.Core
                 // different REST endpoint, see DD_JL.cs BuildApiUrl). Previously missing
                 // end-to-end; restored as part of the completeness pass.
                 case "RibBalancesDDToSubLedger":
-                    _ = RunJournalDrilldown("BLDD_SL");
+                    _ = RunExclusive("RunJournalDrilldown", () => RunJournalDrilldown("BLDD_SL"));
                     break;
                 case "RibBalancesDDToUnified":
-                    _ = RunJournalDrilldown("BLDD_UF");
+                    _ = RunExclusive("RunJournalDrilldown", () => RunJournalDrilldown("BLDD_UF"));
                     break;
                 case "RibSubledgerDD":
-                    _ = RunSubledgerDrilldown();
+                    _ = RunExclusive("RunSubledgerDrilldown", () => RunSubledgerDrilldown());
                     break;
 
                 // ---- Group F (Refresh/Clear/Highlight/Hide-Rows) ----
@@ -509,16 +526,16 @@ namespace GLSense.Addin.Core
                 // reasoning as RunBalanceDrilldown/RunJournalDrilldown above - the async
                 // methods catch and log every exception internally.
                 case "RibRefreshAll":
-                    _ = BalanceRefresh.RefreshingBalancesAsync("Refresh", "Sheet");
+                    _ = RunExclusive("RefreshingBalancesAsync", () => BalanceRefresh.RefreshingBalancesAsync("Refresh", "Sheet"));
                     break;
                 case "RibRefreshBook":
-                    _ = BalanceRefresh.RefreshingBalancesAsync("Refresh", "Book");
+                    _ = RunExclusive("RefreshingBalancesAsync", () => BalanceRefresh.RefreshingBalancesAsync("Refresh", "Book"));
                     break;
 
                 // RibRefreshRange - extracted into Drilldowns\RangeRefresher.cs (its own
                 // class rather than folded here - see that file's header comment for why).
                 case "RibRefreshRange":
-                    _ = RangeRefresher.RibRefreshRange_OnClick();
+                    _ = RunExclusive("RibRefreshRange_OnClick", () => RangeRefresher.RibRefreshRange_OnClick());
                     break;
 
                 // RibClearSheet/RibClear - old monolith's ResetBalances(resetType)/
@@ -526,25 +543,25 @@ namespace GLSense.Addin.Core
                 // (mirrors Group D's SegmentChanged-sized methods) - see ResetBalances/
                 // BalancesReset below.
                 case "RibClearSheet":
-                    _ = ResetBalances("Sheet");
+                    _ = RunExclusive("ResetBalances", () => ResetBalances("Sheet"));
                     break;
                 case "RibClear":
-                    _ = ResetBalances("Book");
+                    _ = RunExclusive("ResetBalances", () => ResetBalances("Book"));
                     break;
 
                 // RibHighlight - extracted into Drilldowns\BalanceHighlighter.cs.
                 case "RibHighlight":
-                    _ = BalanceHighlighter.RibHighlight_OnClick();
+                    _ = RunExclusive("RibHighlight_OnClick", () => BalanceHighlighter.RibHighlight_OnClick());
                     break;
 
                 // RibHideRows/RibUnHideRows - extracted into
                 // Drilldowns\RowVisibilityProcessor.cs (RowProcessor/HideRowProcessor/
                 // UnhideRowProcessor hierarchy).
                 case "RibHideRows":
-                    _ = RowVisibilityProcessor.RibHideRows_OnClick();
+                    _ = RunExclusive("RibHideRows_OnClick", () => RowVisibilityProcessor.RibHideRows_OnClick());
                     break;
                 case "RibUnHideRows":
-                    _ = RowVisibilityProcessor.RibUnHideRows_OnClick();
+                    _ = RunExclusive("RibUnHideRows_OnClick", () => RowVisibilityProcessor.RibUnHideRows_OnClick());
                     break;
 
                 // ---- Group G (Snapshot/Job submission) ----
@@ -563,7 +580,7 @@ namespace GLSense.Addin.Core
 
                 case "RunSnapshot":
                     // Old monolith: RibSnapShot_OnClick - see RunSnapshot(string) below.
-                    _ = RunSnapshot(parameter as string);
+                    _ = RunExclusive("RunSnapshot", () => RunSnapshot(parameter as string));
                     break;
 
                 case "SnapWorksheetToggled":
@@ -676,7 +693,7 @@ namespace GLSense.Addin.Core
                         string[] ddParts = ddPayload.Split(new[] { '|' }, 2);
                         if (ddParts.Length == 2)
                         {
-                            _ = RunDrilldownByExternalAddress(ddParts[0], ddParts[1]);
+                            _ = RunExclusive("RunDrilldownByExternalAddress", () => RunDrilldownByExternalAddress(ddParts[0], ddParts[1]));
                         }
                     }
                     break;
@@ -689,7 +706,7 @@ namespace GLSense.Addin.Core
                     // relies on).
                     if (parameter is string[] cdArgs && cdArgs.Length == 3)
                     {
-                        _ = CustomDrilldown.RunCustomDrilldown(cdArgs[0], cdArgs[1], cdArgs[2]);
+                        _ = RunExclusive("RunCustomDrilldown", () => CustomDrilldown.RunCustomDrilldown(cdArgs[0], cdArgs[1], cdArgs[2]));
                     }
                     break;
 
@@ -701,7 +718,7 @@ namespace GLSense.Addin.Core
                         // Fully qualified: GLSense.Addin.Core.Models.JournalAttachments (a
                         // plain data model) also resolves here via the Models namespace
                         // import, making the bare name ambiguous.
-                        _ = Drilldowns.JournalAttachments.RunJournalAttachmentFlow(journalHeaderIdText);
+                        _ = RunExclusive("RunJournalAttachmentFlow", () => Drilldowns.JournalAttachments.RunJournalAttachmentFlow(journalHeaderIdText));
                     }
                     break;
 
@@ -710,7 +727,7 @@ namespace GLSense.Addin.Core
                     // address (built host-side from the hyperlink's own cell).
                     if (parameter is string fjeExternal && !string.IsNullOrWhiteSpace(fjeExternal))
                     {
-                        _ = RunFullJournalEntryDrilldown(fjeExternal);
+                        _ = RunExclusive("RunFullJournalEntryDrilldown", () => RunFullJournalEntryDrilldown(fjeExternal));
                     }
                     break;
             }
@@ -1181,36 +1198,32 @@ namespace GLSense.Addin.Core
                 // Own UI thread: keeps painting while Excel is busy (CLAUDE.md 114).
                 win = ProgressWindowHost.Show(ctsHelper, "Switching Ledger", sheetClear ? "Clearing sheet..." : "Loading ledger data...");
 
-                // Cross-thread COM note: this Task.Run body touches ServiceLocator.ExcelApp
-                // (Cells.Clear) and, via UpdateRibbonAndSelectionForLedger, the ribbon's
-                // ADX controls - both live on Excel's main STA apartment, not this
-                // ThreadPool thread. That's safe here because Excel's main thread returned
-                // immediately from Ribledger_OnChange (LedgerChanged was fired as
-                // fire-and-forget) and keeps pumping its message loop, so COM will marshal
-                // these calls back to that apartment automatically; it will not deadlock.
-                // This mirrors the original monolith's PerformLedgerChangeAsync, which used
-                // the identical Task.Run-wrapped-COM-access pattern. Kept inside one
-                // Task.Run (rather than dispatching each COM call individually) to match
-                // that proven behavior; revisit if this group ever needs to run in a
-                // stricter threading model.
-                await Task.Run(async () =>
+                // Excel COM and the ribbon are used only on Excel's main thread (InvokeOnWpfThread
+                // runs inline there, else Invoke): calling them from a ThreadPool (MTA) thread
+                // leaves COM proxies that keep EXCEL.EXE alive after close (CLAUDE.md 95).
+                // Only the server call + SQLite insert run on a worker.
+                if (sheetClear)
                 {
-                    if (sheetClear)
+                    token.ThrowIfCancellationRequested();
+                    WpfAppManager.InvokeOnWpfThread(() =>
                     {
-                        token.ThrowIfCancellationRequested();
                         if (ServiceLocator.ExcelApp?.ActiveSheet is Excel.Worksheet sheet)
                         {
                             sheet.Cells.Clear();
                         }
-                        if (win != null)
-                            await win.Dispatcher.InvokeAsync(() => win.SetProcessMessage("Loading ledger data..."));
-                    }
+                    });
+                    if (win != null)
+                        await win.Dispatcher.InvokeAsync(() => win.SetProcessMessage("Loading ledger data..."));
+                }
 
-                    token.ThrowIfCancellationRequested();
+                token.ThrowIfCancellationRequested();
 
-                    await CommonFunctions.FillResponsibilitiesAsync(ledger.LedgerId, AppState.Instance.SelectedCube.CubeId, token);
+                long cubeId = AppState.Instance.SelectedCube.CubeId;
+                await Task.Run(() => CommonFunctions.FillResponsibilitiesAsync(ledger.LedgerId, cubeId, token), token);
 
-                    token.ThrowIfCancellationRequested();
+                token.ThrowIfCancellationRequested();
+                WpfAppManager.InvokeOnWpfThread(() =>
+                {
                     UpdateRibbonAndSelectionForLedger(ledger);
 
                     // Group H (resolved): old monolith's ledger-change relaunch
@@ -1220,7 +1233,7 @@ namespace GLSense.Addin.Core
                     // check before deciding whether to call back into
                     // RelaunchConfiguratorPane.
                     ServiceLocator.RibbonController?.RelaunchConfiguratorPaneIfVisible();
-                }, token);
+                });
             }
             catch (OperationCanceledException)
             {

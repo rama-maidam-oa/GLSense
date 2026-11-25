@@ -569,7 +569,10 @@ namespace GLSense.Addin.Core.Udf
             try
             {
                 object result = GetBatchResult(formulaCompressed);
-                UpdateCache(formulaCompressed, result);
+                // A formula the batch has no balance for gets "Click Refresh..."; caching that would
+                // overwrite the last good value, which the logged-out and cache paths then show.
+                if (!(result is string s && s == GLClickToRefresh))
+                    UpdateCache(formulaCompressed, result);
                 return result;
             }
             catch (Exception ex)
