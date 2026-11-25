@@ -1513,3 +1513,16 @@ there.**
   changes size. Insert LOVs' Cell Reference is now Height=30 like Segment Values. Verified by screenshot at
   100% and 150% (Insert LOVs and Segment Values now identical). AIPowered 11.1.3 has the same padding (its
   LOVs box is already 30) - open for the AIPowered port.
+
+## `AddinModule.cs` / `Views\GLCubeDetails.xaml.cs` (long cube names in the ribbon, OISR-22854 port)
+
+- Ported from AIPowered 11.1.3 `9a00c07`, with the limit set to 25 for FinalWorkingCode (user's call): new
+  `AddinModule.SetCubeRibbonCaption(fullCaption)` shows the cube name in full up to 25 characters, longer
+  names as their first 25 characters + "..." (the "Cube: " prefix is not counted), and puts the full
+  "Cube: <name>" in its SuperTip; "Cube: Select cube" (written with 1-3 spaces in different places, compared without spaces) keeps
+  the default SuperTip "Click to get list of available cubes". The 3 writers use it (cube refresh, logout,
+  `GLCubeDetails.UpdateRibbonForCube`). Regression check: `RibGetCube.Caption` is never read back (the cube
+  comes from `AppState.SelectedCube`); `RibbonStateHelper` only enables/disables by name; the only caption
+  comparison (`RibSegS_OnChange`) is on the Segment dropdown's items, which this does not touch; nothing else
+  sets the SuperTip. Truncation checked with a harness (25-char name unchanged, 26 -> first 25 + "...").
+  **Status: FinalWorkingCode `11.1.1`.** Build-verified.
