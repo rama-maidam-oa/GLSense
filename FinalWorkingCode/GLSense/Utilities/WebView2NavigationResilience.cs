@@ -109,7 +109,10 @@ namespace GLSense.Utilities
                 // followed 14s later by the parent's renderer reporting
                 // RenderProcessUnresponsive. The popup briefly shows blank chrome until
                 // its content finishes initializing - expected and harmless.
-                popup.Show();
+                using (DpiAwarenessHelper.SetPerMonitorAware()) // OISR-23017: create the window Per-Monitor-V2
+                {
+                    popup.Show();
+                }
 
                 await popup.InitializeAsync(_core!.Environment, _trustedHostsProvider!);
 

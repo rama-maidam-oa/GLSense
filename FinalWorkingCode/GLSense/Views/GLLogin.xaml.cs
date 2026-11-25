@@ -133,11 +133,6 @@ namespace GLSense.Views
         }
         private void GLLogin_Loaded(object sender, RoutedEventArgs e)
         {
-            // Mouse-pointer-missing-after-login diagnostics (with the "login success" and
-            // "closing" lines below, and DpiAwareWindow.RestoreOwnerFocusOnClosed): LogInfo,
-            // not LogDebug, so these reach a customer's log even with Debug mode off.
-            LogUtility.LogDebug("GLLogin.GLLogin_Loaded: login window opened");
-
             if (!File.Exists(AppPaths.TempUrlsPath))
             {
                 Dispatcher.InvokeAsync(() =>
@@ -212,12 +207,9 @@ namespace GLSense.Views
                     // Optional: turn on DevTools during development
                     webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-                    // Diagnostics: log WebView2 runtime and SSO setting. The version is LogInfo
-                    // (not Debug-gated) because it confirms or rules out the WebView2 Runtime
-                    // 152.0.4191.x+ cursor-hidden regression
-                    // (https://github.com/MicrosoftEdge/WebView2Feedback/issues/5687).
+                    // Diagnostics: log WebView2 runtime and SSO setting
                     var version = webView.CoreWebView2.Environment.BrowserVersionString;
-                    LogUtility.LogInfo($"WebView2 BrowserVersion={version}");
+                    LogUtility.LogDebug($"WebView2 BrowserVersion={version}");
                     LogUtility.LogDebug("AllowSingleSignOnUsingOSPrimaryAccount=True");
 
                 }
@@ -442,10 +434,6 @@ namespace GLSense.Views
             if (!IsLoginSuccessView(src))
                 return;
 
-            // Timestamp to correlate with whether the user was still typing/hovering on the
-            // login page when the WebView2 control is hidden (ShowBusyOverlayAsync below).
-            LogUtility.LogDebug("GLLogin: login success detected, hiding WebView2 control");
-
             using (new LogUtility.LogScope("WebView_NavigationCompleted"))
             {
                 LogUtility.LogDebug("Document Title: " + webView.CoreWebView2?.DocumentTitle ?? "");
@@ -654,7 +642,6 @@ namespace GLSense.Views
             // The broadcast used to be a 60 s toast awaited before Close(): the modal login window kept Excel's ribbon
             // disabled for up to a minute, and Excel then crashed on Quit (WER relaunched an empty Excel). Close first;
             // then show it in an OK box, posted so the login dialog has finished closing before the box opens.
-            LogUtility.LogDebug("GLLogin.SuccessCube: closing login window");
             Close();
             if (!string.IsNullOrWhiteSpace(broadcastMsg))
                 _ = Dispatcher.BeginInvoke(new Action(() => CommonFunctions.GLSenseMessage(broadcastMsg, System.Windows.Forms.MessageBoxIcon.Information)));

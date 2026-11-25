@@ -1158,6 +1158,11 @@ there.**
   - `GLDrilldownCustomization`: the WebView2 `BrowserVersion` (was `LogDebug`).
   **Status: FinalWorkingCode `11.1.0`, `11.1.1` and `11.1.2`; AIPowered `11.1.2` (its section
   81).** Build-verified. Logging only, so there's no behavior change.
+- **Removed again on `11.1.1` (25-Nov-2026, user's request, during OISR-23017):** the seven `LogInfo` lines
+  above showed up in every log as noise. The two `RestoreOwnerFocusOnClosed` diagnostics and their
+  `GetCapture`/`IsWindow` imports are gone, the three `GLLogin` lifecycle lines are gone, and both
+  `WebView2 BrowserVersion` lines are back to `LogDebug`. The fix itself (`ReleaseCapture()` and the bounded
+  `ShowCursor(true)` loop on every window close) is unchanged. Still present on `11.1.0`/`11.1.2`/AIPowered.
 
 ## `Views\GLDrilldownCustomization.xaml.cs` (OISR-22815, Issue 2: confirm before overwriting local customization)
 
@@ -1219,3 +1224,135 @@ there.**
   an optional Ledger.
 - **Follow-up:** `BuildFormula` now doubles `"` inside the segment and ledger names and `'` inside the sheet name, so a name containing a quote no longer breaks the formula.
   **Status: FinalWorkingCode `11.1.1`, `11.1.2`, `11.1.3`; AIPowered `11.1.3`.** Build-verified.
+
+## `Utilities\DpiAwareWindow.cs` and window creation (buttons flicker / need several clicks after a display-scale change, OISR-23017)
+
+- **Reported (Mortenson, 150% scale):** in the Segment Values Configurator the Insert button's hover
+  flickered and clicks took several attempts; setting 100% and reopening Excel made it go away.
+- **Reproduced only when the display scale changes while Excel is open** (docking/undocking, changing
+  Scale): Excel at 100% -> 150% gave 0/5 single clicks on Close. A fresh Excel at 100% or 150% was fine.
+- **Root cause:** windows were meant to be Per-Monitor-V2, but `SetPerMonitorAware()` only wrapped the
+  constructor; the HWND is created later in `ShowDialog()`/`Show()`, when Office has switched Excel's
+  thread back, so all but `GLMessageWindow` came out System-aware at Excel's start-up DPI. After a scale
+  change Windows kept the old-DPI rectangle for input (reported 1845x1404 for a window drawn at 1230x936),
+  so the button seen and the button hit no longer matched.
+- **Fix (three parts, all needed):**
+  1. Create windows Per-Monitor-V2: `ShowDialogWithOwner`/`ShowWithOwner` wrap `ShowDialog()`/`Show()`
+     in `SetPerMonitorAware()` (also covers popups opened while a modal window is up). Same for the direct
+     `Show`/`ShowDialog` calls in `DD_ExcelPrecedents` (wait window), `CommonFunctions` (`GLMessageWindow`),
+     `WebView2NavigationResilience` (popup) and `WindowLoadingPlaceholder` (its HWND is created once).
+  2. Let WPF scale them: new `DpiAwarenessHelper.EnableWpfPerMonitorScaling()` sets
+     `Switch.System.Windows.DoNotScaleForDpiChanges=false` first thing in the `AddinModule` constructor
+     (backstop in `WpfAppManager.EnsureApplication`). Hosted in Excel the switch defaulted to on, so WPF
+     drew every window at Excel's start-up DPI (part 1 alone gave correct clicks but windows too small at
+     100->150 and taller than the screen at 150->100). `WndProc` no longer handles `WM_DPICHANGED` itself
+     (its `newDpi/96` LayoutTransform would now double-scale; `AdjustForDpiChange` removed) - it only
+     re-clamps with `EnsureFitsWorkArea` afterwards.
+  3. Size/center against the window's own monitor: new `GetWorkAreaDip()` (monitor work area via
+     `GetMonitorInfo`, in this window's DIPs) replaces `SystemParameters.WorkArea` (system-DPI units) in
+     `FitToAvailableWorkArea`, `PositionAroundCenter`, `CenterOverOwnerOnce`, `EnsureFitsWorkArea`; the
+     owner (Excel) rect is read with `GetWindowRect` under Per-Monitor-V2 so it is in physical pixels.
+- **Verified on a laptop (QA02, Segment Values x5 + Rollup Groups + Insert LOVs per run):** 100->150 and
+  150->100 with Excel open, fresh 150%, fresh 100%: hover steady (150/150 each run); Insert works on the
+  first click with no segments (validation warning) and with a segment (value written to the cell); add
+  and row selection 1 click; Close 1 click; windows at the right size for the scale (1230x936 at 150%,
+  820x790 at 100%), centered over Excel and on screen. (Close needs 2 clicks right after the "no segments"
+  warning in every run, including fresh 100%: the first click dismisses the toast - existing behaviour.)
+- **Same-issue sweep:** every `Show()`/`ShowDialog()` in this project checked (above; `SnapshotDialogHelper`
+  is a WinForms SaveFileDialog, `WpfWarmup` is off-screen - left). `GLConfiguratorPane` already creates its
+  ElementHost under Per-Monitor-V2. `AppOverlay`'s `SystemParameters.WorkArea` height cap left (cosmetic).
+  Same shape, not changed here: AIPowered `GLSense.Addin.Core\Views\BaseWindow.cs` (`ShowDialog()` calls
+  `base.ShowDialog()` without the scope) and XLEdge `XLEdge.Addin.Core\Utilities\DpiAwareWindow.cs`.
+  **Status: FinalWorkingCode `11.1.1`.** Build-verified, laptop-verified (Debug build).
+
+- **Balance Configurator task pane:** after a scale change with Excel open the docked pane's WPF content
+  was drawn too small (100->150) or too big and clipped on the left (150->100); a fresh Excel at either scale
+  was fine, and the unchanged 11.1.1 build did the same (baseline run). The content keeps the DPI it was
+  created with and a docked pane gets no WM_DPICHANGED. Fixed in `GLConfiguratorPane.cs`: new
+  `SyncWpfContentScale()` (on HandleCreated, every Resize - what fires on a live DPI change - and before the
+  pane is shown) scales the content by monitor DPI / WPF's DPI (1.0 = no transform when they agree), and
+  `GetEffectiveDpi()` reads the monitor's real DPI first so the pane's min/default widths follow too. Needed
+  `DpiAwarenessHelper.GetMonitorDpi(hwnd)` and a fix to its `GetDpiForMonitor` import: it was declared
+  against `user32.dll` (the function is in `shcore.dll`), so it threw EntryPointNotFoundException on every
+  call - the existing `GetWindowDpi` fallback had been failing silently the same way. Verified with temporary logging
+  (removed): scale 1.5 (100->150) and 0.667 (150->100), none on fresh 100/150; pane screenshots match a fresh
+  Excel at that scale.
+  **Pane open while the scale changes** (opened at 100% then 150%, and the reverse): the content rescaled,
+  but 150->100 left the pane at its 150% width (content clipped on the right) - `MinimumSize` was still in
+  150% pixels (892) and `WM_WINDOWPOSCHANGING`/`SetBoundsCore` enforced it against the Resize clamp (695).
+  `SyncWpfContentScale` now re-runs `ApplyDpiAwareSizing` for the new DPI when the scale changes (no loop:
+  the next Resize finds the scale unchanged). Verified both directions with the pane open: 695 px at 100%,
+  1042 px at 150%, everything visible.
+  **Developer retest (manual):** 100->150 fine, but 150->100 with the pane open still showed it trimmed /
+  shifted right (close button and right-hand controls hidden) until the pane was resized by hand - the pane
+  shrinks, but Add-in Express does not re-lay out its docking area around it. `SyncWpfContentScale` (when
+  called from Resize and the scale actually changed while the pane is visible) now re-shows the pane once
+  (`Visible = false; Visible = true` via BeginInvoke, guarded against stacking) - the same path as opening it,
+  where `ADXBeforeTaskPaneShow` sets the width for the current DPI. Content is kept: becoming visible only
+  re-lays out `GLBalanceConfigurator` (`OnIsVisibleChanged`); the reload (`RelaunchPane`) runs only from the
+  ribbon button's handler.
+  First version of the re-show left the pane **closed** after the switch: `ADXBeforeTaskPaneShow` sets
+  `Visible = AppState.displayConfigurator`, which only `RibFSG_OnClick` sets (true for the duration of the
+  click, so Add-in Express cannot pop the pane up by itself). The re-show now sets it around the
+  `Visible` toggle the same way (reset in `finally`).
+  Window open times checked against the unchanged build (fresh 100%, construct -> content rendered):
+  same within run-to-run noise (Segment Values 1.9-2.0 s on the cold first open in both, ~0.25 s after).
+  **Developer retest (log):** 150->100 with the pane open, the pane ended at its 595 px floor and the right
+  side was cut off; then the developer saw the same at a **fresh 100%** with no scale change at all.
+  Window rects (live Excel) showed why: Add-in Express's docking area was **493 px** wide while the pane
+  form, held up by its own minimum (SetBoundsCore / WM_WINDOWPOSCHANGING / Resize clamp), was 620 px - so
+  the pane stuck out of the docking area and its right side ran off the screen. The docking area's width
+  is Add-in Express's call (no public API to set it, nothing persisted in the registry for it); setting
+  the pane's Width does not move it.
+  Fixed (`GLConfiguratorPane.cs` + `GLBalanceConfigurator.xaml(.cs)`):
+  - **Width values ported from 11.1.2/11.1.3 (`4c3abee`, AIPowered CLAUDE.md section 58)**: pane
+    `_minWidthDip` 635, `_defaultWidthDip` 650, `_maxWidthDip` 940; content `MinimumConfiguratorWidth` and
+    root `MinWidth` 635, inner Grid `MinWidth` 640. A set - change together.
+  - **Pane fits the docking area**: the form no longer has a minimum width (`MinimumSize.Width` 0, so the
+    WndProc guards stop forcing it; `SetBoundsCore` no longer floors width; the Resize and
+    `RecomputeWidthBounds` clamps cap at the max only). The WPF host keeps the content's real minimum
+    (`ContentMinWidthDip` = inner Grid 640 + vertical scrollbar ~18) and the form has `AutoScroll` with that
+    `AutoScrollMinSize`, so a narrower docking area gets a horizontal scrollbar instead of clipping. The
+    WPF layout itself is untouched (section 59 of AIPowered's log: removing the content's ScrollViewer cut
+    off the row icons). User splitter drags are still kept within [min, max] by `ADXSplitterMove`.
+  This replaces the interim 620/630 values tried earlier in this ticket.
+  **Developer retest:** still trimmed at a fresh 100% (pane 480 px). Where the width comes from: Add-in
+  Express saves the docking area's width when Excel closes, in
+  `HKCU\Software\Microsoft\Office\Excel\Addins\ADXXLForm\Right_SizeP` (points x 100; `Right_State`
+  next to it), and restores it on the next show, after `ADXBeforeTaskPaneShow` has set our default
+  width. A width saved while the pane was narrower than the content (old builds, or 150->100) came back
+  every time. Setting the pane's `Width` once the show has settled *does* move the docking area. So the
+  new `ADXAfterTaskPaneShow` handler, via `BeginInvoke`, widens the pane to the default width (at least the
+  content minimum, at most the max) when Add-in Express restored it narrower than the content.
+  Verified with `Right_SizeP` set to 36000 (about 480 px) at a fresh 100%: the log shows "widening 478 -> 658",
+  and the screenshot shows the whole pane (X, right-hand reference column, Factor, Insert/Close) with the
+  sheet area shrunk to make room. With the developer's saved 703 px nothing changes (wide enough). The
+  developer's value was restored afterwards. **Developer-confirmed: pane working correctly.**
+  **To reproduce a narrow pane next time:** close Excel, set `Right_SizeP` to e.g. 36000 (about 480 px at
+  100%; 52875 is about 705 px), open Excel and the pane. Add-in Express writes the value when Excel closes
+  normally (a killed Excel keeps the old one). Back up the value first and restore it afterwards.
+- **Display-scale changes are now logged.** The Environment Snapshot's "Screen DPI" is only the scale at
+  start-up, so a change while Excel was open left no trace in the log. New
+  `DpiAwarenessHelper.LogIfDpiChanged(dpi, source)` writes one `WARN` line per change (not Debug-gated):
+  `Display scale changed: 96 DPI (100%) -> 144 DPI (150%), detected by <source>`. The baseline is
+  `GetDpiForSystem()`, the same value the snapshot shows. It is called on `WM_DPICHANGED` and on the opening
+  of every `DpiAwareWindow`, from the pane's `SyncWpfContentScale`, and from `adxExcelAppEvents1_WindowResize`
+  (Excel's window resizes on a scale change, so the change is caught even with no GLSense window open).
+  Verified: a 100->150 switch with the pane open logged the line once.
+- **Debug noise removed:** `GLConfiguratorPane_ADXSplitterMove` (one line per mouse move while dragging),
+  `GLConfiguratorPane_Resize` (several lines per resize), `GLBalanceConfigurator.OnParentPaneResize invoked`,
+  and `ExcelRefEditControl_Loaded`'s "invoked" / "warning host found" (2 lines per Cell Reference box on
+  every load: 32 per Balance pane open).
+  Kept: `RecomputeWidthBounds` (only when it clamps), the `ADXAfterTaskPaneShow` widening line,
+  `ADXBeforeTaskPaneShow`, `RelaunchPane`.
+
+## `Views\ExcelRefEditControl.xaml` / `Views\GLLOVs.xaml` (Cell Reference text cut off, found with OISR-23017)
+
+- **Cell Reference text sat low and was cut in half in Insert LOVs, most visible at 150%.** The control's
+  TextBox was top-aligned with 6px top/bottom padding: a 13pt line (~17.3 DIP) + 12 padding + 2 border does
+  not fit in Insert LOVs' Height=28 (3.3 DIP clipped) or quite in 30 (Segment Values, ~1 DIP).
+  Fixed: `VerticalContentAlignment="Center"`, `Padding="8,0"` - the text is centred in whatever height the
+  control has. Every use sets a fixed height (28/30/32, or 30 via `CompactRefEditControl`), so no control
+  changes size. Insert LOVs' Cell Reference is now Height=30 like Segment Values. Verified by screenshot at
+  100% and 150% (Insert LOVs and Segment Values now identical). AIPowered 11.1.3 has the same padding (its
+  LOVs box is already 30) - open for the AIPowered port.

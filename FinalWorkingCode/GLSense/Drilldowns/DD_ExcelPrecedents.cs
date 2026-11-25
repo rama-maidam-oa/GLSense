@@ -99,7 +99,10 @@ namespace GLSense.Drilldowns
                 {
                     Win = new GLWaitWindow(cts);
                     Win.SetExcelOwner((IntPtr)ExcelApp.Hwnd);
-                    Win.Show();
+                    using (DpiAwarenessHelper.SetPerMonitorAware()) // OISR-23017: create the window Per-Monitor-V2
+                    {
+                        Win.Show();
+                    }
                     Win.StartMonitoring();
                 });
 
