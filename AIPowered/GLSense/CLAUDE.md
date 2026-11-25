@@ -8998,3 +8998,37 @@ GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from t
   the full caption; "Cube : Select Cube" keeps the default tooltip. Logic checked with a harness (25 chars unchanged,
   26 -> 25 + "...").
   **Status: AIPowered `11.1.3` and `threading-audit`.** Compile-checked (unsigned).
+
+## 135. Balance Configurator pane: trimmed on the right, and wrong size after a display-scale change (OISR-23017)
+
+- **Reproduced on an 11.1.3 Debug build (25-Nov-2026), before the fix:**
+  - Fresh Excel at 100%, with Add-in Express's saved docking width narrow (`Right_SizeP` = 36000, about 480 px):
+    the pane was cut off on the right (X, reference column, Insert/Close off-screen).
+  - 100% -> 150% with the pane open: the content stayed at the 100% size, too small.
+  - 150% -> 100% with the pane open: the content stayed at the 150% size, and the pane stuck at 952 px (its 150%
+    minimum) with the right side cut off.
+- **Causes, the same three as FinalWorkingCode 11.1.1 (its `CLAUDE.md` OISR-23017 section):**
+  - Add-in Express saves the docking width when Excel closes, in
+    `HKCU\Software\Microsoft\Office\Excel\Addins\ADXXLForm\Right_SizeP` (points x 100), and restores it after
+    `ADXBeforeTaskPaneShow`. The form's forced minimum width then pushed the pane past the docking area.
+  - The content window keeps its creation DPI. Re-parented as a child, it never gets `WM_DPICHANGED`.
+  - `MinimumSize` stayed in the old DPI's pixels, because a docked pane gets no `DpiChanged`.
+- **Fix:**
+  - `ConfiguratorPaneHost.SyncContentScale` (core, on the content window's `SizeChanged`, which follows every pane
+    resize): `LayoutTransform` = monitor DPI / WPF DPI, and `LogIfDpiChanged`. The window's DPI awareness is left
+    alone, because `SetParent` between windows of different awareness can fail.
+  - `GLConfiguratorPane` (host):
+    - Monitor DPI is read under Per-Monitor-V2 (`GetMonitorDpi`).
+    - No form minimum width (`ApplyDpiAwareSizing`, `SetBoundsCore`). The Resize and `RecomputeWidthBounds` clamps
+      cap at the max only.
+    - Resize re-applies the sizing when the DPI changed.
+    - `QueueWidenIfNarrowerThanContent` widens the pane to the default width when it is narrower than the content,
+      after `ADXAfterTaskPaneShow` and after a scale change.
+    - The per-mouse-move `ADXSplitterMove` debug line is removed.
+- **Verified (11.1.3 Debug, automated):**
+  - Narrow saved width: "widening 478 -> 650", whole pane visible.
+  - 100 -> 150: content scale 1.5, "widening 703 -> 975", whole pane visible, at the right size.
+  - 150 -> 100: content scale 0.667, pane 735 px, whole pane visible.
+  - Fresh 150%: unchanged, no rescale.
+  - The WARN "Display scale changed" line is logged once per switch.
+  **Status: AIPowered `11.1.3` and `threading-audit`.** This replaces the "ConfiguratorPaneHost not changed" note in 133.

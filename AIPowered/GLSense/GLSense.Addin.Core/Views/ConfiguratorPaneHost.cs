@@ -112,6 +112,9 @@ namespace GLSense.Addin.Core.Views
                         // relying on WindowInteropHelper.EnsureHandle() alone.
                         _window.Show();
 
+                        _appliedContentScale = 1.0;
+                        _window.SizeChanged += (s, e) => SyncContentScale();
+
                         handle = new WindowInteropHelper(_window).Handle;
                         ServiceLocator.Logger?.LogDebug($"ConfiguratorPaneHost.CreateContent: new window created, handle={handle}");
                     }
@@ -123,6 +126,45 @@ namespace GLSense.Addin.Core.Views
                 });
 
                 return handle;
+            }
+        }
+
+        private static double _appliedContentScale = 1.0;
+
+        // OISR-23017: this window keeps the DPI it was created with and, once re-parented as a child of the pane,
+        // never gets WM_DPICHANGED - so after a display-scale change with Excel open the content was drawn at the
+        // old scale (too small at 100->150, too big and cut off at 150->100). The pane resizes on a scale change
+        // (MoveWindow -> SizeChanged here), so rescale the content by monitor DPI / the DPI WPF draws this window
+        // at (1.0 = no transform when they agree). Its DPI awareness itself is left alone: SetParent between
+        // windows of different awareness can fail.
+        private static void SyncContentScale()
+        {
+            try
+            {
+                if (_window == null || _content == null)
+                    return;
+
+                IntPtr hwnd = new WindowInteropHelper(_window).Handle;
+                uint monitorDpi = Helpers.DpiAwarenessHelper.GetMonitorDpi(hwnd);
+                Helpers.DpiAwarenessHelper.LogIfDpiChanged(monitorDpi, "Balance Configurator pane");
+
+                double wpfDpi = System.Windows.Media.VisualTreeHelper.GetDpi(_window).PixelsPerInchX;
+                if (monitorDpi == 0 || wpfDpi <= 0)
+                    return;
+
+                double scale = monitorDpi / wpfDpi;
+                if (Math.Abs(scale - _appliedContentScale) < 0.01)
+                    return;
+
+                _appliedContentScale = scale;
+                _content.LayoutTransform = Math.Abs(scale - 1.0) < 0.01
+                    ? System.Windows.Media.Transform.Identity
+                    : new System.Windows.Media.ScaleTransform(scale, scale);
+                ServiceLocator.Logger?.LogDebug($"ConfiguratorPaneHost.SyncContentScale: content scale {scale:0.###} (monitor {monitorDpi} DPI, WPF {wpfDpi:0} DPI)");
+            }
+            catch (Exception ex)
+            {
+                ServiceLocator.Logger?.LogException(ex, "ConfiguratorPaneHost.SyncContentScale");
             }
         }
 

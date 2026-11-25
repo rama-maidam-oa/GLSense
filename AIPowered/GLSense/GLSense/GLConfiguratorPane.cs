@@ -145,12 +145,44 @@ namespace GLSense
 
         private IntPtr _contentHwnd = IntPtr.Zero;
 
+        [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+        [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+        [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
+
+        // OISR-23017: the monitor's real DPI. GetDpiForWindow reports the DPI the pane was created with when Office
+        // has the thread in a non-per-monitor context, so after a scale change with Excel open the sizes stayed at the
+        // old scale. Read under Per-Monitor-V2; 0 if unavailable.
+        private uint GetMonitorDpi()
+        {
+            IntPtr old = IntPtr.Zero;
+            try
+            {
+                old = SetThreadDpiAwarenessContext(new IntPtr(-4));
+                IntPtr monitor = MonitorFromWindow(this.Handle, 2 /* MONITOR_DEFAULTTONEAREST */);
+                if (monitor != IntPtr.Zero && GetDpiForMonitor(monitor, 0, out uint dpiX, out _) == 0)
+                    return dpiX;
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane.GetMonitorDpi failed ({ex.Message})");
+            }
+            finally
+            {
+                if (old != IntPtr.Zero)
+                    SetThreadDpiAwarenessContext(old);
+            }
+            return 0;
+        }
+
         private int GetEffectiveDpi()
         {
             try
             {
                 if (this.IsHandleCreated)
                 {
+                    uint monitorDpi = GetMonitorDpi();
+                    if (monitorDpi > 0)
+                        return (int)monitorDpi;
                     return (int)GetDpiForWindow(this.Handle);
                 }
             }
@@ -256,7 +288,9 @@ namespace GLSense
         {
             var (minPx, maxPx) = GetWidthBoundsPx();
             int actualWidthPx = GetActualWidthPx();
-            int clampedWidth = Math.Min(Math.Max(actualWidthPx, minPx), maxPx);
+            // OISR-23017: cap at the max only - forcing the min made the pane wider than Add-in Express's docking area
+            // and its right side ran off the screen. A too-narrow pane is widened once on show (ADXAfterTaskPaneShow).
+            int clampedWidth = Math.Min(actualWidthPx, maxPx);
             if (clampedWidth != this.Width)
             {
                 GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane.RecomputeWidthBounds: this.Width={this.Width} (actual={actualWidthPx}) -> {clampedWidth} (minPx={minPx}, maxPx={maxPx})");
@@ -288,12 +322,60 @@ namespace GLSense
             // further once it hits either bound. Ported from FinalWorkingCode's
             // identical fix (738fbed).
             this.ADXSplitterMove += GLConfiguratorPane_ADXSplitterMove;
+            this.ADXAfterTaskPaneShow += GLConfiguratorPane_ADXAfterTaskPaneShow;
+        }
+
+        // OISR-23017: Add-in Express saves the docking area's width when Excel closes
+        // (HKCU\Software\Microsoft\Office\Excel\Addins\ADXXLForm\Right_SizeP, points x 100) and restores it on the
+        // next show, after ADXBeforeTaskPaneShow has set our default width. A width saved narrower than the content
+        // came back every time and cut the pane off on the right. Setting Width once the show has settled does move
+        // the docking area, so widen it then.
+        private void GLConfiguratorPane_ADXAfterTaskPaneShow(object sender, ADXAfterTaskPaneShowEventArgs e)
+        {
+            QueueWidenIfNarrowerThanContent("ADXAfterTaskPaneShow");
+        }
+
+        // Widens the pane (which moves Add-in Express's docking area) to the default width when it is narrower than
+        // the content needs at the current DPI: after a show that restored a narrow saved width, and after a
+        // display-scale increase with the pane open (Add-in Express keeps the docking area's old pixel width).
+        private void QueueWidenIfNarrowerThanContent(string reason)
+        {
+            try
+            {
+                if (!this.IsHandleCreated)
+                    return;
+
+                this.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        int dpi = GetEffectiveDpi();
+                        int actualWidthPx = GetActualWidthPx();
+                        int contentMinWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
+                        if (this.Visible && actualWidthPx < contentMinWidthPx)
+                        {
+                            var (_, maxWidthPx) = GetWidthBoundsPx();
+                            int defaultWidthPx = (int)Math.Round(_defaultWidthDip * dpi / (float)DefaultDpi);
+                            int targetWidthPx = Math.Min(Math.Max(defaultWidthPx, contentMinWidthPx), Math.Max(maxWidthPx, contentMinWidthPx));
+                            GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane ({reason}): widening {actualWidthPx} -> {targetWidthPx}");
+                            this.Width = targetWidthPx;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        GlobalsEx.Context?.Logger?.LogException(ex, $"GLConfiguratorPane.QueueWidenIfNarrowerThanContent ({reason})");
+                    }
+                }));
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "GLConfiguratorPane.QueueWidenIfNarrowerThanContent");
+            }
         }
 
         private void GLConfiguratorPane_ADXSplitterMove(object sender, ADXSplitterMoveEventArgs e)
         {
             var (minWidthPx, maxWidthPx) = GetWidthBoundsPx();
-            GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane_ADXSplitterMove: NewRegionSize.Width={e.NewRegionSize.Width}, minWidthPx={minWidthPx}, maxWidthPx={maxWidthPx}");
             if (e.NewRegionSize.Width < minWidthPx || e.NewRegionSize.Width > maxWidthPx)
             {
                 e.Cancel = true;
@@ -381,28 +463,37 @@ namespace GLSense
             ApplyDpiAwareSizing(e.DeviceDpiNew);
         }
 
+        private float _appliedSizingDpi;
+
         private void ApplyDpiAwareSizing(float dpiX)
         {
+            _appliedSizingDpi = dpiX;
             var scale = dpiX / 96f;
-            int minWidthPx = (int)Math.Round(_minWidthDip * scale);
             int minHeightPx = (int)Math.Round(_minHeightDip * scale);
 
-            this.MinimumSize = new Size(minWidthPx, minHeightPx);
-            this.Size = new Size(Math.Max(this.Width, minWidthPx), Math.Max(this.Height, minHeightPx));
+            // OISR-23017: no minimum WIDTH on the form any more - WM_WINDOWPOSCHANGING/SetBoundsCore enforced it, which
+            // held the pane wider than Add-in Express's docking area (right side cut off), and after 150% -> 100% kept
+            // it at its 150% width. The width is kept in range by ADXSplitterMove, the max clamp and ADXAfterTaskPaneShow.
+            this.MinimumSize = new Size(0, minHeightPx);
+            this.Size = new Size(this.Width, Math.Max(this.Height, minHeightPx));
         }
 
         private void GLConfiguratorPane_Resize(object sender, EventArgs e)
         {
-            // Re-clamping into [min, max] here, computed fresh every time, is what keeps
-            // the pane correctly sized across a live DPI/resolution change (Excel's own
-            // window resizing/moving is handled separately by RecomputeWidthBounds,
-            // called from AddinModule's WindowResize handler). Ported from
-            // FinalWorkingCode's identical fix.
+            // OISR-23017: a docked pane gets no DpiChanged on a display-scale change, only Resize - re-derive the
+            // DPI-dependent sizes here when the monitor's DPI differs from the one they were computed for.
+            int dpi = GetEffectiveDpi();
+            if (Math.Abs(dpi - _appliedSizingDpi) > 0.5f)
+            {
+                ApplyDpiAwareSizing(dpi);
+                QueueWidenIfNarrowerThanContent("display scale changed");
+            }
+
             var (minWidthPx, maxWidthPx) = GetWidthBoundsPx();
             int actualWidthPx = GetActualWidthPx();
-            GlobalsEx.Context?.Logger?.LogDebug($"GLConfiguratorPane_Resize: this.Width={this.Width} (actual={actualWidthPx}), minWidthPx={minWidthPx}, maxWidthPx={maxWidthPx}");
 
-            int clampedWidth = Math.Min(Math.Max(actualWidthPx, minWidthPx), maxWidthPx);
+            // Cap at the max only (see RecomputeWidthBounds).
+            int clampedWidth = Math.Min(actualWidthPx, maxWidthPx);
             if (clampedWidth != this.Width)
             {
                 this.Width = clampedWidth;
@@ -590,14 +681,9 @@ namespace GLSense
         protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
         {
             var dpi = GetEffectiveDpi();
-            int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
             int minHeightPx = (int)Math.Round(_minHeightDip * dpi / (float)DefaultDpi);
 
-            if ((specified & BoundsSpecified.Width) != 0 && width < minWidthPx)
-            {
-                width = minWidthPx;
-            }
-
+            // OISR-23017: no width floor here any more (see ApplyDpiAwareSizing).
             if ((specified & BoundsSpecified.Height) != 0 && height < minHeightPx)
             {
                 height = minHeightPx;
