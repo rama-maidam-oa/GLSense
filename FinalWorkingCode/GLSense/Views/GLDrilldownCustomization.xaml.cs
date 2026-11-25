@@ -96,10 +96,9 @@ namespace GLSense.Views
                 // Optional: turn on DevTools during development
                 webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-                // Diagnostics: log WebView2 runtime. LogInfo (not Debug-gated) - see the same
-                // line in GLLogin.WebView_Loaded (WebView2 152.x cursor-hidden regression).
+                // Diagnostics: log WebView2 runtime
                 var version = webView.CoreWebView2.Environment.BrowserVersionString;
-                LogUtility.LogInfo($"WebView2 BrowserVersion={version}");
+                LogUtility.LogDebug($"WebView2 BrowserVersion={version}");
 
                 if (AppState.Instance.SelectedCube != null)
                 {

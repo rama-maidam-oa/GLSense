@@ -238,7 +238,12 @@ namespace GLSense.Utilities
 
             // Pay the one-time per-instance HWND-creation/first-paint cost right here,
             // off-screen, instead of on whichever real window first triggers ShowMatching().
-            _window.Show();
+            // OISR-23017: Per-Monitor-V2 like the DpiAwareWindow it stands in for, so both use the same
+            // coordinate space (it is positioned from that window's Left/Top/Width/Height).
+            using (DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                _window.Show();
+            }
             _window.Hide();
         }
 

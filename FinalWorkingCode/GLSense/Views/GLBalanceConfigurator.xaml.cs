@@ -29,7 +29,7 @@ namespace GLSense.Views
         // columns) genuinely need more room than that; WPF's Grid doesn't compress Auto
         // columns to force-fit, confirmed via direct measurement (see
         // GLConfiguratorPane._minWidthDip's own comment for the full write-up).
-        private const double MinimumConfiguratorWidth = 595;
+        private const double MinimumConfiguratorWidth = 635; // OISR-23017: ported from 4c3abee (was 595); see GLConfiguratorPane.ContentMinWidthDip
 
         private sealed class CellData
         {
@@ -269,7 +269,6 @@ namespace GLSense.Views
         }
         private void OnParentPaneResize(object sender, EventArgs e)
         {
-            LogUtility.LogDebug("GLBalanceConfigurator.OnParentPaneResize invoked");
             // Update control when task pane resizes
             Dispatcher.BeginInvoke(new Action(() =>
             {

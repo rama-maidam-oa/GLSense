@@ -24,12 +24,6 @@ namespace GLSense.Utilities
         [DllImport("user32.dll")]
         private static extern int ShowCursor(bool bShow);
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetCapture();
-
-        [DllImport("user32.dll")]
-        private static extern bool IsWindow(IntPtr hWnd);
-
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOSIZE = 0x0001;
         private const uint SWP_NOZORDER = 0x0004;
@@ -149,7 +143,21 @@ namespace GLSense.Utilities
             }
         }
 
+        // OISR-23017: the native window is created inside ShowDialog()/Show(), not in the constructor, and by
+        // then Office has usually switched this (Excel's main) thread back to its own DPI awareness - so the
+        // window came out System-aware at Excel's start-up DPI. After a display-scale change with Excel open
+        // (docking/undocking, changing Scale), Windows kept mapping mouse input for the old DPI while the
+        // content was drawn at the new one: hover flickered and clicks missed. Creating the window (and, for
+        // a modal window, every popup it opens while it is up) under Per-Monitor-V2 fixes that.
         public bool? ShowDialogWithOwner(IntPtr excelHwnd)
+        {
+            using (DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                return ShowDialogWithOwnerCore(excelHwnd);
+            }
+        }
+
+        private bool? ShowDialogWithOwnerCore(IntPtr excelHwnd)
         {
             try
             {
@@ -179,6 +187,14 @@ namespace GLSense.Utilities
         }
 
         public void ShowWithOwner(IntPtr excelHwnd)
+        {
+            using (DpiAwarenessHelper.SetPerMonitorAware()) // OISR-23017, see ShowDialogWithOwner
+            {
+                ShowWithOwnerCore(excelHwnd);
+            }
+        }
+
+        private void ShowWithOwnerCore(IntPtr excelHwnd)
         {
             try
             {
@@ -293,6 +309,8 @@ namespace GLSense.Utilities
                 LogUtility.LogDebug($"[{_windowName}] source initialized");
                 _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
                 _hwndSource?.AddHook(WndProc);
+                if (_hwndSource != null)
+                    DpiAwarenessHelper.LogIfDpiChanged(DpiAwarenessHelper.GetMonitorDpi(_hwndSource.Handle), $"{_windowName} (opening)");
 
                 // Run the DPI/fit/center pass now, synchronously, while the window still
                 // has no on-screen presence at all (SourceInitialized fires once the HWND
@@ -461,11 +479,28 @@ namespace GLSense.Utilities
             {
                 const int WM_DPICHANGED = 0x02E0;
 
+                // OISR-23017: WPF itself now scales Per-Monitor-V2 windows (AddinModule turns on
+                // Switch.System.Windows.DoNotScaleForDpiChanges=false), so leave WM_DPICHANGED unhandled:
+                // WPF re-renders at the new DPI and moves/resizes the window to Windows' suggested rect.
+                // The old handling here (a LayoutTransform of newDpi/96 + resize, handled=true) assumed WPF
+                // never rescaled and would now double-scale. Afterwards only re-clamp to the work area.
+                if (msg == WM_DPICHANGED)
+                    DpiAwarenessHelper.LogIfDpiChanged((uint)(wParam.ToInt64() & 0xFFFF), _windowName);
+
                 if (msg == WM_DPICHANGED && !DisableAutoSizing)
                 {
-                    uint newDpi = (uint)wParam;
-                    AdjustForDpiChange(newDpi, lParam);
-                    handled = true;
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            _currentScaleFactor = GetCurrentScaleFactor();
+                            EnsureFitsWorkArea();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogException(ex, "DpiAwareWindow.WndProc (after DPI change)");
+                        }
+                    }), System.Windows.Threading.DispatcherPriority.Background);
                 }
             }
             catch (Exception ex)
@@ -485,50 +520,6 @@ namespace GLSense.Utilities
             catch (Exception ex)
             {
                 LogUtility.LogException(ex, "DpiAwareWindow.AdjustForCurrentDpi");
-            }
-        }
-
-        private void AdjustForDpiChange(uint newDpi, IntPtr lParam)
-        {
-            try
-            {
-                var scaleFactor = GetScaleFactorFromDpi(newDpi);
-
-                ApplyScaleTransform(scaleFactor);
-
-                if (lParam != IntPtr.Zero)
-                {
-                    var rect = Marshal.PtrToStructure<Rect>(lParam);
-
-                    this.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try
-                        {
-                            this.Left = rect.Left / scaleFactor;
-                            this.Top = rect.Top / scaleFactor;
-                            this.Width = rect.Width / scaleFactor;
-                            this.Height = rect.Height / scaleFactor;
-
-                            // Windows' suggested rect (above) only keeps the window under the
-                            // cursor/at the same relative position during a DPI change - it has
-                            // no idea about our own MaxWidthCap/content-fit rules, so a window
-                            // dragged from a large, high-res monitor onto a smaller/lower-res one
-                            // at a different scale can land larger than the new monitor's work
-                            // area. Re-run the same clamp+recenter pass OnLoaded already does, so
-                            // a live cross-monitor drag ends up exactly as constrained as a fresh
-                            // open on that same monitor would be.
-                            FitToAvailableWorkArea();
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "DpiAwareWindow.AdjustForDpiChange (resize)");
-                        }
-                    }));
-                }
-            }
-            catch (Exception ex)
-            {
-                LogUtility.LogException(ex, "DpiAwareWindow.AdjustForDpiChange");
             }
         }
 
@@ -575,7 +566,7 @@ namespace GLSense.Utilities
                     return;
                 }
 
-                var workArea = SystemParameters.WorkArea;
+                var workArea = GetWorkAreaDip(); // OISR-23017: per-monitor, see GetWorkAreaDip
                 var availableWidth = Math.Max(0, workArea.Width - (WorkAreaMargin * 2));
                 var availableHeight = Math.Max(0, workArea.Height - (WorkAreaMargin * 2));
 
@@ -765,7 +756,7 @@ namespace GLSense.Utilities
             double newLeft = centerX - (effectiveWidth / 2.0);
             double newTop = centerY - (effectiveHeight / 2.0);
 
-            var workArea = SystemParameters.WorkArea;
+            var workArea = GetWorkAreaDip(); // OISR-23017: per-monitor, see GetWorkAreaDip
             if (effectiveWidth < workArea.Width)
                 newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - effectiveWidth));
             if (effectiveHeight < workArea.Height)
@@ -806,8 +797,17 @@ namespace GLSense.Utilities
                 double centerY;
 
                 IntPtr ownerHwnd = new WindowInteropHelper(this).Owner;
-                if (ownerHwnd != IntPtr.Zero && GetWindowRect(ownerHwnd, out Rect ownerRectPx) &&
-                    ownerRectPx.Width > 0 && ownerRectPx.Height > 0)
+                Rect ownerRectPx = default;
+                bool haveOwnerRect = false;
+                if (ownerHwnd != IntPtr.Zero)
+                {
+                    // OISR-23017: physical pixels regardless of the thread's current DPI context
+                    using (DpiAwarenessHelper.SetPerMonitorAware())
+                    {
+                        haveOwnerRect = GetWindowRect(ownerHwnd, out ownerRectPx);
+                    }
+                }
+                if (haveOwnerRect && ownerRectPx.Width > 0 && ownerRectPx.Height > 0)
                 {
                     double scale = GetCurrentScaleFactor();
                     double ownerLeft = ownerRectPx.Left / scale;
@@ -820,7 +820,7 @@ namespace GLSense.Utilities
                 }
                 else
                 {
-                    var workArea = SystemParameters.WorkArea;
+                    var workArea = GetWorkAreaDip(); // OISR-23017: per-monitor, see GetWorkAreaDip
                     centerX = workArea.Left + (workArea.Width / 2.0);
                     centerY = workArea.Top + (workArea.Height / 2.0);
                 }
@@ -863,10 +863,56 @@ namespace GLSense.Utilities
             return 1.0;
         }
 
-        private static double GetScaleFactorFromDpi(uint dpi)
+        // OISR-23017: the work area of the monitor this window (or its Excel owner) is on, in this
+        // window's own DIPs. SystemParameters.WorkArea is in the process's start-up (system) DPI, which
+        // after a display-scale change with Excel open no longer matches a Per-Monitor-V2 window's DPI,
+        // so windows were sized/clamped/centered against the wrong area (e.g. pushed to the top).
+        private System.Windows.Rect GetWorkAreaDip()
         {
-            var scale = dpi / 96.0;
-            return scale > 0 ? scale : 1.0;
+            try
+            {
+                IntPtr hwnd = _hwndSource?.Handle ?? IntPtr.Zero;
+                if (hwnd == IntPtr.Zero)
+                    hwnd = _excelOwnerHwnd;
+                if (hwnd != IntPtr.Zero)
+                {
+                    using (DpiAwarenessHelper.SetPerMonitorAware()) // physical pixels from GetMonitorInfo
+                    {
+                        IntPtr monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                        var info = new MonitorInfo { cbSize = Marshal.SizeOf(typeof(MonitorInfo)) };
+                        if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info) && info.rcWork.Width > 0)
+                        {
+                            double scale = GetCurrentScaleFactor();
+                            return new System.Windows.Rect(info.rcWork.Left / scale, info.rcWork.Top / scale,
+                                info.rcWork.Width / scale, info.rcWork.Height / scale);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "DpiAwareWindow.GetWorkAreaDip");
+            }
+
+            return SystemParameters.WorkArea;
+        }
+
+        private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MonitorInfo
+        {
+            public int cbSize;
+            public Rect rcMonitor;
+            public Rect rcWork;
+            public uint dwFlags;
         }
 
         protected double DipToPixels(double dip)
@@ -948,7 +994,7 @@ namespace GLSense.Utilities
                 double previousHeight = Height;
                 bool sizeChanged = false;
 
-                var workArea = SystemParameters.WorkArea;
+                var workArea = GetWorkAreaDip(); // OISR-23017: per-monitor, see GetWorkAreaDip
 
                 var baseMaxWidth = Math.Max(0, workArea.Width - margin);
                 var baseMaxHeight = Math.Max(0, workArea.Height - margin);
@@ -1077,15 +1123,6 @@ namespace GLSense.Utilities
                 // GLSense 10.5.1 VB.NET build's FormLogin.vb). ReleaseCapture() is a no-op
                 // when nothing has capture, so this is safe to call unconditionally on every
                 // window close, not just the three that host WebView2.
-                //
-                // Diagnostic logged with LogInfo (not Debug-gated): it's the evidence that
-                // confirms or rules out the mouse-capture mechanism in a customer's log.
-                // Only logs when something actually holds capture, so normal closes stay quiet.
-                IntPtr capturingHwnd = GetCapture();
-                if (capturingHwnd != IntPtr.Zero)
-                {
-                    LogUtility.LogInfo($"DpiAwareWindow.RestoreOwnerFocusOnClosed ({_windowName}): mouse capture WAS held by hWnd=0x{capturingHwnd.ToInt64():X} (IsWindow={IsWindow(capturingHwnd)}) - releasing now");
-                }
                 ReleaseCapture();
 
                 // Separate from mouse capture above: Windows' "Hide pointer while
@@ -1102,18 +1139,11 @@ namespace GLSense.Utilities
                 // decremented more than once, bounded so an already-visible cursor
                 // doesn't spin.
                 int cursorShowCount = ShowCursor(true);
-                bool cursorWasStuckHidden = cursorShowCount < 0;
                 int cursorShowGuard = 0;
                 while (cursorShowCount < 0 && cursorShowGuard < 25)
                 {
                     cursorShowCount = ShowCursor(true);
                     cursorShowGuard++;
-                }
-                if (cursorWasStuckHidden)
-                {
-                    // Same reasoning as the capture log above: confirms the WebView2
-                    // cursor-visibility-counter regression specifically.
-                    LogUtility.LogInfo($"DpiAwareWindow.RestoreOwnerFocusOnClosed ({_windowName}): cursor visibility counter WAS negative at close time (took {cursorShowGuard + 1} ShowCursor(true) call(s) to restore) - matches the known WebView2 Runtime 152.0.4191.x+ cursor-hidden regression");
                 }
 
                 if (Owner != null)
