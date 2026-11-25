@@ -2235,54 +2235,47 @@ namespace GLSense
 
                     List<string> balanceParameters = GetBalanceParameters(parameters);
 
-                    // ────────────────────────────────────────────────
-                    // Potentially slow part (cache miss → API) → background
-                    // ────────────────────────────────────────────────
-                    Task.Run(async () =>
+                    // Number -> double conversion, shared by both paths below.
+                    object ToExcelResult(object rawResult) => rawResult switch
                     {
-                        try
+                        double d => d,
+                        decimal m => (double)m,
+                        int i => (double)i,
+                        long l => (double)l,
+                        float f => (double)f,
+                        null => ADXExcelError.xlErrorNull.ToString(),
+                        string s when s.StartsWith("#Err:") => s,
+                        _ => rawResult ?? GLClicktoRefresh
+                    };
+
+                    // Only a single refresh calls the server, so only it goes to a background thread. Cache and batch
+                    // results (dictionary lookups) are returned here, on Excel's thread: a result returned from a
+                    // background thread leaves Excel unable to draw the Ctrl+C marquee after an edit to a cell these
+                    // formulas refer to (same fix as AIPowered, CLAUDE.md 126 there).
+                    if (AppState.Instance.SingleRefresh && !AppState.Instance.StartBatchCalc)
+                    {
+                        Task.Run(async () =>
                         {
-                            object rawResult;
-
-                            if (AppState.Instance.SingleRefresh && !AppState.Instance.StartBatchCalc)
+                            try
                             {
-                                // Await the async version
-                                rawResult = await ExecuteSingleRefreshAsync(formulaCompressed, balanceParameters);
+                                object finalResult = ToExcelResult(await ExecuteSingleRefreshAsync(formulaCompressed, balanceParameters));
+                                LogUtility.LogDebug($"GLSense_GetBalance result: {finalResult}");
+                                asyncCallObject.ReturnResult(finalResult);
                             }
-                            else if (AppState.Instance.StartBatchCalc)
+                            catch (Exception ex)
                             {
-                                // Assuming batch is sync and reasonably fast
-                                // If batch is also long-running → make it async too
-                                rawResult = HandleBatchCalculation(formulaCompressed);
+                                LogUtility.LogException(ex, "Error in GLSense_GetBalance background");
+                                asyncCallObject.ReturnResult(GLClicktoRefresh);
                             }
-                            else
-                            {
-                                // Cache read – usually very fast
-                                rawResult = HandleCachedResult(formulaCompressed);
-                            }
+                        });
+                        return;
+                    }
 
-                            // Your number → double conversion logic
-                            object finalResult = rawResult switch
-                            {
-                                double d => d,
-                                decimal m => (double)m,
-                                int i => (double)i,
-                                long l => (double)l,
-                                float f => (double)f,
-                                null => ADXExcelError.xlErrorNull.ToString(),
-                                string s when s.StartsWith("#Err:") => s,
-                                _ => rawResult ?? GLClicktoRefresh
-                            };
-
-                            LogUtility.LogDebug($"GLSense_GetBalance result: {finalResult}");
-                            asyncCallObject.ReturnResult(finalResult);
-                        }
-                        catch (Exception ex)
-                        {
-                            LogUtility.LogException(ex, "Error in GLSense_GetBalance background");
-                            asyncCallObject.ReturnResult(GLClicktoRefresh);
-                        }
-                    });
+                    object result = ToExcelResult(AppState.Instance.StartBatchCalc
+                        ? HandleBatchCalculation(formulaCompressed)
+                        : HandleCachedResult(formulaCompressed));
+                    LogUtility.LogDebug($"GLSense_GetBalance result: {result}");
+                    asyncCallObject.ReturnResult(result);
                 }
 
                 catch (Exception ex)

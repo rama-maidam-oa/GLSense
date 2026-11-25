@@ -1369,3 +1369,17 @@ there.**
   comparison (`RibSegS_OnChange`) is on the Segment dropdown's items, which this does not touch; nothing else
   sets the SuperTip. Truncation checked with a harness (25-char name unchanged, 26 -> first 25 + "...").
   **Status: FinalWorkingCode `11.1.1`.** Build-verified.
+
+## `GLSenseExcelFunctions.cs` (copy marquee missing after editing a cell referenced by balance formulas)
+
+- **Reported:** after editing (F2/Enter) a cell that `GLSense_GetBalance` formulas refer to, Ctrl+C copies but no
+  marching-ants marquee is drawn. Reproduced in FinalWorkingCode 11.1.2 and AIPowered 11.1.2/11.1.3.
+- **Root cause (proved by experiments in AIPowered, its CLAUDE.md 125/126):** `GLSense_GetBalance` always handed the
+  cache / batch lookup to `Task.Run` and called `asyncCallObject.ReturnResult` from that background thread. A result
+  returned from another thread after the recalculation leaves Excel unable to draw the marquee; the same result
+  returned inside the UDF call, on Excel's thread, keeps it.
+- **Fix:** only a single refresh (the server call) still runs on `Task.Run`. Cache and batch results are dictionary
+  lookups and are now returned directly on Excel's thread. The number conversion is a shared local function.
+  DFF / AccountType / DailyRate already returned their logged-out result inline; their logged-in result needs the
+  server, so it stays on the background thread.
+  **Status: FinalWorkingCode `11.1.2` only.** Build-verified. Still needs `11.1.0`/`11.1.1`/`11.1.3`.
