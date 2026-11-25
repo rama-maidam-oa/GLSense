@@ -9182,11 +9182,14 @@ one ran started another that overwrote them.
   field-state getters (`IsComboEnabled`/`IsRefEnabled`, Journal validation) call every time WPF re-reads them, so
   this was a hot loop on Excel's thread. Numbers inside the date range were wrong too: 1110 in an account
   reference came back as "1903-01-15".
-- **Fix:** new `asDate` parameter. Only a date-type field (Start/End Date, Period/End Period; new `IsDateField`)
+- **Fix:** new `asDate` parameter. Only a date-type field (Start Date / End Date only; new `IsDateField`)
   converts a number, and only within Excel's date range (-657435 <= d < 2958466), so nothing throws. Every other
   number is returned as text. Callers: `GetFieldValue` and `OnRefEditTextChanged` pass `IsDateField(field)`;
-  `ResolveSavedField` passes `asDate: true` for StartDate/EndDate/Period/EndPeriod. Balance type and account
-  assignment keep the default. Date fields keep the same yyyy-MM-dd result.
+  `ResolveSavedField` passes `asDate: true` for StartDate/EndDate. Balance type and account
+  assignment keep the default. Date fields keep the same yyyy-MM-dd result. Period / End Period are text period names
+  ("Jan-24") matched by name, not dates (developer, 25-Nov-2026), so a number there stays text. A date in a Period cell is the user's
+  mistake and the reference stays invalid. Cell text is now trimmed (`GetRangeValueSafe` returns `s.Trim()`): single-value
+  fields compared it untrimmed, so " Jan-24 " never matched; multi-value fields already trimmed each part.
 - **Verified:** build. A .NET check of the conversion: 11520000 -> "11520000" (the old code throws exactly "Not a
   legal OleAut date."), 1110 -> "1110", 45306 as a date field -> "2024-01-15", 45306 otherwise -> "45306",
   "Jan-24" unchanged. Local Excel check (25-Nov-2026, Debug v11.1.3_2026-11-25T14-46-12, GA01, `ExcelSmoke/Tests/OISR-23022.ps1 -PaneOnly`):

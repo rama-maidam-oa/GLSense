@@ -2690,10 +2690,9 @@ namespace GLSense.Addin.Core.ViewModels
             EncumbranceField.RefreshEnableState();
         }
 
-        // OISR-23022: a number in the referenced cell is a date only for a date-type field (asDate).
+        // OISR-23022: a number in the referenced cell is a date only for Start Date / End Date; Period and End Period are text period names (e.g. "Jan-24").
         private static bool IsDateField(FieldBinding? field) =>
-            field != null && (field.Type == FieldBinding.FieldType.StartDate || field.Type == FieldBinding.FieldType.EndDate ||
-                              field.Type == FieldBinding.FieldType.Period || field.Type == FieldBinding.FieldType.EndPeriod);
+            field != null && (field.Type == FieldBinding.FieldType.StartDate || field.Type == FieldBinding.FieldType.EndDate);
 
         private string? GetRangeValueSafe(string refText, bool asDate = false)
         {
@@ -3670,14 +3669,14 @@ namespace GLSense.Addin.Core.ViewModels
             }
             else if (btText.Equals(AppConstants.BalanceTypeCTD, StringComparison.OrdinalIgnoreCase))
             {
-                var (pArg, pVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef, asDate: true);
-                var (epArg, epVal) = ResolveSavedField(config.EndPeriodCombo, config.EndPeriodRef, asDate: true);
+                var (pArg, pVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef);
+                var (epArg, epVal) = ResolveSavedField(config.EndPeriodCombo, config.EndPeriodRef);
                 periodArg = $"{pArg}~{epArg}";
                 periodVal = $"{pVal}~{epVal}";
             }
             else
             {
-                (periodArg, periodVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef, asDate: true);
+                (periodArg, periodVal) = ResolveSavedField(config.PeriodCombo, config.PeriodRef);
             }
 
             // Budget/Encumbrance (index 8) - branches on the resolved actual-flag text, same
