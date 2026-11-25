@@ -26,36 +26,25 @@ namespace GLSense.Addin.Core.Utilities
                     ServiceLocator.Logger?.LogDebug("WpfAppManager.EnsureApplication: starting one-time WPF Application initialization.");
                     DpiAwarenessHelper.EnableWpfPerMonitorScaling(); // OISR-23017 backstop (AddinEntry.Initialize sets it first)
 
-                    // Set this thread's DPI awareness context to Per-Monitor-V2 and leave it
-                    // set. IMPORTANT: this must NOT be reverted (no "using"/Dispose) here.
-                    // Every actual WPF window on this thread - every BaseWindow-derived
-                    // dialog, and ConfiguratorPaneHost's borderless Window for the Balance
-                    // Configurator - is created later via separate InvokeOnWpfThread calls,
-                    // well after this method returns, all on this same dedicated WPF
-                    // dispatcher thread. Neither `new Application()` nor wiring
-                    // Dispatcher.UnhandledException below creates any native window handle -
-                    // only Window.Show()/EnsureHandle() elsewhere does, later. If the context
-                    // is reverted immediately after this block (as it previously was, via a
-                    // "using" scope), it has no effect on any real window's HWND creation, so
-                    // every window ends up DPI-aware in name only - it gets bitmap-scaled by
-                    // the OS instead of rendering natively per-monitor, which is what caused
-                    // windows (including the Balance Configurator) to intermittently render
-                    // "zoomed in"/blurry for some users, especially at >100% display scaling.
-                    // Keeping the context active for the life of this thread ensures every
-                    // window ever created on it is genuinely Per-Monitor-V2 DPI aware from
-                    // HWND creation on. Mirrors FinalWorkingCode's WpfAppManager.cs, which
-                    // documents this exact same fix for the identical reason.
-                    DpiAwarenessHelper.SetPerMonitorAware();
-
-                    if (Application.Current == null)
+                    // Audit item L8 (GLSense threading audit): this used to set Per-Monitor-V2 on Excel's thread and
+                    // deliberately never restore it, so that windows created later would be Per-Monitor-V2. It never
+                    // achieved that - Office switches the thread's DPI context back around every add-in call - and it
+                    // left Excel's own thread in a mode Excel did not set. Since OISR-23017 every window is created
+                    // Per-Monitor-V2 where its HWND is made (BaseWindow.ShowDialog, WebView2 popup, loading placeholder,
+                    // the progress window's own thread), so the context is only needed while WPF itself starts up
+                    // (the Dispatcher's hidden windows) and is restored afterwards.
+                    using (DpiAwarenessHelper.SetPerMonitorAware())
                     {
-                        var app = new Application();
-                        app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-                        ServiceLocator.Logger?.LogDebug("WpfAppManager: Created new Application instance with DPI awareness.");
-                    }
-                    else
-                    {
-                        ServiceLocator.Logger?.LogDebug("WpfAppManager: Using existing Application instance.");
+                        if (Application.Current == null)
+                        {
+                            var app = new Application();
+                            app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                            ServiceLocator.Logger?.LogDebug("WpfAppManager: Created new Application instance with DPI awareness.");
+                        }
+                        else
+                        {
+                            ServiceLocator.Logger?.LogDebug("WpfAppManager: Using existing Application instance.");
+                        }
                     }
 
                     // Set DPI awareness on the application

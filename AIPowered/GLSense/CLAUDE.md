@@ -9147,3 +9147,25 @@ one ran started another that overwrote them.
   staged for a newer release in `AddinCore\Manifest` -> ERROR "checksum mismatch", WARN "could not be used ... falling
   back to the newest installed release", and GLSense loaded (Login enabled, no "could not start"). **L3/L10:** every VM
   load in runs 1-6 started normally (no regression); their failure paths were not forced. L3 is a host change (MSI).
+
+## 140. WpfAppManager left Excel's thread Per-Monitor-V2 (L8, threading audit, 25-Nov-2026)
+
+- **Audit item L8**, first marked a false positive (the code comment said leaving it set was intentional).
+  OISR-23017 (section 133) showed the comment's premise was wrong: `EnsureApplication` set Per-Monitor-V2 on Excel's
+  thread and never restored it so that later windows would be Per-Monitor-V2. Office switches the thread's DPI
+  context back around every add-in call, so it never held for those windows. All it did was leave Excel's own
+  thread in a mode Excel did not set for the rest of that call.
+- **Fix:** the context is set only while the WPF `Application`/Dispatcher starts (its hidden windows) and restored
+  afterwards (`using`). Every window is created Per-Monitor-V2 where its HWND is made since OISR-23017:
+  `BaseWindow.ShowDialog`, the WebView2 popup, `WindowLoadingPlaceholder`, and the progress window's own thread.
+- **Same-issue sweep (pattern: thread DPI context changed without restoring it):** `SetPerMonitorAware()` call sites in
+  GLSense.Addin.Core are all `using` scopes now, except `ProgressWindowHost` (its own dedicated thread, set once at
+  thread start - correct). FinalWorkingCode `WpfAppManager` has the same unscoped call: not changed (11.1.1-11.1.3
+  FinalWorkingCode were tested with it; OISR-23017 covers its windows the same way). OPEN for a later port.
+- **Also:** E7 (section 138): two more VM attempts (dirty cell under manual calculation; a second workbook recalculated
+  by another workbook's Book Refresh) - Excel recalculated the dirty cell at once through the cache path, so the batch
+  never answered a cached formula with "Click Refresh...". The fix is a one-condition change, verified by review; no
+  run showed a regression.
+- **Status: VM-verified (25-Nov-2026, run 8, Debug v11.1.3_2026-11-25T14-15-04):** Threading-LedgerRefresh (login, cube,
+  ledger switch, Sheet/Book Refresh, busy guard, Insert LOVs x2, E1) and Threading-StagedZip (restart, L1) PASS; no
+  unexpected ERROR/Exception. Excel took 36.9 s to exit after the E1 step (in-cell edit was left open), 2.6 s at the end.

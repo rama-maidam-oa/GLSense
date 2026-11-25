@@ -12,7 +12,9 @@ Read **"Checkpoint 24-Nov-2026 evening"** first: it overrides older state below 
 - **VM-verified:** batch 1 (R1/C2), K1/K2, C1 busy guard (136), **E1 (137)**, **L1 (139)**. L3/L10: normal loads only.
 - **Not reproduced: E7 (138).** The batch answered a dirty Sheet2!B2 with its balance, not "Click Refresh...". Needs a
   scenario where the batch misses a formula that already has a cached balance.
-- **Still open:** E7 scenario; MSI for E1/L3 (host changes); L8 (user will discuss later); C3 closed (by design).
+- **L8 fixed** (fix log 140): `WpfAppManager` restores the thread DPI context after WPF starts. **E7:** two more VM
+  setups (dirty cell, second workbook) could not make the batch miss a cached formula; accepted by code review.
+- **Still open:** MSI for E1/L3 (host changes) - full 11.1.3 redeploy in progress 25-Nov; C3 closed (by design).
 
 ## Checkpoint 25-Nov-2026: moved to 11.1.3 (overrides everything below)
 - At the user's request, all of `threading-audit` was brought to `11.1.3` (code + this file + fix log), then the
