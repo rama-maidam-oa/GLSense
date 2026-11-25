@@ -2492,10 +2492,9 @@ namespace GLSense.ViewModels
             EncumbranceField.RefreshEnableState();
         }
 
-        // OISR-23022: a number in the referenced cell is a date only for a date-type field (asDate).
+        // OISR-23022: a number in the referenced cell is a date only for Start Date / End Date; Period and End Period are text period names (e.g. "Jan-24").
         private static bool IsDateField(FieldBinding? field) =>
-            field != null && (field.Type == FieldBinding.FieldType.StartDate || field.Type == FieldBinding.FieldType.EndDate ||
-                              field.Type == FieldBinding.FieldType.Period || field.Type == FieldBinding.FieldType.EndPeriod);
+            field != null && (field.Type == FieldBinding.FieldType.StartDate || field.Type == FieldBinding.FieldType.EndDate);
 
         private string? GetRangeValueSafe(string refText, bool asDate = false)
         {
@@ -2505,9 +2504,9 @@ namespace GLSense.ViewModels
                 if (val == null)
                     return null;
 
-                // If Excel returns a string, return it directly
+                // If Excel returns a string, return it trimmed: lists are matched by exact name and leading/trailing spaces are ignored (OISR-23022)
                 if (val is string s)
-                    return s;
+                    return s.Trim();
 
                 // If Excel returns a DateTime, format to ISO yyyy-MM-dd
                 if (val is DateTime dt)
