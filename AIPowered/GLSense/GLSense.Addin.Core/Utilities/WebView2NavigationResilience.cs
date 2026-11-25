@@ -117,7 +117,10 @@ namespace GLSense.Addin.Core.Utilities
                 // class's own header comment for the full reasoning. The popup briefly
                 // shows blank chrome until its content finishes initializing - expected
                 // and harmless.
-                popup.Show();
+                using (Helpers.DpiAwarenessHelper.SetPerMonitorAware()) // OISR-23017: HWND created Per-Monitor-V2
+                {
+                    popup.Show();
+                }
 
                 await popup.InitializeAsync(_core!.Environment, _trustedHostsProvider!);
 

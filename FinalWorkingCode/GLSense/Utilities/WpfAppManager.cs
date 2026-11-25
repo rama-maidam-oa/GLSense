@@ -35,6 +35,7 @@ namespace GLSense.Utilities
                     // Keeping the context active for the life of this thread ensures every window
                     // ever created on it is genuinely Per-Monitor-V2 DPI aware from HWND creation on.
                     DpiAwarenessHelper.SetPerMonitorAware();
+                    DpiAwarenessHelper.EnableWpfPerMonitorScaling(); // OISR-23017 (no-op if AddinModule already set it)
 
                     var app = new Application
                     {

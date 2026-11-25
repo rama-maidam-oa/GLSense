@@ -298,7 +298,7 @@
                 <!-- Cell Reference -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="Reference :" Style="{StaticResource HeaderTextBlock}" Margin="0,0,10,0"/>
-                    <local:ExcelRefEditControl x:Name="excelRefEdit" Tag="LOV's Cell Reference" Width="250" Height="28" VerticalAlignment="Center"/>
+                    <local:ExcelRefEditControl x:Name="excelRefEdit" Tag="LOV's Cell Reference" Width="250" Height="30" VerticalAlignment="Center"/>
                 </StackPanel>
                 <!-- Action Buttons -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">

@@ -8956,3 +8956,32 @@ GLSense_GetDailyRate's cache key includes the marker. Host and Addin.Core from t
   not in scope. FinalWorkingCode still uses the old upload path - not changed.
 - **Status:** committed before server confirmation, at the developer's request. Test MSI (23-Nov 22:39) built
   from this code; build-verified, MSI contents checked. Not yet tested against the engineer's server.
+
+## 133. Buttons flicker / need several clicks after a display-scale change with Excel open (OISR-23017)
+
+- **Reported (FinalWorkingCode 11.1.1, Mortenson, 150%):** hover flickered and buttons needed several clicks.
+  Reproduced only when the display scale changes while Excel is open. Fixed there first (FinalWorkingCode
+  `CLAUDE.md`, OISR-23017 section); this is the port.
+- **Same root cause here:** WPF runs on Excel's own thread (`WpfAppManager.EnsureApplication` runs on the calling
+  thread; it sets Per-Monitor-V2 once and leaves it, but Office switches the thread's DPI context back around every
+  add-in call). The HWND is created in `ShowDialog()`/`Show()`, so windows came out System-aware at Excel's start-up DPI.
+- **Changes:**
+  - `BaseWindow.ShowDialog`: `base.ShowDialog()` runs inside `DpiAwarenessHelper.SetPerMonitorAware()`. Every
+    `BaseWindow` dialog goes through it (GLMessageWindow, AttachmentsDialog, GLCubeDetails...). The non-modal
+    `WebView2PopupWindow.Show()` and `WindowLoadingPlaceholder`'s one-time `Show()` are wrapped directly.
+  - `DpiAwarenessHelper.EnableWpfPerMonitorScaling()` (`Switch.System.Windows.DoNotScaleForDpiChanges=false`) is
+    called first in `AddinEntry.Initialize` (backstop in `WpfAppManager.EnsureApplication`), so WPF rescales the
+    windows itself. `BaseWindow.WndProc` no longer handles `WM_DPICHANGED` (`AdjustForDpiChange`'s newDpi/96
+    LayoutTransform would double-scale). It only refreshes the scale factor and re-fits afterwards.
+  - Work area from the window's own monitor (`GetWorkAreaDip` -> `DpiAwarenessHelper.GetMonitorWorkAreaDip`) in
+    place of the 5 `SystemParameters.WorkArea` uses. Excel's rect for centring is read under Per-Monitor-V2
+    (`GetExcelRectPerMonitor`).
+  - `DpiAwarenessHelper.LogIfDpiChanged`: one WARN line per scale change (`Display scale changed: 96 DPI (100%) ->
+    144 DPI (150%), detected by <window>`), on `WM_DPICHANGED` and when a window opens.
+  - `ExcelRefEditControl.xaml`: text centred vertically (`Padding="8,0"`), as in FinalWorkingCode.
+- **Same-issue sweep:** every `Show()`/`ShowDialog()` in `GLSense.Addin.Core` checked. `ProgressWindowHost` runs
+  its window on its own thread that stays Per-Monitor-V2 (Office never switches it), so it was left. **Not changed:**
+  `ConfiguratorPaneHost` (Balance Configurator). Its WPF window is re-parented (`SetParent`/WS_CHILD) into the Add-in
+  Express pane, and a child with a different DPI awareness from its parent can make `SetParent` fail. It needs its
+  own fix and test.
+  **Status: AIPowered `11.1.3` and `threading-audit`.** Compile-checked (unsigned); not run in Excel.

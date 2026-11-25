@@ -272,7 +272,10 @@ namespace GLSense.Utilities
                         win.WindowStartupLocation = WindowStartupLocation.CenterScreen;
                     }
 
-                    win.ShowDialog();
+                    using (DpiAwarenessHelper.SetPerMonitorAware()) // OISR-23017: create the window Per-Monitor-V2
+                    {
+                        win.ShowDialog();
+                    }
 
                     if (excelHwnd != IntPtr.Zero)
                     {

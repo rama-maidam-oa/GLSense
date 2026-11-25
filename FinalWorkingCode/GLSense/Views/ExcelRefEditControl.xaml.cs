@@ -315,7 +315,6 @@ namespace GLSense.Views
 
         private void ExcelRefEditControl_Loaded(object sender, RoutedEventArgs e)
         {
-            LogUtility.LogDebug($"ExcelRefEditControl.ExcelRefEditControl_Loaded invoked - TagName={TagName}");
             UpdateToolTipText(this.Text);
 
             if (DesignerProperties.GetIsInDesignMode(this))
@@ -330,7 +329,6 @@ namespace GLSense.Views
 
                 if (host != null)
                 {
-                    LogUtility.LogDebug("ExcelRefEditControl.ExcelRefEditControl_Loaded: warning host found, setting up ExcelRefManager control");
                     ExcelRefManager.SetupControl(this, TagName, host);
                 }
                 else

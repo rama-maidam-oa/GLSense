@@ -279,7 +279,6 @@ namespace GLSense.Views
         }
         private void OnParentPaneResize(object sender, EventArgs e)
         {
-            LogUtility.LogDebug("GLBalanceConfigurator.OnParentPaneResize invoked");
             // Update control when task pane resizes
             Dispatcher.BeginInvoke(new Action(() =>
             {

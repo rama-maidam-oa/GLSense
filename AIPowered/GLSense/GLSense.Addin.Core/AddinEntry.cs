@@ -73,6 +73,9 @@ namespace GLSense.Addin.Core
         {
             _ctx = context;
 
+            // OISR-23017: before any WPF object exists in this AppDomain (see DpiAwarenessHelper).
+            Helpers.DpiAwarenessHelper.EnableWpfPerMonitorScaling();
+
             try
             {
                 // Initialize ServiceLocator - this is the ONLY place where context is set

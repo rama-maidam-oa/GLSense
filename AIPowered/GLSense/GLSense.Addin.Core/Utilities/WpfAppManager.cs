@@ -24,6 +24,7 @@ namespace GLSense.Addin.Core.Utilities
                 try
                 {
                     ServiceLocator.Logger?.LogDebug("WpfAppManager.EnsureApplication: starting one-time WPF Application initialization.");
+                    DpiAwarenessHelper.EnableWpfPerMonitorScaling(); // OISR-23017 backstop (AddinEntry.Initialize sets it first)
 
                     // Set this thread's DPI awareness context to Per-Monitor-V2 and leave it
                     // set. IMPORTANT: this must NOT be reverted (no "using"/Dispose) here.

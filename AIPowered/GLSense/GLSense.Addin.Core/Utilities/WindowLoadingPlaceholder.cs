@@ -243,7 +243,11 @@ namespace GLSense.Addin.Core.Utilities
 
             // Pay the one-time per-instance HWND-creation/first-paint cost right here,
             // off-screen, instead of on whichever real window first triggers ShowMatching().
-            _window.Show();
+            // OISR-23017: the HWND is created here, once - create it Per-Monitor-V2 like the real windows.
+            using (Helpers.DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                _window.Show();
+            }
             _window.Hide();
         }
 

@@ -55,6 +55,9 @@ namespace GLSense
 
         public AddinModule()
         {
+            // OISR-23017: before anything creates a WPF window (see the method's comment).
+            Utilities.DpiAwarenessHelper.EnableWpfPerMonitorScaling();
+
             // No handler anywhere previously caught a truly unhandled exception outside
             // the WPF dispatcher thread (WpfAppManager.OnDispatcherUnhandledException
             // only covers that one thread) - a background Task or COM callback thread
@@ -2073,6 +2076,9 @@ namespace GLSense
         {
             try
             {
+                // OISR-23017: a display-scale change resizes Excel's window, so this records it even with no GLSense window open.
+                Utilities.DpiAwarenessHelper.LogIfDpiChanged(Utilities.DpiAwarenessHelper.GetMonitorDpi(new IntPtr(AppState.Instance.ExcelApp.Hwnd)), "Excel window resize");
+
                 var pane = GetPaneInstance();
                 if (pane != null && pane.Visible)
                 {

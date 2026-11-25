@@ -31,6 +31,12 @@ namespace GLSense
         // leaves a safety margin for font/ClearType rendering variance across machines.
         private readonly int _minWidthDip = 635;
         private readonly int _maxWidthDip = 940;
+        // OISR-23017: what the WPF content itself needs - GLBalanceConfigurator.xaml's inner Grid MinWidth
+        // (640; its ScrollViewer has horizontal scrolling disabled) plus the vertical scrollbar (~18). The
+        // WPF host never gets narrower than this; when Add-in Express's docking area is narrower (it
+        // decides that width, not us - e.g. 493 px at 100% was seen), the pane scrolls horizontally
+        // (AutoScroll) instead of forcing itself wider than the docking area and running off the screen.
+        private const int ContentMinWidthDip = 640 + 18;
         // The pane's width target as a fraction of Excel's own current window width
         // (AppState.Instance.ExcelApp.Width) - see GetWidthBoundsPx(). Keeps the pane a
         // consistent proportion of the available space across any monitor/resolution/DPI,
@@ -109,6 +115,11 @@ namespace GLSense
             {
                 if (this.IsHandleCreated)
                 {
+                    // OISR-23017: the monitor's real DPI first - GetDpiForWindow keeps reporting
+                    // Excel's start-up DPI for this pane after a display-scale change with Excel open.
+                    uint monitorDpi = DpiAwarenessHelper.GetMonitorDpi(this.Handle);
+                    if (monitorDpi > 0)
+                        return (int)monitorDpi;
                     return (int)GetDpiForWindow(this.Handle);
                 }
             }
@@ -194,15 +205,13 @@ namespace GLSense
         {
             var (minPx, maxPx) = GetWidthBoundsPx();
             int actualWidthPx = GetActualWidthPx();
-            int clampedWidth = Math.Min(Math.Max(actualWidthPx, minPx), maxPx);
+            // OISR-23017: cap at the max only - never push the pane wider than the docking area Add-in
+            // Express gave it (that ran its right side off the screen); a narrower area scrolls (AutoScroll).
+            int clampedWidth = Math.Min(actualWidthPx, maxPx);
             if (clampedWidth != this.Width)
             {
                 LogUtility.LogDebug($"GLConfiguratorPane.RecomputeWidthBounds: this.Width={this.Width} (actual={actualWidthPx}) -> {clampedWidth} (minPx={minPx}, maxPx={maxPx})");
                 this.Width = clampedWidth;
-                if (_host != null)
-                {
-                    _host.Width = clampedWidth;
-                }
             }
 
             // Defensive layout refresh after a programmatic resize (see the matching
@@ -286,6 +295,12 @@ namespace GLSense
                 this.Controls.Add(_host);
             }
 
+            // OISR-23017: scroll horizontally when the docking area is narrower than the content needs
+            // (the host's MinimumSize / AutoScrollMinSize, set in ApplyDpiAwareSizing) instead of the pane
+            // forcing itself wider than the docking area. Dock=Fill lays the host out in the scrollable area.
+            this.AutoScroll = true;
+            ApplyDpiAwareSizing(GetEffectiveDpi());
+
             _wpfControl.OnCloseRequested += () => this.Visible = false;
 
             // Covers the case where this task pane's own native handle - and therefore
@@ -324,7 +339,41 @@ namespace GLSense
             // user-driven event, avoids running any of that during DPI/resolution
             // changes.
             this.ADXSplitterMove += GLConfiguratorPane_ADXSplitterMove;
+            this.ADXAfterTaskPaneShow += GLConfiguratorPane_ADXAfterTaskPaneShow;
 
+        }
+
+        // OISR-23017: Add-in Express re-lays its docking area out after the show and can leave it
+        // narrower than the content (480 px at 100% here), so widen it once it has settled.
+        private void GLConfiguratorPane_ADXAfterTaskPaneShow(object sender, ADXAfterTaskPaneShowEventArgs e)
+        {
+            try
+            {
+                this.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        int actualWidthPx = GetActualWidthPx();
+                        int contentMinWidthPx = (int)Math.Round(ContentMinWidthDip * GetEffectiveDpi() / (float)DefaultDpi);
+                        if (this.Visible && actualWidthPx < contentMinWidthPx)
+                        {
+                            var (_, maxWidthPx) = GetWidthBoundsPx();
+                            int defaultWidthPx = (int)Math.Round(_defaultWidthDip * GetEffectiveDpi() / (float)DefaultDpi);
+                            int targetWidthPx = Math.Min(Math.Max(defaultWidthPx, contentMinWidthPx), Math.Max(maxWidthPx, contentMinWidthPx));
+                            LogUtility.LogDebug($"GLConfiguratorPane_ADXAfterTaskPaneShow: widening {actualWidthPx} -> {targetWidthPx}");
+                            this.Width = targetWidthPx;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtility.LogException(ex, "GLConfiguratorPane_ADXAfterTaskPaneShow (deferred)");
+                    }
+                }));
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLConfiguratorPane_ADXAfterTaskPaneShow");
+            }
         }
 
         private void GLConfiguratorPane_ADXSplitterMove(object sender, ADXSplitterMoveEventArgs e)
@@ -336,7 +385,6 @@ namespace GLSense
             // resize (confirmed reproduction: cursor showed resize, dragging did nothing,
             // after switching 125% -> 100% with the pane already open).
             var (minWidthPx, maxWidthPx) = GetWidthBoundsPx();
-            LogUtility.LogDebug($"GLConfiguratorPane_ADXSplitterMove: NewRegionSize.Width={e.NewRegionSize.Width}, minWidthPx={minWidthPx}, maxWidthPx={maxWidthPx}");
             if (e.NewRegionSize.Width < minWidthPx || e.NewRegionSize.Width > maxWidthPx)
             {
                 e.Cancel = true;
@@ -367,6 +415,80 @@ namespace GLSense
             // can return the real per-monitor DPI, so recompute the sizing here to correct
             // that floor.
             ApplyDpiAwareSizing(GetEffectiveDpi());
+            SyncWpfContentScale();
+        }
+
+        // OISR-23017: the WPF content keeps the DPI it was created with (Excel's start-up DPI). A docked
+        // task pane gets no WM_DPICHANGED (see below), so after a display-scale change with Excel open the
+        // content was drawn too small (100% -> 150%) or too big and clipped (150% -> 100%). Scale it by
+        // monitor DPI / WPF's DPI; 1.0 (no transform) whenever the two agree, e.g. Excel started at this scale.
+        private double _appliedContentScale = 1.0;
+
+        private bool _reshowPending;
+
+        private void SyncWpfContentScale(bool reshowIfVisible = false)
+        {
+            try
+            {
+                if (_wpfControl == null || !this.IsHandleCreated)
+                    return;
+
+                uint monitorDpi = DpiAwarenessHelper.GetMonitorDpi(this.Handle);
+                DpiAwarenessHelper.LogIfDpiChanged(monitorDpi, "Balance Configurator pane");
+                double wpfDpi = System.Windows.Media.VisualTreeHelper.GetDpi(_wpfControl).PixelsPerInchX;
+                if (monitorDpi == 0 || wpfDpi <= 0)
+                    return;
+
+                double scale = monitorDpi / wpfDpi;
+                if (Math.Abs(scale - _appliedContentScale) < 0.01)
+                    return;
+
+                _appliedContentScale = scale;
+                _wpfControl.LayoutTransform = Math.Abs(scale - 1.0) < 0.01
+                    ? System.Windows.Media.Transform.Identity
+                    : new System.Windows.Media.ScaleTransform(scale, scale);
+
+                // The DPI changed while the pane exists: MinimumSize is still in the old DPI's pixels, and
+                // WM_WINDOWPOSCHANGING/SetBoundsCore enforce it - after 150% -> 100% that kept the pane at
+                // its 150% width (content clipped on the right) whatever the Resize clamp asked for.
+                // Re-derive it for the new DPI; the Resize clamp then brings the width into range.
+                ApplyDpiAwareSizing(monitorDpi);
+
+                // A live DPI change while the pane is open: the pane resizes, but Add-in Express does not
+                // re-lay out the docking area around it, so after 150% -> 100% the content sat shifted right
+                // with the close button and right-hand controls clipped until the user resized it. Re-show
+                // it once (the same path as opening it - ADXBeforeTaskPaneShow sets the width for the
+                // current DPI); its content is kept. Not done when the pane is merely being created/shown.
+                if (reshowIfVisible && this.Visible && !_reshowPending)
+                {
+                    _reshowPending = true;
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        // ADXBeforeTaskPaneShow keeps the pane hidden unless displayConfigurator is set (only
+                        // the ribbon's Balance click sets it, so Add-in Express can't pop the pane up on its own);
+                        // set it around the re-show exactly as RibFSG_OnClick does, or the pane stays closed.
+                        AppState.Instance.displayConfigurator = true;
+                        try
+                        {
+                            this.Visible = false;
+                            this.Visible = true;
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtility.LogException(ex, "GLConfiguratorPane.SyncWpfContentScale (re-show)");
+                        }
+                        finally
+                        {
+                            AppState.Instance.displayConfigurator = false;
+                            _reshowPending = false;
+                        }
+                    }));
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "GLConfiguratorPane.SyncWpfContentScale");
+            }
         }
 
         // Only ever called from the constructor and HandleCreated (both effectively
@@ -380,19 +502,27 @@ namespace GLSense
         private void ApplyDpiAwareSizing(float dpiX)
         {
             var scale = dpiX / 96f;
-            int minWidthPx = (int)Math.Round(_minWidthDip * scale);
             int minHeightPx = (int)Math.Round(_minHeightDip * scale);
+            int contentMinWidthPx = (int)Math.Round(ContentMinWidthDip * scale);
 
-            this.MinimumSize = new Size(minWidthPx, minHeightPx);
+            // OISR-23017: no minimum WIDTH on the pane form itself any more - Add-in Express decides the
+            // docking area's width, and a form minimum wider than that made the pane run off the screen
+            // (WndProc/SetBoundsCore enforce MinimumSize). The WPF host keeps the content's real minimum
+            // and the form scrolls horizontally (AutoScroll) when the docking area is narrower. The user's
+            // splitter drags are still kept within [min, max] by ADXSplitterMove.
+            this.MinimumSize = new Size(0, minHeightPx);
+            this.AutoScrollMinSize = new Size(contentMinWidthPx, minHeightPx);
             if (_host != null)
             {
-                _host.MinimumSize = this.MinimumSize;
+                _host.MinimumSize = new Size(contentMinWidthPx, minHeightPx);
             }
 
-            this.Size = new Size(Math.Max(this.Width, minWidthPx), Math.Max(this.Height, minHeightPx));
+            this.Size = new Size(this.Width, Math.Max(this.Height, minHeightPx));
         }
         private void GLConfiguratorPane_Resize(object sender, EventArgs e)
         {
+            SyncWpfContentScale(reshowIfVisible: true); // OISR-23017: Resize is what fires on a live DPI change for this pane
+
             // Resize (backed by WM_SIZE) fires for ANY actual size change to this
             // control, regardless of cause - unlike WM_DPICHANGED/Form.DpiChanged, which
             // Windows only sends to genuine top-level windows and, confirmed via debug
@@ -406,16 +536,12 @@ namespace GLSense
             // RecomputeWidthBounds, called from AddinModule's WindowResize handler.)
             var (minWidthPx, maxWidthPx) = GetWidthBoundsPx();
             int actualWidthPx = GetActualWidthPx();
-            LogUtility.LogDebug($"GLConfiguratorPane_Resize: this.Width={this.Width} (actual={actualWidthPx}), minWidthPx={minWidthPx}, maxWidthPx={maxWidthPx}");
 
-            int clampedWidth = Math.Min(Math.Max(actualWidthPx, minWidthPx), maxWidthPx);
+            // OISR-23017: cap at the max only (see RecomputeWidthBounds) - below the min the pane scrolls.
+            int clampedWidth = Math.Min(actualWidthPx, maxWidthPx);
             if (clampedWidth != this.Width)
             {
-                this.Width = clampedWidth;
-                if (_host != null)
-                {
-                    _host.Width = clampedWidth;
-                }
+                this.Width = clampedWidth; // the host follows via Dock=Fill (never below its MinimumSize)
             }
 
             // Defensive layout refresh after a programmatic resize. NOTE: this was
@@ -496,6 +622,7 @@ namespace GLSense
                     // MinimumSize floor (520), so the two can differ.
                     if (pane.Visible)
                     {
+                        pane.SyncWpfContentScale(); // OISR-23017
                         int defaultWidthPx = (int)Math.Round(_defaultWidthDip * pane.GetEffectiveDpi() / (float)DefaultDpi);
                         pane.Width = Math.Max(defaultWidthPx, pane.MinimumSize.Width);
                     }
@@ -557,13 +684,10 @@ namespace GLSense
         protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
         {
             var dpi = GetEffectiveDpi();
-            int minWidthPx = (int)Math.Round(_minWidthDip * dpi / (float)DefaultDpi);
             int minHeightPx = (int)Math.Round(_minHeightDip * dpi / (float)DefaultDpi);
 
-            if ((specified & BoundsSpecified.Width) != 0 && width < minWidthPx)
-            {
-                width = minWidthPx;
-            }
+            // OISR-23017: width is no longer floored here - Add-in Express sizes the pane to its docking
+            // area, and forcing it wider ran its right side off the screen. Narrower areas scroll instead.
 
             if ((specified & BoundsSpecified.Height) != 0 && height < minHeightPx)
             {

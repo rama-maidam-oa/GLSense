@@ -12,7 +12,9 @@ namespace GLSense.Utilities
         [DllImport("user32.dll")]
         private static extern uint GetDpiForWindow(IntPtr hwnd);
 
-        [DllImport("user32.dll")]
+        // OISR-23017: GetDpiForMonitor lives in shcore.dll - declared against user32.dll it threw
+        // EntryPointNotFoundException on every call (caught and logged), so it never returned a DPI.
+        [DllImport("shcore.dll")]
         private static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
 
         [DllImport("user32.dll")]
@@ -22,6 +24,77 @@ namespace GLSense.Utilities
         private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
         private const int MDT_EFFECTIVE_DPI = 0;
 
+
+        // OISR-23017: WPF only re-renders a Per-Monitor-V2 window at its own monitor's DPI (and on
+        // WM_DPICHANGED) when this compatibility switch is off. Hosted in Excel there is no app.config
+        // of ours to set it, and its default leaves WPF drawing every window at the DPI Excel started
+        // with - so after a display-scale change with Excel open, windows came out too small/too big.
+        // AppContext switches are read once and cached, so this must run before WPF reads it, i.e.
+        // before the first WPF window/HwndSource is created.
+        public static void EnableWpfPerMonitorScaling()
+        {
+            try
+            {
+                AppContext.SetSwitch("Switch.System.Windows.DoNotScaleForDpiChanges", false);
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "DpiAwarenessHelper.EnableWpfPerMonitorScaling");
+            }
+        }
+
+        // OISR-23017: the effective DPI of the monitor a window is on, independent of the calling
+        // thread's DPI awareness (GetDpiForMonitor reports the system DPI to a non-per-monitor caller).
+        // Returns 0 if it can't be read.
+        public static uint GetMonitorDpi(IntPtr hwnd)
+        {
+            try
+            {
+                if (hwnd == IntPtr.Zero)
+                    return 0;
+
+                using (SetPerMonitorAware())
+                {
+                    var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                    if (monitor != IntPtr.Zero && GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint dpiX, out _) == 0)
+                        return dpiX;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "DpiAwarenessHelper.GetMonitorDpi");
+            }
+
+            return 0;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForSystem();
+
+        private static int _lastLoggedDpi;
+
+        // OISR-23017: the log's Environment Snapshot records the scale Excel started at; a scale change
+        // after that (docking, Settings > Display) was invisible in the log. Logs one WARN line per change
+        // (not Debug-gated). Baseline is the system DPI, the same value the snapshot shows.
+        public static void LogIfDpiChanged(uint dpi, string source)
+        {
+            try
+            {
+                if (dpi == 0)
+                    return;
+
+                int previous = System.Threading.Interlocked.Exchange(ref _lastLoggedDpi, (int)dpi);
+                if (previous == 0)
+                    previous = (int)GetDpiForSystem();
+
+                if (previous != 0 && previous != (int)dpi)
+                    LogUtility.LogWarn($"Display scale changed: {previous} DPI ({previous * 100 / 96}%) -> {dpi} DPI ({dpi * 100 / 96}%), detected by {source}");
+            }
+            catch (Exception ex)
+            {
+                LogUtility.LogException(ex, "DpiAwarenessHelper.LogIfDpiChanged");
+            }
+        }
 
         public static IDisposable SetPerMonitorAware()
         {

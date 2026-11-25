@@ -217,6 +217,8 @@ namespace GLSense.Addin.Core.Views
                 ServiceLocator.Logger?.LogDebug($"[{_windowName}] source initialized");
                 _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
                 _hwndSource?.AddHook(WndProc);
+                if (_hwndSource != null)
+                    DpiAwarenessHelper.LogIfDpiChanged(DpiAwarenessHelper.GetMonitorDpi(_hwndSource.Handle), $"{_windowName} (opening)");
 
                 if (ModalToExcel && _excelHandle != IntPtr.Zero)
                 {
@@ -384,10 +386,27 @@ namespace GLSense.Addin.Core.Views
             {
                 const int WM_DPICHANGED = 0x02E0;
 
+                if (msg == WM_DPICHANGED)
+                    DpiAwarenessHelper.LogIfDpiChanged((uint)(wParam.ToInt64() & 0xFFFF), _windowName);
+
+                // OISR-23017: WPF itself now rescales Per-Monitor-V2 windows (AddinEntry turns
+                // Switch.System.Windows.DoNotScaleForDpiChanges off) and applies Windows' suggested rect, so this
+                // message is left unhandled - the old newDpi/96 LayoutTransform + resize would double-scale. Afterwards
+                // only refresh the scale factor and re-fit to the (new) work area.
                 if (msg == WM_DPICHANGED && !DisableAutoSizing)
                 {
-                    AdjustForDpiChange((uint)wParam, lParam);
-                    handled = true;
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            AdjustForCurrentDpi();
+                            FitToAvailableWorkArea();
+                        }
+                        catch (Exception ex)
+                        {
+                            ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] WndProc (after DPI change)");
+                        }
+                    }), DispatcherPriority.Background);
                 }
             }
             catch (Exception ex)
@@ -410,40 +429,13 @@ namespace GLSense.Addin.Core.Views
             }
         }
 
-        private void AdjustForDpiChange(uint newDpi, IntPtr lParam)
+        // OISR-23017: the work area of this window's own monitor in this window's DIPs (SystemParameters.WorkArea is
+        // in system-DPI units, wrong after a display-scale change with Excel open); falls back to it before the HWND exists.
+        private Rect GetWorkAreaDip()
         {
-            try
-            {
-                var scaleFactor = newDpi / 96.0;
-
-                ApplyScaleTransform(scaleFactor);
-                _currentScaleFactor = scaleFactor;
-
-                if (lParam != IntPtr.Zero)
-                {
-                    var rect = Marshal.PtrToStructure<RECT>(lParam);
-
-                    this.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try
-                        {
-                            this.Left = rect.Left / scaleFactor;
-                            this.Top = rect.Top / scaleFactor;
-                            this.Width = rect.Width / scaleFactor;
-                            this.Height = rect.Height / scaleFactor;
-                            FitToAvailableWorkArea();
-                        }
-                        catch (Exception ex)
-                        {
-                            ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] AdjustForDpiChange (resize) error");
-                        }
-                    }));
-                }
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] AdjustForDpiChange error");
-            }
+            IntPtr hwnd = _hwndSource?.Handle ?? IntPtr.Zero;
+            return DpiAwarenessHelper.GetMonitorWorkAreaDip(hwnd, DpiAwarenessHelper.GetWindowDpi(this) / 96.0)
+                ?? SystemParameters.WorkArea;
         }
 
         private void ApplyScaleTransform(double scaleFactor)
@@ -483,7 +475,7 @@ namespace GLSense.Addin.Core.Views
                 if (Content is not FrameworkElement root)
                     return;
 
-                var workArea = SystemParameters.WorkArea;
+                var workArea = GetWorkAreaDip();
                 var availableWidth = Math.Max(0, workArea.Width - (WorkAreaMargin * 2));
                 var availableHeight = Math.Max(0, workArea.Height - (WorkAreaMargin * 2));
 
@@ -591,7 +583,7 @@ namespace GLSense.Addin.Core.Views
                 double previousHeight = Height;
                 bool sizeChanged = false;
 
-                var workArea = SystemParameters.WorkArea;
+                var workArea = GetWorkAreaDip();
 
                 var baseMaxWidth = Math.Max(0, workArea.Width - margin);
                 var baseMaxHeight = Math.Max(0, workArea.Height - margin);
@@ -701,7 +693,7 @@ namespace GLSense.Addin.Core.Views
             double newLeft = centerX - (effectiveWidth / 2.0);
             double newTop = centerY - (effectiveHeight / 2.0);
 
-            var workArea = SystemParameters.WorkArea;
+            var workArea = GetWorkAreaDip();
             if (effectiveWidth < workArea.Width)
                 newLeft = Math.Max(workArea.Left, Math.Min(newLeft, workArea.Right - effectiveWidth));
             if (effectiveHeight < workArea.Height)
@@ -725,7 +717,7 @@ namespace GLSense.Addin.Core.Views
                 // OISR-22877: a minimized Excel window reports about (-32000,-32000), which the
                 // work-area clamp turns into the top-left corner - center on the screen instead.
                 if (_excelHandle != IntPtr.Zero && !IsIconic(_excelHandle) &&
-                    GetWindowRect(_excelHandle, out RECT excelRect) &&
+                    GetExcelRectPerMonitor(out RECT excelRect) &&
                     excelRect.Width > 0 && excelRect.Height > 0 && excelRect.Left > -30000 && excelRect.Top > -30000)
                 {
                     double scale = _currentScaleFactor > 0 ? _currentScaleFactor : 1.0;
@@ -739,7 +731,7 @@ namespace GLSense.Addin.Core.Views
                 }
                 else
                 {
-                    var workArea = SystemParameters.WorkArea;
+                    var workArea = GetWorkAreaDip();
                     centerX = workArea.Left + (workArea.Width / 2.0);
                     centerY = workArea.Top + (workArea.Height / 2.0);
                 }
@@ -843,7 +835,7 @@ namespace GLSense.Addin.Core.Views
                 {
                     var currentPos = e.GetPosition(this);
                     var diff = currentPos - _dragStartPoint;
-                    var workingArea = SystemParameters.WorkArea;
+                    var workingArea = GetWorkAreaDip();
 
                     var newLeft = Math.Max(workingArea.Left, Math.Min(workingArea.Right - this.Width, this.Left + diff.X));
                     var newTop = Math.Max(workingArea.Top, Math.Min(workingArea.Bottom - this.Height, this.Top + diff.Y));
@@ -994,7 +986,13 @@ namespace GLSense.Addin.Core.Views
                     }
                 }
 
-                return base.ShowDialog();
+                // OISR-23017: the HWND is created here, not in the constructor. Office switches Excel's thread back to
+                // its own DPI context around add-in calls, so without this scope the window came out System-aware and,
+                // after a display-scale change with Excel open, clicks landed at the old scale (buttons needed several clicks).
+                using (DpiAwarenessHelper.SetPerMonitorAware())
+                {
+                    return base.ShowDialog();
+                }
             }
             catch (Exception ex)
             {
@@ -1015,6 +1013,16 @@ namespace GLSense.Addin.Core.Views
             catch (Exception ex)
             {
                 ServiceLocator.Logger?.LogException(ex, $"[{_windowName}] SafeShowDialog error");
+            }
+        }
+
+        // OISR-23017: Excel's rect in physical pixels (under Per-Monitor-V2); in a System-aware context Windows
+        // returns it scaled to the start-up DPI, which put windows off-centre after a display-scale change.
+        private bool GetExcelRectPerMonitor(out RECT rect)
+        {
+            using (DpiAwarenessHelper.SetPerMonitorAware())
+            {
+                return GetWindowRect(_excelHandle, out rect);
             }
         }
 
