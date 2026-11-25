@@ -1383,3 +1383,30 @@ there.**
   DFF / AccountType / DailyRate already returned their logged-out result inline; their logged-in result needs the
   server, so it stays on the background thread.
   **Status: FinalWorkingCode `11.1.2` only.** Build-verified. Still needs `11.1.0`/`11.1.1`/`11.1.3`.
+
+## `ViewModels\GLConfiguratorViewModel.cs` (Balance Configurator flooded the log ("Not a legal OleAut date") and read numbers as dates, OISR-23022)
+
+- **Reported (QA, new MSI, many-sheet workbook):** slow refresh, no response, black screen while testing. QA's
+  `GLSense_Logs_25-Nov-2026.log` has 24,003 of its 27,779 lines as one WARN, `GetRangeValueSafe: failed to convert
+  OADate to DateTime (falling back): Not a legal OleAut date.`, about 10,000 a minute (11:28-11:31) while the Balance
+  Configurator was open.
+- **Cause:** `GLConfiguratorViewModel.GetRangeValueSafe` read every number in a referenced cell as an Excel date
+  (`DateTime.FromOADate`). A number outside Excel's date range, such as an account code like 11520000, threw. Each
+  throw logged an exception (plus a Debug line on every call). The function runs from `GetFieldValue`, which the
+  field-state getters (`IsComboEnabled`/`IsRefEnabled`, Journal validation) call every time WPF re-reads them, so
+  this was a hot loop on Excel's thread. Numbers inside the date range were wrong too: 1110 in an account
+  reference came back as "1903-01-15".
+- **Fix:** new `asDate` parameter. Only a date-type field (Start/End Date, Period/End Period; new `IsDateField`)
+  converts a number, and only within Excel's date range (-657435 <= d < 2958466), so nothing throws. Every other
+  number is returned as text. Callers: `GetFieldValue` and `OnRefEditTextChanged` pass `IsDateField(field)`;
+  balance type and account assignment keep the default. The per-call Debug line is removed. Date fields keep the same yyyy-MM-dd result.
+- **Verified:** build. A .NET check of the conversion: 11520000 -> "11520000" (the old code throws exactly "Not a
+  legal OleAut date."), 1110 -> "1110", 45306 as a date field -> "2024-01-15", 45306 otherwise -> "45306",
+  "Jan-24" unchanged.
+- **Same-issue sweep (pattern: number -> FromOADate without a range check, logged per call):** all `FromOADate`
+  uses in both trees. `GLDailyRatesViewModel`/`GLPeriodByDateModel` try it only on date input and catch silently;
+  `GLGetPeriodByDate` already has `TryFromOADate`; the date UDF helpers convert a date argument once per formula
+  call. None of them loops. AIPowered `GetRangeValueSafe` had the same flaw (its fix-log section 141), fixed the same way.
+- **Also in the ticket, not code:** QA's MSI predates the refresh changes (gzip OISR-22975, Excel-thread refresh,
+  busy guard); refresh/drilldown timings are being measured on the current build.
+  **Status: FinalWorkingCode `11.1.1`/`11.1.2`/`11.1.3`.** Build-verified; Balance Configurator open 60 s on a numeric Activity reference: 0 OADate warnings (25-Nov-2026).
