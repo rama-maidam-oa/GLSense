@@ -65,6 +65,12 @@ namespace GLSense
 
         public override object InitializeLifetimeService() => null;
 
+        // Post-login add-in update check - see IRibbonController and AddinModule.FindNewerAddinRelease.
+        public string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds) =>
+            _addinModule.FindNewerAddinRelease(loginUrl, loginToken, timeoutSeconds);
+
+        public void ReloadToNewerAddinRelease() => _addinModule.PostReloadToNewerAddinRelease();
+
         #region EXISTING: Action Registration System (UNCHANGED)
 
         private void InitializeActions()

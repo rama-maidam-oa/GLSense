@@ -70,5 +70,17 @@ namespace GLSense.Contracts
         void HideAllTaskPanes();
         void HideConfiguratorPane();
         void RelaunchConfiguratorPaneIfVisible();
+
+        // Post-login add-in update check (login -> update check -> broadcast). The host owns the release index,
+        // the downloaded releases and the reload, so Addin.Core asks it through these. Added after 11.1.3's first
+        // release: an Addin.Core running under an older host gets MissingMethodException and skips the check.
+        //   - FindNewerAddinRelease: newest released GLSense on the server with a later release date than the loaded
+        //     one, as display text ("11.1.3 (26-Nov-2026 10:15)"), or null when there is none. Never throws: any
+        //     failure (server, timeout, parsing) is logged and returns null, so login carries on.
+        //   - ReloadToNewerAddinRelease: downloads that release, logs out and reloads GLSense into it. Returns at
+        //     once - the work is posted to Excel's thread so Addin.Core's own call stack has unwound before its
+        //     AppDomain is unloaded (OISR-22874).
+        string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds);
+        void ReloadToNewerAddinRelease();
     }
 }

@@ -316,6 +316,131 @@ namespace GLSense
             }
         }
 
+        // ---- Post-login add-in update check (login -> update check -> broadcast) ----
+        // Addin.Core asks through RibbonController.FindNewerAddinRelease / ReloadToNewerAddinRelease right after a
+        // successful login. The release found is kept here between the two calls.
+        private readonly System.Windows.Threading.Dispatcher _excelDispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+        private OnlineReleaseRow _newerRelease;
+        private string _newerReleaseLoginUrl;
+        private string _newerReleaseLoginToken;
+
+        internal string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)
+        {
+            _newerRelease = null;
+            var context = GlobalsEx.Context;
+            try
+            {
+                if (context == null || string.IsNullOrWhiteSpace(loginUrl) || string.IsNullOrWhiteSpace(loginToken))
+                    return null;
+
+                var row = System.Threading.Tasks.Task.Run(() => OnlineUpdateCheck.FindNewerReleaseAsync(
+                    context, loginUrl, loginToken, TimeSpan.FromSeconds(timeoutSeconds))).GetAwaiter().GetResult();
+                if (row == null)
+                {
+                    context.Logger?.LogDebug($"Post-login update check: no release newer than {context.Version} ({context.ReleaseDate}).");
+                    return null;
+                }
+
+                _newerRelease = row;
+                _newerReleaseLoginUrl = loginUrl;
+                _newerReleaseLoginToken = loginToken;
+                context.Logger?.LogDebug($"Post-login update check: {row.Version} ({row.ReleaseDate}) is newer than {context.Version} ({context.ReleaseDate}).");
+                return $"{row.Version} ({row.ReleaseDateDisplay})";
+            }
+            catch (Exception ex)
+            {
+                // Never stops the login: no popup, just the log line.
+                var inner = ex is AggregateException ae && ae.InnerException != null ? ae.InnerException : ex;
+                context?.Logger?.LogWarn($"Post-login update check failed - login continues without it: {inner.GetType().Name}: {inner.Message}");
+                return null;
+            }
+        }
+
+        // Called from Addin.Core while its prompt is still on the stack: the reload unloads Addin.Core's AppDomain, so
+        // it runs later on Excel's thread, after that call has returned (OISR-22874).
+        internal void PostReloadToNewerAddinRelease()
+        {
+            var row = _newerRelease;
+            if (row == null)
+            {
+                GlobalsEx.Context?.Logger?.LogWarn("ReloadToNewerAddinRelease: no newer release from the update check - nothing to reload.");
+                return;
+            }
+
+            string loginUrl = _newerReleaseLoginUrl, loginToken = _newerReleaseLoginToken;
+            _excelDispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+                new Action(() => ReloadToNewerRelease(row, loginUrl, loginToken)));
+        }
+
+        private void ReloadToNewerRelease(OnlineReleaseRow row, string loginUrl, string loginToken)
+        {
+            if (_reloadInProgress) return;
+            _reloadInProgress = true;
+            try
+            {
+                var context = GlobalsEx.Context;
+                context?.Logger?.LogDebug($"Post-login update: downloading {row.Version} ({row.ReleaseDate}) before reloading.");
+
+                // Download first, before anything is logged out or unloaded: a failed download leaves the current
+                // session exactly as it is.
+                ResolvedRelease resolved = null;
+                Exception error = null;
+                GLReloadProgressWindow progressWindow = null;
+                try
+                {
+                    progressWindow = new GLReloadProgressWindow($"Downloading GLSense {row.Version}...", context?.Version, context?.ReleaseDate);
+                    new System.Windows.Interop.WindowInteropHelper(progressWindow).Owner = CurrentExcelHandle();
+                    progressWindow.ShowAndRender();
+                    progressWindow.SetRelease(row.Version, row.ReleaseDate);
+                }
+                catch (Exception ex)
+                {
+                    context?.Logger?.LogException(ex, "ReloadToNewerRelease: failed to show the progress window");
+                    progressWindow = null;
+                }
+
+                try
+                {
+                    var download = System.Threading.Tasks.Task.Run(() => OnlineUpdateCheck.FetchAndCatalogAsync(context, loginUrl, loginToken, row));
+                    while (!download.IsCompleted)
+                        PumpFor(100); // keeps Excel and the progress window painting during the download
+                    resolved = download.GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                    context?.Logger?.LogException(ex, $"ReloadToNewerRelease: downloading {row.Version} ({row.ReleaseDate}) failed");
+                }
+                finally
+                {
+                    progressWindow?.AllowCloseAndClose();
+                }
+
+                if (resolved == null)
+                {
+                    MessageBox.Show(
+                        $"The GLSense update {row.Version} ({row.ReleaseDateDisplay}) could not be downloaded" +
+                        (error != null ? $": {error.Message}" : ".") +
+                        $"{Environment.NewLine}GLSense continues with the current version.",
+                        "Reload GLSense Add-in",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // ReloadAddinCore logs GLSense (and XLEdge) out first, then unloads and loads the downloaded release.
+                ReloadAddinCore(() => resolved);
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "ReloadToNewerRelease");
+            }
+            finally
+            {
+                _reloadInProgress = false;
+            }
+        }
+
         private void RibReleaseHistory_OnClick(object sender, IRibbonControl control, bool pressed)
         {
             GlobalsEx.Context?.Logger?.LogDebug($"RibReleaseHistory_OnClick fired (pressed={pressed})");

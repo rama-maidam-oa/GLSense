@@ -209,6 +209,7 @@
     <Compile Include="Utilities\ComMessageFilter.cs" />
     <Compile Include="Utilities\CommonFunctions.cs" />
     <Compile Include="Utilities\CommonMethods.cs" />
+    <Compile Include="Utilities\PostLoginUpdateCheck.cs" />
     <Compile Include="Utilities\MouseWheelFocusHelper.cs" />
     <Compile Include="Utilities\DataGridColumnFillHelper.cs" />
     <Compile Include="Utilities\PeriodsDiscoverer.cs" />

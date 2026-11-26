@@ -9310,3 +9310,18 @@ one ran started another that overwrote them.
   entry (checked by hand on QA02).
 - **Same-issue sweep (per-row Hyperlinks.Add):** attachments and custom drilldown keep real hyperlinks (few rows) via
   the shared `AddSelfHyperlinks` helper; no other per-row link loop found.
+## 146. Post-login add-in update check (login -> update check -> broadcast message)
+- **Request:** after a successful login, before the broadcast message, check the server for a newer GLSense release
+  and ask "Add-in updates are available... Do you wish to reload the add-in?". Yes = download the newest, log out,
+  reload; No = carry on. Any failure of the check is only logged - it never stops the login.
+- **Change:** `GLLogin.SuccessCube` (after `Close()`) calls `PostLoginUpdateCheck.Run` instead of posting the broadcast.
+  It asks the host on a background thread (`IRibbonController.FindNewerAddinRelease`, 10 s) and then, on Excel's
+  thread, shows the prompt and the broadcast. The host (`AddinModule.FindNewerAddinRelease`, `OnlineUpdateCheck`)
+  reads the release index (`/rest/secure/orbit-addons/manifests?type=glsense`; 404 = no updates), keeps released
+  entries newer (release date) than the loaded one, and remembers the newest. `ReloadToNewerAddinRelease` is posted
+  to Excel's thread (the core's stack must unwind first, OISR-22874), downloads with a progress window, checks it is
+  the same build, then `ReloadAddinCore` (open-window confirm, logout, reload). A failed download: one message, the
+  current version stays. Only the add-in the user logged into checks (a synced login does not).
+  An older host without the two members: MissingMethodException is caught and logged; the broadcast follows.
+- **XLEdge:** same flow in BusinessLayers 11.1.3 (ADXExcelTaskPane1.CheckForAddinUpdateAsync, contract 6).
+- **Verified:** builds. Not yet run in Excel.

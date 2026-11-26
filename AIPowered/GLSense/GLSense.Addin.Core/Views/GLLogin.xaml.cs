@@ -722,8 +722,9 @@ namespace GLSense.Addin.Core.Views
             // Posted, so the login dialog has finished closing before the message box opens.
             ServiceLocator.Logger?.LogDebug("GLLogin.SuccessCube: closing login window");
             Close();
-            if (!string.IsNullOrWhiteSpace(broadcastMsg))
-                _ = Dispatcher.BeginInvoke(new Action(() => CommonFunctions.GLSenseMessage(broadcastMsg, MessageBoxImage.Information)));
+            // Login -> add-in update check -> broadcast: the check runs in the background and never stops the login;
+            // the broadcast follows it (see PostLoginUpdateCheck).
+            PostLoginUpdateCheck.Run(Dispatcher, AppState.Instance.LoginUrl, AppState.Instance.LoginToken, broadcastMsg);
         }
 
         private async Task ShowErrorAndCloseAsync(string message)

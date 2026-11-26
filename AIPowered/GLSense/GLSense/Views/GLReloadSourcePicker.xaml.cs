@@ -45,18 +45,18 @@ namespace GLSense
         // glsenseManifests.json (release index) and {folderName}\manifest.json + {fileName}.
         private const string AddinApiPath = "/rest/secure/orbit-addons";
         private const string AddinType = "glsense";
-        private const string ReleaseIndexPath = AddinApiPath + "/manifests?type=" + AddinType;
+        internal const string ReleaseIndexPath = AddinApiPath + "/manifests?type=" + AddinType;
 
-        private static string BuildVersionUrl(string loginUrl, string folderName, string resource) =>
+        internal static string BuildVersionUrl(string loginUrl, string folderName, string resource) =>
             loginUrl.TrimEnd('/') + AddinApiPath + "/versions/" + Uri.EscapeDataString(folderName) + "/" + resource + "?type=" + AddinType;
 
         // 401 = token missing/expired, 404 = release not listed in the add-in's release
         // index or its file is missing on the server. Turned into readable messages for the step log.
-        private const string NotOnServerMessage = "This version is no longer available on the server.";
+        internal const string NotOnServerMessage = "This version is no longer available on the server.";
 
         // OISR-22872: same settings as the core's ApiHelper (TLS 1.2/1.3, no proxy). With the system
         // proxy, machines whose proxy can't reach the server got "Unable to connect to the remote server".
-        private static HttpClient CreateHttpClient(TimeSpan? timeout = null)
+        internal static HttpClient CreateHttpClient(TimeSpan? timeout = null)
         {
             var client = new HttpClient(new HttpClientHandler
             {
@@ -67,7 +67,7 @@ namespace GLSense
             return client;
         }
 
-        private static async Task<HttpResponseMessage> GetCheckedAsync(HttpClient client, string url)
+        internal static async Task<HttpResponseMessage> GetCheckedAsync(HttpClient client, string url)
         {
             var response = await client.GetAsync(url);
             if (response.IsSuccessStatusCode) return response;
