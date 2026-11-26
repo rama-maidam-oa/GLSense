@@ -183,7 +183,7 @@ namespace GLSense.Addin.Core.Drilldowns
 
                 await ValidateAndFixFormulasAsync(Win);
 
-                await SetMessageAsync("Creating balance dto...");
+                await SetMessageAsync("Preparing the balance request...");
                 string jsonPayload = CreateBalancePayload();
 
                 var totalRange = CommonFunctions.GetBalanceTotalRange(_blAddress);

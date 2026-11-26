@@ -295,11 +295,18 @@ namespace GLSense.Addin.Core.Views
             BusyStep.Visibility = string.IsNullOrWhiteSpace(step) ? Visibility.Collapsed : Visibility.Visible;
         }
 
+        // OISR-23022: the busy overlay shown last and not yet hidden. A server call made while it is up reports
+        // "Waiting for the server: ..." on its step line (ProgressWindowHost.ReportStep), under the window's own message.
+        private static AppOverlay _activeBusy;
+
+        internal static void ReportBusyStep(string step) => _activeBusy?.SetBusyStep(step);
+
         public void ShowBusyasyn(string message = "Please wait...", Func<Task> cancelAction = null)
         {
             ServiceLocator.Logger?.LogDebug($"AppOverlay.ShowBusyasyn invoked: message={message}, hasCancelAction={cancelAction != null}");
             BusyMessage.Text = message ?? "Please wait...";
             SetBusyStepText(null);
+            _activeBusy = this;
             this.Visibility = Visibility.Visible;
             this.Opacity = 1.0;
             Panel.SetZIndex(this, 9999);
@@ -373,6 +380,7 @@ namespace GLSense.Addin.Core.Views
         public async Task HideBusyAsync()
         {
             ServiceLocator.Logger?.LogDebug("AppOverlay.HideBusyAsync invoked");
+            if (ReferenceEquals(_activeBusy, this)) _activeBusy = null;
             var tcs = new TaskCompletionSource<bool>();
             _pendingHideBusyTcs.Add(tcs);
 

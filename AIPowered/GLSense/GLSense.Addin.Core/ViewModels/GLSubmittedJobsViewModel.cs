@@ -37,6 +37,7 @@ using GLSense.Addin.Core.Drilldowns;
 using GLSense.Addin.Core.Helpers;
 using GLSense.Addin.Core.Infrastructure;
 using GLSense.Addin.Core.Models;
+using GLSense.Addin.Core.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -936,10 +937,12 @@ namespace GLSense.Addin.Core.ViewModels
                 client.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
 
+                ProgressWindowHost.ReportStep("Waiting for the server: job output..."); // OISR-23022
                 var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, BusyToken);
 
                 if (response.IsSuccessStatusCode)
                 {
+                    ProgressWindowHost.ReportStep("Downloading the job output from the server...");
                     string fn = string.Empty;
                     string fname = string.Empty;
 
@@ -1094,6 +1097,8 @@ namespace GLSense.Addin.Core.ViewModels
             client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
 
+            // OISR-23022: before the first byte the time is the server's; the step line then shows "Downloading: n MB".
+            if (step != null) step("Waiting for the server: job output..."); else ProgressWindowHost.ReportStep("Waiting for the server: job output...");
             using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
             if (!response.IsSuccessStatusCode)
             {

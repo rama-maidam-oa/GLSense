@@ -14,7 +14,9 @@
 //     StrictCertificateValidator.Validate all resolve via this project's Helpers
 //     namespace (all already ported, see this same folder).
 using GLSense.Addin.Core.Infrastructure;
+using GLSense.Addin.Core.Utilities;
 using System;
+using System.Linq;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -77,7 +79,7 @@ namespace GLSense.Addin.Core.Helpers
                     {
                         using (var client = CreateHttpClient())
                         {
-                            return await ExecuteApiCall(client, sendURL, StrContentType, PostData, MethodType, token);
+                            return await ExecuteApiCall(client, sendURL, StrContentType, PostData, MethodType, token).ConfigureAwait(false);
                         }
                     },
                     cancellationToken,
@@ -105,10 +107,18 @@ namespace GLSense.Addin.Core.Helpers
                         new AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
                 }
 
-                var response = await SendRequestAsync(client, sendURL, MethodType, content, cancellationToken);
+                // OISR-23022: the progress window says the time is the server's, not the caller's last step
+                // (a drilldown showed "Creating balance dto..." for 13 minutes while ledger-setup-data was pending).
+                string what = DescribeEndpoint(sendURL);
+                ProgressWindowHost.ReportStep($"Waiting for the server: {what}...");
+                // ConfigureAwait(false): no UI work follows here, and a caller blocking on ServerAPI from Excel's thread
+                // deadlocked when this continuation was posted back to it (OISR-23022).
+                var response = await SendRequestAsync(client, sendURL, MethodType, content, cancellationToken).ConfigureAwait(false);
 
                 // Read response as stream in chunks to avoid large single-buffer reads
+                ProgressWindowHost.ReportStep($"Receiving the server's response: {what}...");
                 var responseBody = await ReadResponseStreamAsStringAsync(response, cancellationToken).ConfigureAwait(false);
+                ProgressWindowHost.ReportStep($"Response received from the server: {what}.");
 
                 LogResponseDetails(response, responseBody);
 
@@ -137,6 +147,17 @@ namespace GLSense.Addin.Core.Helpers
                 ServiceLocator.Logger?.LogException(ex, $"ApiHelper.ExecuteApiCall - unhandled error calling {sendURL}");
                 throw;
             }
+        }
+
+        // ".../finance/ledger-setup-data?ledgerId=1" -> "ledger setup data"
+        private static string DescribeEndpoint(string url)
+        {
+            try
+            {
+                string last = new Uri(url).Segments.LastOrDefault()?.Trim('/') ?? string.Empty;
+                return last.Length == 0 ? "request" : last.Replace('-', ' ').Replace('_', ' ');
+            }
+            catch (UriFormatException) { return "request"; }
         }
 
         private static HttpContent CreateHttpContent(string postData, string contentType)
@@ -429,11 +450,15 @@ namespace GLSense.Addin.Core.Helpers
                             content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
 
                             ServiceLocator.Logger?.LogDebug("Sending POST request with file content");
+                            string what = DescribeEndpoint(uri);
+                            ProgressWindowHost.ReportStep($"Uploading the file and waiting for the server: {what}...");
                             using var response = await client.PostAsync(uri, content, cancellationToken).ConfigureAwait(false);
 
                             cancellationToken.ThrowIfCancellationRequested();
 
+                            ProgressWindowHost.ReportStep($"Receiving the server's response: {what}...");
                             var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            ProgressWindowHost.ReportStep($"Response received from the server: {what}.");
 
                             ServiceLocator.Logger?.LogDebug($"Upload response: Status={response.StatusCode}, Response length={responseText?.Length ?? 0}");
 

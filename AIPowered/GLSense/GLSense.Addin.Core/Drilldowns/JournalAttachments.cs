@@ -275,6 +275,7 @@ namespace GLSense.Addin.Core.Drilldowns
 
                 HttpContent content = string.IsNullOrWhiteSpace(postData) ? null : new StringContent(postData, System.Text.Encoding.UTF8, "application/json");
 
+                ProgressWindowHost.ReportStep("Waiting for the server: attachment download..."); // OISR-23022
                 HttpResponseMessage response = await client.PostAsync(strURL, content, token);
 
                 token.ThrowIfCancellationRequested();

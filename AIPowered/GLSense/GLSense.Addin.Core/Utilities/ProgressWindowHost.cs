@@ -72,6 +72,9 @@ namespace GLSense.Addin.Core.Utilities
                     return w;
                 });
 
+                _current = win;
+                win.Closed += (_, __) => Interlocked.CompareExchange(ref _current, null, win);
+
                 int released = 0;
                 void ReleaseOnce() { if (Interlocked.Exchange(ref released, 1) == 0) ReleaseLease(generation); }
                 if (cts != null) cts.OnDisposed(ReleaseOnce);
@@ -100,6 +103,26 @@ namespace GLSense.Addin.Core.Utilities
                 ServiceLocator.Logger?.LogException(ex, "ProgressWindowHost.Show: creating the progress window failed");
                 return null;
             }
+        }
+
+        // The progress window shown last and not yet closed (OISR-23022: ApiHelper reports "Waiting for the server" in it).
+        private static GLWaitWindow? _current;
+
+        /// <summary>
+        /// Shows <paramref name="message"/> as the step text of the open progress window and on the step line of the
+        /// busy overlay that is up (Login, Cube details, Process window...), where there is one. Every server request
+        /// reports through here ("Waiting for the server: ...", "Receiving ...", "Response received ..."), so the user
+        /// sees the time is the server's, not the caller's last step (OISR-23022: a drilldown showed "Creating balance
+        /// dto..." for 13 minutes while ledger-setup-data was pending).
+        /// </summary>
+        internal static void ReportStep(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return;
+            var win = _current;
+            try { if (win != null) _ = win.Dispatcher.InvokeAsync(() => win.SetProcessMessage(message)); }
+            catch (Exception ex) { ServiceLocator.Logger?.LogDebug($"ProgressWindowHost.ReportStep: {ex.Message}"); }
+            try { AppOverlay.ReportBusyStep(message); }
+            catch (Exception ex) { ServiceLocator.Logger?.LogDebug($"ProgressWindowHost.ReportStep (overlay): {ex.Message}"); }
         }
 
         // Bumped by Shutdown(): a lease taken before it must not be released against the next thread's count.

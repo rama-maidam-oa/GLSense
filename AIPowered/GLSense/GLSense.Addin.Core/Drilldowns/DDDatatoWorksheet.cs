@@ -587,13 +587,21 @@ namespace GLSense.Addin.Core.Drilldowns
                     return;
                 }
 
-                dataBody.Font.Color = ColorTranslator.ToOle(Color.Blue);
-                dataBody.Font.Underline = Excel.XlUnderlineStyle.xlUnderlineStyleSingle;
+                StyleAsLink(dataBody);
             }
             catch (Exception ex)
             {
                 ServiceLocator.Logger.LogException(ex, $"Error styling drilldown column '{aliasColName}'.");
             }
+        }
+
+        // Double-click columns (SUBLEDGER_DRILL_DOWN, VIEW_FULL_JOURNAL_ENTRY) look like Excel links: single underline
+        // and the Office hyperlink blue #0563C1 (BGR 0xC16305). OISR-23022: both use this one helper - the subledger
+        // column was pure blue (#0000FF), so the two columns showed different blues.
+        private static void StyleAsLink(Excel.Range range)
+        {
+            range.Font.Underline = Excel.XlUnderlineStyle.xlUnderlineStyleSingle;
+            range.Font.Color = 0xC16305;
         }
 
         // "JE" (Full Journal Entry, OISR-22823) is journal data too: it gets the same subledger
@@ -642,10 +650,57 @@ namespace GLSense.Addin.Core.Drilldowns
                 return;
             }
 
-            foreach (Excel.Range cell in range)
+            if (DD_win != null)
+                _ = DD_win.Dispatcher.InvokeAsync(() => DD_win.SetProcessMessage("Adding attachment hyperlinks..."));
+            AddSelfHyperlinks(ws, range, "Journals Attachments Link", "attachment hyperlink");
+        }
+
+        // OISR-23022: one hyperlink per non-empty cell of a one-column table range, each pointing at its own cell (the
+        // host's SheetFollowHyperlink handler reads the clicked cell and the ScreenTip). Values are read in one call and
+        // the addresses built here, so a row costs a Range lookup + Hyperlinks.Add - the old per-cell loop also
+        // enumerated the cell and read Value2/Value/Address (~6 Excel calls a row): 47,754 full journal entry links
+        // took 4 min 3 s on Excel's thread. Excel can't create separate per-cell links in one call (a multi-cell
+        // Hyperlinks.Add or a paste makes ONE link spanning the range, which loses the clicked row).
+        private void AddSelfHyperlinks(Excel.Worksheet ws, Excel.Range columnRange, string screenTip, string logContext)
+        {
+            int firstRow = columnRange.Row;
+            string col = ColumnLetters(columnRange.Column);
+            object raw = columnRange.Value2;
+            object[,] values = raw as object[,];
+            int count = values != null ? values.GetLength(0) : 1;
+            int lb0 = values != null ? values.GetLowerBound(0) : 0, lb1 = values != null ? values.GetLowerBound(1) : 0;
+            var links = ws.Hyperlinks;
+
+            for (int i = 0; i < count; i++)
             {
-                AddAttachmentHyperlink(cell);
+                Dd_token.ThrowIfCancellationRequested();
+                var displayText = (values != null ? values[lb0 + i, lb1] : raw)?.ToString();
+                if (string.IsNullOrWhiteSpace(displayText))
+                    continue;
+
+                string address = "$" + col + "$" + (firstRow + i);
+                try
+                {
+                    links.Add(
+                        Anchor: ws.Range[address],
+                        Address: string.Empty,
+                        SubAddress: address,
+                        ScreenTip: screenTip,
+                        TextToDisplay: displayText);
+                }
+                catch (Exception ex)
+                {
+                    ServiceLocator.Logger.LogException(ex, $"Error adding {logContext} to '{ws.Name}'!{address}");
+                }
             }
+        }
+
+        private static string ColumnLetters(int column)
+        {
+            string letters = string.Empty;
+            for (int n = column; n > 0; n = (n - 1) / 26)
+                letters = (char)('A' + (n - 1) % 26) + letters;
+            return letters;
         }
 
         private static bool IsAttachmentColumn(string aliasColName, string actualColName)
@@ -682,48 +737,10 @@ namespace GLSense.Addin.Core.Drilldowns
             }
         }
 
-        private void AddAttachmentHyperlink(Excel.Range cell)
-        {
-            var val = cell.Value2 ?? cell.Value;
-            var displayText = val?.ToString();
-
-            if (DD_win != null)
-                _ = DD_win.Dispatcher.InvokeAsync(() => DD_win.SetProcessMessage("Adding attachment hyperlinks..."));
-
-            if (string.IsNullOrWhiteSpace(displayText))
-            {
-                return;
-            }
-
-            try
-            {
-                var subAddress = cell.get_Address(
-                                Type.Missing,
-                                Type.Missing,
-                                Excel.XlReferenceStyle.xlA1,
-                                false,
-                                Type.Missing);
-
-                cell.Hyperlinks.Add(
-                    Anchor: cell,
-                    Address: string.Empty,
-                    SubAddress: subAddress,
-                    ScreenTip: "Journals Attachments Link",
-                    TextToDisplay: displayText);
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger.LogException(
-                    ex,
-                    $"Error adding attachment hyperlink to '{cell.Worksheet.Name}'!" +
-                    $"{cell.Address[Type.Missing, Type.Missing, Excel.XlReferenceStyle.xlA1, Type.Missing, Type.Missing]}");
-            }
-        }
-
-        // OISR-22823: on a journal sheet, every non-empty VIEW_FULL_JOURNAL_ENTRY cell becomes a
-        // hyperlink. The host's SheetFollowHyperlink handler recognises it by its ScreenTip
-        // (FullJournalEntryScreenTip) and runs DrilldownFje, which reads the row's hidden
-        // FJE_DD_PARAMETERS value.
+        // OISR-22823: on a journal sheet, the VIEW_FULL_JOURNAL_ENTRY cells open the row's full journal entry
+        // (DrilldownFje reads the row's hidden FJE_DD_PARAMETERS value). Since OISR-23022 they are styled like links and
+        // run on a double-click; sheets made before that have per-cell hyperlinks, which the host's SheetFollowHyperlink
+        // handler still recognises by their ScreenTip (FullJournalEntryScreenTip).
         internal const string FullJournalEntryColumn = "VIEW_FULL_JOURNAL_ENTRY";
         internal const string FullJournalEntryParamsColumn = "FJE_DD_PARAMETERS";
         internal const string FullJournalEntryScreenTip = "View Full Journal Entry";
@@ -748,7 +765,7 @@ namespace GLSense.Addin.Core.Drilldowns
             }
 
             if (DD_win != null)
-                _ = DD_win.Dispatcher.InvokeAsync(() => DD_win.SetProcessMessage("Adding full journal entry hyperlinks..."));
+                _ = DD_win.Dispatcher.InvokeAsync(() => DD_win.SetProcessMessage("Styling full journal entry links..."));
 
             var range = GetColumnDataBodyRange(ws, tableObjName, aliasColName, "full journal entry links");
             if (range == null)
@@ -756,40 +773,11 @@ namespace GLSense.Addin.Core.Drilldowns
                 return;
             }
 
-            foreach (Excel.Range cell in range)
-            {
-                Dd_token.ThrowIfCancellationRequested();
-
-                var displayText = (cell.Value2 ?? cell.Value)?.ToString();
-                if (string.IsNullOrWhiteSpace(displayText))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    var subAddress = cell.get_Address(
-                                    Type.Missing,
-                                    Type.Missing,
-                                    Excel.XlReferenceStyle.xlA1,
-                                    false,
-                                    Type.Missing);
-
-                    cell.Hyperlinks.Add(
-                        Anchor: cell,
-                        Address: string.Empty,
-                        SubAddress: subAddress,
-                        ScreenTip: FullJournalEntryScreenTip,
-                        TextToDisplay: displayText);
-                }
-                catch (Exception ex)
-                {
-                    ServiceLocator.Logger.LogException(
-                        ex,
-                        $"Error adding full journal entry hyperlink to '{cell.Worksheet.Name}'!" +
-                        $"{cell.Address[Type.Missing, Type.Missing, Excel.XlReferenceStyle.xlA1, Type.Missing, Type.Missing]}");
-                }
-            }
+            // OISR-23022: no hyperlink objects. The column is only styled like a link (two calls for the whole column)
+            // and a DOUBLE-CLICK on a cell runs that row's full journal entry (host AddinModule SheetBeforeDoubleClick ->
+            // DispatchFullJournalEntryHyperlink). One Hyperlinks.Add per row took ~5.3 ms on Excel's thread - 47,754
+            // rows = 4 min 12 s of a 4 min 48 s journal drilldown - and a sheet holds at most 66,530 hyperlinks.
+            StyleAsLink(range);
         }
 
         private bool ApplyCustomDrilldownAndFormula(
@@ -917,10 +905,7 @@ namespace GLSense.Addin.Core.Drilldowns
                 return true; // config exists even if range failed
             }
 
-            foreach (Excel.Range cell in range)
-            {
-                AddCustomDrilldownHyperlink(cell);
-            }
+            AddSelfHyperlinks(ws, range, "Custom Drilldown", "custom drilldown hyperlink");
 
             return true;
         }
@@ -955,41 +940,6 @@ namespace GLSense.Addin.Core.Drilldowns
                     $"Column Name [ {actualColName} ] and display name [{aliasColName} ]",
                     ex);
                 return dummyRange;
-            }
-        }
-
-        private static void AddCustomDrilldownHyperlink(Excel.Range cell)
-        {
-            try
-            {
-                var val = cell.Value2 ?? cell.Value;
-                var displayText = val?.ToString();
-
-                if (string.IsNullOrWhiteSpace(displayText))
-                {
-                    return;
-                }
-
-                var subAddress = cell.get_Address(
-                                Type.Missing,
-                                Type.Missing,
-                                Excel.XlReferenceStyle.xlA1,
-                                false,
-                                Type.Missing);
-
-                cell.Hyperlinks.Add(
-                    Anchor: cell,
-                    Address: string.Empty,
-                    SubAddress: subAddress,
-                    ScreenTip: "Custom Drilldown",
-                    TextToDisplay: displayText);
-            }
-            catch (Exception ex)
-            {
-                ServiceLocator.Logger.LogException(
-                    ex,
-                    $"Exception applying hyperlink to range '{cell.Worksheet.Name}'!" +
-                    $"{cell.Address[Type.Missing, Type.Missing, Excel.XlReferenceStyle.xlA1, Type.Missing, Type.Missing]}");
             }
         }
 
@@ -1924,15 +1874,22 @@ namespace GLSense.Addin.Core.Drilldowns
             return javaLongStr;
         }
 
+        private bool _dateStepShown;
+
         private string JavaDateConv(long? javaLong)
         {
             // Null or zero → empty string (same as VB)
             if (javaLong == null || javaLong == 0)
                 return string.Empty;
 
-            if (DD_win != null)
+            // Once per drilldown: posting it per value queued 95,508 messages on the progress thread for a 47,754-row
+            // journal drilldown, so the window showed steps long after they had finished (OISR-23022).
+            if (DD_win != null && !_dateStepShown)
+            {
+                _dateStepShown = true;
                 _ = DD_win.Dispatcher.InvokeAsync(() =>
                   DD_win.SetProcessMessage("Converting java date to excel supported date..."));
+            }
 
             try
             {

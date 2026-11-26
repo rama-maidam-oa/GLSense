@@ -1753,6 +1753,11 @@ namespace GLSense
             if (HasBalanceFormula(cellRange))
                 return "BL";
 
+            // OISR-23022: "View Full Journal Entry" cell on a journals/subledger sheet -> full journal entry drilldown.
+            // Checked before the journals->subledger rule below: elsewhere on the same sheet a double-click means SL.
+            if (IsFullJournalEntryLinkCell(currentSheet, cellRange))
+                return "JE";
+
             string a1Text = GetA1Text(currentSheet);
             if (string.IsNullOrWhiteSpace(a1Text))
                 return string.Empty;
@@ -1996,6 +2001,25 @@ namespace GLSense
         // the host never references Addin.Core). Must be checked before the attachment fallback,
         // which treats any other hyperlink as a journal header id.
         private const string FullJournalEntryScreenTip = "View Full Journal Entry";
+
+        // OISR-23022: VIEW_FULL_JOURNAL_ENTRY cells are styled like links (Addin.Core DDDatatoWorksheet, no hyperlink
+        // objects - one per row took 4 min for 47,754 rows and a sheet holds at most 66,530). A double-click on one is a
+        // drilldown like the others: ResolveDrilldownType -> "JE" -> RunDrilldownExternal -> DrilldownFje. Row 4 holds
+        // the actual column name, row 5 the display name (same rule as DrilldownFje.FindParamsColumn).
+        private const string FullJournalEntryLinkHeader = "VIEW_FULL_JOURNAL_ENTRY";
+
+        private static bool IsFullJournalEntryLinkCell(Excel.Worksheet sht, Excel.Range cell)
+        {
+            if (Convert.ToDouble(cell.CountLarge) != 1 || cell.Row <= 5) return false;
+            if (!IsValidDrilldownSheet(sht)) return false;
+            foreach (int headerRow in new[] { 4, 5 })
+            {
+                string header = Convert.ToString((sht.Cells[headerRow, cell.Column] as Excel.Range)?.Value2)?.Trim();
+                if (string.Equals(header, FullJournalEntryLinkHeader, StringComparison.OrdinalIgnoreCase))
+                    return !string.IsNullOrWhiteSpace(Convert.ToString(cell.Value2));
+            }
+            return false;
+        }
 
         private static bool IsFullJournalEntryHyperlink(Excel.Hyperlink hyprLink)
         {

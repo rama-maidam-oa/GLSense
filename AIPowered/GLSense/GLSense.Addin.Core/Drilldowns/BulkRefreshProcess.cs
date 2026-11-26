@@ -495,7 +495,7 @@ namespace GLSense.Addin.Core.Drilldowns
 
                 LogDebug($"Waiting for the server response. URL: {uri}");
 
-                await MessageProgressWindowAsync("Sending upload request to server.");
+                await MessageProgressWindowAsync("Uploading the workbook and waiting for the server..."); // OISR-23022
 
                 HttpResponseMessage response;
                 // Covers sending the zip and the server's whole processing, up to the response headers.

@@ -446,7 +446,12 @@ namespace GLSense.Addin.Core.Models
 
                 ServiceLocator.Logger?.LogDebug($"BalanceDto.EnsureLedgerDataLoaded: fetching ledger setup data for CubeId={cubeId}, LedgerId={ledgerId}.");
                 using var ctsHelper = new CancellationHelper();
-                CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, ctsHelper.GetToken())
+                // OISR-23022: run the fetch on the thread pool. Blocking the calling thread directly deadlocked when that
+                // thread was Excel's (Balances drilldown): the call's continuations were posted back to the blocked thread,
+                // so the response was never processed and the 5-minute timeout never fired - the drilldown waited 13+
+                // minutes on the ledger-setup-data the cube window loads in 0.7 s. Same pattern as LoadSegmentValues.
+                var token = ctsHelper.GetToken();
+                Task.Run(() => CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, token))
                     .GetAwaiter()
                     .GetResult();
             }

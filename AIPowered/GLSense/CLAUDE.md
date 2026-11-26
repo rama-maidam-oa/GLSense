@@ -9246,3 +9246,67 @@ one ran started another that overwrote them.
   doubled quotes, unquoted empty arguments and `IF(...)` in cells with several calls. Harness: old vs new output
   differs only in the cases above; the CTD period range is identical for all four forms.
 
+## 143. Progress windows said "Creating balance dto..." while the server took 13 minutes (OISR-23022)
+
+- **Seen (QA02, 26-Nov-2026):** a Balances drilldown showed "Creating balance dto..." for 13 minutes. The DTO is
+  built in milliseconds; inside it `BalanceDto.EnsureLedgerDataLoaded` fetched `/ledger-setup-data` for the
+  formula's ledger and the server did not answer. Users read that as GLSense being slow.
+- **Fix:** every server request now says so where the user is looking.
+  - `ProgressWindowHost` remembers the progress window shown last (cleared on Closed) and `ReportStep(message)` sets
+    its step text; `AppOverlay` remembers the busy overlay that is up and `ReportStep` also sets that overlay's
+    step line (under the window's own message - Login, Cube details, Process window...). No window/overlay: no-op.
+  - `ApiHelper.ServerAPI` (all drilldowns, ledger/segment/period fetches, login, cube, jobs, UDF single refresh):
+    "Waiting for the server: <endpoint>..." before sending, "Receiving the server's response: <endpoint>..." once
+    the headers are in, "Response received from the server: <endpoint>." after the body (endpoint = last URL
+    segment, "ledger-setup-data" -> "ledger setup data"). `HttpUploadFileAsync` (snapshot As Job): same three.
+  - Requests outside ApiHelper: job output downloads (`GLSubmittedJobsViewModel`, both paths - the busy step then
+    shows "Downloading: n MB"), journal attachment download, old zip upload ("Uploading the workbook and waiting
+    for the server..."), Sheet/Book Refresh JSON ("...: waiting for the server to return n balances for m
+    formulas."). `GLAbout`'s version check has no progress UI - unchanged.
+  - `DD_BL`: "Creating balance dto..." -> "Preparing the balance request...".
+- **Verified:** build; QA02 Balances drilldown on QA's Sheet3!J13 (ledger-setup-data for ledgerId 1 still pending):
+  the window showed "Waiting for the server: ledger setup data..." at 3 min (screenshot), Excel answered in <= 168 ms.
+- **Open (same run):** ApiHelper's 5-minute HttpClient.Timeout did not end that request in 13 minutes, and Cancel
+  cannot interrupt a stalled response read (no token passed to the read). Fix proposed, not made.
+
+## 144. Drilldown "hung" on ledger-setup-data: sync-over-async deadlock on Excel's thread (OISR-23022)
+
+- **Seen (QA02, 26-Nov-2026):** Balances drilldown on a formula whose ledger ("Vision Operations (USA)", ledgerId 1)
+  had no SEGMENTS rows in the local SQLite cache: `/ledger-setup-data?ledgerId=1` sent, then nothing - no response,
+  no 5-minute timeout, no error - for 8 to 13+ minutes. The same request from the cube window answered in 0.7 s,
+  and once the cube window had cached the ledger the drilldown finished in 24 s (it skips the fetch).
+- **Root cause:** `BalanceDto.EnsureLedgerDataLoaded` blocked its caller with
+  `FillResponsibilitiesAsync(...).GetAwaiter().GetResult()`. For a drilldown the caller is Excel's thread, which is
+  also the WPF dispatcher thread; `ApiHelper.ExecuteApiCall` (`await SendRequestAsync`) and
+  `ApiOperationHelper.ExecuteWithRetry` (`await apiCall`) had no `ConfigureAwait(false)`, so their continuations were
+  posted back to that blocked thread: the response (and the timeout's cancellation) could never be processed.
+  Excel still answered outside COM calls (a blocked STA wait pumps COM), so it looked alive.
+- **Fix:** `EnsureLedgerDataLoaded` runs the fetch with `Task.Run(...)` (its continuation only writes SQLite - same
+  pattern as `LoadSegmentValues`); `ConfigureAwait(false)` on those awaits in ApiHelper/ApiOperationHelper (callers
+  that await ServerAPI still resume on their own context).
+- **Verified (QA02):** ledger-1 cache cleared, default ledger selected: the Balances drilldown fetched ledger 1 and
+  finished in 10 s (2,808 rows); was 8+ min hang on the same setup before the fix.
+- **Sweep (sync-over-async on a server call):** UdfDispatcher's `.GetAwaiter().GetResult()` calls run inside the
+  host's Task.Run (no context); `LoadSegmentValues/LoadSegments`, `DD_BL` 744, `SegmentDiscoverer` 1358 use
+  Task.Run + Wait. No other blocking wait on Excel's thread found.
+- **Also measured (same run, current build):** Balances to Journals 47,754 rows: server 12.5 s, writing rows 8 s,
+  per-row "View Full Journal Entry" hyperlinks 4 min 12 s (Hyperlinks.Add ~5.3 ms each in-process; reading values
+  once/building addresses locally did not help in-process - out-of-process it was 2.2x). Balances to Sub-Ledgers
+  (CTD Jan-08~Dec-09, account 1000): server 5 min to first byte, 318 MB JSON in 52 s, 119,613 rows x ~104 columns;
+  Excel memory 1.3 -> 5.0 GB (response held as one string, then parsed and copied), still formatting after 13 min.
+  `JavaDateConv` posted a progress message per date value (95,508 for the journal drilldown) - now once.
+## 145. "View Full Journal Entry" links: 4 minutes of hyperlinks replaced by link-styled cells + double-click (OISR-23022)
+- **Seen (QA02, 26-Nov-2026):** Balances to Journals, 47,754 rows: one `Hyperlinks.Add` per row took 4 min 12 s, and a
+  sheet holds at most 66,530 hyperlinks. HYPERLINK formulas were rejected (a link back to its own cell is a circular
+  reference, and that many formulas add calculation).
+- **Fix:** `DDDatatoWorksheet.ApplyFullJournalEntryHyperlinks` now only calls `StyleAsLink(range)` (underline +
+  colour 0xC16305) on the VIEW_FULL_JOURNAL_ENTRY column; the SUBLEDGER_DRILL_DOWN column gets the same style (its
+  blue was showing differently). The host's `AddinModule.ResolveDrilldownType` returns "JE" for a double-click on a
+  non-empty cell under a VIEW_FULL_JOURNAL_ENTRY header (row 4 or 5, data row > 5, drilldown sheet) - checked before
+  the journals -> subledger rule - and `AddinEntry.RunDrilldownByExternalAddress` runs `DrilldownFje` for "JE", so it
+  is a drilldown like the others (no event handler). The old early double-click block was removed.
+  `JavaDateConv` posts its progress message once instead of per date value.
+- **Verified:** 47,754 rows: links step 310 s -> 13-18 s in total for the sheet; double-click opens the full journal
+  entry (checked by hand on QA02).
+- **Same-issue sweep (per-row Hyperlinks.Add):** attachments and custom drilldown keep real hyperlinks (few rows) via
+  the shared `AddSelfHyperlinks` helper; no other per-row link loop found.

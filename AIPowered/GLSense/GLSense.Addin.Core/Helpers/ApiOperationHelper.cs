@@ -50,7 +50,8 @@ namespace GLSense.Addin.Core.Helpers
                         ServiceLocator.Logger?.LogDebug($"Retry attempt {retryCount} of {MaxRetries - 1}");
                     }
 
-                    var result = await apiCall(cancellationToken);
+                    // ConfigureAwait(false): a caller that blocks on this (sync-over-async) must not deadlock (OISR-23022).
+                    var result = await apiCall(cancellationToken).ConfigureAwait(false);
 
                     if (retryCount > 0)
                     {
@@ -82,7 +83,7 @@ namespace GLSense.Addin.Core.Helpers
                     await CancellationTokenHelper.DelayWithLogging(
                         RetryDelayMs * retryCount, // Exponential backoff
                         cancellationToken,
-                        $"Retry delay for {operationName}");
+                        $"Retry delay for {operationName}").ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {

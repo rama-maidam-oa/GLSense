@@ -172,7 +172,7 @@ namespace GLSense.Addin.Core.Drilldowns
                     var served = new SortedSet<int> { sheetNo };
                     foreach (var x in slice) if (sheetsOfUnique[x.u] != null) served.UnionWith(sheetsOfUnique[x.u]);
                     batches.Add((group.Key, slice.Select(x => x.d).ToList(), formulas,
-                        $"{SheetsText(served)} of {sheetsInScope:N0}{partText}: Requesting {slice.Count:N0} balances for {formulas:N0} formulas."));
+                        $"{SheetsText(served)} of {sheetsInScope:N0}{partText}: waiting for the server to return {slice.Count:N0} balances for {formulas:N0} formulas."));
                 }
             }
 

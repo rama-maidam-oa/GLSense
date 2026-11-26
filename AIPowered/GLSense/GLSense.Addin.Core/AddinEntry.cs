@@ -685,7 +685,7 @@ namespace GLSense.Addin.Core
                 // cross the AppDomain boundary, so only the classification RESULT (plain
                 // strings) comes through here.
                 case "RunDrilldownExternal":
-                    // payload: "ddType|external" (ddType one of BL/JL/SL/EP - see
+                    // payload: "ddType|external" (ddType one of BL/JL/SL/EP/JE - see
                     // RunDrilldownByExternalAddress below). Pipe-delimited, same
                     // convention as Group G's RunSnapshot ("mode|isSubmit").
                     if (parameter is string ddPayload)
@@ -792,6 +792,10 @@ namespace GLSense.Addin.Core
                         break;
                     case "EP":
                         await new DrilldownXlPrecedents(external).ProcessEPDrilldown();
+                        break;
+                    case "JE":
+                        // OISR-23022: double-click on a "View Full Journal Entry" cell (no hyperlink objects any more).
+                        await new DrilldownFje(ServiceLocator.ExcelApp, external).ProcessFullJournalEntryDrilldown();
                         break;
                     default:
                         ServiceLocator.Logger?.LogDebug($"RunDrilldownByExternalAddress: unknown drilldown type '{ddType}'");
