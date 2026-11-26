@@ -9324,4 +9324,13 @@ one ran started another that overwrote them.
   current version stays. Only the add-in the user logged into checks (a synced login does not).
   An older host without the two members: MissingMethodException is caught and logged; the broadcast follows.
 - **XLEdge:** same flow in BusinessLayers 11.1.3 (ADXExcelTaskPane1.CheckForAddinUpdateAsync, contract 6).
+- **Both add-ins installed (follow-up, 26-Nov-2026):** the add-in the user logged into owns the one prompt and checks
+  both at the same time (10 s each): `IRibbonController.FindNewerPartnerAddinRelease` -> the host looks the other add-in
+  up on Excel's thread (COMAddIns, as the login sync does) and calls its public `CheckAddinUpdate(url, token, timeout)`
+  late-bound - the other add-in judges its own release (loaded version, history, contract). Both have updates:
+  "Update both" / "Update GLSense only" / "Not now" (GLMessageWindow button captions); one: the Yes/No prompt with
+  that product's name. `ReloadToNewerAddinRelease(includePartner)` posts: the other add-in's public `ReloadAddinUpdate()`
+  first (synchronous - its download and reload, its logout logs both out), then this one - never both at once.
+  Missing, disabled or older other add-in, or its check failed: logged, single-product prompt. Downloads happen per
+  add-in just before its reload (not both up front), so a failed second download leaves the first one updated.
 - **Verified:** builds. Not yet run in Excel.

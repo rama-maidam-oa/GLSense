@@ -77,10 +77,13 @@ namespace GLSense.Contracts
         //   - FindNewerAddinRelease: newest released GLSense on the server with a later release date than the loaded
         //     one, as display text ("11.1.3 (26-Nov-2026 10:15)"), or null when there is none. Never throws: any
         //     failure (server, timeout, parsing) is logged and returns null, so login carries on.
-        //   - ReloadToNewerAddinRelease: downloads that release, logs out and reloads GLSense into it. Returns at
-        //     once - the work is posted to Excel's thread so Addin.Core's own call stack has unwound before its
-        //     AppDomain is unloaded (OISR-22874).
+        //   - FindNewerPartnerAddinRelease: the same answer from XLEdge when it is installed too (XLEdge judges its own
+        //     release; null when XLEdge is missing, disabled, older, or its check failed).
+        //   - ReloadToNewerAddinRelease: downloads that release, logs out and reloads GLSense into it; includePartner:
+        //     XLEdge reloads into its newer release first. Returns at once - the work is posted to Excel's thread so
+        //     Addin.Core's own call stack has unwound before its AppDomain is unloaded (OISR-22874).
         string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds);
-        void ReloadToNewerAddinRelease();
+        string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds);
+        void ReloadToNewerAddinRelease(bool includePartner);
     }
 }

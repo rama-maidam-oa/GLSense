@@ -64,7 +64,8 @@ namespace GLSense.Addin.Core.Utilities
         public static MessageBoxResult GLSenseMessage(
                 string msg,
                 MessageBoxImage msgIcon,
-                MessageBoxButton buttons = MessageBoxButton.OK)
+                MessageBoxButton buttons = MessageBoxButton.OK,
+                string[] buttonCaptions = null)
         {
             // WpfAppManager.InvokeOnWpfThread only takes an Action (no return value),
             // so capture the result from inside the delegate, exactly like every other
@@ -72,7 +73,7 @@ namespace GLSense.Addin.Core.Utilities
             MessageBoxResult result = MessageBoxResult.None;
             WpfAppManager.InvokeOnWpfThread(() =>
             {
-                var win = new GLMessageWindow(msg, msgIcon, buttons)
+                var win = new GLMessageWindow(msg, msgIcon, buttons, buttonCaptions)
                 {
                     CenterInExcel = true,
                     ModalToExcel = true,

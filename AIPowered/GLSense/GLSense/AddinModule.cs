@@ -357,19 +357,80 @@ namespace GLSense
         }
 
         // Called from Addin.Core while its prompt is still on the stack: the reload unloads Addin.Core's AppDomain, so
-        // it runs later on Excel's thread, after that call has returned (OISR-22874).
-        internal void PostReloadToNewerAddinRelease()
+        // it runs later on Excel's thread, after that call has returned (OISR-22874). includePartner: XLEdge (found by
+        // FindNewerPartnerAddinRelease) reloads first, synchronously, then GLSense - never both at once.
+        internal void PostReloadToNewerAddinRelease(bool includePartner)
         {
             var row = _newerRelease;
-            if (row == null)
+            if (row == null && !includePartner)
             {
                 GlobalsEx.Context?.Logger?.LogWarn("ReloadToNewerAddinRelease: no newer release from the update check - nothing to reload.");
                 return;
             }
 
             string loginUrl = _newerReleaseLoginUrl, loginToken = _newerReleaseLoginToken;
-            _excelDispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
-                new Action(() => ReloadToNewerRelease(row, loginUrl, loginToken)));
+            _excelDispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
+            {
+                if (includePartner) ReloadPartnerAddinUpdate();
+                if (row != null) ReloadToNewerRelease(row, loginUrl, loginToken);
+            }));
+        }
+
+        // ---- the same check for the other add-in (XLEdge), when both are installed ----
+        // The add-in the user logged into owns the one prompt; the other one judges its own updates (its loaded version,
+        // release history, contract) through its public CheckAddinUpdate / ReloadAddinUpdate, late-bound over COM as
+        // the login sync already does. Missing, disabled or an older XLEdge: null - the single-product prompt.
+
+        /// <summary>Called by Addin.Core off Excel's thread. XLEdge's newer release as "version (date)", or null.</summary>
+        internal string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds)
+        {
+            try
+            {
+                // Excel's COMAddIns is read on Excel's thread (free: the core waits on a background task).
+                object edge = _excelDispatcher.Invoke(() => GlobalsEx.Context?.GetEdgeAddinInstance());
+                if (edge == null) return null;
+                return edge.GetType().InvokeMember("CheckAddinUpdate", System.Reflection.BindingFlags.InvokeMethod, null, edge,
+                    new object[] { loginUrl, loginToken, timeoutSeconds }) as string;
+            }
+            catch (Exception ex)
+            {
+                var inner = ex is System.Reflection.TargetInvocationException tie && tie.InnerException != null ? tie.InnerException : ex;
+                GlobalsEx.Context?.Logger?.LogDebug($"Post-login update check: XLEdge not checked ({inner.GetType().Name}: {inner.Message}).");
+                return null;
+            }
+        }
+
+        private void ReloadPartnerAddinUpdate()
+        {
+            try
+            {
+                object edge = GlobalsEx.Context?.GetEdgeAddinInstance();
+                if (edge == null) { GlobalsEx.Context?.Logger?.LogWarn("Post-login update: XLEdge is no longer available - not reloaded."); return; }
+                GlobalsEx.Context?.Logger?.LogInfo("Post-login update: reloading XLEdge first.");
+                edge.GetType().InvokeMember("ReloadAddinUpdate", System.Reflection.BindingFlags.InvokeMethod, null, edge, Array.Empty<object>());
+            }
+            catch (Exception ex)
+            {
+                GlobalsEx.Context?.Logger?.LogException(ex, "Post-login update: reloading XLEdge failed - GLSense goes on");
+            }
+        }
+
+        /// <summary>
+        /// Called by XLEdge (late-bound, off Excel's thread) when the user logged in to XLEdge: GLSense's newer release as
+        /// "version (date)", or null. Never throws; failures are logged.
+        /// </summary>
+        public string CheckAddinUpdate(string loginUrl, string loginToken, int timeoutSeconds) =>
+            FindNewerAddinRelease(loginUrl, loginToken, timeoutSeconds);
+
+        /// <summary>
+        /// Called by XLEdge on Excel's thread after its user chose "Update both": downloads the release CheckAddinUpdate
+        /// found and reloads GLSense now (no GLSense core call is on the stack), so XLEdge reloads after it.
+        /// </summary>
+        public void ReloadAddinUpdate()
+        {
+            var row = _newerRelease;
+            if (row == null) { GlobalsEx.Context?.Logger?.LogWarn("ReloadAddinUpdate (from XLEdge): no newer GLSense release - nothing to reload."); return; }
+            ReloadToNewerRelease(row, _newerReleaseLoginUrl, _newerReleaseLoginToken);
         }
 
         private void ReloadToNewerRelease(OnlineReleaseRow row, string loginUrl, string loginToken)

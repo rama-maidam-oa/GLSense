@@ -46,10 +46,16 @@ namespace GLSense.Addin.Core.Views
     {
         public MessageBoxResult Result { get; private set; } = MessageBoxResult.None;
 
+        // Optional captions for the buttons, in order (e.g. YesNoCancel as "Update both" / "Update GLSense only" / "Not now").
+        private readonly string[] _buttonCaptions;
+        private int _buttonIndex;
+
         public GLMessageWindow(string message,
                                MessageBoxImage icon,
-                               MessageBoxButton buttons = MessageBoxButton.OK)
+                               MessageBoxButton buttons = MessageBoxButton.OK,
+                               string[] buttonCaptions = null)
         {
+            _buttonCaptions = buttonCaptions;
             InitializeComponent();
             ServiceLocator.Logger?.LogDebug($"GLMessageWindow constructor invoked: icon={icon}, buttons={buttons}, message={message}");
 
@@ -144,6 +150,9 @@ namespace GLSense.Addin.Core.Views
 
         private void AddDialogButton(string text, MessageBoxResult resultValue, PackIconFontAwesomeKind iconKind)
         {
+            if (_buttonCaptions != null && _buttonIndex < _buttonCaptions.Length && !string.IsNullOrEmpty(_buttonCaptions[_buttonIndex]))
+                text = _buttonCaptions[_buttonIndex];
+            _buttonIndex++;
             // Ported from GLSense\Views\GLMessageWindow.xaml.cs (FinalWorkingCode): buttons now
             // reuse the shared "DynamicContentButton" style (Themes\GlobalStyles.xaml) instead of
             // a hand-rolled inline one. That style's idle state is plain black-on-light-gray, and

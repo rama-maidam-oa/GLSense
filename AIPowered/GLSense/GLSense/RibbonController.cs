@@ -69,7 +69,10 @@ namespace GLSense
         public string FindNewerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds) =>
             _addinModule.FindNewerAddinRelease(loginUrl, loginToken, timeoutSeconds);
 
-        public void ReloadToNewerAddinRelease() => _addinModule.PostReloadToNewerAddinRelease();
+        public string FindNewerPartnerAddinRelease(string loginUrl, string loginToken, int timeoutSeconds) =>
+            _addinModule.FindNewerPartnerAddinRelease(loginUrl, loginToken, timeoutSeconds);
+
+        public void ReloadToNewerAddinRelease(bool includePartner) => _addinModule.PostReloadToNewerAddinRelease(includePartner);
 
         #region EXISTING: Action Registration System (UNCHANGED)
 
