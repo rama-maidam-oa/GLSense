@@ -9334,3 +9334,23 @@ one ran started another that overwrote them.
   Missing, disabled or older other add-in, or its check failed: logged, single-product prompt. Downloads happen per
   add-in just before its reload (not both up front), so a failed second download leaves the first one updated.
 - **Verified:** builds. Not yet run in Excel.
+## 147. Server waits written to the log; PeriodDataService ledger fetch off the UI thread (OISR-23022 follow-up)
+- **Seen (developer log, 25-Nov-2026, GLSense 11.1.3 released 23-Nov):** Balances to Journals on a ledger with no cached
+  SEGMENTS: `BalanceDto.EnsureLedgerDataLoaded` sent ledger-setup-data (ledgerId 650) and the log ends there - no
+  response, no error, and no 5-minute timeout. That is the deadlock of entry 144 (fixed after that build): the
+  response's continuation was queued to the blocked Excel thread, so even the timeout never got logged. Nothing in
+  the log said whether the add-in or the server was waiting, so the server side and the MSI side blamed each other.
+- **Change (logging):** `ApiHelper.ServerWait` - while a request is open, "Still waiting for the server: <endpoint> -
+  no response from the server yet / the server answered HTTP n after x s, still receiving its response, after N s
+  (<url>)" every 30 s as WARN (written without debug mode); then "Server timing: <endpoint> - HTTP n, server's first
+  answer after x s, response complete after y s, n chars" (INFO above 10 s, else DEBUG). The first-answer mark runs on
+  a ConfigureAwait(false) continuation, so it reflects the network even when the calling thread is busy. Used by
+  `ServerAPI` (all drilldowns, ledger/segment/period fetches, login, cube, jobs, UDF), `HttpUploadFileAsync`, the sheet
+  refresh (`sheet-balances-json`) and the old zip refresh (`sheet-balances`). A 5-minute HttpClient timeout is now logged
+  as "The server did not answer <endpoint> within 5 minutes" instead of "API call cancelled".
+- **Change (same deadlock, sweep):** `PeriodDataService.EnsureLedgerDataLoaded` / `EnsurePeriodDataLoaded` blocked their
+  caller on FillResponsibilitiesAsync; `GLLOVs` calls it directly on its UI thread. Now `Task.Run(...)` as in BalanceDto.
+- **Same-issue sweep:** FinalWorkingCode (11.1.1/11.1.2/11.1.3) has the same blocking `EnsureLedgerDataLoaded` in
+  `Models\BalanceDtoModel.cs` and `Service\PeriodDataService.cs`, and its ApiHelper awaits lacked ConfigureAwait(false) -
+  fixed there the same way, with the same ServerWait logging (its CLAUDE.md, same date).
+- **Verified:** builds. Not yet run in Excel.

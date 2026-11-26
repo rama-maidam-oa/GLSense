@@ -543,6 +543,8 @@ namespace GLSense.Addin.Core.Drilldowns
                 body = JsonSerializer.SerializeToUtf8Bytes(new { balanceDtos = batch }, JsonGlobals.Options);
 
             HttpResponseMessage response;
+            // The wait in the log too: "Still waiting for the server" every 30 s, then the timing line.
+            using var wait = new ApiHelper.ServerWait($"sheet balances request {label}", url);
             if (_gzipRequests)
             {
                 byte[] zipped;
@@ -565,11 +567,13 @@ namespace GLSense.Addin.Core.Drilldowns
                 response = await PostJsonAsync(client, url, body, gzip: false, label, token).ConfigureAwait(false);
             }
             body = null; // release the request bytes before the response is read
+            wait.ResponseStarted(response.StatusCode);
 
             string text;
             using (response)
             using (PerformanceHelper.MeasureExecutionTime($"RefreshPerf: J4 {label} download response"))
                 text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            wait.Completed(response.StatusCode, text.Length);
             LogDebug($"RefreshPerf: request {label}: HTTP {(int)response.StatusCode}, response {text.Length / (1024.0 * 1024.0):F2} MB");
             // OISR-22830 pattern: full response to the Temp folder, preview + path in the log (debug only).
             string sheetHint = "sheet-balances-json_" + label.Replace('/', '-');

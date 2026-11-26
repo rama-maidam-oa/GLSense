@@ -420,7 +420,10 @@ namespace GLSense.Drilldowns
 
                 await MessageProgressWindowAsync("Sending upload request to server.");
 
+                // OISR-23022: the wait in the log too - "Still waiting for the server" every 30 s, then the timing line.
+                using var wait = new GLSense.Helpers.ApiHelper.ServerWait("workbook refresh (sheet balances)", $"{uri}");
                 var response = await client.PostAsync(uri, content, token);
+                wait.ResponseStarted(response.StatusCode);
 
                 await MessageProgressWindowAsync($"Received response from server. Status code: {response.StatusCode}");
 
@@ -448,6 +451,7 @@ namespace GLSense.Drilldowns
                             await fileOutput.WriteAsync(buffer, 0, bytesRead, token);
                         }
                     } while (bytesRead != 0);
+                    wait.Completed(response.StatusCode, fileOutput.Length);
 
                     await MessageProgressWindowAsync("Response flushed to file.");
 

@@ -388,7 +388,11 @@ namespace GLSense.Models
                     return;
                 }
                 using var ctsHelper = new CancellationHelper();
-                CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, ctsHelper.GetToken())
+                // OISR-23022: run the fetch on the thread pool. Blocking the calling thread directly deadlocked when that
+                // thread was Excel's / a window's: the fetch's continuations were posted back to the blocked thread, so the
+                // response was never processed and the 5-minute timeout never fired (drilldown hung on ledger-setup-data).
+                var token = ctsHelper.GetToken();
+                Task.Run(() => CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, token))
                     .GetAwaiter()
                     .GetResult();
             }

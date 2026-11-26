@@ -20,6 +20,7 @@ using GLSense.Addin.Core.Models;
 using GLSense.Addin.Core.Repositories;
 using GLSense.Addin.Core.Utilities;
 using System;
+using System.Threading.Tasks;
 using System.Collections.ObjectModel;
 
 namespace GLSense.Addin.Core.Services
@@ -91,7 +92,10 @@ namespace GLSense.Addin.Core.Services
                 ServiceLocator.Logger?.LogDebug($"PeriodDataService.EnsureLedgerDataLoaded: no SEGMENTS found - fetching ledger setup data for CubeId={cubeId}, LedgerId={ledgerId}.");
                 using (var ctsHelper = new CancellationHelper())
                 {
-                    CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, ctsHelper.GetToken())
+                    // OISR-23022: on the thread pool - blocking the caller's UI thread (GLLOVs calls this directly) deadlocks
+                    // when the fetch's continuations are posted back to that thread (same fix as BalanceDto.EnsureLedgerDataLoaded).
+                    var token = ctsHelper.GetToken();
+                    Task.Run(() => CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, token))
                         .GetAwaiter()
                         .GetResult();
                 }
@@ -127,7 +131,10 @@ namespace GLSense.Addin.Core.Services
                 ServiceLocator.Logger?.LogDebug($"PeriodDataService.EnsurePeriodDataLoaded: no PERIODS found - fetching period data for CubeId={cubeId}, LedgerId={ledgerId}.");
                 using (var ctsHelper = new CancellationHelper())
                 {
-                    CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, ctsHelper.GetToken())
+                    // OISR-23022: on the thread pool - blocking the caller's UI thread (GLLOVs calls this directly) deadlocks
+                    // when the fetch's continuations are posted back to that thread (same fix as BalanceDto.EnsureLedgerDataLoaded).
+                    var token = ctsHelper.GetToken();
+                    Task.Run(() => CommonFunctions.FillResponsibilitiesAsync(ledgerId, cubeId, token))
                         .GetAwaiter()
                         .GetResult();
                 }

@@ -498,9 +498,12 @@ namespace GLSense.Addin.Core.Drilldowns
                 await MessageProgressWindowAsync("Uploading the workbook and waiting for the server..."); // OISR-23022
 
                 HttpResponseMessage response;
+                // The wait in the log too: "Still waiting for the server" every 30 s, then the timing line.
+                using var wait = new ApiHelper.ServerWait("workbook refresh (sheet balances)", $"{uri}");
                 // Covers sending the zip and the server's whole processing, up to the response headers.
                 using (PerformanceHelper.MeasureExecutionTime("RefreshPerf: 2a upload + server processing (until response headers)"))
                     response = await client.PostAsync(uri, content, token);
+                wait.ResponseStarted(response.StatusCode);
 
                 await MessageProgressWindowAsync($"Received response from server. Status code: {response.StatusCode}");
 
@@ -534,6 +537,7 @@ namespace GLSense.Addin.Core.Drilldowns
                         } while (bytesRead != 0);
                     }
                     LogDebug($"RefreshPerf: response zip size = {responseBytes / 1024.0:F1} KB");
+                    wait.Completed(response.StatusCode, responseBytes);
 
                     await MessageProgressWindowAsync("Response flushed to file.");
 

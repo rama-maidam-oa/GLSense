@@ -41,7 +41,7 @@ namespace GLSense.Helpers
                             LogUtility.LogDebug($"Retry attempt {retryCount} of {MaxRetries - 1}");
                         }
 
-                        var result = await apiCall(cancellationToken);
+                        var result = await apiCall(cancellationToken).ConfigureAwait(false); // OISR-23022: no context capture
 
                         if (retryCount > 0)
                         {
@@ -71,7 +71,7 @@ namespace GLSense.Helpers
                         await CancellationTokenHelper.DelayWithLogging(
                             RetryDelayMs * retryCount, // Exponential backoff
                             cancellationToken,
-                            $"Retry delay for {operationName}");
+                            $"Retry delay for {operationName}").ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {

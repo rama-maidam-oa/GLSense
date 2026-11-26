@@ -90,6 +90,8 @@ namespace GLSense.Addin.Core.Helpers
 
         private static async Task<string> ExecuteApiCall(HttpClient client, string sendURL, string StrContentType, string PostData, string MethodType, CancellationToken cancellationToken)
         {
+            string what = DescribeEndpoint(sendURL);
+            ServerWait wait = null;
             try
             {
                 ServiceLocator.Logger?.LogDebug($"Starting API call to: {sendURL}");
@@ -109,16 +111,18 @@ namespace GLSense.Addin.Core.Helpers
 
                 // OISR-23022: the progress window says the time is the server's, not the caller's last step
                 // (a drilldown showed "Creating balance dto..." for 13 minutes while ledger-setup-data was pending).
-                string what = DescribeEndpoint(sendURL);
                 ProgressWindowHost.ReportStep($"Waiting for the server: {what}...");
+                wait = new ServerWait(what, sendURL);
                 // ConfigureAwait(false): no UI work follows here, and a caller blocking on ServerAPI from Excel's thread
                 // deadlocked when this continuation was posted back to it (OISR-23022).
                 var response = await SendRequestAsync(client, sendURL, MethodType, content, cancellationToken).ConfigureAwait(false);
+                wait.ResponseStarted(response.StatusCode);
 
                 // Read response as stream in chunks to avoid large single-buffer reads
                 ProgressWindowHost.ReportStep($"Receiving the server's response: {what}...");
                 var responseBody = await ReadResponseStreamAsStringAsync(response, cancellationToken).ConfigureAwait(false);
                 ProgressWindowHost.ReportStep($"Response received from the server: {what}.");
+                wait.Completed(response.StatusCode, responseBody?.Length ?? 0);
 
                 LogResponseDetails(response, responseBody);
 
@@ -129,9 +133,16 @@ namespace GLSense.Addin.Core.Helpers
 
                 return result;
             }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // HttpClient.Timeout ends the call with the same exception as Cancel - say which it was.
+                ServiceLocator.Logger?.LogWarn($"The server did not answer {what} within {client.Timeout.TotalMinutes:0.#} minutes " +
+                    $"(timed out after {wait?.ElapsedSeconds ?? 0:0} s): {sendURL}");
+                throw;
+            }
             catch (OperationCanceledException)
             {
-                ServiceLocator.Logger?.LogWarn($"API call cancelled for {sendURL}");
+                ServiceLocator.Logger?.LogWarn($"API call cancelled for {sendURL} after {wait?.ElapsedSeconds ?? 0:0} s.");
                 throw;
             }
             catch (HttpRequestException ex) when (ex.InnerException is WebException webEx &&
@@ -147,10 +158,60 @@ namespace GLSense.Addin.Core.Helpers
                 ServiceLocator.Logger?.LogException(ex, $"ApiHelper.ExecuteApiCall - unhandled error calling {sendURL}");
                 throw;
             }
+            finally
+            {
+                wait?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Writes a server request's waiting time to the log (not only to the progress window), so a slow or silent server is
+        /// visible there: "Still waiting for the server" every 30 s while the request is open (WARN, also without debug
+        /// mode), then one timing line - time to the server's first answer (response headers) and to the end of the response.
+        /// The caller marks the first answer with <see cref="ResponseStarted"/> on a ConfigureAwait(false) continuation, so
+        /// the log reflects the network even when the calling thread is busy.
+        /// </summary>
+        internal sealed class ServerWait : IDisposable
+        {
+            private const int HeartbeatMs = 30000;
+            private const double SlowSeconds = 10;
+            private readonly System.Diagnostics.Stopwatch _sw = System.Diagnostics.Stopwatch.StartNew();
+            private readonly Timer _heartbeat;
+            private readonly string _what, _url;
+            private volatile string _stage = "no response from the server yet";
+            private double _firstAnswerSeconds = -1;
+
+            internal ServerWait(string what, string url)
+            {
+                _what = what;
+                _url = url;
+                _heartbeat = new Timer(_ => ServiceLocator.Logger?.LogWarn(
+                    $"Still waiting for the server: {_what} - {_stage} after {_sw.Elapsed.TotalSeconds:0} s ({_url})."), null, HeartbeatMs, HeartbeatMs);
+            }
+
+            internal double ElapsedSeconds => _sw.Elapsed.TotalSeconds;
+
+            internal void ResponseStarted(HttpStatusCode status)
+            {
+                _firstAnswerSeconds = _sw.Elapsed.TotalSeconds;
+                _stage = $"the server answered HTTP {(int)status} after {_firstAnswerSeconds:0.0} s, still receiving its response";
+            }
+
+            /// <summary>The timing line: INFO when the request took longer than 10 s, else DEBUG.</summary>
+            internal void Completed(HttpStatusCode status, long length)
+            {
+                _heartbeat.Dispose();
+                string line = $"Server timing: {_what} - HTTP {(int)status}, server's first answer after {_firstAnswerSeconds:0.0} s, " +
+                              $"response complete after {_sw.Elapsed.TotalSeconds:0.0} s, {length:N0} chars ({_url}).";
+                if (_sw.Elapsed.TotalSeconds > SlowSeconds) ServiceLocator.Logger?.LogInfo(line);
+                else ServiceLocator.Logger?.LogDebug(line);
+            }
+
+            public void Dispose() => _heartbeat.Dispose();
         }
 
         // ".../finance/ledger-setup-data?ledgerId=1" -> "ledger setup data"
-        private static string DescribeEndpoint(string url)
+        internal static string DescribeEndpoint(string url)
         {
             try
             {
@@ -452,13 +513,16 @@ namespace GLSense.Addin.Core.Helpers
                             ServiceLocator.Logger?.LogDebug("Sending POST request with file content");
                             string what = DescribeEndpoint(uri);
                             ProgressWindowHost.ReportStep($"Uploading the file and waiting for the server: {what}...");
+                            using var wait = new ServerWait(what, uri);
                             using var response = await client.PostAsync(uri, content, cancellationToken).ConfigureAwait(false);
+                            wait.ResponseStarted(response.StatusCode);
 
                             cancellationToken.ThrowIfCancellationRequested();
 
                             ProgressWindowHost.ReportStep($"Receiving the server's response: {what}...");
                             var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                             ProgressWindowHost.ReportStep($"Response received from the server: {what}.");
+                            wait.Completed(response.StatusCode, responseText?.Length ?? 0);
 
                             ServiceLocator.Logger?.LogDebug($"Upload response: Status={response.StatusCode}, Response length={responseText?.Length ?? 0}");
 

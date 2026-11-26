@@ -62,7 +62,7 @@ namespace GLSense.Helpers
                     {
                         using (var client = CreateHttpClient())
                         {
-                            return await ExecuteApiCall(client, sendURL, StrContentType, PostData, MethodType, token);
+                            return await ExecuteApiCall(client, sendURL, StrContentType, PostData, MethodType, token).ConfigureAwait(false);
                         }
                     },
                     cancellationToken,
@@ -73,6 +73,8 @@ namespace GLSense.Helpers
 
         private static async Task<string> ExecuteApiCall(HttpClient client, string sendURL, string StrContentType, string PostData, string MethodType, CancellationToken cancellationToken)
         {
+            string what = DescribeEndpoint(sendURL);
+            ServerWait wait = null;
             try
             {
                 LogUtility.LogDebug($"Starting API call to: {sendURL}");
@@ -90,10 +92,15 @@ namespace GLSense.Helpers
                         new AuthenticationHeaderValue("Bearer", AppState.Instance.LoginToken);
                 }
 
-                var response = await SendRequestAsync(client, sendURL, MethodType, content, cancellationToken);
+                wait = new ServerWait(what, sendURL);
+                // OISR-23022: ConfigureAwait(false) - a caller blocking on ServerAPI from Excel's thread (ledger setup data in
+                // BalanceDto / PeriodDataService) deadlocked when this continuation was posted back to that thread.
+                var response = await SendRequestAsync(client, sendURL, MethodType, content, cancellationToken).ConfigureAwait(false);
+                wait.ResponseStarted(response.StatusCode);
 
                 // Read response as stream in chunks to avoid large single-buffer reads
                 var responseBody = await ReadResponseStreamAsStringAsync(response, cancellationToken).ConfigureAwait(false);
+                wait.Completed(response.StatusCode, responseBody?.Length ?? 0);
 
                 LogResponseDetails(response, responseBody);
 
@@ -104,9 +111,16 @@ namespace GLSense.Helpers
 
                 return result;
             }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // HttpClient.Timeout ends the call with the same exception as Cancel - say which it was.
+                LogUtility.LogWarn($"The server did not answer {what} within {client.Timeout.TotalMinutes:0.#} minutes " +
+                    $"(timed out after {wait?.ElapsedSeconds ?? 0:0} s): {sendURL}");
+                throw;
+            }
             catch (OperationCanceledException)
             {
-                LogUtility.LogWarn($"API call cancelled for {sendURL}");
+                LogUtility.LogWarn($"API call cancelled for {sendURL} after {wait?.ElapsedSeconds ?? 0:0} s.");
                 throw;
             }
             catch (HttpRequestException ex) when (ex.InnerException is WebException webEx &&
@@ -120,6 +134,71 @@ namespace GLSense.Helpers
             catch (Exception)
             {
                 throw;
+            }
+            finally
+            {
+                wait?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// OISR-23022: writes a server request's waiting time to the log, so a slow or silent server is visible there:
+        /// "Still waiting for the server" every 30 s while the request is open (WARN, also without debug mode), then one
+        /// timing line - time to the server's first answer (response headers) and to the end of the response. The caller
+        /// marks the first answer with <see cref="ResponseStarted"/> on a ConfigureAwait(false) continuation, so the log
+        /// reflects the network even when the calling thread is busy.
+        /// </summary>
+        internal sealed class ServerWait : IDisposable
+        {
+            private const int HeartbeatMs = 30000;
+            private const double SlowSeconds = 10;
+            private readonly System.Diagnostics.Stopwatch _sw = System.Diagnostics.Stopwatch.StartNew();
+            private readonly Timer _heartbeat;
+            private readonly string _what, _url;
+            private volatile string _stage = "no response from the server yet";
+            private double _firstAnswerSeconds = -1;
+
+            internal ServerWait(string what, string url)
+            {
+                _what = what;
+                _url = url;
+                _heartbeat = new Timer(_ => LogUtility.LogWarn(
+                    $"Still waiting for the server: {_what} - {_stage} after {_sw.Elapsed.TotalSeconds:0} s ({_url})."), null, HeartbeatMs, HeartbeatMs);
+            }
+
+            internal double ElapsedSeconds => _sw.Elapsed.TotalSeconds;
+
+            internal void ResponseStarted(HttpStatusCode status)
+            {
+                _firstAnswerSeconds = _sw.Elapsed.TotalSeconds;
+                _stage = $"the server answered HTTP {(int)status} after {_firstAnswerSeconds:0.0} s, still receiving its response";
+            }
+
+            /// <summary>The timing line: INFO when the request took longer than 10 s, else DEBUG.</summary>
+            internal void Completed(HttpStatusCode status, long length)
+            {
+                _heartbeat.Dispose();
+                string line = $"Server timing: {_what} - HTTP {(int)status}, server's first answer after {_firstAnswerSeconds:0.0} s, " +
+                              $"response complete after {_sw.Elapsed.TotalSeconds:0.0} s, {length:N0} chars ({_url}).";
+                if (_sw.Elapsed.TotalSeconds > SlowSeconds) LogUtility.LogInfo(line);
+                else LogUtility.LogDebug(line);
+            }
+
+            public void Dispose() => _heartbeat.Dispose();
+        }
+
+        // ".../finance/ledger-setup-data?ledgerId=1" -> "ledger setup data"
+        internal static string DescribeEndpoint(string url)
+        {
+            try
+            {
+                var segments = new Uri(url).Segments;
+                string last = segments.Length == 0 ? string.Empty : segments[segments.Length - 1].Trim('/');
+                return last.Length == 0 ? "request" : last.Replace('-', ' ').Replace('_', ' ');
+            }
+            catch (Exception)
+            {
+                return "request";
             }
         }
 
@@ -424,11 +503,14 @@ namespace GLSense.Helpers
                             content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
 
                             LogUtility.LogDebug("Sending POST request with file content");
+                            using var wait = new ServerWait(DescribeEndpoint(uri), uri);
                             using var response = await client.PostAsync(uri, content, cancellationToken).ConfigureAwait(false);
+                            wait.ResponseStarted(response.StatusCode);
 
                             cancellationToken.ThrowIfCancellationRequested();
 
                             var responseText = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            wait.Completed(response.StatusCode, responseText?.Length ?? 0);
 
                             LogUtility.LogDebug($"Upload response: Status={response.StatusCode}, Response length={responseText?.Length ?? 0}");
 
