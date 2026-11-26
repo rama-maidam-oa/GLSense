@@ -1602,3 +1602,28 @@ there.**
   doubled quotes, unquoted empty arguments and `IF(...)` in cells with several calls. Harness: old vs new output
   differs only in the cases above; the CTD period range is identical for all four forms.
   **Status: FinalWorkingCode `11.1.1`/`11.1.2`/`11.1.3`.** Build-verified.
+
+## `Models\BalanceDtoModel.cs` / `Service\PeriodDataService.cs` / `Helpers\APIHelper.cs` (drilldown hung on ledger-setup-data; server waits not in the log, OISR-23022)
+- **Seen:** a Balances drilldown on a ledger whose setup data was not cached yet logged the ledger-setup-data request and
+  then nothing - no response, no error, no 5-minute timeout - until Excel was killed. Nothing in the log said whether
+  GLSense or the server was waiting.
+- **Root cause:** `BalanceDto.EnsureLedgerDataLoaded` (and `PeriodDataService.EnsureLedgerDataLoaded` /
+  `EnsurePeriodDataLoaded`, used by the period windows and the LOV window) blocked the calling thread with
+  `FillResponsibilitiesAsync(...).GetAwaiter().GetResult()`. On Excel's/a window's thread the call's continuations
+  (`ExecuteWithRetry` -> `ExecuteApiCall` -> `SendRequestAsync`, no ConfigureAwait(false)) were posted back to that
+  blocked thread: the response was never processed and the HttpClient timeout's continuation never ran either.
+  Measured on AIPowered (same code) on QA02: 8+ min hang before, 10 s after.
+- **Fix:** the three fetches run with `Task.Run(...)` before blocking; `ApiHelper.ServerAPI`/`ExecuteApiCall`/
+  `SendRequestAsync` and `ApiOperationHelper.ExecuteWithRetry` awaits use ConfigureAwait(false) (no UI work after them).
+- **Logging:** `ApiHelper.ServerWait` - while a request is open, "Still waiting for the server: <endpoint> - no response
+  from the server yet / the server answered HTTP n after x s, still receiving its response, after N s (<url>)" every
+  30 s as WARN (written without debug mode); then "Server timing: <endpoint> - HTTP n, server's first answer after x s,
+  response complete after y s, n chars" (INFO above 10 s, else DEBUG). Used by `ServerAPI` (every drilldown, ledger/
+  segment/period fetch, login, cube, jobs), `HttpUploadFileAsync` and the workbook refresh upload (`BulkRefreshProcess`).
+  The HttpClient timeout is logged as "The server did not answer <endpoint> within 5 minutes" instead of "API call
+  cancelled". So a log now shows whether the server answered and when.
+- **Same-issue sweep (blocking wait on a server call):** no other `.GetAwaiter().GetResult()` / `.Result` on a server
+  call in FinalWorkingCode's GLSense project besides the three fixed. AIPowered 11.1.3: same fix (its CLAUDE.md 144, 147).
+  Attachment/job-output downloads (`GLSense_DownloadFile`, `GLSubmittedJobsViewModel`) are awaited, not blocked; no
+  ServerWait there.
+  **Status: FinalWorkingCode `11.1.1`/`11.1.2`/`11.1.3`.** Build-verified; not yet run in Excel.
