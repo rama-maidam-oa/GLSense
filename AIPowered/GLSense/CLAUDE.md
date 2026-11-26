@@ -9200,3 +9200,49 @@ one ran started another that overwrote them.
   call. None of them loops. FinalWorkingCode's `GetRangeValueSafe` had the same flaw, fixed the same way.
 - **Also in the ticket, not code:** QA's MSI predates the refresh changes (gzip OISR-22975, Excel-thread refresh,
   busy guard); refresh/drilldown timings are being measured on the current build.
+
+## 142. GetBalance segment values with special characters: backslash/apostrophe changed, markers lost in the ";" form (OISR-22901)
+
+- **Reported part (GetBalance, GLSense Online vs MSI):** QA's screenshots show the add-in correct for `!@#2`, `~118`
+  and `11$9` (direct and by reference); GLSense Online shows #VALUE!/"Missing Segment value"/"No Data!!!". That part
+  is on the Online side. Reviewing every add-in path that parses GetBalance arguments found three data errors:
+  1. `BalanceDto.NormalizeStrings` (and the copy in `DD_BL`) ran `Regex.Unescape` on every argument: `100\200` ->
+     `100`, `\118` -> `8`, `C:\1000` -> `C:@0`, and `A\B` threw, so that formula got no balance at all.
+  2. The same function trimmed apostrophes at either end: `'118` -> `118`.
+  3. All segments in one argument (`"01;--1000;1000~"`): `UdfDispatcher.NormalizeCombinedSegment` ran
+     `CleanSegmentValue` on each piece, so `--1000` (exclude) was sent as include, `1000~` (non-summary) as summary,
+     and `--2000|--3000` as BETWEEN 2000 / --3000. Drilldown splits the same text without stripping, so refresh and
+     drilldown disagreed.
+- **Fix:** `NormalizeStrings` uses the value as given: trims whitespace and surrounding double quotes (straight and
+  curly) only. `NormalizeCombinedSegment` only trims; the request builder (`CreateSingleSegmentValue` /
+  `CreateRangeSegmentValue`) already reads "--", "|" and a trailing "~".
+- **Note:** cache keys of ";"-form formulas that use "--" or a trailing "~" change (the markers are now part of the
+  key), so such cells need a refresh once; before, an exclude and an include of the same value shared one key.
+- **Verified:** builds; copies of the new code: `100\200`, `\118`, `A\B`, `'118` unchanged, `"118"` -> `118`,
+  a lone `"` -> empty, curly quotes removed; `01;--1000;1000~;--2000|--3000;"~118"` -> each piece keeps its marker.
+  Not yet run in Excel.
+- **Same-issue sweep (pattern: argument text rewritten before it is read):** FinalWorkingCode has the same three
+  (fixed the same way in 11.1.1/11.1.2/11.1.3). Still open, in the formula-text parser `ClsFormulaParser` used by
+  drilldown, the Balance Configurator and the period windows: only `$` references are resolved (a relative `B2` is
+  read as the text "B2"), `&` is removed or turned into a quote (`R&D` -> `RD`), and unquoted empty arguments are
+  dropped in cells with several calls. The 11.1.3 refresh reads formulas with its own resolver and is not affected.
+  Values containing `,` `;` `|` `%` or a trailing `~` can't be written at all: those are GLSense's operators.
+- **Follow-up: `Helpers\ClsFormulaParser.cs` (drilldown, Balance window, Excel-precedents drilldown).** Legacy VB.NET
+  logic, ported as is. Its "$ = reference" rule matches what GLSense writes (RefEdit always writes a `$`: `$A$1`,
+  `$A1`, `A$1`), and its "&" handling exists for the CTD/JED period range GLSense writes (`start&"~"&end`) - both
+  kept. Run on ~30 formula shapes (real parser source, Excel replaced by fake cells) it showed three bugs, fixed:
+  - A. `FormulaArgs_Values` / `ExtractArguments_WithValues` removed every "&" from an argument that also had "~",
+    including a plain quoted value: `"R&D~"` -> `RD~`, `"~R&D"` -> `~RD`. Now only for a non-literal (the period join).
+  - B. `Formula_Values` (Excel-precedents sheet) turned "&" into a quote in every argument: `"R&D"` -> `RD`, and a
+    referenced cell holding `R&D~` -> `RD~`. Now a plain quoted value and a resolved reference are used as they are;
+    only `"Jan-24"&"~"&"Mar-24"` text gets the replacement it was written for.
+  - C. `Formula_Values`: any `$` reference in the last two arguments took the "combined segments" branch, which kept
+    only the first 10 arguments - the reference's value landed in JE Category and the other segments were dropped
+    (same in VB; GetBalance has 11 fixed arguments there too). Now only a real ";" list in a segment argument
+    (index 11+) is expanded, in place, with the arguments around it kept and their references resolved; a ";" in JE
+    Category ("Cat A;Cat B") is no longer split into segments.
+  Unchanged on purpose (hand-written formulas only; the 11.1.3 refresh evaluates them through Excel): relative
+  references, sheet-qualified relative refs, names, INDIRECT/functions, `$A$1&"|"&$B$1` / `"--"&$A$1` / `$A$1&"~"`,
+  doubled quotes, unquoted empty arguments and `IF(...)` in cells with several calls. Harness: old vs new output
+  differs only in the cases above; the CTD period range is identical for all four forms.
+

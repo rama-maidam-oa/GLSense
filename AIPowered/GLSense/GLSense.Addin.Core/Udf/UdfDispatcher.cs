@@ -1002,8 +1002,9 @@ namespace GLSense.Addin.Core.Udf
             if (string.IsNullOrWhiteSpace(segmentPiece))
                 return string.Empty;
 
-            string normalized = segmentPiece.Trim().Trim('"');
-            return CleanSegmentValue(normalized);
+            // OISR-22901: keep "--" / trailing "~" - the request builder reads them; stripping them here sent an exclude
+            // as an include and a non-summary value as summary (drilldown, which splits the same text, kept them).
+            return segmentPiece.Trim().Trim('"');
         }
 
         private static string[] SplitCombinedSegments(string combinedSegment)

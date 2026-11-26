@@ -42,12 +42,9 @@ namespace GLSense.Addin.Core.Models
         {
             if (string.IsNullOrWhiteSpace(s)) return string.Empty;
 
-            // Convert \" to ", \\ to \ (handles common escaped inputs)
-            // Regex.Unescape handles most escaped sequences
-            var unescaped = Regex.Unescape(s);
-
-            // Trim whitespace and any leading/trailing quotes
-            var trimmed = unescaped.Trim().Trim('"', '“', '”', '\'');
+            // OISR-22901: the value is used as given. No Regex.Unescape (it turned "100\200" into "100" and threw on "A\B"),
+            // and an apostrophe is part of the value ("'118"); only whitespace and surrounding double quotes are removed.
+            var trimmed = s.Trim().Trim('"', '“', '”');
 
             return trimmed;
         }

@@ -76,7 +76,8 @@ namespace GLSense.Addin.Core.Helpers
                     {
                         args[i] = ValueFromReference(args[i]);
                     }
-                    else if (args[i].Contains("&") && args[i].Contains("~"))
+                    // Joins a period range "Jan-24"&"~"&"Mar-24"; a plain quoted value keeps its "&" ("R&D~") - OISR-22901
+                    else if (!IsQuotedLiteral(args[i]) && args[i].Contains("&") && args[i].Contains("~"))
                     {
                         args[i] = args[i].Replace("&", "");
                     }
@@ -180,7 +181,8 @@ namespace GLSense.Addin.Core.Helpers
                     {
                         arguments[i] = ValueFromReference(arguments[i]);
                     }
-                    else if (arguments[i].Contains("&") && arguments[i].Contains("~"))
+                    // Joins a period range "Jan-24"&"~"&"Mar-24"; a plain quoted value keeps its "&" ("R&D~") - OISR-22901
+                    else if (!IsQuotedLiteral(arguments[i]) && arguments[i].Contains("&") && arguments[i].Contains("~"))
                     {
                         arguments[i] = arguments[i].Replace("&", "");
                     }
@@ -220,37 +222,27 @@ namespace GLSense.Addin.Core.Helpers
             return arguments != null && arguments.Count > 0;
         }
 
+        // GLSense_GetBalance: 11 fixed arguments (sign ... JE Category), segments from index 11.
+        private const int FirstSegmentIndex = 11;
+
+        // OISR-22901: only a real ";" list in a segment argument (all segments in one argument) is expanded, in place.
+        // Before, any $ reference in the last two arguments took this branch and the rebuild kept only the first 10
+        // arguments, so the reference's value landed in JE Category and the other segments were dropped.
         private static List<string> ProcessArguments(List<string> arguments)
         {
-            var lastTwoArgs = ExtractLastTwoArguments(arguments);
-            var splitValues = ProcessLastArguments(lastTwoArgs);
-
-            return splitValues.Any()
-                ? BuildArgumentsWithSplitValues(arguments, splitValues)
-                : ResolveAllReferences(arguments);
-        }
-
-        private static List<string> ExtractLastTwoArguments(List<string> arguments)
-        {
-            var startIndex = Math.Max(0, arguments.Count - 2);
-            return arguments.Skip(startIndex).ToList();
-        }
-
-        private static string[] ProcessLastArguments(List<string> lastTwoArgs)
-        {
-            foreach (var arg in lastTwoArgs)
+            for (int i = Math.Max(FirstSegmentIndex, arguments.Count - 2); i < arguments.Count; i++)
             {
-                var cleanArg = CleanQuotes(arg);
+                var cleanArg = CleanQuotes(arguments[i]);
                 if (string.IsNullOrEmpty(cleanArg)) continue;
 
-                var splitValues = TrySplitArguments(cleanArg, IsQuotedLiteral(arg));
-                if (splitValues != null && splitValues.Length > 0)
+                var splitValues = TrySplitArguments(cleanArg, IsQuotedLiteral(arguments[i]));
+                if (splitValues.Length > 1)
                 {
-                    return splitValues;
+                    return BuildArgumentsWithSplitValues(arguments, i, splitValues);
                 }
             }
 
-            return Array.Empty<string>();
+            return ResolveAllReferences(arguments);
         }
 
         private static string CleanQuotes(string input)
@@ -277,16 +269,18 @@ namespace GLSense.Addin.Core.Helpers
             return Array.Empty<string>();
         }
 
-        private static List<string> BuildArgumentsWithSplitValues(List<string> originalArgs, string[] splitValues)
+        private static List<string> BuildArgumentsWithSplitValues(List<string> originalArgs, int splitIndex, string[] splitValues)
         {
             var result = new List<string>();
 
-            // Add first 10 arguments or all if less than 10
-            var countToTake = Math.Min(10, originalArgs.Count);
-            result.AddRange(originalArgs.Take(countToTake));
+            // Arguments before the list, references resolved
+            result.AddRange(originalArgs.Take(splitIndex).Select(ResolveArgument));
 
             // Add split values without quotes
             result.AddRange(splitValues.Select(CleanQuotes));
+
+            // Arguments after the list (the other of the last two), references resolved
+            result.AddRange(originalArgs.Skip(splitIndex + 1).Select(ResolveArgument));
 
             // Add empty string as required
             result.Add(string.Empty);
@@ -302,11 +296,16 @@ namespace GLSense.Addin.Core.Helpers
 
         private static string ResolveArgument(string argument)
         {
-            var resolvedArg = !IsQuotedLiteral(argument) && argument.Contains("$")
-                ? ValueFromReference(argument)
-                : argument;
+            // A plain quoted value is used as written: its "&" is part of the value ("R&D") - OISR-22901
+            if (IsQuotedLiteral(argument))
+                return argument;
 
-            return resolvedArg.Replace("&", "\"");
+            // A reference: the cell's value as it is (ValueFromReference already joins $A$1&"~"&$B$1).
+            if (argument.Contains("$"))
+                return ValueFromReference(argument);
+
+            // "Jan-24"&"~"&"Mar-24": the "&"s become quotes, which FormatArguments then removes
+            return argument.Replace("&", "\"");
         }
 
         // A whole-argument Excel text constant ("..." with "" escapes) is a value, never a cell
