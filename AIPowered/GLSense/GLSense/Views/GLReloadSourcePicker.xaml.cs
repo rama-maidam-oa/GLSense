@@ -571,7 +571,6 @@ namespace GLSense
             TxtDetailVersion.Text = row.Version;
             TxtDetailReleased.Text = row.ReleaseDateDisplay;
             TxtDetailStatus.Text = row.StatusText;
-            TxtDetailNotes.Text = row.Notes;
             TxtDetailMandatory.Text = row.Mandatory ? "Yes" : "No";
             TxtDetailFolderName.Text = row.FolderName;
             TxtDetailFileName.Text = row.FileName;

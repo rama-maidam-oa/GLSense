@@ -9354,3 +9354,12 @@ one ran started another that overwrote them.
   `Models\BalanceDtoModel.cs` and `Service\PeriodDataService.cs`, and its ApiHelper awaits lacked ConfigureAwait(false) -
   fixed there the same way, with the same ServerWait logging (its CLAUDE.md, same date).
 - **Verified:** builds. Not yet run in Excel.
+
+## 148. Reload Add-in Online list without release notes (OISR-23048, 27-Nov-2026)
+- **Problem:** OISR-22872 (section 106) removed notes from Version History only; Reload -> Online still showed a NOTES
+  grid column and a `Notes:` line in the details panel.
+- **Fix:** `GLReloadSourcePicker.xaml` drops the NOTES column (STATUS fills the width) and the `Notes:` row (rows below
+  renumbered); `GLReloadSourcePicker.xaml.cs` no longer fills `TxtDetailNotes`; `OnlineReleaseRow.Notes` and its
+  assignment in `OnlineReleaseClassifier` removed. The manifest still carries `notes`.
+- **Same in XLEdge 11.1.3** (AIPoweredXLEdge.md, OISR-23048), which also now shows this window's online-check messages.
+- **Verified:** Debug build (devenv, signed) loaded in Excel by the developer on 27-Nov-2026 for XLEdge; GLSense built.

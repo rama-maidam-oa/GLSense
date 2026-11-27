@@ -329,8 +329,7 @@
                                 </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="VERSION" Binding="{Binding Version}" Width="80" MinWidth="80" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                                 <DataGridTextColumn Header="VERSION DATE" Binding="{Binding ReleaseDateDisplay}" SortMemberPath="ReleaseDate" Width="150" MinWidth="150" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
-                                <DataGridTextColumn Header="NOTES" Binding="{Binding Notes}" Width="*" MinWidth="180" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
-                                <DataGridTextColumn Header="STATUS" Binding="{Binding StatusText}" Width="140" MinWidth="140" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
+                                <DataGridTextColumn Header="STATUS" Binding="{Binding StatusText}" Width="*" MinWidth="140" ElementStyle="{StaticResource TrimmedCellTextStyle}" CellStyle="{StaticResource PickerCellStyle}"/>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Border>
@@ -350,7 +349,7 @@
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                                <RowDefinition/><RowDefinition/><RowDefinition/>
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Version:" Style="{StaticResource DetailLabel}"/>
                             <TextBlock x:Name="TxtDetailVersion" Grid.Row="0" Grid.Column="1" Margin="0,2"/>
@@ -358,16 +357,14 @@
                             <TextBlock x:Name="TxtDetailReleased" Grid.Row="1" Grid.Column="1" Margin="0,2"/>
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="Status:" Style="{StaticResource DetailLabel}"/>
                             <TextBlock x:Name="TxtDetailStatus" Grid.Row="2" Grid.Column="1" Margin="0,2"/>
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Notes:" Style="{StaticResource DetailLabel}"/>
-                            <TextBlock x:Name="TxtDetailNotes" Grid.Row="3" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Mandatory:" Style="{StaticResource DetailLabel}"/>
-                            <TextBlock x:Name="TxtDetailMandatory" Grid.Row="4" Grid.Column="1" Margin="0,2"/>
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Folder Name:" Style="{StaticResource DetailLabel}"/>
-                            <TextBlock x:Name="TxtDetailFolderName" Grid.Row="5" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
-                            <TextBlock Grid.Row="6" Grid.Column="0" Text="File Name:" Style="{StaticResource DetailLabel}"/>
-                            <TextBlock x:Name="TxtDetailFileName" Grid.Row="6" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
-                            <TextBlock Grid.Row="7" Grid.Column="0" Text="Checksum:" Style="{StaticResource DetailLabel}"/>
-                            <TextBlock x:Name="TxtDetailChecksum" Grid.Row="7" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Mandatory:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailMandatory" Grid.Row="3" Grid.Column="1" Margin="0,2"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Folder Name:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailFolderName" Grid.Row="4" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="File Name:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailFileName" Grid.Row="5" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Checksum:" Style="{StaticResource DetailLabel}"/>
+                            <TextBlock x:Name="TxtDetailChecksum" Grid.Row="6" Grid.Column="1" Margin="0,2" TextWrapping="Wrap"/>
                         </Grid>
                     </Border>
                 </StackPanel>

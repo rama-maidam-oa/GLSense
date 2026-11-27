@@ -45,7 +45,6 @@ namespace GLSense
                     FolderName = entry.FolderName,
                     FileName = entry.FileName,
                     Checksum = entry.Checksum,
-                    Notes = entry.Notes,
                     IsCurrentlyLoaded = isCurrentlyLoaded,
                     IsAlreadyDownloaded = isAlreadyDownloaded
                 });
